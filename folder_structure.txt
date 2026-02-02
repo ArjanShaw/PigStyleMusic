@@ -1,0 +1,75 @@
+📁 Directory Structure: /home/arjan-ubuntu/Documents/PigStyleMusic
+📅 Generated: PigStyleMusic
+============================================================
+
+├── .git/
+│   ├── branches/
+│   ├── hooks/
+│   │   ├── applypatch-msg.sample
+│   │   ├── commit-msg.sample
+│   │   ├── fsmonitor-watchman.sample
+│   │   ├── post-update.sample
+│   │   ├── pre-applypatch.sample
+│   │   ├── pre-commit.sample
+│   │   ├── pre-merge-commit.sample
+│   │   ├── pre-push.sample
+│   │   ├── pre-rebase.sample
+│   │   ├── pre-receive.sample
+│   │   ├── prepare-commit-msg.sample
+│   │   ├── push-to-checkout.sample
+│   │   ├── sendemail-validate.sample
+│   │   └── update.sample
+│   ├── info/
+│   │   └── exclude
+│   ├── logs/
+│   │   ├── refs/
+│   │   │   ├── heads/
+│   │   │   │   └── main
+│   │   │   └── remotes/
+│   │   │       └── origin/
+│   │   │           └── main
+│   │   └── HEAD
+│   ├── objects/
+│   │   ├── 30/
+│   │   │   └── 30a40412f06875ca26919c64d62c88ef87b0e7
+│   │   ├── 60/
+│   │   │   └── 1b482c95e071daa72247da539ad5528ef7a5cc
+│   │   ├── 92/
+│   │   │   └── 5a17cdd512358c47e69453d46062b5dbd26477
+│   │   ├── b1/
+│   │   │   └── 5b1d514ffdc3edc70079532b5dfaf549d15cb1
+│   │   ├── b5/
+│   │   │   └── 0d111b805a147af029e662163c3af7a4334257
+│   │   ├── c8/
+│   │   │   └── 9143087d3c0c81161084293d3b791cbe10ece6
+│   │   ├── cf/
+│   │   │   └── 1ef450fa67fe86d5535350fb144bf017aa5d6c
+│   │   ├── d7/
+│   │   │   └── eed8dacc3e925aa7861e2d637d9c90c0b226b7
+│   │   ├── e6/
+│   │   │   └── 9de29bb2d1d6434b8b29ae775ad8c2e48c5391
+│   │   ├── fa/
+│   │   │   └── 78d230a01f0dd1761359d6da1e727c62653beb
+│   │   ├── info/
+│   │   └── pack/
+│   ├── refs/
+│   │   ├── heads/
+│   │   │   └── main
+│   │   ├── remotes/
+│   │   │   └── origin/
+│   │   │       └── main
+│   │   └── tags/
+│   ├── COMMIT_EDITMSG
+│   ├── HEAD
+│   ├── config
+│   ├── description
+│   └── index
+├── backend/
+│   ├── data/
+│   ├── logs/
+│   ├── api.py
+│   ├── requirements.txt
+│   └── wsgi.py
+├── pigstyle_project/
+├── create_backend.py
+└── folder_structure.txt
