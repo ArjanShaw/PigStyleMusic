@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=0.25'>
+    <link rel="icon" href="images/PigStyle.ico">
+    <title>Streaming Station - PigStyle Records</title>
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="streaming.css">
+    <!-- External JavaScript -->
+    <script src="streaming.js"></script>
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+    <!-- Background Image -->
+    <div class="background-container">
+        <img src="images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+
+    <header>
+        <div class="header-content">
+            <div class="logo-container">
+                <a href='index.html'><img src='images/PigStyle.ico' alt='PigStyle'></a>
+            </div>
+            <div class="filter-controls">
+                <button class="filter-toggle-btn" id="genreToggleBtn">
+                    <i class="fas fa-filter"></i> Filter Genres
+                </button>
+                <button class="filter-toggle-btn" id="newAdditionsToggleBtn">
+                    <i class="fas fa-clock"></i> Show New Additions
+                </button>
+                <div class="filter-checkbox-container" id="genreCheckboxContainer">
+                    <!-- Genre checkboxes will be populated by JavaScript -->
+                    <div class="filter-checkbox-loading">
+                        <div class="loading-dots small">
+                            <div></div>
+                            <div></div>
+                            <div></div>
+                            <div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+     
+    <div class="player-container">
+        <div id="loading" class="loading">
+            <div class="loading-dots">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <p id="loadingMessage">Loading streaming station...</p>
+        </div>
+        
+        <div id="playerContent" style="display: none;">
+            <div class="current-track">
+                <h2 id="trackTitle">PigStyle Records Collection</h2>
+                <p class="artist" id="trackArtist">Various Artists</p>
+                <p class="price" id="trackPrice">$0.00</p>
+            </div>
+            
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button class="tab-button active" data-tab="player-tab">
+                    <i class="fas fa-play"></i> 
+                </button>
+                <button class="tab-button" data-tab="info-tab">
+                    <i class="fas fa-info-circle"></i> 
+                </button>
+            </div>
+            
+            <!-- Tab Content -->
+            <div class="tab-content">
+                <!-- YouTube Player Tab -->
+                <div id="player-tab" class="tab-pane active">
+                    <div class="video-container" id="youtubeContainer">
+                        <div id="youtube-player" style="width: 100%; height: 100%;"></div>
+                    </div>
+                    
+                    <div class="nav-controls" id="youtubeControls" style="display: none;">
+                        <button class="nav-btn" id="prevBtn">◀</button>
+                        <button class="nav-btn" id="nextBtn">▶</button>
+                    </div>
+                </div>
+                
+                <!-- Record Info Tab -->
+                <div id="info-tab" class="tab-pane">
+                    <div class="record-info-container" id="recordInfoContainer">
+                        <div class="record-info-loading">
+                            <div class="loading-dots">
+                                <div></div>
+                                <div></div>
+                                <div></div>
+                                <div></div>
+                            </div>
+                            <p>Select a track to view information</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scale Controls -->
+    <div class="scale-controls">
+        <button class="scale-btn" onclick="scaleDown()">-</button>
+        <span style="color:white; padding: 0 10px;" id="scalePercent">100%</span>
+        <button class="scale-btn" onclick="scaleUp()">+</button>
+        <button class="scale-btn" onclick="resetScale()">↺</button>
+    </div>
+
+    <script>
+        // Remove the conflicting script from streaming.html
+        // All functionality is now in streaming.js
+    </script>
+</body>
+</html>
