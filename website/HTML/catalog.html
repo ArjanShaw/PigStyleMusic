@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <link rel="icon" href="images/PigStyle.ico">
+    <title>Record Gallery - PigStyle Records</title>
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <link rel="stylesheet" href="catalog.css">
+    <script src="js/api-utils.js"></script>
+</head>
+<body>
+    <!-- Background Image -->
+    <div class="background-container">
+        <img src="images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+
+    <header>
+        <div class="header-content">
+            <div class="logo-container">
+                <a href='index.html'><img src='images/PigStyle.ico' alt='PigStyle' class="logo-img"></a>
+            </div>
+        </div>
+    </header>
+    
+    <div class="header-section">
+        <div class='search-container'>
+            <input type='text' id='searchBox' placeholder='Search artist or record...'>
+        </div>
+        
+        <div class="filters-container">
+            <div class="filter-group">
+                <select id="artistFilter" class="filter-select">
+                    <option value="">All Artists</option>
+                </select>
+                
+                <div class="price-filter-group">
+                    <div class="price-inputs">
+                        <input type="number" id="minPrice" class="price-input" placeholder="Min Price" min="0" value="">
+                        <span class="price-separator">-</span>
+                        <input type="number" id="maxPrice" class="price-input" placeholder="Max Price" min="0" value="">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class='catalog-container' id='catalogContainer'>
+        <div id='loading'>
+            <div class="loading-dots">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <p>Loading catalog...</p>
+        </div>
+    </div>
+
+    <script>
+        // Store all records globally for search functionality
+        let allRecords = [];
+        let currentFilteredRecords = [];
+
+        // Load data from Flask API
+        async function loadCatalogData() {
+            try {
+                console.log('Loading catalog data from API...');
+                const catalogData = await pigstyleAPI.loadCatalogGroupedRecords();
+                
+                console.log(`Loaded ${catalogData.count} records in ${catalogData.groups.length} price groups`);
+                
+                // Flatten all records for search functionality
+                allRecords = [];
+                catalogData.groups.forEach(group => {
+                    allRecords = allRecords.concat(group.records);
+                });
+                
+                currentFilteredRecords = allRecords;
+                
+                displayCatalogGroups(catalogData.groups);
+                populateArtistFilter();
+                
+            } catch (error) {
+                console.error('Error loading catalog data:', error);
+                document.getElementById('catalogContainer').innerHTML = '<div class="error-message">Error loading catalog. Please try again later.</div>';
+            }
+        }
+
+        // Display catalog groups
+        function displayCatalogGroups(groups) {
+            const container = document.getElementById('catalogContainer');
+            container.innerHTML = ''; // Clear loading message
+
+            if (!groups || groups.length === 0) {
+                container.innerHTML = '<div class="no-records">No records found in the database.</div>';
+                return;
+            }
+
+            // Filter out empty groups
+            const nonEmptyGroups = groups.filter(group => group.records && group.records.length > 0);
+            
+            if (nonEmptyGroups.length === 0) {
+                container.innerHTML = '<div class="no-records">No records found in the database.</div>';
+                return;
+            }
+
+            console.log(`Displaying ${nonEmptyGroups.length} non-empty price groups`);
+
+            nonEmptyGroups.forEach(group => {
+                const groupElement = createGroupElement(group);
+                container.appendChild(groupElement);
+            });
+
+            // Initialize search and filter functionality
+            initializeSearch();
+            initializeFilters();
+        }
+
+        // Create a price group element
+        function createGroupElement(group) {
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'price-group';
+            groupDiv.dataset.groupLabel = group.label;
+            groupDiv.dataset.minPrice = group.min || 0;
+            groupDiv.dataset.maxPrice = group.max || 99999;
+            
+            const gallery = document.createElement('div');
+            gallery.className = 'group-gallery';
+            
+            // Add cards for each record in this group
+            group.records.forEach(record => {
+                const card = createCardElement(record);
+                gallery.appendChild(card);
+            });
+            
+            groupDiv.appendChild(gallery);
+            
+            return groupDiv;
+        }
+
+        // Create a card element
+        function createCardElement(record) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            
+            const artist = record.artist || 'Unknown Artist';
+            const title = record.title || 'Unknown Title';
+            const imageUrl = record.image_url || 'images/default-record.jpg';
+            const genre = record.genre_name || 'Unknown Genre';
+            const price = record.store_price ? pigstyleAPI.formatPrice(record.store_price) : 'Price N/A';
+            const youtubeUrl = record.youtube_url || '';
+            const recordCondition = record.condition || '';
+            
+            card.setAttribute('data-artist', artist.toLowerCase());
+            card.setAttribute('data-title', title.toLowerCase());
+            card.setAttribute('data-price', parseFloat(record.store_price) || 0);
+            if (recordCondition) {
+                card.setAttribute('data-condition', recordCondition.toLowerCase());
+            }
+            
+            const hasYouTube = youtubeUrl && youtubeUrl.trim() !== '';
+            const hasCondition = recordCondition && recordCondition.trim() !== '';
+            
+            // Create condition class based on condition value
+            let conditionClass = 'condition';
+            if (hasCondition) {
+                const conditionSlug = recordCondition.toLowerCase().replace(/\s+/g, '-');
+                conditionClass += ` condition-${conditionSlug}`;
+            }
+            
+            card.innerHTML = `
+                <div class="card-image">
+                    <img src="${imageUrl}" alt="${title}" onerror="this.src='images/default-record.jpg'">
+                </div>
+                <div class="card-info">
+                    <h3>${pigstyleAPI.escapeHtml(title)}</h3>
+                    <p class="artist">${pigstyleAPI.escapeHtml(artist)}</p>
+                    <p class="price">${price}</p>
+                    <p class="genre">${pigstyleAPI.escapeHtml(genre)}</p>
+                    ${hasCondition ? `
+                        <p class="${conditionClass}">Condition: ${recordCondition}</p>
+                    ` : ''}
+                    ${hasYouTube ? `
+                        <a href="#" class="youtube-link" onclick="openYouTubeModal('${youtubeUrl.replace(/'/g, "\\'")}', '${pigstyleAPI.escapeHtml(artist)} - ${pigstyleAPI.escapeHtml(title)}'); return false;">
+                            🎵 Watch Video
+                        </a>
+                    ` : ''}
+                </div>
+            `;
+            
+            return card;
+        }
+
+        // YouTube modal function
+        function openYouTubeModal(youtubeUrl, title) {
+            // Extract YouTube video ID
+            const videoId = extractYouTubeId(youtubeUrl);
+            if (!videoId) {
+                alert('Invalid YouTube URL');
+                return;
+            }
+            
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.className = 'youtube-modal-overlay';
+            
+            // Create modal content
+            modal.innerHTML = `
+                <div class="youtube-modal">
+                    <div class="youtube-modal-header">
+                        <h3>${title}</h3>
+                        <button class="youtube-modal-close" onclick="this.closest('.youtube-modal-overlay').remove()">×</button>
+                    </div>
+                    <div class="youtube-video-container">
+                        <iframe 
+                            src="https://www.youtube.com/embed/${videoId}?autoplay=1" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                    <div class="youtube-modal-footer">
+                        <a href="${youtubeUrl}" target="_blank">Open in YouTube ↗</a>
+                    </div>
+                </div>
+            `;
+            
+            // Add click outside to close
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            // Add escape key to close
+            const closeOnEsc = function(e) {
+                if (e.key === 'Escape') {
+                    modal.remove();
+                    document.removeEventListener('keydown', closeOnEsc);
+                }
+            };
+            document.addEventListener('keydown', closeOnEsc);
+            
+            document.body.appendChild(modal);
+            
+            // Remove event listener when modal closes
+            modal.addEventListener('DOMNodeRemoved', function() {
+                document.removeEventListener('keydown', closeOnEsc);
+            });
+        }
+
+        // Helper function to extract YouTube ID
+        function extractYouTubeId(url) {
+            if (!url) return null;
+            
+            const patterns = [
+                /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+                /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+                /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+                /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/
+            ];
+            
+            for (const pattern of patterns) {
+                const match = url.match(pattern);
+                if (match && match[1]) {
+                    return match[1];
+                }
+            }
+            
+            return null;
+        }
+
+        // Populate artist filter dropdown
+        function populateArtistFilter() {
+            const artistFilter = document.getElementById('artistFilter');
+            const artists = pigstyleAPI.getUniqueArtists(allRecords);
+            
+            artists.forEach(artist => {
+                const option = document.createElement('option');
+                option.value = artist;
+                option.textContent = artist;
+                artistFilter.appendChild(option);
+            });
+        }
+
+        // Initialize search functionality
+        function initializeSearch() {
+            const searchBox = document.getElementById('searchBox');
+            
+            searchBox.addEventListener('input', () => {
+                applyAllFilters();
+            });
+        }
+
+        // Initialize filter functionality
+        function initializeFilters() {
+            const artistFilter = document.getElementById('artistFilter');
+            const minPrice = document.getElementById('minPrice');
+            const maxPrice = document.getElementById('maxPrice');
+            
+            artistFilter.addEventListener('change', applyAllFilters);
+            minPrice.addEventListener('input', applyAllFilters);
+            maxPrice.addEventListener('input', applyAllFilters);
+            
+            // Clear price filters button functionality
+            const clearPriceFilters = () => {
+                minPrice.value = '';
+                maxPrice.value = '';
+                applyAllFilters();
+            };
+            
+            // Add clear button if not exists
+            if (!document.getElementById('clearPriceFilters')) {
+                const clearButton = document.createElement('button');
+                clearButton.id = 'clearPriceFilters';
+                clearButton.textContent = 'Clear Price Filter';
+                clearButton.className = 'clear-price-filter';
+                clearButton.addEventListener('click', clearPriceFilters);
+                
+                const priceFilterGroup = document.querySelector('.price-filter-group');
+                priceFilterGroup.appendChild(clearButton);
+            }
+        }
+
+        // Apply all filters (search, artist, price)
+        function applyAllFilters() {
+            const searchTerm = document.getElementById('searchBox').value.toLowerCase().trim();
+            const selectedArtist = document.getElementById('artistFilter').value;
+            const minPriceValue = parseFloat(document.getElementById('minPrice').value) || 0;
+            const maxPriceValue = parseFloat(document.getElementById('maxPrice').value) || 99999;
+            
+            const container = document.getElementById('catalogContainer');
+            const groups = Array.from(container.querySelectorAll('.price-group'));
+            
+            let visibleGroupCount = 0;
+            
+            groups.forEach(group => {
+                const cards = Array.from(group.querySelectorAll('.card'));
+                let visibleCardsInGroup = 0;
+                
+                cards.forEach(card => {
+                    const artist = card.getAttribute('data-artist');
+                    const title = card.getAttribute('data-title');
+                    const price = parseFloat(card.getAttribute('data-price'));
+                    const condition = card.getAttribute('data-condition') || '';
+                    
+                    // Check search term match
+                    const searchMatch = !searchTerm || 
+                        artist.includes(searchTerm) || 
+                        title.includes(searchTerm) ||
+                        condition.includes(searchTerm);
+                    
+                    // Check artist filter match
+                    const artistMatch = !selectedArtist || 
+                        artist === selectedArtist.toLowerCase();
+                    
+                    // Check price range match
+                    const priceMatch = price >= minPriceValue && price <= maxPriceValue;
+                    
+                    // Show card only if it matches all active filters
+                    const shouldShow = searchMatch && artistMatch && priceMatch;
+                    
+                    if (shouldShow) {
+                        card.style.display = 'block';
+                        visibleCardsInGroup++;
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+                
+                // Show/hide entire group based on whether it has visible cards
+                if (visibleCardsInGroup > 0) {
+                    group.style.display = 'block';
+                    visibleGroupCount++;
+                } else {
+                    group.style.display = 'none';
+                }
+            });
+            
+            // Show message if no records match filters
+            if (visibleGroupCount === 0) {
+                if (container.querySelector('.no-records')) {
+                    container.querySelector('.no-records').style.display = 'block';
+                } else {
+                    const noRecordsDiv = document.createElement('div');
+                    noRecordsDiv.className = 'no-records';
+                    noRecordsDiv.textContent = 'No records match your search criteria.';
+                    container.appendChild(noRecordsDiv);
+                }
+            } else {
+                const noRecordsDiv = container.querySelector('.no-records');
+                if (noRecordsDiv) {
+                    noRecordsDiv.style.display = 'none';
+                }
+            }
+        }
+
+        // Load the catalog data when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCatalogData();
+        });
+    </script>
+</body>
+</html>
