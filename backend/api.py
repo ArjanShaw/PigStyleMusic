@@ -33,9 +33,7 @@ CORS(app, resources={
             "http://localhost:8000",
             "http://127.0.0.1:8000",
             "http://localhost:5000",
-            "http://127.0.0.1:5000",
-            "https://arjanshaw.pythonanywhere.com",
-            "http://arjanshaw.pythonanywhere.com"
+            "http://127.0.0.1:5000" 
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         "allow_headers": ["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
@@ -51,7 +49,7 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "data", "records.db")
 # Spotify configuration
 SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID', 'your-client-id-here')
 SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', 'your-client-secret-here')
-SPOTIFY_REDIRECT_URI = 'https://arjanshaw.pythonanywhere.com/spotify/callback'
+SPOTIFY_REDIRECT_URI = '/spotify/callback'
 
 # Add these lines with your other configuration variables
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_your_key_here')
@@ -2022,185 +2020,7 @@ def get_catalog_grouped_records():
         'groups': [result_group]
     })
 
-
-# ==================== INTERNAL AUTHORIZATION ENDPOINTS ====================
-
-@app.route('/spotify/authorize-and-update', methods=['GET'])
-def authorize_and_update():
-
-    limit = request.args.get('limit', default=20, type=int)
-    state = secrets.token_hex(16)
-
-    session['spotify_state'] = state
-    session['spotify_limit'] = limit
-    session['spotify_return_url'] = request.args.get('return_url', 'https://pigstylemusic.com')
-
-
-    params = {
-        'client_id': SPOTIFY_CLIENT_ID,
-        'response_type': 'code',
-        'redirect_uri': 'https://arjanshaw.pythonanywhere.com/spotify/callback',
-        'scope': 'playlist-modify-public playlist-modify-private',
-        'state': state,
-        'show_dialog': 'false'
-    }
-
-    auth_url = f"https://accounts.spotify.com/authorize?{urllib.parse.urlencode(params)}"
-
-    return redirect(auth_url)
-
-@app.route('/spotify/callback', methods=['GET'])
-def authorize_callback():
-
-    code = request.args.get('code')
-    state = request.args.get('state')
-    error = request.args.get('error')
-
-
-    if error:
-        return jsonify({'error': error}), 400
-
-    if not code:
-        return jsonify({'error': 'No code provided'}), 400
-
-    if state != session.get('spotify_state'):
-        return jsonify({'error': 'State mismatch'}), 400
-
-    limit = session.get('spotify_limit', 20)
-    return_url = session.get('spotify_return_url', 'https://pigstylemusic.com')
-
-
-    job_id = str(uuid.uuid4())
-    background_jobs[job_id] = {
-        'status': 'starting',
-        'message': 'Job created, starting soon...',
-        'created_at': datetime.now().isoformat(),
-        'job_id': job_id
-    }
-
-    thread = threading.Thread(
-        target=process_spotify_update,
-        args=(job_id, code, state, limit, return_url)
-    )
-    thread.daemon = True
-    thread.start()
-
-
-    return jsonify({
-        "status": "processing",
-        "message": "Spotify playlist update started in background",
-        "job_id": job_id,
-        "check_status_url": f"https://arjanshaw.pythonanywhere.com/spotify/job-status/{job_id}",
-        "estimated_time": "Several minutes (processing all records)",
-        "note": "Keep this job_id to check status later"
-    })
-
-@app.route('/spotify/job-status/<job_id>', methods=['GET'])
-def job_status(job_id):
-    job = background_jobs.get(job_id)
-
-    if not job:
-        return jsonify({
-            'status': 'not_found',
-            'message': f'Job {job_id} not found'
-        }), 404
-
-    response = {
-        'job_id': job_id,
-        'status': job.get('status', 'unknown'),
-        'message': job.get('message', 'No status message'),
-        'created_at': job.get('created_at'),
-        'current_genre': job.get('current_genre'),
-        'genres_processed': job.get('genres_processed', 0),
-        'total_genres': job.get('total_genres', 0),
-        'total_records': job.get('total_records', 0)
-    }
-
-    if job['status'] == 'completed':
-        response['results'] = job.get('results', {})
-        response['all_tracks_added'] = job.get('all_tracks_added', 0)
-        response['token_key'] = job.get('token_key')
-        response['redirect_url'] = job.get('return_url', 'https://pigstylemusic.com')
-
-    elif job['status'] == 'failed':
-        response['error'] = job.get('message', 'Unknown error')
-
-    return jsonify(response)
-
-# ==================== SPOTIFY STORED PLAYLISTS ENDPOINT ====================
-
-@app.route('/spotify/stored-playlists', methods=['GET'])
-def get_stored_spotify_playlists():
-    genre_filter = request.args.get('genre', None)
-
-    playlists = get_stored_playlists(genre_filter)
-
-    return jsonify({
-        'status': 'success',
-        'count': len(playlists),
-        'playlists': playlists,
-        'source': 'Database - Stored PigStyle Playlists'
-    })
-
-@app.route('/spotify/playlist-tracks/<playlist_id>', methods=['GET'])
-def get_playlist_tracks(playlist_id):
-    access_token = get_valid_app_token()
-    if not access_token:
-        return jsonify({
-            'status': 'error',
-            'error': 'Could not get Spotify access token'
-        }), 500
-
-    tracks = get_playlist_tracks_with_details(playlist_id, access_token)
-
-    if not tracks:
-        return jsonify({
-            'status': 'success',
-            'playlist_id': playlist_id,
-            'tracks': [],
-            'count': 0,
-            'message': 'No tracks found or error fetching tracks'
-        })
-
-    total_duration_ms = sum(track.get('duration_ms', 0) for track in tracks)
-
-    return jsonify({
-        'status': 'success',
-        'playlist_id': playlist_id,
-        'tracks': tracks,
-        'count': len(tracks),
-        'total_duration_ms': total_duration_ms,
-        'formatted_duration': format_duration(total_duration_ms)
-    })
-
-@app.route('/spotify/get-app-token', methods=['GET'])
-def get_app_token_endpoint():
-    token_data = get_spotify_app_token()
-    if not token_data:
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to get Spotify app token'
-        }), 500
-
-    return jsonify({
-        'status': 'success',
-        'access_token': token_data.get('access_token'),
-        'expires_in': token_data.get('expires_in'),
-        'token_type': token_data.get('token_type')
-    })
-
-def format_duration(ms):
-    seconds = ms // 1000
-    minutes = seconds // 60
-    hours = minutes // 60
-
-    if hours > 0:
-        return f"{hours}h {minutes % 60}m"
-    elif minutes > 0:
-        return f"{minutes}m {seconds % 60}s"
-    else:
-        return f"{seconds}s"
-
+  
 # ==================== GENRES ENDPOINT ====================
 
 @app.route('/genres', methods=['GET'])

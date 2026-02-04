@@ -69,7 +69,7 @@
             // Fetch and display commission rate
             async function fetchCommissionRate() {
                 try {
-                    const response = await fetch('https://arjanshaw.pythonanywhere.com/api/commission-rate');
+                    const response = await fetch('/api/commission-rate');
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
                     }
