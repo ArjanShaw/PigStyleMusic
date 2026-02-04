@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="images/PigStyle.ico">
+    <title>PigStyle Music Loveland - Coming Soon</title>
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- CSS FILE - All styles here -->
+    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <!-- JavaScript for expandable photos and commission rate -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get all store images
+            const storeImages = document.querySelectorAll('.store-front, .store-inside');
+            const modal = document.querySelector('.expandable-modal');
+            const expandedImg = document.querySelector('.expanded-image');
+            const imageCaption = document.querySelector('.image-caption');
+            const closeModal = document.querySelector('.close-modal');
+            
+            // Add click event to each image
+            storeImages.forEach(img => {
+                img.addEventListener('click', function() {
+                    // Set the expanded image source
+                    expandedImg.src = this.src;
+                    
+                    // Set the caption based on alt text
+                    imageCaption.textContent = this.alt;
+                    
+                    // Show modal
+                    modal.classList.add('active');
+                    document.body.classList.add('modal-open');
+                });
+            });
+            
+            // Close modal when X is clicked
+            closeModal.addEventListener('click', function() {
+                modal.classList.remove('active');
+                document.body.classList.remove('modal-open');
+            });
+            
+            // Close modal when clicking outside the image
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                    document.body.classList.remove('modal-open');
+                }
+            });
+            
+            // Close modal with Escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && modal.classList.contains('active')) {
+                    modal.classList.remove('active');
+                    document.body.classList.remove('modal-open');
+                }
+            });
+
+            // Fetch and display commission rate
+            async function fetchCommissionRate() {
+                try {
+                    const response = await fetch('https://arjanshaw.pythonanywhere.com/api/commission-rate');
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    const data = await response.json();
+                    
+                    // Display the commission rate in the list
+                    const consignmentLink = document.querySelector('a[href="consignment.html"]');
+                    if (consignmentLink) {
+                        consignmentLink.parentElement.innerHTML = 
+                            `Sell your record collection on <a href="consignment.html">consignment</a> - Current rate: <strong>${data.commission_rate_percent}</strong>`;
+                    }
+                } catch (error) {
+                    console.error('Error fetching commission rate:', error);
+                    // Optional: Display a fallback message
+                    const consignmentLink = document.querySelector('a[href="consignment.html"]');
+                    if (consignmentLink) {
+                        consignmentLink.parentElement.innerHTML = 
+                            `Sell your record collection on <a href="consignment.html">consignment</a> - Rate info currently unavailable`;
+                    }
+                }
+            }
+
+            // Call the function to fetch and display commission rate
+            fetchCommissionRate();
+        });
+    </script>
+</head>
+
+<body>
+    <!-- Background Image -->
+    <div class="background-container">
+        <img src="images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+
+    <!-- "Not in Business Yet" Banner -->
+    <div class="banner">
+        <p>🚧 PigStyle Music is not yet open for business - Coming Soon! 🚧</p>
+    </div>
+
+    <!-- Expandable Image Modal -->
+    <div class="expandable-modal">
+        <div class="expanded-image-container">
+            <button class="close-modal">&times;</button>
+            <img class="expanded-image" src="" alt="Expanded view">
+            <div class="image-caption"></div>
+        </div>
+    </div>
+
+    <!-- Main Content Container -->
+    <div class="container">
+        <!-- Top Section - Logo and Title -->
+        <div class="top-section">
+            <img src="images/pigstyle_text.png" alt="PigStyle" class="pigstyle-logo">
+            <div class="psychedelic-subscript">
+                <img src="images/loveland_record_store.png" alt="Loveland's Coolest Record Store">
+            </div>
+        </div>
+
+        <!-- Content Box with Bulleted List -->
+        <div class="content-box">
+            <ul>
+                <li>
+                    <div class="image-text-wrapper">
+                        <img src="images/StoreFront.jpg" alt="PigStyle Store Front" class="store-front">
+                        <img src="images/StoreInside1.jpg" alt="Inside PigStyle Store" class="store-inside">
+                    </div>
+                </li>
+                <li>
+                    Browse music <a href="catalog.html">here</a>
+                </li>
+                <li>
+                    Find your next favorite album on my <a href="streaming.html">vinyl streaming station</a>
+                </li>
+                <li id="consignment-item">
+                    Sell your record collection on <a href="consignment.html">consignment</a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Bottom Section - Record and Store Info -->
+        <div class="bottom-section">
+            <div class="record-container">
+                <img src="images/pig_head.png" alt="Pig Head" class="pig-head">
+                <img src="images/yellow-record.png" alt="Spinning Record" class="rotating-record">
+            </div>
+            
+            <div class="store-info">
+                <p>Address: 100 E 3rd Loveland CO</p>
+                <p>Hours: Mon-Sat 10am - 6pm, Sun 12pm - 6pm</p>
+                <p>Phone: 970-492-5630</p>
+                <p>Email: pigstyle.loveland@gmail.com</p>
+                <div class="social-icons">
+                    <a href="#" target="_blank" aria-label="Visit our Facebook page"><i class="fab fa-facebook"></i></a>
+                    <a href="#" target="_blank" aria-label="Visit our Instagram page"><i class="fab fa-instagram"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

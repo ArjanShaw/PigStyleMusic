@@ -1,0 +1,619 @@
+/* RESET AND BASE STYLES */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: url('images/background.png') no-repeat center center fixed;
+    background-size: cover;
+    color: #eee;
+    text-align: center;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+}
+
+/* Background Image */
+.background-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+}
+
+.background-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.background-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+}
+
+/* Banner */
+.banner {
+    background: linear-gradient(135deg, #ffcc00, #ff9900);
+    color: #333;
+    text-align: center;
+    padding: 15px;
+    font-weight: bold;
+    font-size: clamp(16px, 4vw, 22px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 100;
+    position: relative;
+}
+
+/* Main Container */
+.container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* Top Section - Logo and Title */
+.top-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 20px;
+    width: 100%;
+    gap: 0; /* Remove gap between logo and subscript */
+}
+
+.pigstyle-logo {
+    width: 500px; /* Increased from default size */
+    max-width: 90%; /* Ensure it's responsive */
+    height: auto;
+    margin-bottom: 0; /* Remove any bottom margin */
+}
+
+.music-title {
+    max-width: 300px;
+    width: 60%;
+}
+
+/* Content Box - FIXED: Fit snugly around photos */
+.content-box {
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 15px;
+    padding: 20px; /* Standard padding */
+    margin: 20px 0;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    min-height: 400px; /* Ensure enough height */
+    overflow: visible; /* Allow content to be visible */
+    width: auto; /* Auto width to fit content */
+    display: inline-block; /* Shrink to fit content */
+}
+
+.content-box ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.content-box li {
+    margin-bottom: 15px;
+    font-size: clamp(16px, 3vw, 20px);
+    line-height: 1.4;
+    color: white;
+    text-align: center;
+}
+
+.content-box a {
+    color: #ffcc00;
+    text-decoration: none;
+    font-weight: bold;
+    transition: color 0.3s;
+}
+
+.content-box a:hover {
+    color: #ff9900;
+    text-decoration: underline;
+}
+
+/* Style for the psychedelic subscript image */
+.psychedelic-subscript {
+    text-align: center;
+    margin-top: -15px; /* Reduced space between logo and subscript */
+}
+
+.psychedelic-subscript img {
+    max-width: 80%;
+    height: auto;
+}
+
+/* Image layout - REVISED: Calculate total width */
+.image-text-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 20px; /* This is the margin between photos */
+    margin: 10px 0;
+    justify-content: center; /* Center the images */
+}
+
+/* Expandable Photo Styles */
+.store-front, .store-inside {
+    width: 400px; /* Slightly smaller than 450px */
+    height: 266px; /* Maintain 3:2 aspect ratio (400/1.5) */
+    object-fit: cover;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border-radius: 5px;
+}
+
+.store-front:hover, .store-inside:hover {
+    transform: scale(1.02);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Bottom Section - Record and Store Info */
+.bottom-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.record-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px 0;
+    width: 100%;
+}
+
+.rotating-record {
+    max-width: 200px;
+    width: 40%;
+    animation: spin 20s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.pig-head {
+    max-width: 150px;
+    width: 30%;
+    margin-right: 20px;
+}
+
+/* Store Info */
+.store-info {
+    text-align: center;
+    font-size: clamp(14px, 2.5vw, 18px);
+    background-color: rgba(0, 0, 0, 0.6);
+    padding: 15px;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 600px;
+}
+
+.store-info p {
+    margin: 8px 0;
+}
+
+.social-icons {
+    margin-top: 15px;
+}
+
+.social-icons a {
+    color: white;
+    margin: 0 15px;
+    font-size: 24px;
+    transition: color 0.3s;
+}
+
+.social-icons a:hover {
+    color: #ffcc00;
+}
+
+/* Expandable Photo Modal */
+.expandable-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.95);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.expandable-modal.active {
+    display: flex;
+    opacity: 1;
+}
+
+.expanded-image-container {
+    position: relative;
+    max-width: 90%;
+    max-height: 90%;
+    text-align: center;
+}
+
+.expanded-image {
+    max-width: 100%;
+    max-height: 80vh;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.close-modal {
+    position: absolute;
+    top: -50px;
+    right: 0;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 40px;
+    cursor: pointer;
+    padding: 10px;
+    transition: color 0.3s ease;
+}
+
+.close-modal:hover {
+    color: #ffcc00;
+}
+
+.image-caption {
+    color: white;
+    margin-top: 15px;
+    font-size: 18px;
+    text-align: center;
+}
+
+/* Prevent scrolling when modal is open */
+body.modal-open {
+    overflow: hidden;
+}
+
+/* Large screens - position in bottom left corner */
+@media (min-width: 1024px) {
+    .record-container {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        width: auto;
+        margin: 0;
+        justify-content: flex-start;
+        z-index: 10;
+    }
+    
+    .pig-head {
+        max-width: 120px;
+        margin-right: 15px;
+    }
+    
+    .rotating-record {
+        max-width: 150px;
+    }
+    
+    /* Adjust container padding to account for fixed record */
+    .container {
+        padding-left: 200px;
+    }
+}
+
+/* Small screens - hide completely */
+@media (max-width: 768px) {
+    .record-container {
+        display: none;
+    }
+}
+
+/* Medium screens (tablets) - keep centered but smaller */
+@media (min-width: 769px) and (max-width: 1023px) {
+    .pig-head {
+        max-width: 120px;
+    }
+    
+    .rotating-record {
+        max-width: 150px;
+    }
+}
+
+/* Modal Styles */
+.modalOverlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+}
+
+#modalBox {
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    max-width: 600px;
+    width: 90%;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
+    text-align: center;
+    color: #333;
+}
+
+#modalImage {
+    max-width: 100%;
+    height: auto;
+    margin: 15px 0;
+    border-radius: 5px;
+}
+
+.modalFooter {
+    margin-top: 20px;
+}
+
+#closeBtn {
+    background-color: #ffcc00;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+
+#closeBtn:hover {
+    background-color: #ff9900;
+}
+
+/* Gallery Popup Styles */
+.gallery-popup {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    background: #222;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s;
+}
+
+.card img {
+    width: 120px;
+    height: auto;
+    border-radius: 8px;
+    margin-right: 15px;
+}
+
+.card-info {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.card-info h3, .card-info p {
+    margin: 4px 0;
+}
+
+.card.highlight {
+    box-shadow: 0 0 15px 4px #0ff;
+    transform: scale(1.02);
+    opacity: 1;
+}
+
+.card.not-highlight {
+    opacity: 0.5;
+}
+
+input[type='text'] {
+    padding: 10px;
+    width: 60%;
+    max-width: 400px;
+    border-radius: 6px;
+    border: none;
+    font-size: 1rem;
+    margin-bottom: 15px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .pig-head {
+        max-width: 120px;
+    }
+    
+    .rotating-record {
+        max-width: 150px;
+    }
+    
+    .content-box {
+        padding: 20px;
+    }
+}
+
+/* Keep record to the right of pig head on mobile */
+@media (max-width: 480px) {
+    .record-container {
+        flex-direction: row;
+    }
+    
+    .pig-head {
+        margin-right: 15px;
+        margin-bottom: 0;
+    }
+    
+    .content-box {
+        padding: 15px;
+    }
+}
+
+/* Mobile-specific fixes for store info */
+@media (max-width: 480px) {
+    .container {
+        padding-bottom: 180px; /* Extra space for store info */
+        min-height: calc(100vh - 80px); /* Account for banner */
+    }
+    
+    .store-info {
+        position: fixed;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        border-radius: 0;
+        padding: 15px 10px;
+        background-color: rgba(0, 0, 0, 0.9);
+        z-index: 100;
+    }
+    
+    .content-box {
+        margin-bottom: 120px; /* Space for fixed store info */
+    }
+    
+    .record-container {
+        margin-bottom: 100px; /* Space for fixed store info */
+    }
+}
+
+@media (max-width: 768px) and (min-width: 481px) {
+    .container {
+        padding-bottom: 150px;
+    }
+    
+    .store-info {
+        position: relative;
+        margin-top: 20px;
+    }
+}
+
+/* Responsive styles for stacking images on smaller screens */
+@media (max-width: 900px) {
+    .image-text-wrapper {
+        flex-direction: column; /* Stack images vertically */
+        gap: 20px; /* Same gap when stacked */
+    }
+    
+    .store-front, .store-inside {
+        width: 100%;
+        max-width: 500px;
+        height: auto;
+        max-height: 333px;
+    }
+    
+    .content-box {
+        min-height: 750px;
+        padding: 25px;
+        width: auto; /* Still auto width */
+    }
+    
+    .pigstyle-logo {
+        width: 400px;
+    }
+    
+    .container {
+        padding: 0 15px;
+    }
+    
+    /* Calculate box width for stacked layout: image width + padding */
+    .content-box {
+        width: calc(100% - 40px); /* Account for container padding */
+        max-width: 540px; /* Image max-width (500px) + padding */
+    }
+    
+    /* Responsive adjustments for expanded images */
+    .expanded-image {
+        max-width: 95%;
+        max-height: 70vh;
+    }
+    
+    .close-modal {
+        top: -60px;
+        right: -10px;
+        font-size: 50px;
+    }
+}
+
+/* For very small screens (mobile) */
+@media (max-width: 600px) {
+    .store-front, .store-inside {
+        width: 100%;
+        max-width: 100%;
+        max-height: 250px;
+    }
+    
+    .pigstyle-logo {
+        width: 320px;
+    }
+    
+    .content-box {
+        min-height: 700px;
+        padding: 20px;
+        width: calc(100% - 20px); /* Account for smaller container padding */
+    }
+    
+    .psychedelic-subscript {
+        margin-top: -10px;
+    }
+    
+    .psychedelic-subscript img {
+        max-width: 95%;
+    }
+    
+    .container {
+        padding: 0 10px;
+    }
+    
+    .close-modal {
+        top: -70px;
+        right: -5px;
+        font-size: 45px;
+    }
+}
+
+/* Desktop-specific: Calculate exact box width for side-by-side images */
+@media (min-width: 901px) {
+    .content-box {
+        /* Calculate: (2 images × 400px) + gap (20px) + padding (2 × 20px) */
+        width: calc(400px + 400px + 20px + 40px); /* = 860px */
+        padding: 20px; /* This matches the gap between photos */
+    }
+}
