@@ -27,6 +27,7 @@ CORS(app, resources={
     r"/*": {
         "origins": [
             "https://pigstylemusic.com",
+            "https://www.pigstylemusic.com",  # ADD THIS LINE
             "https://arjanshaw.github.io",
             "https://pigstylerecords.github.io",
             "http://localhost:8000",
