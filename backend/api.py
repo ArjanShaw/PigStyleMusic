@@ -19,6 +19,7 @@ import uuid
 import stripe
 from functools import wraps  # ADD THIS LINE
 from discogs_handler import DiscogsHandler 
+from handlers.price_advise_handler import PriceAdviseHandler
 
 
 
@@ -95,7 +96,102 @@ def get_db():
     return conn
 
 #===========================================================================
- 
+@app.route('/api/price-estimate', methods=['POST'])
+def get_price_estimate():
+    """Get price estimate from eBay and Discogs"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['artist', 'title', 'condition']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Missing required field: {field}'
+                }), 400
+        
+        artist = data['artist']
+        title = data['title']
+        condition = data['condition']
+        discogs_genre = data.get('discogs_genre')
+        discogs_id = data.get('discogs_id')
+        
+        # Create price advisor
+        price_advisor = PriceAdviseHandler()
+        
+        # Get price estimate
+        result = price_advisor.get_price_estimate(
+            artist, title, condition, discogs_genre, discogs_id
+        )
+        
+        if result['success']:
+            return jsonify({
+                'status': 'success',
+                'estimated_price': result['estimated_price'],
+                'price_source': result['price_source'],
+                'discogs_price': result['discogs_price'],
+                'ebay_price': result['ebay_price'],
+                'calculation': result['calculation'],
+                'message': f"Price estimated: ${result['estimated_price']:.2f} (from {result['price_source']})"
+            })
+        else:
+            return jsonify({
+                'status': 'partial',
+                'estimated_price': result['estimated_price'],
+                'price_source': 'fallback',
+                'message': 'Using fallback price',
+                'error': result.get('error')
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Price estimate API error: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': f'Server error: {str(e)}',
+            'estimated_price': 19.99  # Fallback
+        }), 500
+
+
+@app.route('/api/price-advice', methods=['POST'])
+def get_price_advice():
+    """Get price advice based on eBay and Discogs data"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['artist', 'title', 'condition']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Missing required field: {field}'
+                }), 400
+        
+        artist = data['artist']
+        title = data['title']
+        condition = data['condition']
+        discogs_genre = data.get('discogs_genre')
+        
+        # For now, return mock data
+        # TODO: Integrate with actual PriceAdviseHandler
+        mock_price = 24.99
+        
+        return jsonify({
+            'status': 'success',
+            'advised_price': mock_price,
+            'price_source': 'mock_data',
+            'note': 'PriceAdviseHandler integration pending'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Price advice error: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': f'Server error: {str(e)}'
+        }), 500
+
+
 @app.route('/login', methods=['POST', 'OPTIONS'])
 def login():
     """Authenticate user and return user data with session"""

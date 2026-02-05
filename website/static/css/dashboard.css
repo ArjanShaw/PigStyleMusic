@@ -594,3 +594,49 @@ input[type="number"].form-control {
     from { opacity: 0; transform: translateY(-10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+
+.price-estimating {
+    background: linear-gradient(90deg, 
+        rgba(255, 204, 0, 0.1) 0%, 
+        rgba(255, 204, 0, 0.3) 50%, 
+        rgba(255, 204, 0, 0.1) 100%) !important;
+    animation: pulse 2s infinite !important;
+    border-color: #ffcc00 !important;
+}
+
+.price-estimated {
+    background: rgba(76, 175, 80, 0.15) !important;
+    border-color: #4CAF50 !important;
+    color: white !important;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.8; }
+    50% { opacity: 1; }
+    100% { opacity: 0.8; }
+}
+
+.estimation-hint {
+    font-size: 12px;
+    color: rgba(255, 204, 0, 0.8);
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+        .calculation-popup {
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .btn-small {
+            padding: 2px 8px !important;
+            font-size: 10px !important;
+            min-height: unset !important;
+        }
