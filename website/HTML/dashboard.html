@@ -100,6 +100,100 @@
             align-items: center;
             gap: 5px;
         }
+
+        /* Expandable Price Calculation Component */
+        .calculation-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #ffcc00;
+            background: rgba(255, 204, 0, 0.1);
+            border: 1px solid rgba(255, 204, 0, 0.3);
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .calculation-toggle:hover {
+            background: rgba(255, 204, 0, 0.2);
+            border-color: rgba(255, 204, 0, 0.5);
+        }
+
+        .calculation-toggle i {
+            font-size: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .calculation-toggle.expanded i {
+            transform: rotate(180deg);
+        }
+
+        .calculation-details {
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: all 0.3s ease;
+            margin-top: 0;
+        }
+
+        .calculation-details.expanded {
+            max-height: 300px;
+            opacity: 1;
+            margin-top: 10px;
+            overflow-y: auto;
+        }
+
+        .calculation-content {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .calculation-step {
+            margin: 5px 0;
+            padding-left: 8px;
+            border-left: 2px solid rgba(255, 204, 0, 0.3);
+        }
+
+        .calculation-step:last-child {
+            border-left-color: #4CAF50;
+            background: rgba(76, 175, 80, 0.1);
+            padding: 6px 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+        }
+
+        .ebay-summary {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed rgba(255, 255, 255, 0.2);
+        }
+
+        .price-source-badge {
+            display: inline-block;
+            background: rgba(76, 175, 80, 0.2);
+            color: #4CAF50;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 8px;
+            font-weight: bold;
+        }
+
+        .price-source-badge.estimated {
+            background: rgba(255, 204, 0, 0.2);
+            color: #ffcc00;
+        }
+
+        .price-source-badge.calculated {
+            background: rgba(33, 150, 243, 0.2);
+            color: #2196F3;
+        }
     </style>
 </head>
 <body>
@@ -800,6 +894,9 @@
                                     </div>
                                 </div>
                                 
+                                <!-- Price Calculation Details (will be filled dynamically) -->
+                                <div id="calculation-${record.discogs_id}" class="calculation-container"></div>
+                                
                                 <div class="form-row">
                                     <div class="form-group">
                                         <button class="btn btn-primary add-record-btn">
@@ -880,6 +977,9 @@
                                         </div>
                                     </div>
                                 </div>
+                                
+                                <!-- Price Calculation Details (for existing records if available) -->
+                                <div id="calculation-${record.id}" class="calculation-container"></div>
                                 
                                 <!-- Edit Form -->
                                 <div class="form-row">
@@ -965,7 +1065,7 @@
                     return response;
             }
 
-                        // 2. Condition change handler
+            // 2. Condition change handler
             async handleConditionChange(event, isEditMode = false) {
                 const selectElement = event.target;
                 const card = selectElement.closest('.record-card');
@@ -1090,12 +1190,9 @@
                                 priceInput.parentElement.appendChild(hint);
                             }
                             
-                            // Show calculation details if available
-                            if (estimate.calculation && estimate.calculation.length > 0) {
-                                this.showPriceCalculationDetails(record, selectedCondition, estimate);
-                            } else {
-                                this.showMessage(`Price estimated: $${parseFloat(finalPrice).toFixed(2)} (${priceSource})`, 'info');
-                            }
+                            // Show calculation details as expandable component
+                            this.showExpandableCalculationDetails(record, selectedCondition, estimate, recordId);
+                            
                         } else {
                             // No price found
                             priceInput.value = '';
@@ -1118,25 +1215,33 @@
                 }
             }
 
-            // Helper method to show price calculation details
-            showPriceCalculationDetails(record, condition, estimate) {
-                // Remove any existing calculation popup
-                document.querySelectorAll('.calculation-popup').forEach(el => el.remove());
-                
-                // Create calculation popup
-                const popup = document.createElement('div');
-                popup.className = 'calculation-popup';
+            // Helper method to show expandable price calculation details
+            showExpandableCalculationDetails(record, condition, estimate, recordId) {
+                const calculationContainer = document.getElementById(`calculation-${recordId}`);
+                if (!calculationContainer) return;
                 
                 let calculationHTML = '';
+                let priceSourceClass = 'estimated';
+                
+                // Determine price source for badge
+                if (estimate.estimated_price || estimate.price) {
+                    if (estimate.price_source === 'discogs' || estimate.source === 'discogs') {
+                        priceSourceClass = 'estimated';
+                    } else if (estimate.price_source === 'calculated' || estimate.source === 'calculated') {
+                        priceSourceClass = 'calculated';
+                    }
+                }
                 
                 // Build calculation details
                 if (estimate.calculation && estimate.calculation.length > 0) {
                     calculationHTML = `
-                        <div style="font-size: 11px; margin-top: 5px;">
-                            <strong>📊 Price Details:</strong>
-                            <div style="max-height: 200px; overflow-y: auto; margin-top: 5px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
-                                ${estimate.calculation.map(step => `<div style="margin: 3px 0;">• ${step}</div>`).join('')}
-                            </div>
+                        <div class="calculation-content">
+                            <strong>📊 Price Calculation:</strong>
+                            ${estimate.calculation.map((step, index) => `
+                                <div class="calculation-step ${index === estimate.calculation.length - 1 ? 'final-step' : ''}">
+                                    ${step}
+                                </div>
+                            `).join('')}
                         </div>
                     `;
                 }
@@ -1144,7 +1249,7 @@
                 // Add eBay summary if available
                 if (estimate.ebay_summary) {
                     calculationHTML += `
-                        <div style="font-size: 11px; margin-top: 10px;">
+                        <div class="ebay-summary">
                             <strong>🛒 eBay Listings Summary:</strong>
                             <div style="margin-top: 5px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
                                 ${estimate.ebay_summary}
@@ -1153,66 +1258,24 @@
                     `;
                 }
                 
-                popup.innerHTML = `
-                    <div style="
-                        position: fixed;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%);
-                        background: #2a2a2a;
-                        color: white;
-                        padding: 20px;
-                        border-radius: 8px;
-                        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-                        z-index: 3000;
-                        max-width: 500px;
-                        max-height: 80vh;
-                        overflow-y: auto;
-                        animation: fadeIn 0.3s ease;
-                    ">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h4 style="margin: 0; color: #ffcc00;">
-                                <i class="fas fa-calculator"></i> Price Estimation Details
-                            </h4>
-                            <button onclick="this.closest('.calculation-popup').remove()" 
-                                    style="background: none; border: none; color: #999; cursor: pointer; font-size: 18px;">
-                                <i class="fas fa-times"></i>
-                            </button>
+                // Only show if we have calculation details
+                if (calculationHTML) {
+                    calculationContainer.innerHTML = `
+                        <div class="calculation-toggle" onclick="this.classList.toggle('expanded'); 
+                            this.nextElementSibling.classList.toggle('expanded');">
+                            <i class="fas fa-chevron-down"></i>
+                            <span>Show price calculation details</span>
+                            <span class="price-source-badge ${priceSourceClass}">
+                                ${priceSourceClass === 'calculated' ? 'CALCULATED' : 'ESTIMATED'}
+                            </span>
                         </div>
-                        
-                        <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 204, 0, 0.1); border-radius: 4px;">
-                            <strong>${record.artist} - ${record.title}</strong><br>
-                            <small>Condition: ${condition}</small><br>
-                            <small>Estimated Price: <strong style="color: #4CAF50;">$${estimate.estimated_price ? parseFloat(estimate.estimated_price).toFixed(2) : 'N/A'}</strong></small>
+                        <div class="calculation-details">
+                            ${calculationHTML}
                         </div>
-                        
-                        ${calculationHTML}
-                        
-                        <div style="margin-top: 15px; font-size: 10px; color: #888; text-align: center;">
-                            <i class="fas fa-info-circle"></i> Click outside or press ESC to close
-                        </div>
-                    </div>
-                    <div style="
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        bottom: 0;
-                        background: rgba(0,0,0,0.7);
-                        z-index: 2999;
-                    " onclick="this.parentElement.remove()"></div>
-                `;
-                
-                document.body.appendChild(popup);
-                
-                // Add ESC key listener to close popup
-                const escListener = (e) => {
-                    if (e.key === 'Escape') {
-                        popup.remove();
-                        document.removeEventListener('keydown', escListener);
-                    }
-                };
-                document.addEventListener('keydown', escListener);
+                    `;
+                } else {
+                    calculationContainer.innerHTML = '';
+                }
             }
 
             // 3. Add event listeners for condition dropdowns
@@ -1317,14 +1380,20 @@
                 }
                 
                 const user = Auth.getUser();
-                
                 const genre = this.genres.find(g => g.id == genreId);
                 const genreName = genre ? genre.genre_name : '';
+                
+                // FIX: Handle barcode array
+                let barcode = discogsRecord.barcode || '';
+                if (Array.isArray(barcode)) {
+                    // Filter out empty values and join with commas
+                    barcode = barcode.filter(b => b && b.toString().trim()).join(', ');
+                }
                 
                 const recordData = {
                     artist: discogsRecord.artist,
                     title: discogsRecord.title,
-                    barcode: discogsRecord.barcode || '',
+                    barcode: barcode,  // Now it's a string, not an array
                     genre_id: parseInt(genreId),
                     genre_name: genreName,
                     image_url: discogsRecord.image_url || '',
@@ -1343,36 +1412,40 @@
                     discogs_genre: discogsRecord.genre || ''
                 };
                 
+                console.log('ADD_RECORD: Fixed barcode:', barcode);
                 console.log('ADD_RECORD: Sending data:', recordData);
                 
-                const response = await APIUtils.post('/records', recordData);
-                
-                if (response.status === 'success') {
-                    this.showMessage(`Record added successfully! ID: ${response.record_id}`, 'success');
+                try {
+                    const response = await APIUtils.post('/records', recordData);
                     
-                    // Auto-save the genre mapping if we had a prediction
-                    if (discogsRecord.genre && discogsRecord.predicted_genre && 
-                        discogsRecord.predicted_genre.local_genre_id == genreId) {
-                        // Prediction was correct and used - save the mapping
-                        await this.genrePredictor.saveMapping(
-                            discogsRecord.genre,
-                            genreId,
-                            genreName
-                        );
-                    } else if (discogsRecord.genre && genreId) {
-                        // No prediction but user selected a genre - save as new mapping
-                        await this.genrePredictor.saveMapping(
-                            discogsRecord.genre,
-                            genreId,
-                            genreName
-                        );
+                    if (response.status === 'success') {
+                        this.showMessage(`Record added successfully! ID: ${response.record_id}`, 'success');
+                        
+                        // Auto-save genre mapping
+                        if (discogsRecord.genre && discogsRecord.predicted_genre && 
+                            discogsRecord.predicted_genre.local_genre_id == genreId) {
+                            await this.genrePredictor.saveMapping(
+                                discogsRecord.genre,
+                                genreId,
+                                genreName
+                            );
+                        } else if (discogsRecord.genre && genreId) {
+                            await this.genrePredictor.saveMapping(
+                                discogsRecord.genre,
+                                genreId,
+                                genreName
+                            );
+                        }
+                        
+                        await this.loadStats();
+                        this.clearResults();
+                        document.getElementById('searchInput').value = '';
+                    } else {
+                        this.showMessage(`Error: ${response.error || 'Failed to add record'}`, 'error');
                     }
-                    
-                    await this.loadStats();
-                    this.clearResults();
-                    document.getElementById('searchInput').value = '';
-                } else {
-                    this.showMessage(`Error: ${response.error || 'Failed to add record'}`, 'error');
+                } catch (error) {
+                    console.error('ADD_RECORD: Failed to add record:', error);
+                    this.showMessage(`Failed to add record: ${error.message}`, 'error');
                 }
             }
 
