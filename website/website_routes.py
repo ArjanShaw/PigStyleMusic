@@ -1,51 +1,73 @@
-from flask import Flask, send_from_directory, jsonify
-from flask_cors import CORS
-import sys
+import os
+from flask import Flask, send_from_directory
 
-# Add the backend directory to the Python path
-sys.path.insert(0, '/home/arjanshaw/PigStyleMusic/backend')
+app = Flask(__name__, static_folder='static')
 
-try:
-    from api import get_commission_rate
-    BACKEND_AVAILABLE = True
-except ImportError as e:
-    print(f"Warning: Could not import from api.py. Error: {e}")
-    BACKEND_AVAILABLE = False
-    # Define a fallback function if the import fails
-    def get_commission_rate():
-        return {"commission_rate_percent": "Rate info currently unavailable", "error": "Backend not loaded"}
-
-app = Flask(__name__)
-CORS(app)  # Enable if your frontend needs it
-
-# Route for the main page
+# Serve HTML pages from HTML directory
 @app.route('/')
 def index():
     return send_from_directory('HTML', 'index.html')
 
-# Route for other HTML pages
-@app.route('/<page_name>.html')
-def html_page(page_name):
-    return send_from_directory('HTML', f'{page_name}.html')
+@app.route('/catalog')
+def catalog():
+    return send_from_directory('HTML', 'catalog.html')
 
-# Route for static files
-@app.route('/static/<path:filename>')
-def static_files(filename):
-    return send_from_directory('static', filename)
+@app.route('/streaming')
+def streaming():
+    return send_from_directory('HTML', 'streaming.html')
 
-# API endpoint for commission rate
-@app.route('/api/commission-rate', methods=['GET'])
-def api_commission_rate():
-    try:
-        rate_data = get_commission_rate()
-        # Ensure the response is a dictionary and includes the expected key
-        if not isinstance(rate_data, dict):
-            rate_data = {"commission_rate_percent": str(rate_data)}
-        return jsonify(rate_data)
-    except Exception as e:
-        # Log the error and return a consistent error response
-        print(f"API Error: {e}")  # This will appear in your server error log
-        return jsonify({'error': 'Internal server error fetching rate', 'details': str(e)}), 500
+@app.route('/consignment')
+def consignment():
+    return send_from_directory('HTML', 'consignment.html')
+
+@app.route('/login')
+def login():
+    return send_from_directory('HTML', 'login.html')
+
+@app.route('/dashboard')
+def dashboard():
+    return send_from_directory('HTML', 'dashboard.html')
+
+# Serve static files
+@app.route('/static/<path:path>')
+def serve_static(path):
+    return send_from_directory('static', path)
+
+# Serve JS files
+@app.route('/js/<path:path>')
+def serve_js(path):
+    return send_from_directory('static/js', path)
+
+# Serve CSS files  
+@app.route('/css/<path:path>')
+def serve_css(path):
+    return send_from_directory('static/css', path)
+
+# Serve images
+@app.route('/images/<path:path>')
+def serve_images(path):
+    return send_from_directory('static/images', path)
+
+# Serve fonts
+@app.route('/fonts/<path:path>')
+def serve_fonts(path):
+    return send_from_directory('static/fonts', path)
+
+# Catch-all for other static files
+@app.route('/<path:filename>')
+def serve_file(filename):
+    # Check if file exists in static
+    static_path = os.path.join('static', filename)
+    if os.path.exists(static_path):
+        return send_from_directory('static', filename)
+    
+    # Check if file exists in HTML
+    html_path = os.path.join('HTML', filename)
+    if os.path.exists(html_path):
+        return send_from_directory('HTML', filename)
+    
+    # Return 404
+    return "File not found", 404
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=8000, host='0.0.0.0')

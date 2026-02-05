@@ -17,6 +17,8 @@ import json
 import threading
 import uuid
 import stripe
+from functools import wraps  # ADD THIS LINE
+
 
 
 app = Flask(__name__)
@@ -90,6 +92,315 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+#===========================================================================
+# ==================== AUTHENTICATION ENDPOINTS ====================
+
+@app.route('/login', methods=['POST'])
+def login():
+    """Authenticate user and return user data with session"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+    required_fields = ['username', 'password']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'status': 'error', 'error': f'{field} required'}), 400
+
+    username = data['username']
+    password = data['password']
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get user by username
+    cursor.execute('''
+        SELECT id, username, email, password_hash, role, full_name, 
+               master_agreement_signed, store_credit_balance
+        FROM users 
+        WHERE username = ?
+    ''', (username,))
+
+    user = cursor.fetchone()
+    
+    if not user:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Invalid username or password'}), 401
+
+    # Verify password
+    stored_hash = user['password_hash']
+    if '$' in stored_hash:
+        salt, hash_value = stored_hash.split('$')
+        password_hash = hashlib.sha256((salt + password).encode()).hexdigest()
+        
+        if password_hash != hash_value:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Invalid username or password'}), 401
+    else:
+        # Handle legacy passwords if any
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Invalid password format'}), 401
+
+    # Update last login time
+    cursor.execute('''
+        UPDATE users 
+        SET last_login = CURRENT_TIMESTAMP 
+        WHERE id = ?
+    ''', (user['id'],))
+    
+    conn.commit()
+    conn.close()
+
+    # Create session
+    session['user_id'] = user['id']
+    session['username'] = user['username']
+    session['role'] = user['role']
+    session['logged_in'] = True
+    
+    # Prepare user data for response
+    user_data = {
+        'id': user['id'],
+        'username': user['username'],
+        'email': user['email'],
+        'role': user['role'],
+        'full_name': user['full_name'],
+        'master_agreement_signed': bool(user['master_agreement_signed']),
+        'store_credit_balance': float(user['store_credit_balance']) if user['store_credit_balance'] is not None else 0.0
+    }
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Login successful',
+        'user': user_data,
+        'session_id': session.sid
+    })
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    """Log out the current user"""
+    session.clear()
+    return jsonify({
+        'status': 'success',
+        'message': 'Logged out successfully'
+    })
+
+@app.route('/session/check', methods=['GET'])
+def check_session():
+    """Check if user is logged in and return session info"""
+    if 'user_id' in session and session.get('logged_in'):
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, username, email, role, full_name, 
+                   master_agreement_signed, store_credit_balance
+            FROM users WHERE id = ?
+        ''', (session['user_id'],))
+        
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user:
+            user_data = {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user['email'],
+                'role': user['role'],
+                'full_name': user['full_name'],
+                'master_agreement_signed': bool(user['master_agreement_signed']),
+                'store_credit_balance': float(user['store_credit_balance']) if user['store_credit_balance'] is not None else 0.0
+            }
+            
+            return jsonify({
+                'status': 'success',
+                'logged_in': True,
+                'user': user_data
+            })
+    
+    return jsonify({
+        'status': 'success',
+        'logged_in': False,
+        'user': None
+    })
+
+# ==================== PROTECTED ENDPOINTS ====================
+
+def login_required(f):
+    """Decorator to require login for endpoints"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or not session.get('logged_in'):
+            return jsonify({
+                'status': 'error',
+                'error': 'Authentication required'
+            }), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+def role_required(allowed_roles):
+    """Decorator to require specific role(s) for endpoints"""
+    def decorator(f):
+        @wraps(f)
+        @login_required
+        def decorated_function(*args, **kwargs):
+            if session.get('role') not in allowed_roles:
+                return jsonify({
+                    'status': 'error',
+                    'error': 'Insufficient permissions'
+                }), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+@app.route('/api/protected/user-info', methods=['GET'])
+@login_required
+def get_protected_user_info():
+    """Example protected endpoint - requires login"""
+    return jsonify({
+        'status': 'success',
+        'message': f'Hello {session["username"]}!',
+        'user': {
+            'id': session['user_id'],
+            'username': session['username'],
+            'role': session['role']
+        }
+    })
+
+@app.route('/api/admin/users', methods=['GET'])
+@role_required(['admin'])
+def get_all_users_admin():
+    """Admin-only endpoint to get all users"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT id, username, email, role, full_name, phone, address, 
+               created_at, last_login, store_credit_balance
+        FROM users
+        ORDER BY username
+    ''')
+
+    users = cursor.fetchall()
+    conn.close()
+
+    users_list = []
+    for user in users:
+        users_list.append({
+            'id': user['id'],
+            'username': user['username'],
+            'email': user['email'],
+            'role': user['role'],
+            'full_name': user['full_name'],
+            'phone': user['phone'],
+            'address': user['address'],
+            'created_at': user['created_at'],
+            'last_login': user['last_login'],
+            'store_credit_balance': float(user['store_credit_balance']) if user['store_credit_balance'] is not None else 0.0
+        })
+
+    return jsonify({
+        'status': 'success',
+        'count': len(users_list),
+        'users': users_list
+    })
+
+@app.route('/api/consignor/records', methods=['GET'])
+@role_required(['consignor', 'admin'])
+def get_consignor_records():
+    """Get records for the logged-in consignor (or all for admin)"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    if session.get('role') == 'admin':
+        # Admin can see all consignment records
+        cursor.execute('''
+            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
+                   s.status_name, u.username as consignor_name
+            FROM records r
+            LEFT JOIN genres g ON r.genre_id = g.id
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN users u ON r.consignor_id = u.id
+            WHERE r.consignor_id IS NOT NULL
+            ORDER BY r.created_at DESC
+        ''')
+    else:
+        # Consignor can only see their own records
+        cursor.execute('''
+            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
+                   s.status_name
+            FROM records r
+            LEFT JOIN genres g ON r.genre_id = g.id
+            LEFT JOIN d_status s ON r.status_id = s.id
+            WHERE r.consignor_id = ?
+            ORDER BY r.created_at DESC
+        ''', (session['user_id'],))
+
+    records = cursor.fetchall()
+    conn.close()
+
+    records_list = [dict(record) for record in records]
+    return jsonify({
+        'status': 'success',
+        'count': len(records_list),
+        'records': records_list
+    })
+
+@app.route('/api/consignor/add-record', methods=['POST'])
+@role_required(['consignor', 'admin'])
+def add_consignor_record():
+    """Add a new record for consignment"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+    required_fields = ['artist', 'title', 'store_price']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'status': 'error', 'error': f'{field} required'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get current commission rate
+    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'COMMISSION_DEFAULT_RATE'")
+    commission_result = cursor.fetchone()
+    commission_rate = float(commission_result['config_value']) if commission_result else 0.20
+
+    cursor.execute('''
+        INSERT INTO records (
+            artist, title, barcode, genre_id, image_url,
+            catalog_number, condition, store_price,
+            youtube_url, consignor_id, commission_rate,
+            compilation, status_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ''', (
+        data.get('artist'),
+        data.get('title'),
+        data.get('barcode', ''),
+        data.get('genre_id'),
+        data.get('image_url', ''),
+        data.get('catalog_number', ''),
+        data.get('condition', '4'),
+        float(data.get('store_price')),
+        data.get('youtube_url', ''),
+        session['user_id'],  # Set consignor_id to logged-in user
+        commission_rate,
+        data.get('compilation', False),
+        1  # Default status: new
+    ))
+
+    record_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Record added for consignment',
+        'record_id': record_id,
+        'commission_rate': commission_rate
+    })
+
 
 #======================test-square=============================================
 @app.route('/test-square')

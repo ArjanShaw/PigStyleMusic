@@ -58,6 +58,62 @@ const pigstyleAPI = {
         }
     },
     
+    // Get random records for streaming page
+    loadRandomRecords: async function(limit = 500, hasYouTube = true) {
+        try {
+            console.log(`Loading ${limit} random records ${hasYouTube ? 'with YouTube' : ''}...`);
+            
+            const url = `${this.baseURL}/records/random?limit=${limit}&has_youtube=${hasYouTube}`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: this.headers
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                console.log(`Loaded ${data.count} random records`);
+                return data.records;
+            } else {
+                throw new Error(data.error || 'Failed to load random records');
+            }
+        } catch (error) {
+            console.error('Error loading random records:', error);
+            throw error;
+        }
+    },
+    
+    // Alternative method if /records/random doesn't exist
+    getRecordsWithYouTube: async function(limit = 500) {
+        try {
+            console.log(`Loading records with YouTube videos...`);
+            const response = await fetch(`${this.baseURL}/records?has_youtube=true&limit=${limit}`, {
+                method: 'GET',
+                headers: this.headers
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                console.log(`Loaded ${data.records.length} records with YouTube`);
+                return data.records;
+            } else {
+                throw new Error(data.error || 'Failed to load records');
+            }
+        } catch (error) {
+            console.error('Error loading records with YouTube:', error);
+            throw error;
+        }
+    },
+    
     // Get catalog grouped records for catalog.html
     loadCatalogGroupedRecords: async function() {
         try {

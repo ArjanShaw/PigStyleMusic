@@ -555,3 +555,15 @@ header {
         height: 40px;
     }
 }
+
+/* Add this to account for fixed navbar */
+body {
+    padding-top: 70px; /* Height of navbar */
+}
+
+/* For mobile */
+@media (max-width: 768px) {
+    body {
+        padding-top: 60px;
+    }
+}

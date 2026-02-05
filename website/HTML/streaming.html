@@ -2,9 +2,9 @@
 <html lang='en'>
 <head>
     <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=0.25'>
-    <link rel="icon" href="images/PigStyle.ico">
-    <title>Streaming Station - PigStyle Records</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <link rel="icon" href="/static/images/PigStyle.ico">
+    <title>PigStyle Streaming</title>
     
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
@@ -18,47 +18,61 @@
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <link rel="stylesheet" href="../static/css/streaming.css">
-    <!-- External JavaScript -->
-    <script src="../static/js/streaming.js"></script>
-    <!-- YouTube IFrame API -->
-    <script src="https://www.youtube.com/iframe_api"></script>
+    <link rel="stylesheet" href="/static/css/streaming.css">
+    <script src="/static/js/api-utils.js"></script>
+    <script src="/static/js/streaming.js"></script>
 </head>
 <body>
+    <!-- Navbar -->
+    <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
+        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
+            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+            PigStyle Music
+        </a>
+        <div style="display: flex; gap: 20px; align-items: center;">
+            <a href="/catalog" style="color: white; text-decoration: none;">Catalog</a>
+            <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
+            <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
+        </div>
+    </nav>
+
+    <!-- Add padding for fixed navbar -->
+ 
     <!-- Background Image -->
     <div class="background-container">
-        <img src="../static/images/background.png" alt="Background" class="background-image">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
         <div class="background-overlay"></div>
     </div>
 
-    <header>
-        <div class="header-content">
-            <div class="logo-container">
-                <a href='index.html'><img src='/static/images/PigStyle.ico' alt='PigStyle'></a>
-            </div>
-            <div class="filter-controls">
-                <button class="filter-toggle-btn" id="genreToggleBtn">
-                    <i class="fas fa-filter"></i> Filter Genres
-                </button>
-                <button class="filter-toggle-btn" id="newAdditionsToggleBtn">
-                    <i class="fas fa-clock"></i> Show New Additions
-                </button>
-                <div class="filter-checkbox-container" id="genreCheckboxContainer">
-                    <!-- Genre checkboxes will be populated by JavaScript -->
-                    <div class="filter-checkbox-loading">
-                        <div class="loading-dots small">
-                            <div></div>
-                            <div></div>
-                            <div></div>
-                            <div></div>
-                        </div>
+    <!-- Title and Filter Controls -->
+    <div class="streaming-header">
+         
+        <div class="filter-controls">
+            <button id="genreToggleBtn" class="filter-toggle-btn">
+                <i class="fas fa-filter"></i> Filter Genres
+            </button>
+            
+            <button id="newAdditionsToggleBtn" class="filter-toggle-btn">
+                <i class="fas fa-clock"></i> Show New Additions
+            </button>
+            
+            <div id="genreCheckboxContainer" class="filter-checkbox-container">
+                <div class="filter-checkbox-loading">
+                    <div class="loading-dots small">
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
                     </div>
+                    <p>Loading genres...</p>
                 </div>
             </div>
         </div>
-    </header>
-     
+    </div>
+    
+    <!-- Main Player Container -->
     <div class="player-container">
+        <!-- Loading Screen -->
         <div id="loading" class="loading">
             <div class="loading-dots">
                 <div></div>
@@ -66,51 +80,54 @@
                 <div></div>
                 <div></div>
             </div>
-            <p id="loadingMessage">Loading streaming station...</p>
+            <p>Loading streaming station...</p>
         </div>
         
+        <!-- Player Content (hidden initially) -->
         <div id="playerContent" style="display: none;">
+            <!-- Current Track Info -->
             <div class="current-track">
-                <h2 id="trackTitle">PigStyle Records Collection</h2>
-                <p class="artist" id="trackArtist">Various Artists</p>
-                <p class="price" id="trackPrice">$0.00</p>
+                <h2 id="trackTitle">Loading track...</h2>
+                <p class="artist" id="trackArtist">Loading artist...</p>
+                <p class="price" id="trackPrice">Price: Loading...</p>
             </div>
             
             <!-- Tab Navigation -->
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="player-tab">
-                    <i class="fas fa-play"></i> 
+                    <i class="fas fa-play"></i> Player
                 </button>
                 <button class="tab-button" data-tab="info-tab">
-                    <i class="fas fa-info-circle"></i> 
+                    <i class="fas fa-info-circle"></i> Record Info
                 </button>
             </div>
             
             <!-- Tab Content -->
             <div class="tab-content">
-                <!-- YouTube Player Tab -->
+                <!-- Player Tab -->
                 <div id="player-tab" class="tab-pane active">
-                    <div class="video-container" id="youtubeContainer">
-                        <div id="youtube-player" style="width: 100%; height: 100%;"></div>
+                    <div class="video-container">
+                        <div id="youtube-player">
+                            <!-- YouTube player will be inserted here -->
+                        </div>
                     </div>
                     
-                    <div class="nav-controls" id="youtubeControls" style="display: none;">
-                        <button class="nav-btn" id="prevBtn">◀</button>
-                        <button class="nav-btn" id="nextBtn">▶</button>
+                    <!-- Navigation Controls -->
+                    <div class="nav-controls">
+                        <button id="prevBtn" class="nav-btn">
+                            <i class="fas fa-backward"></i>
+                        </button>
+                        <button id="nextBtn" class="nav-btn">
+                            <i class="fas fa-forward"></i>
+                        </button>
                     </div>
                 </div>
                 
-                <!-- Record Info Tab -->
+                <!-- Info Tab -->
                 <div id="info-tab" class="tab-pane">
-                    <div class="record-info-container" id="recordInfoContainer">
+                    <div id="recordInfoContainer" class="record-info-container">
                         <div class="record-info-loading">
-                            <div class="loading-dots">
-                                <div></div>
-                                <div></div>
-                                <div></div>
-                                <div></div>
-                            </div>
-                            <p>Select a track to view information</p>
+                            <p>Select a track to see record information</p>
                         </div>
                     </div>
                 </div>
@@ -120,15 +137,16 @@
     
     <!-- Scale Controls -->
     <div class="scale-controls">
-        <button class="scale-btn" onclick="scaleDown()">-</button>
-        <span style="color:white; padding: 0 10px;" id="scalePercent">100%</span>
-        <button class="scale-btn" onclick="scaleUp()">+</button>
-        <button class="scale-btn" onclick="resetScale()">↺</button>
+        <button class="scale-btn" onclick="scaleDown()" title="Scale Down">
+            <i class="fas fa-search-minus"></i>
+        </button>
+        <span id="scalePercent" style="color: white; font-size: 14px; min-width: 40px; text-align: center;">100%</span>
+        <button class="scale-btn" onclick="scaleUp()" title="Scale Up">
+            <i class="fas fa-search-plus"></i>
+        </button>
+        <button class="scale-btn" onclick="resetScale()" title="Reset Scale">
+            <i class="fas fa-sync-alt"></i>
+        </button>
     </div>
-
-    <script>
-        // Remove the conflicting script from streaming.html
-        // All functionality is now in streaming.js
-    </script>
 </body>
 </html>
