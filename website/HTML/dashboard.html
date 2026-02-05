@@ -6,6 +6,71 @@
     <title>Dashboard - PigStyle Music</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <style>
+        /* Additional styles for genre prediction */
+        .genre-prediction {
+            margin: 10px 0;
+            padding: 12px;
+            background: rgba(255, 204, 0, 0.1);
+            border: 1px solid rgba(255, 204, 0, 0.3);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.5s ease;
+        }
+        
+        .genre-prediction.prediction-available {
+            background: rgba(76, 175, 80, 0.1);
+            border-color: rgba(76, 175, 80, 0.3);
+        }
+        
+        .prediction-icon {
+            color: #ffcc00;
+            font-size: 18px;
+        }
+        
+        .prediction-text {
+            flex: 1;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .prediction-hint {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 3px;
+        }
+        
+        .predicted-genre {
+            background: linear-gradient(135deg, #ffcc00, #ff9900) !important;
+            color: #333 !important;
+            border-color: #ffcc00 !important;
+            font-weight: bold !important;
+        }
+        
+        .predicted-genre option {
+            background: #333 !important;
+            color: white !important;
+        }
+        
+        .accept-prediction-btn {
+            background: rgba(76, 175, 80, 0.2) !important;
+            border: 1px solid rgba(76, 175, 80, 0.4) !important;
+            color: #4CAF50 !important;
+            font-size: 12px !important;
+            padding: 6px 12px !important;
+        }
+        
+        .accept-prediction-btn:hover {
+            background: rgba(76, 175, 80, 0.3) !important;
+        }
+        
+        .prediction-success {
+            background: rgba(76, 175, 80, 0.15) !important;
+            border-color: rgba(76, 175, 80, 0.4) !important;
+        }
+    </style>
 </head>
 <body>
     <!-- Navbar -->
@@ -198,6 +263,87 @@
         };
 
         // ============================================================================
+        // GENRE PREDICTION FUNCTIONS
+        // ============================================================================
+        
+        class GenrePredictor {
+            constructor() {
+                this.genreMappingCache = {};
+            }
+            
+            async predictGenre(discogsGenre) {
+                if (!discogsGenre) return null;
+                
+                // Clean genre for API call
+                let cleanGenre = discogsGenre;
+                if (cleanGenre.includes('/')) {
+                    cleanGenre = cleanGenre.replace('/', ' ');
+                }
+                
+                // Check cache first
+                if (this.genreMappingCache[cleanGenre]) {
+                    console.log(`GENRE_CACHE: Using cached prediction for "${cleanGenre}"`);
+                    return this.genreMappingCache[cleanGenre];
+                }
+                
+                try {
+                    // Call the mapping API
+                    const response = await APIUtils.get(
+                        `/discogs-genre-mappings/${encodeURIComponent(cleanGenre)}`
+                    );
+                    
+                    if (response.status === 'success' && response.mapping) {
+                        // Cache the result
+                        this.genreMappingCache[cleanGenre] = response.mapping;
+                        console.log(`GENRE_PREDICTION: Found mapping for "${cleanGenre}" -> ${response.mapping.local_genre_name}`);
+                        return response.mapping;
+                    } else {
+                        // No mapping found
+                        console.log(`GENRE_PREDICTION: No mapping found for "${cleanGenre}"`);
+                        this.genreMappingCache[cleanGenre] = null;
+                        return null;
+                    }
+                } catch (error) {
+                    console.error(`GENRE_PREDICTION: Error checking mapping for "${cleanGenre}":`, error);
+                    return null;
+                }
+            }
+            
+            clearCache() {
+                this.genreMappingCache = {};
+            }
+            
+            async saveMapping(discogsGenre, localGenreId, localGenreName) {
+                const cleanGenre = discogsGenre.includes('/') ? 
+                    discogsGenre.replace('/', ' ') : discogsGenre;
+                
+                const mappingData = {
+                    discogs_genre: cleanGenre,
+                    local_genre_id: localGenreId
+                };
+                
+                try {
+                    const response = await APIUtils.post('/discogs-genre-mappings', mappingData);
+                    
+                    if (response.status === 'success') {
+                        // Update cache
+                        this.genreMappingCache[cleanGenre] = {
+                            local_genre_id: localGenreId,
+                            local_genre_name: localGenreName
+                        };
+                        
+                        console.log(`GENRE_MAPPING: Saved mapping "${cleanGenre}" -> ${localGenreName}`);
+                        return response;
+                    }
+                    return null;
+                } catch (error) {
+                    console.error(`GENRE_MAPPING: Error saving mapping:`, error);
+                    return null;
+                }
+            }
+        }
+
+        // ============================================================================
         // INVENTORY MANAGER CLASS
         // ============================================================================
         
@@ -208,6 +354,7 @@
                 this.genres = [];
                 this.conditions = [];
                 this.statuses = ['new', 'active', 'sold', 'removed'];
+                this.genrePredictor = new GenrePredictor();
                 
                 this.init();
             }
@@ -407,7 +554,22 @@
                 const response = await APIUtils.get('/api/discogs/search', { q: searchTerm });
                 
                 if (response.status === 'success' && response.results) {
-                    return response.results;
+                    // Enhance results with genre predictions
+                    const enhancedResults = await Promise.all(
+                        response.results.map(async (record) => {
+                            if (record.genre) {
+                                // Get genre prediction
+                                const prediction = await this.genrePredictor.predictGenre(record.genre);
+                                if (prediction) {
+                                    record.predicted_genre = prediction;
+                                    console.log(`GENRE_PREDICTION: "${record.genre}" -> ${prediction.local_genre_name}`);
+                                }
+                            }
+                            return record;
+                        })
+                    );
+                    
+                    return enhancedResults;
                 }
                 
                 return this.getSampleResults(searchTerm);
@@ -445,7 +607,8 @@
                             image_url: 'https://img.discogs.com/GHS-24425.jpg',
                             catalog_number: 'GHS 24425',
                             discogs_id: '123456',
-                            barcode: '075992442517'
+                            barcode: '075992442517',
+                            predicted_genre: { local_genre_id: 1, local_genre_name: 'Rock' }
                         }
                     ];
                 } else {
@@ -461,7 +624,8 @@
                             image_url: '',
                             catalog_number: 'SMP001',
                             discogs_id: '999999',
-                            barcode: '123456789012'
+                            barcode: '123456789012',
+                            predicted_genre: null
                         }
                     ];
                 }
@@ -496,94 +660,125 @@
                 console.log('RENDER_DISCOGS: this.genres =', this.genres);
                 console.log('RENDER_DISCOGS: this.conditions =', this.conditions);
                 
-                // Create option generation functions that run WHEN the template renders
-                const getGenreOptions = () => {
-                    if (!this.genres || this.genres.length === 0) {
-                        console.error('RENDER_DISCOGS: No genres available!');
-                        return '';
-                    }
-                    const options = this.genres.map(genre => {
-                        return `<option value="${genre.id}">${genre.genre_name}</option>`;
-                    }).join('');
-                    console.log('RENDER_DISCOGS: Generated genre options:', options.substring(0, 100));
-                    return options;
-                };
-                
-                const getConditionOptions = () => {
-                    if (!this.conditions || this.conditions.length === 0) {
-                        console.error('RENDER_DISCOGS: No conditions available!');
-                        return '';
-                    }
-                    const options = this.conditions.map(condition => {
-                        return `<option value="${condition}">${condition}</option>`;
-                    }).join('');
-                    console.log('RENDER_DISCOGS: Generated condition options:', options.substring(0, 100));
-                    return options;
+                // Helper function to find genre index by ID
+                const findGenreIndex = (genreId) => {
+                    if (!this.genres || !genreId) return -1;
+                    return this.genres.findIndex(g => g.id == genreId);
                 };
                 
                 return `
                     <h3>Search Results (${resultsCount})</h3>
-                    ${this.currentResults.map((record, index) => `
-                        <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}">
-                            <div class="record-header">
-                                ${record.image_url ? `
-                                    <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image" 
-                                         onerror="this.src='https://via.placeholder.com/100x100/333/666?text=No+Image'">
-                                ` : `
-                                    <div class="record-image" style="background: #333; display: flex; align-items: center; justify-content: center;">
-                                        <i class="fas fa-record-vinyl" style="font-size: 40px; color: #666;"></i>
+                    ${this.currentResults.map((record, index) => {
+                        // Check if we have a genre prediction
+                        const hasPrediction = record.predicted_genre;
+                        const predictedGenreId = hasPrediction ? record.predicted_genre.local_genre_id : null;
+                        const predictedGenreName = hasPrediction ? record.predicted_genre.local_genre_name : null;
+                        const predictionIndex = findGenreIndex(predictedGenreId);
+                        
+                        // Generate genre options with prediction selected
+                        const genreOptions = this.genres.map((genre, idx) => {
+                            const selected = hasPrediction && idx === predictionIndex ? 'selected' : '';
+                            return `<option value="${genre.id}" ${selected}>${genre.genre_name}</option>`;
+                        }).join('');
+                        
+                        const conditionOptions = this.conditions.map(condition => {
+                            return `<option value="${condition}">${condition}</option>`;
+                        }).join('');
+                        
+                        return `
+                            <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}">
+                                <div class="record-header">
+                                    ${record.image_url ? `
+                                        <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image" 
+                                             onerror="this.src='https://via.placeholder.com/100x100/333/666?text=No+Image'">
+                                    ` : `
+                                        <div class="record-image" style="background: #333; display: flex; align-items: center; justify-content: center;">
+                                            <i class="fas fa-record-vinyl" style="font-size: 40px; color: #666;"></i>
+                                        </div>
+                                    `}
+                                    <div class="record-info">
+                                        <div class="record-title">${record.artist} - ${record.title}</div>
+                                        <div class="record-details">
+                                            ${record.year ? `<p><strong>Year:</strong> ${record.year}</p>` : ''}
+                                            ${record.genre ? `<p><strong>Discogs Genre:</strong> ${record.genre}</p>` : ''}
+                                            ${record.format ? `<p><strong>Format:</strong> ${record.format}</p>` : ''}
+                                            ${record.country ? `<p><strong>Country:</strong> ${record.country}</p>` : ''}
+                                            ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
+                                            ${record.barcode ? `<p><strong>Barcode:</strong> ${record.barcode}</p>` : ''}
+                                        </div>
                                     </div>
-                                `}
-                                <div class="record-info">
-                                    <div class="record-title">${record.artist} - ${record.title}</div>
-                                    <div class="record-details">
-                                        ${record.year ? `<p><strong>Year:</strong> ${record.year}</p>` : ''}
-                                        ${record.genre ? `<p><strong>Genre:</strong> ${record.genre}</p>` : ''}
-                                        ${record.format ? `<p><strong>Format:</strong> ${record.format}</p>` : ''}
-                                        ${record.country ? `<p><strong>Country:</strong> ${record.country}</p>` : ''}
-                                        ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
-                                        ${record.barcode ? `<p><strong>Barcode:</strong> ${record.barcode}</p>` : ''}
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Add Record Form -->
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label">Genre *</label>
-                                    <select class="form-control genre-select" required>
-                                        <option value="">Select genre...</option>
-                                        ${getGenreOptions()}
-                                    </select>
                                 </div>
                                 
-                                <div class="form-group">
-                                    <label class="form-label">Condition *</label>
-                                    <select class="form-control condition-select" required>
-                                        <option value="">Select condition...</option>
-                                        ${getConditionOptions()}
-                                    </select>
+                                <!-- Genre Prediction Banner -->
+                                ${hasPrediction ? `
+                                    <div class="genre-prediction prediction-available" id="prediction-banner-${record.discogs_id}">
+                                        <i class="fas fa-lightbulb prediction-icon"></i>
+                                        <div class="prediction-text">
+                                            <strong>💡 Genre Prediction:</strong> "${record.genre}" maps to <strong>${predictedGenreName}</strong>
+                                            <div class="prediction-hint">
+                                                Based on previous mappings. The dropdown is pre-selected.
+                                            </div>
+                                        </div>
+                                        <button class="btn accept-prediction-btn" 
+                                                data-record-id="${record.discogs_id}"
+                                                data-discogs-genre="${record.genre}"
+                                                data-genre-id="${predictedGenreId}"
+                                                data-genre-name="${predictedGenreName}">
+                                            <i class="fas fa-check"></i> Confirm
+                                        </button>
+                                    </div>
+                                ` : record.genre ? `
+                                    <div class="genre-prediction">
+                                        <i class="fas fa-search prediction-icon"></i>
+                                        <div class="prediction-text">
+                                            No genre prediction found for "${record.genre}"
+                                            <div class="prediction-hint">
+                                                Select a genre manually to create a mapping for future records
+                                            </div>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                <!-- Add Record Form -->
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Genre *</label>
+                                        <select class="form-control genre-select ${hasPrediction ? 'predicted-genre' : ''}" 
+                                                required
+                                                data-record-id="${record.discogs_id}">
+                                            <option value="">Select genre...</option>
+                                            ${genreOptions}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label class="form-label">Condition *</label>
+                                        <select class="form-control condition-select" required>
+                                            <option value="">Select condition...</option>
+                                            ${conditionOptions}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label class="form-label">Price ($) *</label>
+                                        <input type="number" class="form-control price-input" step="0.01" min="0" 
+                                               placeholder="Enter price" required>
+                                    </div>
                                 </div>
                                 
-                                <div class="form-group">
-                                    <label class="form-label">Price ($) *</label>
-                                    <input type="number" class="form-control price-input" step="0.01" min="0" 
-                                           placeholder="Enter price" required>
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <button class="btn btn-primary add-record-btn">
-                                        <i class="fas fa-plus"></i> Add to Inventory
-                                    </button>
-                                    <div class="form-hint" style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 5px;">
-                                        * Required fields
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <button class="btn btn-primary add-record-btn">
+                                            <i class="fas fa-plus"></i> Add to Inventory
+                                        </button>
+                                        <div class="form-hint" style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 5px;">
+                                            * Required fields
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 `;
             }
 
@@ -607,7 +802,7 @@
                     `;
                 }
                 
-                // Create option generation functions for edit forms too
+                // Helper function to get genre options for edit forms
                 const getGenreOptions = (recordId) => {
                     const record = this.currentResults.find(r => r.id == recordId);
                     return this.genres.map(genre => {
@@ -717,6 +912,7 @@
             }
 
             attachResultEventListeners() {
+                // Add record buttons
                 document.querySelectorAll('.add-record-btn').forEach(button => {
                     button.addEventListener('click', async (e) => {
                         const card = e.target.closest('.record-card');
@@ -727,6 +923,42 @@
                     });
                 });
 
+                // Accept prediction buttons
+                document.querySelectorAll('.accept-prediction-btn').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        
+                        const discogsGenre = button.getAttribute('data-discogs-genre');
+                        const genreId = button.getAttribute('data-genre-id');
+                        const genreName = button.getAttribute('data-genre-name');
+                        const recordId = button.getAttribute('data-record-id');
+                        
+                        // Save the mapping
+                        const saved = await this.genrePredictor.saveMapping(discogsGenre, genreId, genreName);
+                        
+                        if (saved) {
+                            // Update the button and banner
+                            const banner = document.getElementById(`prediction-banner-${recordId}`);
+                            if (banner) {
+                                banner.innerHTML = `
+                                    <i class="fas fa-check-circle" style="color: #4CAF50;"></i>
+                                    <div class="prediction-text">
+                                        <strong>✅ Mapping Saved!</strong> Future "${discogsGenre}" records will default to ${genreName}
+                                    </div>
+                                `;
+                                banner.classList.add('prediction-success');
+                                banner.classList.remove('prediction-available');
+                            }
+                            
+                            // Hide the button
+                            button.style.display = 'none';
+                            
+                            this.showMessage(`Genre mapping saved: "${discogsGenre}" → ${genreName}`, 'success');
+                        }
+                    });
+                });
+
+                // Save changes buttons
                 document.querySelectorAll('.save-changes-btn').forEach(button => {
                     button.addEventListener('click', async (e) => {
                         const recordId = e.target.getAttribute('data-record-id');
@@ -734,6 +966,7 @@
                     });
                 });
 
+                // Delete record buttons
                 document.querySelectorAll('.delete-record-btn').forEach(button => {
                     button.addEventListener('click', async (e) => {
                         const recordId = e.target.getAttribute('data-record-id');
@@ -796,6 +1029,25 @@
                 
                 if (response.status === 'success') {
                     this.showMessage(`Record added successfully! ID: ${response.record_id}`, 'success');
+                    
+                    // Auto-save the genre mapping if we had a prediction
+                    if (discogsRecord.genre && discogsRecord.predicted_genre && 
+                        discogsRecord.predicted_genre.local_genre_id == genreId) {
+                        // Prediction was correct and used - save the mapping
+                        await this.genrePredictor.saveMapping(
+                            discogsRecord.genre,
+                            genreId,
+                            genreName
+                        );
+                    } else if (discogsRecord.genre && genreId) {
+                        // No prediction but user selected a genre - save as new mapping
+                        await this.genrePredictor.saveMapping(
+                            discogsRecord.genre,
+                            genreId,
+                            genreName
+                        );
+                    }
+                    
                     await this.loadStats();
                     this.clearResults();
                     document.getElementById('searchInput').value = '';
