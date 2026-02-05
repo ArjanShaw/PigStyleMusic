@@ -386,6 +386,10 @@ class PriceAdviseHandler:
     def _generate_ebay_summary(self, result: Dict[str, Any]) -> str:
         """Generate detailed eBay summary string matching old format"""
         try:
+            logger.info(f"Generating eBay summary with data: {result.keys()}")
+            logger.info(f"eBay listings count: {result.get('ebay_listings_count')}")
+            logger.info(f"eBay generic median: {result.get('ebay_generic_median')}")
+            
             summary_lines = []
             
             # eBay Listings Summary header
@@ -400,30 +404,40 @@ class PriceAdviseHandler:
             summary_lines.append(f"{result.get('condition_listings_count', 0)}\n")
             summary_lines.append("")
             summary_lines.append("Condition Median")
-            summary_lines.append(f"${result.get('ebay_condition_median', 0):.2f}\n")
+            
+            # FIX: Handle None value for ebay_condition_median
+            ebay_condition_median = result.get('ebay_condition_median')
+            if ebay_condition_median is not None:
+                summary_lines.append(f"${ebay_condition_median:.2f}\n")
+            else:
+                summary_lines.append("$0.00\n")
+            
             summary_lines.append("")
             
             # All eBay Listings details
             ebay_listings_count = result.get('ebay_listings_count', 0)
-            if ebay_listings_count > 0:
-                summary_lines.append(f"📊 All eBay Listings ({ebay_listings_count} listings) - Generic Median: ${result.get('ebay_generic_median', 0):.2f}\n")
+            ebay_generic_median = result.get('ebay_generic_median')
+            
+            if ebay_listings_count > 0 and ebay_generic_median is not None:
+                summary_lines.append(f"📊 All eBay Listings ({ebay_listings_count} listings) - Generic Median: ${ebay_generic_median:.2f}\n")
                 summary_lines.append("")
                 
                 # Get price range
                 price_range = result.get('price_range', (0, 0))
-                price_min = price_range[0] if isinstance(price_range, tuple) and len(price_range) >= 2 else 0
-                price_max = price_range[1] if isinstance(price_range, tuple) and len(price_range) >= 2 else 0
+                price_min = price_range[0] if isinstance(price_range, (tuple, list)) and len(price_range) >= 2 else 0
+                price_max = price_range[1] if isinstance(price_range, (tuple, list)) and len(price_range) >= 2 else 0
                 average_price = result.get('average_price', 0)
                 
-                summary_lines.append(f"Median Calculation: ${result.get('ebay_generic_median', 0):.2f}")
+                summary_lines.append(f"Median Calculation: ${ebay_generic_median:.2f}")
                 summary_lines.append(f"Number of Listings: {ebay_listings_count}")
                 summary_lines.append(f"Price Range: {price_min:.2f} - {price_max:.2f}")
                 summary_lines.append(f"Average Price: ${average_price:.2f}")
             
             return "\n".join(summary_lines)
+            
         except Exception as e:
-            logger.error(f"Error generating eBay summary: {e}")
-            return "Error generating eBay summary"
+            logger.error(f"Error generating eBay summary: {e}", exc_info=True)
+            return "Error generating eBay summary"   
     
     def _get_ebay_token(self):
         """Get OAuth token for eBay API"""
