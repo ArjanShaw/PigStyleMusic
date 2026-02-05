@@ -70,6 +70,36 @@
             background: rgba(76, 175, 80, 0.15) !important;
             border-color: rgba(76, 175, 80, 0.4) !important;
         }
+
+        /* Price Estimation Visual Feedback */
+        .price-estimating {
+            background: linear-gradient(90deg, 
+                rgba(255, 204, 0, 0.1) 0%, 
+                rgba(255, 204, 0, 0.3) 50%, 
+                rgba(255, 204, 0, 0.1) 100%) !important;
+            animation: pulse 2s infinite !important;
+            border-color: #ffcc00 !important;
+        }
+
+        .price-estimated {
+            background: rgba(76, 175, 80, 0.15) !important;
+            border-color: #4CAF50 !important;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.8; }
+            50% { opacity: 1; }
+            100% { opacity: 0.8; }
+        }
+
+        .estimation-hint {
+            font-size: 12px;
+            color: rgba(255, 204, 0, 0.8);
+            margin-top: 5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
     </style>
 </head>
 <body>
@@ -757,6 +787,10 @@
                                             <option value="">Select condition...</option>
                                             ${conditionOptions}
                                         </select>
+                                        <div class="estimation-hint">
+                                            <i class="fas fa-bolt"></i>
+                                            Price auto-estimates when condition is selected
+                                        </div>
                                     </div>
                                     
                                     <div class="form-group">
@@ -863,6 +897,10 @@
                                             <option value="">Select condition...</option>
                                             ${getConditionOptions(record.id)}
                                         </select>
+                                        <div class="estimation-hint">
+                                            <i class="fas fa-bolt"></i>
+                                            Price auto-estimates when condition is selected
+                                        </div>
                                     </div>
                                     
                                     <div class="form-group">
@@ -909,6 +947,285 @@
                         `;
                     }).join('')}
                 `;
+            }
+
+            // 1. Price estimation method
+            async estimatePriceForRecord(record, selectedCondition) {
+                console.log('ESTIMATE_PRICE: Estimating price for', record.artist, '-', record.title, 'Condition:', selectedCondition);
+                    
+                    const response = await APIUtils.post('/api/price-estimate', {
+                        artist: record.artist,
+                        title: record.title,
+                        condition: selectedCondition,
+                        discogs_genre: record.genre || '',
+                        discogs_id: record.discogs_id || ''
+                    });
+                    
+                    console.log('ESTIMATE_PRICE: API response:', response);
+                    return response;
+            }
+
+                        // 2. Condition change handler
+            async handleConditionChange(event, isEditMode = false) {
+                const selectElement = event.target;
+                const card = selectElement.closest('.record-card');
+                const recordId = card.getAttribute('data-record-id');
+                const selectedCondition = selectElement.value;
+                
+                if (!selectedCondition) {
+                    return; // Don't estimate if no condition selected
+                }
+                
+                // Find the record
+                let record;
+                if (isEditMode) {
+                    // For edit mode, find in database results
+                    record = this.currentResults.find(r => r.id == recordId);
+                } else {
+                    // For add mode, find in Discogs results
+                    const index = card.getAttribute('data-index');
+                    record = this.currentResults[index];
+                }
+                
+                if (!record) {
+                    console.error('HANDLE_CONDITION_CHANGE: Record not found');
+                    return;
+                }
+                
+                // Get price input field
+                let priceInput;
+                if (isEditMode) {
+                    priceInput = card.querySelector('.edit-price-input');
+                } else {
+                    priceInput = card.querySelector('.price-input');
+                }
+                
+                if (!priceInput) {
+                    console.error('HANDLE_CONDITION_CHANGE: Price input not found');
+                    return;
+                }
+                
+                // If price is already entered, don't auto-estimate
+                if (priceInput.value && priceInput.value.trim() !== '' && !isNaN(parseFloat(priceInput.value))) {
+                    return;
+                }
+                
+                // Store current value and disable input
+                const originalValue = priceInput.value;
+                priceInput.disabled = true;
+                
+                // Create a temporary overlay to show "Estimating..."
+                const priceContainer = priceInput.parentElement;
+                const tempOverlay = document.createElement('div');
+                tempOverlay.className = 'price-estimating';
+                tempOverlay.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: linear-gradient(90deg, rgba(255, 204, 0, 0.1) 0%, rgba(255, 204, 0, 0.3) 50%, rgba(255, 204, 0, 0.1) 100%);
+                    border: 1px solid #ffcc00;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: #ffcc00;
+                    font-weight: bold;
+                    z-index: 10;
+                    animation: pulse 2s infinite;
+                `;
+                tempOverlay.textContent = 'Estimating...';
+                priceContainer.style.position = 'relative';
+                priceContainer.appendChild(tempOverlay);
+                
+                try {
+                    const estimate = await this.estimatePriceForRecord(record, selectedCondition);
+                    
+                    // Remove the overlay
+                    tempOverlay.remove();
+                    priceInput.disabled = false;
+                    
+                    if (estimate.success || estimate.estimated_price || estimate.calculation) {
+                        // Determine the price to use
+                        let finalPrice;
+                        let priceSource = 'unknown';
+                        
+                        if (estimate.estimated_price) {
+                            finalPrice = estimate.estimated_price;
+                            priceSource = estimate.price_source || 'estimated';
+                        } else if (estimate.price) {
+                            finalPrice = estimate.price;
+                            priceSource = estimate.source || 'estimated';
+                        } else if (estimate.calculation && estimate.calculation.length > 0) {
+                            // Try to find price from calculation steps
+                            const finalStep = estimate.calculation[estimate.calculation.length - 1];
+                            if (finalStep.includes('Final advised price:')) {
+                                const priceMatch = finalStep.match(/\$([\d.]+)/);
+                                if (priceMatch) {
+                                    finalPrice = parseFloat(priceMatch[1]);
+                                    priceSource = 'calculated';
+                                }
+                            }
+                        }
+                        
+                        if (finalPrice) {
+                            // Update price field with estimated value
+                            priceInput.value = parseFloat(finalPrice).toFixed(2);
+                            priceInput.classList.add('price-estimated');
+                            
+                            // Show estimation source hint
+                            const existingHint = priceInput.parentElement.querySelector('.estimation-hint');
+                            if (!existingHint) {
+                                const hint = document.createElement('div');
+                                hint.className = 'estimation-hint';
+                                hint.innerHTML = `
+                                    <i class="fas fa-bolt"></i>
+                                    Estimated from ${priceSource} data
+                                    <button class="btn btn-small" style="margin-left: auto; padding: 2px 8px; font-size: 10px;" 
+                                            onclick="this.closest('.estimation-hint').remove()">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                `;
+                                priceInput.parentElement.appendChild(hint);
+                            }
+                            
+                            // Show calculation details if available
+                            if (estimate.calculation && estimate.calculation.length > 0) {
+                                this.showPriceCalculationDetails(record, selectedCondition, estimate);
+                            } else {
+                                this.showMessage(`Price estimated: $${parseFloat(finalPrice).toFixed(2)} (${priceSource})`, 'info');
+                            }
+                        } else {
+                            // No price found
+                            priceInput.value = '';
+                            this.showMessage('Could not estimate price. Please enter manually.', 'warning');
+                        }
+                    } else {
+                        // Estimation failed
+                        priceInput.value = originalValue;
+                        this.showMessage('Could not estimate price. Please enter manually.', 'warning');
+                    }
+                } catch (error) {
+                    console.error('HANDLE_CONDITION_CHANGE: Estimation error:', error);
+                    tempOverlay.remove();
+                    priceInput.disabled = false;
+                    priceInput.value = originalValue;
+                    this.showMessage('Error estimating price. Please enter manually.', 'error');
+                } finally {
+                    // Focus on price input for easy editing
+                    setTimeout(() => priceInput.focus(), 100);
+                }
+            }
+
+            // Helper method to show price calculation details
+            showPriceCalculationDetails(record, condition, estimate) {
+                // Remove any existing calculation popup
+                document.querySelectorAll('.calculation-popup').forEach(el => el.remove());
+                
+                // Create calculation popup
+                const popup = document.createElement('div');
+                popup.className = 'calculation-popup';
+                
+                let calculationHTML = '';
+                
+                // Build calculation details
+                if (estimate.calculation && estimate.calculation.length > 0) {
+                    calculationHTML = `
+                        <div style="font-size: 11px; margin-top: 5px;">
+                            <strong>📊 Price Details:</strong>
+                            <div style="max-height: 200px; overflow-y: auto; margin-top: 5px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+                                ${estimate.calculation.map(step => `<div style="margin: 3px 0;">• ${step}</div>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Add eBay summary if available
+                if (estimate.ebay_summary) {
+                    calculationHTML += `
+                        <div style="font-size: 11px; margin-top: 10px;">
+                            <strong>🛒 eBay Listings Summary:</strong>
+                            <div style="margin-top: 5px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+                                ${estimate.ebay_summary}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                popup.innerHTML = `
+                    <div style="
+                        position: fixed;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        background: #2a2a2a;
+                        color: white;
+                        padding: 20px;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+                        z-index: 3000;
+                        max-width: 500px;
+                        max-height: 80vh;
+                        overflow-y: auto;
+                        animation: fadeIn 0.3s ease;
+                    ">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h4 style="margin: 0; color: #ffcc00;">
+                                <i class="fas fa-calculator"></i> Price Estimation Details
+                            </h4>
+                            <button onclick="this.closest('.calculation-popup').remove()" 
+                                    style="background: none; border: none; color: #999; cursor: pointer; font-size: 18px;">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 204, 0, 0.1); border-radius: 4px;">
+                            <strong>${record.artist} - ${record.title}</strong><br>
+                            <small>Condition: ${condition}</small><br>
+                            <small>Estimated Price: <strong style="color: #4CAF50;">$${estimate.estimated_price ? parseFloat(estimate.estimated_price).toFixed(2) : 'N/A'}</strong></small>
+                        </div>
+                        
+                        ${calculationHTML}
+                        
+                        <div style="margin-top: 15px; font-size: 10px; color: #888; text-align: center;">
+                            <i class="fas fa-info-circle"></i> Click outside or press ESC to close
+                        </div>
+                    </div>
+                    <div style="
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        background: rgba(0,0,0,0.7);
+                        z-index: 2999;
+                    " onclick="this.parentElement.remove()"></div>
+                `;
+                
+                document.body.appendChild(popup);
+                
+                // Add ESC key listener to close popup
+                const escListener = (e) => {
+                    if (e.key === 'Escape') {
+                        popup.remove();
+                        document.removeEventListener('keydown', escListener);
+                    }
+                };
+                document.addEventListener('keydown', escListener);
+            }
+
+            // 3. Add event listeners for condition dropdowns
+            addConditionChangeListeners() {
+                // For add mode condition dropdowns
+                document.querySelectorAll('.condition-select').forEach(select => {
+                    select.addEventListener('change', (e) => this.handleConditionChange(e, false));
+                });
+                
+                // For edit mode condition dropdowns
+                document.querySelectorAll('.edit-condition-select').forEach(select => {
+                    select.addEventListener('change', (e) => this.handleConditionChange(e, true));
+                });
             }
 
             attachResultEventListeners() {
@@ -975,6 +1292,9 @@
                         }
                     });
                 });
+                
+                // Add condition change listeners
+                this.addConditionChangeListeners();
             }
 
             async addRecordFromDiscogs(card, discogsRecord) {
