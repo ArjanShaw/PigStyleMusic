@@ -3,7 +3,7 @@
 <head>
     <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <link rel="icon" href="images/PigStyle.ico">
+    <link rel="icon" href="/static/images/PigStyle.ico">
     <title>Consignment - PigStyle Records</title>
     
     <!-- Google tag (gtag.js) -->
@@ -15,10 +15,30 @@
       gtag('config', 'G-03HFDR9PV7');
     </script>
     
-    <link rel="stylesheet" href="../static/css/consignment.css">
-
+    <link rel="stylesheet" href="/static/css/consignment.css">
+    <!-- Authentication JavaScript -->
+    <script src="/static/js/auth.js"></script>
 </head>
 <body>
+    <!-- Navbar -->
+    <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
+        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
+            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+            PigStyle Music
+        </a>
+        <div style="display: flex; gap: 20px; align-items: center;">
+            <a href="/catalog" style="color: white; text-decoration: none;">Catalog</a>
+            <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
+            <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
+            <div id="auth-section">
+                <!-- Will be populated by auth.js -->
+            </div>
+        </div>
+    </nav>
+
+    <!-- Add padding to account for fixed navbar -->
+    <div style="padding-top: 60px;"></div>
+
     <!-- Background Image -->
     <div class="background-container">
         <img src="/static/images/background.png" alt="Background" class="background-image">
