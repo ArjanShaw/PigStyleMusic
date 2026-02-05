@@ -94,87 +94,149 @@ def get_db():
     return conn
 
 #===========================================================================
-# ==================== AUTHENTICATION ENDPOINTS ====================
-
-@app.route('/login', methods=['POST'])
+ 
+@app.route('/login', methods=['POST', 'OPTIONS'])
 def login():
     """Authenticate user and return user data with session"""
-    data = request.get_json()
-    if not data:
-        return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-
-    required_fields = ['username', 'password']
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'status': 'error', 'error': f'{field} required'}), 400
-
-    username = data['username']
-    password = data['password']
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # Get user by username
-    cursor.execute('''
-        SELECT id, username, email, password_hash, role, full_name, 
-               master_agreement_signed, store_credit_balance
-        FROM users 
-        WHERE username = ?
-    ''', (username,))
-
-    user = cursor.fetchone()
+    if request.method == 'OPTIONS':
+        app.logger.info("OPTIONS preflight request received")
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
     
-    if not user:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Invalid username or password'}), 401
-
-    # Verify password
-    stored_hash = user['password_hash']
-    if '$' in stored_hash:
-        salt, hash_value = stored_hash.split('$')
-        password_hash = hashlib.sha256((salt + password).encode()).hexdigest()
+    try:
+        app.logger.info(f"=== LOGIN ATTEMPT STARTED ===")
+        app.logger.info(f"Origin: {request.headers.get('Origin')}")
+        app.logger.info(f"Content-Type: {request.headers.get('Content-Type')}")
         
-        if password_hash != hash_value:
+        data = request.get_json(force=True, silent=True)
+        app.logger.info(f"Raw request data: {request.data}")
+        app.logger.info(f"Parsed JSON data: {data}")
+        
+        if data is None:
+            app.logger.error("Failed to parse JSON data")
+            return jsonify({'status': 'error', 'error': 'Invalid JSON data'}), 400
+
+        if not data:
+            app.logger.error("No data provided")
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        required_fields = ['username', 'password']
+        for field in required_fields:
+            if field not in data:
+                app.logger.error(f"Missing field: {field}")
+                return jsonify({'status': 'error', 'error': f'{field} required'}), 400
+
+        username = data['username']
+        password = data['password']
+        
+        app.logger.info(f"Attempting login for user: {username}")
+        app.logger.info(f"Database path: {DB_PATH}")
+        app.logger.info(f"Database exists: {os.path.exists(DB_PATH)}")
+
+        conn = get_db()
+        cursor = conn.cursor()
+        app.logger.info("Database connection established")
+
+        # Get user by username
+        cursor.execute('''
+            SELECT id, username, email, password_hash, role, full_name, 
+                   master_agreement_signed, store_credit_balance
+            FROM users 
+            WHERE username = ?
+        ''', (username,))
+
+        user = cursor.fetchone()
+        app.logger.info(f"User query result: {user}")
+        
+        if not user:
+            app.logger.error(f"User not found: {username}")
             conn.close()
             return jsonify({'status': 'error', 'error': 'Invalid username or password'}), 401
-    else:
-        # Handle legacy passwords if any
+
+        # Verify password
+        stored_hash = user['password_hash']
+        app.logger.info(f"Stored hash: {stored_hash[:50]}...")
+        
+        if '$' in stored_hash:
+            salt, hash_value = stored_hash.split('$')
+            password_hash = hashlib.sha256((salt + password).encode()).hexdigest()
+            app.logger.info(f"Computed hash: {password_hash}")
+            
+            if password_hash != hash_value:
+                app.logger.error("Password hash mismatch")
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Invalid username or password'}), 401
+        else:
+            # Handle legacy passwords if any
+            app.logger.error(f"Invalid password format for user {username}")
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Invalid password format'}), 401
+
+        # Update last login time
+        cursor.execute('''
+            UPDATE users 
+            SET last_login = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (user['id'],))
+        
+        conn.commit()
         conn.close()
-        return jsonify({'status': 'error', 'error': 'Invalid password format'}), 401
+        app.logger.info("Database update committed")
 
-    # Update last login time
-    cursor.execute('''
-        UPDATE users 
-        SET last_login = CURRENT_TIMESTAMP 
-        WHERE id = ?
-    ''', (user['id'],))
-    
-    conn.commit()
-    conn.close()
+        # Create session
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['role'] = user['role']
+        session['logged_in'] = True
+        
+        app.logger.info(f"Session created: user_id={session['user_id']}, username={session['username']}")
+        
+        # Generate a session ID if needed (Flask doesn't have .sid by default)
+        session_id = f"session_{user['id']}_{int(time.time())}"
+        
+        # Prepare user data for response
+        user_data = {
+            'id': user['id'],
+            'username': user['username'],
+            'email': user['email'],
+            'role': user['role'],
+            'full_name': user['full_name'],
+            'master_agreement_signed': bool(user['master_agreement_signed']),
+            'store_credit_balance': float(user['store_credit_balance']) if user['store_credit_balance'] is not None else 0.0
+        }
 
-    # Create session
-    session['user_id'] = user['id']
-    session['username'] = user['username']
-    session['role'] = user['role']
-    session['logged_in'] = True
-    
-    # Prepare user data for response
-    user_data = {
-        'id': user['id'],
-        'username': user['username'],
-        'email': user['email'],
-        'role': user['role'],
-        'full_name': user['full_name'],
-        'master_agreement_signed': bool(user['master_agreement_signed']),
-        'store_credit_balance': float(user['store_credit_balance']) if user['store_credit_balance'] is not None else 0.0
-    }
+        app.logger.info(f"Login successful for user: {username}")
+        
+        response = jsonify({
+            'status': 'success',
+            'message': 'Login successful',
+            'user': user_data,
+            'session_id': session_id
+        })
+        
+        # Add CORS headers to the actual response
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        
+        return response
 
-    return jsonify({
-        'status': 'success',
-        'message': 'Login successful',
-        'user': user_data,
-        'session_id': session.sid
-    })
+    except Exception as e:
+        app.logger.error(f"Login error: {str(e)}", exc_info=True)
+        import traceback
+        app.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Still return CORS headers even on error
+        response = jsonify({
+            'status': 'error', 
+            'error': f'Server error: {str(e)}'
+        })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
 
 @app.route('/logout', methods=['POST'])
 def logout():
