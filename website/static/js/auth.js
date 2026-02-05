@@ -5,6 +5,24 @@ const Auth = {
     isLoggedIn: false,
     role: null,
     
+    // Get API base URL based on environment
+    getApiBaseUrl() {
+        // If we're on localhost (development)
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return 'http://localhost:5000';
+        }
+        // If we're on pigstylemusic.com (production)
+        else if (window.location.hostname.includes('pigstylemusic.com')) {
+            // Determine if API is on same domain or subdomain
+            // Option 1: Same domain with /api path
+            return ''; // Empty for same-origin requests
+            // Option 2: Different subdomain (uncomment if needed)
+            // return 'https://api.pigstylemusic.com';
+        }
+        // Fallback: same origin
+        return '';
+    },
+    
     // Initialize auth system
     async init() {
         await this.checkSession();
@@ -15,9 +33,15 @@ const Auth = {
     // Check if user is logged in
     async checkSession() {
         try {
-            const response = await fetch('http://localhost:5000/session/check', {
+            const apiUrl = this.getApiBaseUrl();
+            const endpoint = apiUrl ? `${apiUrl}/session/check` : '/session/check';
+            
+            const response = await fetch(endpoint, {
                 method: 'GET',
-                credentials: 'include'
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json'
+                }
             });
             
             if (response.ok) {
@@ -30,6 +54,8 @@ const Auth = {
                 } else {
                     this.clearAuth();
                 }
+            } else {
+                this.clearAuth();
             }
         } catch (error) {
             console.error('Session check failed:', error);
@@ -40,17 +66,29 @@ const Auth = {
     // Login user
     async login(username, password) {
         try {
-            const response = await fetch('http://localhost:5000/login', {
+            const apiUrl = this.getApiBaseUrl();
+            const endpoint = apiUrl ? `${apiUrl}/login` : '/api/login'; // Note: using /api/ prefix
+            
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({ username, password }),
-                credentials: 'include'
+                credentials: 'include' // Important for cookies/sessions
             });
             
+            const responseText = await response.text();
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (e) {
+                console.error('Failed to parse response:', responseText);
+                return { success: false, error: 'Invalid server response' };
+            }
+            
             if (response.ok) {
-                const data = await response.json();
                 this.user = data.user;
                 this.isLoggedIn = true;
                 this.role = data.user.role;
@@ -62,19 +100,21 @@ const Auth = {
                 this.updateUI();
                 return { success: true, user: data.user };
             } else {
-                const errorData = await response.json();
-                return { success: false, error: errorData.error };
+                return { success: false, error: data.error || 'Login failed' };
             }
         } catch (error) {
             console.error('Login failed:', error);
-            return { success: false, error: 'Network error' };
+            return { success: false, error: error.message || 'Network error' };
         }
     },
     
     // Logout user
     async logout() {
         try {
-            await fetch('http://localhost:5000/logout', {
+            const apiUrl = this.getApiBaseUrl();
+            const endpoint = apiUrl ? `${apiUrl}/logout` : '/api/logout';
+            
+            await fetch(endpoint, {
                 method: 'POST',
                 credentials: 'include'
             });
