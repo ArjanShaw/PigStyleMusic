@@ -1216,32 +1216,57 @@
             }
 
             // Helper method to show expandable price calculation details
+            // In your InventoryManager class, update this method:
             showExpandableCalculationDetails(record, condition, estimate, recordId) {
                 const calculationContainer = document.getElementById(`calculation-${recordId}`);
                 if (!calculationContainer) return;
                 
                 let calculationHTML = '';
                 let priceSourceClass = 'estimated';
+                let priceSourceText = 'ESTIMATED';
                 
                 // Determine price source for badge
-                if (estimate.estimated_price || estimate.price) {
-                    if (estimate.price_source === 'discogs' || estimate.source === 'discogs') {
+                if (estimate.price_source) {
+                    priceSourceText = estimate.price_source.toUpperCase();
+                    if (estimate.price_source.includes('discogs')) {
                         priceSourceClass = 'estimated';
-                    } else if (estimate.price_source === 'calculated' || estimate.source === 'calculated') {
+                    } else if (estimate.price_source.includes('ebay')) {
                         priceSourceClass = 'calculated';
+                    } else if (estimate.price_source === 'both') {
+                        priceSourceClass = 'calculated';
+                        priceSourceText = 'CALCULATED';
                     }
                 }
                 
-                // Build calculation details
+                // Build detailed calculation steps from calculation array
                 if (estimate.calculation && estimate.calculation.length > 0) {
                     calculationHTML = `
                         <div class="calculation-content">
-                            <strong>📊 Price Calculation:</strong>
-                            ${estimate.calculation.map((step, index) => `
-                                <div class="calculation-step ${index === estimate.calculation.length - 1 ? 'final-step' : ''}">
-                                    ${step}
-                                </div>
-                            `).join('')}
+                            ${estimate.calculation.map(step => {
+                                // Handle different types of calculation steps
+                                if (step.includes('📊 Price Details')) {
+                                    return `<div style="font-weight: bold; margin-bottom: 5px; color: #ffcc00;">${step}</div>`;
+                                } else if (step.includes('🧮 Price Calculation:')) {
+                                    return `<div style="font-weight: bold; margin: 10px 0 5px 0;">${step}</div>`;
+                                } else if (step.includes('eBay Search:')) {
+                                    return `<div style="margin: 10px 0; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; font-family: monospace;">
+                                        <strong style="color: #ffcc00;">🔍 eBay Search:</strong><br>
+                                        ${step.replace('eBay Search: ', '')}
+                                    </div>`;
+                                } else if (step.startsWith('•')) {
+                                    // Use bullet points for calculation steps
+                                    return `<div class="calculation-step">${step}</div>`;
+                                } else if (step.includes('Final advised price:')) {
+                                    return `<div class="calculation-step" style="border-left-color: #4CAF50; background: rgba(76, 175, 80, 0.2); 
+                                            padding: 10px; margin-top: 10px; border-radius: 4px; font-weight: bold; color: #4CAF50;">
+                                        🎯 ${step}
+                                    </div>`;
+                                } else if (step.trim() === '') {
+                                    return '<div style="height: 5px;"></div>';  // Spacing for empty lines
+                                } else {
+                                    return `<div style="margin: 3px 0;">${step}</div>`;
+                                }
+                            }).join('')}
                         </div>
                     `;
                 }
@@ -1250,10 +1275,29 @@
                 if (estimate.ebay_summary) {
                     calculationHTML += `
                         <div class="ebay-summary">
-                            <strong>🛒 eBay Listings Summary:</strong>
-                            <div style="margin-top: 5px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
-                                ${estimate.ebay_summary}
-                            </div>
+                            ${estimate.ebay_summary.split('\n').map(line => {
+                                if (line.includes('🛒') || line.includes('📊')) {
+                                    return `<div style="margin-top: 15px; margin-bottom: 5px; font-weight: bold; color: #ffcc00;">${line}</div>`;
+                                } else if (line.includes(':')) {
+                                    // Format key-value pairs
+                                    const parts = line.split(':');
+                                    if (parts.length >= 2) {
+                                        return `<div style="display: flex; justify-content: space-between; margin: 3px 0; padding: 2px 5px; 
+                                                background: rgba(255,255,255,0.05); border-radius: 3px;">
+                                            <span>${parts[0]}:</span>
+                                            <span style="font-weight: bold;">${parts.slice(1).join(':')}</span>
+                                        </div>`;
+                                    }
+                                } else if (line.trim() === '') {
+                                    return '<div style="height: 8px;"></div>';
+                                } else {
+                                    // Format numeric values
+                                    if (!isNaN(parseFloat(line.trim())) && line.trim() !== '') {
+                                        return `<div style="text-align: right; font-weight: bold; font-size: 14px;">${line}</div>`;
+                                    }
+                                    return `<div>${line}</div>`;
+                                }
+                            }).join('')}
                         </div>
                     `;
                 }
@@ -1266,7 +1310,7 @@
                             <i class="fas fa-chevron-down"></i>
                             <span>Show price calculation details</span>
                             <span class="price-source-badge ${priceSourceClass}">
-                                ${priceSourceClass === 'calculated' ? 'CALCULATED' : 'ESTIMATED'}
+                                ${priceSourceText}
                             </span>
                         </div>
                         <div class="calculation-details">
@@ -1276,7 +1320,7 @@
                 } else {
                     calculationContainer.innerHTML = '';
                 }
-            }
+            }          
 
             // 3. Add event listeners for condition dropdowns
             addConditionChangeListeners() {

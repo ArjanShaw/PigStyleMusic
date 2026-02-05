@@ -19,7 +19,7 @@ import uuid
 import stripe
 from functools import wraps  # ADD THIS LINE
 from discogs_handler import DiscogsHandler 
-from handlers.price_advise_handler import PriceAdviseHandler
+from price_advise_handler import PriceAdviseHandler
 
 
 
@@ -97,61 +97,58 @@ def get_db():
 
 #===========================================================================
 @app.route('/api/price-estimate', methods=['POST'])
-def get_price_estimate():
-    """Get price estimate from eBay and Discogs"""
+def price_estimate():
     try:
-        data = request.get_json()
+        data = request.json
+        artist = data.get('artist')
+        title = data.get('title')
+        condition = data.get('condition')
+        discogs_genre = data.get('discogs_genre', '')
+        discogs_id = data.get('discogs_id', '')
         
-        # Validate required fields
-        required_fields = ['artist', 'title', 'condition']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({
-                    'status': 'error',
-                    'error': f'Missing required field: {field}'
-                }), 400
-        
-        artist = data['artist']
-        title = data['title']
-        condition = data['condition']
-        discogs_genre = data.get('discogs_genre')
-        discogs_id = data.get('discogs_id')
-        
-        # Create price advisor
-        price_advisor = PriceAdviseHandler()
+        # Debug log
+         
+        # Initialize price advisor
+        price_advisor = PriceAdviseHandler(
+            discogs_token=app.config.get('DISCOGS_USER_TOKEN'),
+            ebay_client_id=app.config.get('EBAY_CLIENT_ID'),
+            ebay_client_secret=app.config.get('EBAY_CLIENT_SECRET')
+        )
         
         # Get price estimate
         result = price_advisor.get_price_estimate(
-            artist, title, condition, discogs_genre, discogs_id
+            artist=artist,
+            title=title,
+            selected_condition=condition,
+            discogs_genre=discogs_genre,
+            discogs_id=discogs_id
         )
         
-        if result['success']:
-            return jsonify({
-                'status': 'success',
-                'estimated_price': result['estimated_price'],
-                'price_source': result['price_source'],
-                'discogs_price': result['discogs_price'],
-                'ebay_price': result['ebay_price'],
-                'calculation': result['calculation'],
-                'message': f"Price estimated: ${result['estimated_price']:.2f} (from {result['price_source']})"
-            })
-        else:
-            return jsonify({
-                'status': 'partial',
-                'estimated_price': result['estimated_price'],
-                'price_source': 'fallback',
-                'message': 'Using fallback price',
-                'error': result.get('error')
-            })
-            
-    except Exception as e:
-        app.logger.error(f"Price estimate API error: {str(e)}")
+        # Debug log
+         
+        # Return the FULL result
         return jsonify({
+            'status': 'success' if result['success'] else 'error',
+            'success': result['success'],
+            'estimated_price': result['estimated_price'],
+            'price': result['estimated_price'],  # For compatibility
+            'price_source': result.get('price_source', 'unknown'),
+            'calculation': result.get('calculation', []),
+            'ebay_summary': result.get('ebay_summary', ''),
+            'ebay_listings_count': result.get('ebay_listings_count', 0),
+            'condition_listings_count': result.get('condition_listings_count', 0),
+            'source': result.get('price_source', 'unknown')  # For compatibility
+        })
+        
+    except Exception as e:
+         return jsonify({
             'status': 'error',
-            'error': f'Server error: {str(e)}',
-            'estimated_price': 19.99  # Fallback
+            'error': str(e),
+            'estimated_price': 19.99,
+            'calculation': [f"Error: {str(e)}"],
+            'ebay_summary': ''
         }), 500
-
+ 
 
 @app.route('/api/price-advice', methods=['POST'])
 def get_price_advice():
