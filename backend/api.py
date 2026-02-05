@@ -18,6 +18,7 @@ import threading
 import uuid
 import stripe
 from functools import wraps  # ADD THIS LINE
+from discogs_handler import DiscogsHandler 
 
 
 
@@ -2618,6 +2619,81 @@ def search_records():
     return jsonify({'status': 'success', 'records': records_list})
 
 
+@app.route('/api/discogs/search', methods=['GET'])
+def api_discogs_search():
+    """Search Discogs API through backend"""
+    search_term = request.args.get('q', '')
+    
+    if not search_term:
+        return jsonify({'status': 'error', 'error': 'Search term required'}), 400
+    
+    try:
+        # You need to set DISCOGS_USER_TOKEN in your environment
+        discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
+        
+        if not discogs_token:
+            return jsonify({
+                'status': 'error',
+                'error': 'Discogs API token not configured',
+                'mock_data': True
+            }), 503
+        
+        # Create DiscogsHandler instance
+        from discogs_handler import DiscogsHandler  # Import your existing handler
+        discogs_handler = DiscogsHandler(discogs_token)
+        
+        # Perform search using your existing handler
+        results = discogs_handler.get_simple_search_results(search_term)
+        
+        # Format results for frontend
+        formatted_results = []
+        for item in results:
+            formatted_results.append({
+                'id': f"discogs_{item.get('discogs_id', '')}",
+                'artist': item.get('artist', ''),
+                'title': item.get('title', ''),
+                'year': item.get('year', ''),
+                'genre': item.get('genre', ''),
+                'format': item.get('format', ''),
+                'country': item.get('country', ''),
+                'image_url': item.get('image_url', ''),
+                'catalog_number': item.get('catalog_number', ''),
+                'discogs_id': item.get('discogs_id'),
+                'barcode': item.get('barcode', '') if 'barcode' in item else ''
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'results': formatted_results
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Discogs search error: {str(e)}")
+        
+        # Return mock data if API fails
+        mock_data = [
+            {
+                'id': 'discogs_mock_1',
+                'artist': search_term.split()[0] if search_term else 'Artist',
+                'title': f'Demo Album for "{search_term[:20]}"',
+                'year': '2023',
+                'genre': 'Rock',
+                'format': 'Vinyl, LP',
+                'country': 'US',
+                'image_url': '',
+                'catalog_number': 'DEMO001',
+                'discogs_id': 'mock_001',
+                'barcode': '123456789012'
+            }
+        ]
+        
+        return jsonify({
+            'status': 'success',
+            'results': mock_data,
+            'mock_data': True,
+            'note': 'Using mock data due to API error'
+        })
+    
 # ==================== DISCOGS GENRE MAPPINGS ENDPOINTS ====================
 @app.route('/discogs-genre-mappings', methods=['POST'])
 def save_discogs_genre_mapping():
