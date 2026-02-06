@@ -36,3 +36,4 @@ logs/
 *.tmp
 *.temp
 .env
+backend/data/records.db
