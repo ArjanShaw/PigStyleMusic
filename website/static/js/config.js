@@ -1,32 +1,73 @@
-// PigStyle Music Configuration
-// Single source for all environment-specific settings
+// PigStyle Music Configuration - AUTO PORT DETECTION
+console.log('config.js is loading...');
 
 const AppConfig = {
-    // BASE URL - Change this one value for the entire app
-    // For production on PythonAnywhere:
-    baseUrl: 'https://www.pigstylemusic.com',
-    
-    // For local development, comment the line above and uncomment this one:
-    // baseUrl: 'http://localhost:5000',
+    // AUTO-DETECT BASE URL
+    // Dynamically sets the correct URL for local dev vs production
+    get baseUrl() {
+        const currentHostname = window.location.hostname;
+        const currentPort = window.location.port;
+        
+        // Check if we're running locally
+        if (currentHostname === 'localhost' || currentHostname === '127.0.0.1') {
+            // Frontend is on port 8000, but API is on port 5000
+            return `http://${currentHostname}:5000`;
+        }
+        // We're in production on PythonAnywhere
+        else {
+            // Use HTTPS for production
+            return `https://${currentHostname}`;
+        }
+    },
     
     // API endpoints (relative to baseUrl)
     endpoints: {
-        records: '/api/records',
-        consignorRecords: '/api/consignor/records',
+        sessionCheck: '/session/check',
         login: '/api/login',
         logout: '/api/logout',
+        consignorRecords: '/api/consignor/records',
+        records: '/api/records',
         search: '/api/search',
         genres: '/api/genres',
-        // Add all other endpoints used in your app here
+        discogsSearch: '/api/discogs/search',
+        priceEstimate: '/api/price-estimate',
+        commissionRate: '/api/commission-rate',
+        discogsMappings: '/discogs-genre-mappings'
     },
     
-    // Utility method to get full URL for an endpoint
-    getUrl(endpointKey) {
+    // Method to get a full URL for an endpoint
+    getUrl(endpointKey, params = null) {
         const endpoint = this.endpoints[endpointKey];
         if (!endpoint) {
-            console.error(`Endpoint "${endpointKey}" not defined in AppConfig.endpoints`);
+            console.error(`Endpoint "${endpointKey}" not found in config.`);
             return this.baseUrl;
         }
-        return `${this.baseUrl}${endpoint}`;
+        let url = `${this.baseUrl}${endpoint}`;
+        if (params) {
+            const queryString = new URLSearchParams(params).toString();
+            url += `?${queryString}`;
+        }
+        return url;
+    },
+    
+    // Method to get standard headers
+    getHeaders() {
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+        // Add auth token if it exists
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
     }
 };
+
+console.log('AppConfig created. Base URL:', AppConfig.baseUrl);
+console.log('Current browser location:', window.location.href);
+
+// Make it globally available
+window.AppConfig = AppConfig;
+console.log('AppConfig is now globally available.');
