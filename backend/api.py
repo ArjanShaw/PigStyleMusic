@@ -19,7 +19,7 @@ import uuid
 import stripe
 from functools import wraps  # ADD THIS LINE
 from discogs_handler import DiscogsHandler 
-from price_advise_handler import PriceAdviseHandler
+from handlers.price_advise_handler import PriceAdviseHandler
 
 
 

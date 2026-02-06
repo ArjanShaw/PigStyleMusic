@@ -1455,12 +1455,17 @@
                                                     <div class="ebay-price">$${listing.price.toFixed(2)}</div>
                                                 </td>
                                                 <td>
-                                                    <div class="ebay-shipping">$${listing.shipping.toFixed(2)}</div>
+                                                    <div class="ebay-shipping">
+                                                        ${listing.shipping != null ? `$${listing.shipping.toFixed(2)}` : 'n/a'}
+                                                    </div>
                                                 </td>
                                                 <td>
-                                                    <div class="ebay-total">$${listing.total.toFixed(2)}</div>
+                                                    <div class="ebay-total">
+                                                        ${typeof listing.total === 'number' ? `$${listing.total.toFixed(2)}` : 'n/a'}
+                                                    </div>
                                                     ${listing.matches_condition ? '<span class="condition-match-badge">✓ Match</span>' : ''}
                                                 </td>
+                                                 
                                                 <td>
                                                     <div class="ebay-condition">${listing.condition || 'N/A'}</div>
                                                 </td>
