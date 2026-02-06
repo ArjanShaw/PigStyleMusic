@@ -1374,30 +1374,44 @@
                     `;
                 }
                 
-                // Add eBay summary if available
+                // Add eBay summary table if available
                 if (estimate.ebay_summary && Object.keys(estimate.ebay_summary).length > 0) {
+                    const searchQuery = estimate.search_query || estimate.ebay_summary.search_query || 'Nirvana Nevermind vinyl';
+                    
                     calculationHTML += `
                         <div class="ebay-summary">
-                            <div class="table-header">
-                                <h4>🛒 eBay Listings Summary</h4>
-                                <span class="table-count">
-                                    ${estimate.ebay_listings_count || 0} listings
-                                </span>
-                            </div>
-                            <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px;">
-                                <div><strong>Search Query:</strong> ${estimate.search_query || 'N/A'}</div>
-                                <div style="display: flex; gap: 20px; margin-top: 8px;">
-                                    <div><strong>Total Listings:</strong> ${estimate.ebay_summary.total_listings || 0}</div>
-                                    <div><strong>Condition Listings:</strong> ${estimate.ebay_summary.condition_listings || 0}</div>
-                                </div>
-                                <div style="display: flex; gap: 20px; margin-top: 8px;">
-                                    <div><strong>Condition Median:</strong> $${(estimate.ebay_summary.condition_median || 0).toFixed(2)}</div>
-                                    <div><strong>Generic Median:</strong> $${(estimate.ebay_summary.generic_median || 0).toFixed(2)}</div>
-                                </div>
-                                <div style="margin-top: 8px;">
-                                    <strong>Price Range:</strong> $${(estimate.ebay_summary.price_range?.[0] || 0).toFixed(2)} - $${(estimate.ebay_summary.price_range?.[1] || 0).toFixed(2)}
-                                </div>
-                                <div><strong>Average Price:</strong> $${(estimate.ebay_summary.average_price || 0).toFixed(2)}</div>
+                            <strong>🛒 eBay Listings Summary</strong>
+                            <div class="ebay-summary-table-container">
+                                <table class="ebay-summary-table">
+                                    <tr>
+                                        <th>Search Query</th>
+                                        <td>${searchQuery}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Total Listings</th>
+                                        <td>${estimate.ebay_summary.total_listings || 0}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Condition Listings</th>
+                                        <td>${estimate.ebay_summary.condition_listings || 0}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Condition Median</th>
+                                        <td>$${(estimate.ebay_summary.condition_median || 0).toFixed(2)}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Generic Median</th>
+                                        <td>$${(estimate.ebay_summary.generic_median || 0).toFixed(2)}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Price Range</th>
+                                        <td>$${(estimate.ebay_summary.price_range?.[0] || 0).toFixed(2)} - $${(estimate.ebay_summary.price_range?.[1] || 0).toFixed(2)}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Average Price</th>
+                                        <td>$${(estimate.ebay_summary.average_price || 0).toFixed(2)}</td>
+                                    </tr>
+                                </table>
                             </div>
                         </div>
                     `;
