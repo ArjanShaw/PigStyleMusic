@@ -1887,9 +1887,9 @@ def process_checkout_payment():
         if not record:
             continue
 
-        store_price = float(record['store_price']) if record['store_price'] else 0.0
+        store_price = float(record['store_price']) 
         consignor_id = record['consignor_id']
-        commission_rate = float(record['commission_rate']) if record['commission_rate'] else 0.20
+        commission_rate = float(record['commission_rate']) 
 
         # Calculate payout
         commission = store_price * commission_rate
