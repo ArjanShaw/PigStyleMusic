@@ -447,7 +447,9 @@
         // ============================================================================
         
         const APIUtils = {
-            baseUrl: 'http://localhost:5000',
+            baseUrl: window.location.hostname.includes('localhost') 
+                ? 'http://localhost:5000' 
+                : 'https://www.pigstylemusic.com',
             
             getHeaders() {
                 const headers = {
@@ -606,6 +608,7 @@
                 this.conditions = [];
                 this.statuses = ['new', 'active', 'sold', 'removed'];
                 this.genrePredictor = new GenrePredictor();
+                this.commissionRate = 0.20; // Default, will be updated from API
                 
                 this.init();
             }
@@ -693,13 +696,15 @@
                 
                 document.getElementById('total-records').textContent = recordsCount;
 
+                // Get commission rate from API
                 const commissionResponse = await APIUtils.get('/api/commission-rate');
+                this.commissionRate = commissionResponse.commission_rate /100;
                 document.getElementById('commission-rate').textContent = 
-                    `${(commissionResponse.commission_rate || 20.0)}%`;
+                    `${commissionResponse.commission_rate || 20.0}%`;
 
                 if (user.role === 'admin') {
                     const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
-                    const capacity = parseInt(configResponse.config_value) || 1000;
+                    const capacity = parseInt(configResponse.config_value);
                     const fillPercentage = (recordsCount / capacity * 100).toFixed(1);
                     document.getElementById('store-fill').textContent = `${fillPercentage}%`;
                 } else {
@@ -1600,17 +1605,16 @@
                 const genre = this.genres.find(g => g.id == genreId);
                 const genreName = genre ? genre.genre_name : '';
                 
-                // FIX: Handle barcode array
+                // Handle barcode array
                 let barcode = discogsRecord.barcode || '';
                 if (Array.isArray(barcode)) {
-                    // Filter out empty values and join with commas
                     barcode = barcode.filter(b => b && b.toString().trim()).join(', ');
                 }
                 
                 const recordData = {
                     artist: discogsRecord.artist,
                     title: discogsRecord.title,
-                    barcode: barcode,  // Now it's a string, not an array
+                    barcode: barcode,
                     genre_id: parseInt(genreId),
                     genre_name: genreName,
                     image_url: discogsRecord.image_url || '',
@@ -1620,7 +1624,7 @@
                     store_price: price,
                     youtube_url: '',
                     consignor_id: user.role === 'consignor' ? user.id : null,
-                    commission_rate: 0.20,
+                    commission_rate: this.commissionRate, // Use dynamic commission rate from API
                     compilation: false,
                     status_id: 1,
                     discogs_id: discogsRecord.discogs_id,
@@ -1630,6 +1634,7 @@
                 };
                 
                 console.log('ADD_RECORD: Fixed barcode:', barcode);
+                console.log('ADD_RECORD: Commission rate used:', this.commissionRate);
                 console.log('ADD_RECORD: Sending data:', recordData);
                 
                 try {
