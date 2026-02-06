@@ -5,24 +5,6 @@ const Auth = {
     isLoggedIn: false,
     role: null,
     
-    // Get API base URL based on environment
-    getApiBaseUrl() {
-        // If we're on localhost (development)
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            return 'http://localhost:5000';
-        }
-        // If we're on pigstylemusic.com (production)
-        else if (window.location.hostname.includes('pigstylemusic.com')) {
-            // Determine if API is on same domain or subdomain
-            // Option 1: Same domain with /api path
-            return ''; // Empty for same-origin requests
-            // Option 2: Different subdomain (uncomment if needed)
-            // return 'https://api.pigstylemusic.com';
-        }
-        // Fallback: same origin
-        return '';
-    },
-    
     // Initialize auth system
     async init() {
         await this.checkSession();
@@ -33,10 +15,7 @@ const Auth = {
     // Check if user is logged in
     async checkSession() {
         try {
-            const apiUrl = this.getApiBaseUrl();
-            const endpoint = apiUrl ? `${apiUrl}/session/check` : '/session/check';
-            
-            const response = await fetch(endpoint, {
+            const response = await fetch(AppConfig.getUrl('sessionCheck'), {
                 method: 'GET',
                 credentials: 'include',
                 headers: {
@@ -51,6 +30,11 @@ const Auth = {
                     this.isLoggedIn = true;
                     this.role = data.user.role;
                     console.log('User logged in:', this.user.username);
+                    
+                    // Store token if available
+                    if (data.token) {
+                        localStorage.setItem('auth_token', data.token);
+                    }
                 } else {
                     this.clearAuth();
                 }
@@ -66,17 +50,11 @@ const Auth = {
     // Login user
     async login(username, password) {
         try {
-            const apiUrl = this.getApiBaseUrl();
-            const endpoint = apiUrl ? `${apiUrl}/login` : '/api/login'; // Note: using /api/ prefix
-            
-            const response = await fetch(endpoint, {
+            const response = await fetch(AppConfig.getUrl('login'), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
+                headers: AppConfig.getHeaders(),
                 body: JSON.stringify({ username, password }),
-                credentials: 'include' // Important for cookies/sessions
+                credentials: 'include'
             });
             
             const responseText = await response.text();
@@ -92,6 +70,11 @@ const Auth = {
                 this.user = data.user;
                 this.isLoggedIn = true;
                 this.role = data.user.role;
+                
+                // Store token if available
+                if (data.token) {
+                    localStorage.setItem('auth_token', data.token);
+                }
                 
                 // Store in localStorage for quick access
                 localStorage.setItem('user', JSON.stringify(data.user));
@@ -111,11 +94,9 @@ const Auth = {
     // Logout user
     async logout() {
         try {
-            const apiUrl = this.getApiBaseUrl();
-            const endpoint = apiUrl ? `${apiUrl}/logout` : '/api/logout';
-            
-            await fetch(endpoint, {
+            await fetch(AppConfig.getUrl('logout'), {
                 method: 'POST',
+                headers: AppConfig.getHeaders(),
                 credentials: 'include'
             });
         } catch (error) {
@@ -133,6 +114,7 @@ const Auth = {
         this.role = null;
         localStorage.removeItem('user');
         localStorage.removeItem('auth_timestamp');
+        localStorage.removeItem('auth_token');
     },
     
     // Check if user has specific permission
@@ -152,23 +134,19 @@ const Auth = {
     // Check if user can access a feature
     canAccess(feature) {
         const featurePermissions = {
-            // Page access
             'view_dashboard': ['admin', 'consignor'],
             'view_admin_panel': ['admin'],
             'add_records': ['admin', 'consignor'],
             'manage_all_records': ['admin'],
             'process_payouts': ['admin'],
             'manage_users': ['admin'],
-            
-            // Feature access
             'edit_own_records': ['admin', 'consignor'],
             'view_sales_reports': ['admin', 'consignor'],
             'request_payout': ['consignor'],
             'approve_payout': ['admin']
         };
         
-        if (!featurePermissions[feature]) return true; // Feature doesn't require auth
-        
+        if (!featurePermissions[feature]) return true;
         return this.hasAnyRole(featurePermissions[feature]);
     },
     
@@ -200,7 +178,7 @@ const Auth = {
             });
         }
         
-        // Logout button (will be added dynamically)
+        // Logout button
         document.addEventListener('click', (e) => {
             if (e.target.id === 'logout-button' || e.target.closest('#logout-button')) {
                 e.preventDefault();
@@ -259,7 +237,6 @@ const Auth = {
     
     // Update page content based on auth state
     updatePageContent() {
-        // Hide/show elements based on permissions
         const protectedElements = document.querySelectorAll('[data-require-auth], [data-require-role]');
         
         protectedElements.forEach(element => {
@@ -278,7 +255,6 @@ const Auth = {
     
     // Update buttons based on auth state
     updateButtons() {
-        // Add record button (if exists)
         const addRecordBtn = document.getElementById('add-record-button');
         if (addRecordBtn) {
             if (this.canAccess('add_records')) {
@@ -290,7 +266,6 @@ const Auth = {
             }
         }
         
-        // Admin buttons
         const adminButtons = document.querySelectorAll('[data-admin-only]');
         adminButtons.forEach(button => {
             if (this.role === 'admin') {
@@ -305,11 +280,9 @@ const Auth = {
     
     // Show message to user
     showMessage(message, type = 'info') {
-        // Remove existing message
         const existingMessage = document.getElementById('auth-message');
         if (existingMessage) existingMessage.remove();
         
-        // Create new message
         const messageDiv = document.createElement('div');
         messageDiv.id = 'auth-message';
         messageDiv.className = `auth-message auth-message-${type}`;
@@ -336,7 +309,6 @@ const Auth = {
         
         document.body.appendChild(messageDiv);
         
-        // Auto-remove after 5 seconds
         setTimeout(() => {
             if (messageDiv.parentNode) {
                 messageDiv.style.animation = 'slideOut 0.3s ease';
@@ -365,25 +337,13 @@ const Auth = {
 const style = document.createElement('style');
 style.textContent = `
     @keyframes slideIn {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
     }
     
     @keyframes slideOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(100%);
-            opacity: 0;
-        }
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
     }
     
     .user-menu {
