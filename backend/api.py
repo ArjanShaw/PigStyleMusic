@@ -239,7 +239,7 @@ def get_price_advice():
         }), 500
 
 
-@app.route('/login', methods=['POST', 'OPTIONS'])
+@app.route('api/login', methods=['POST', 'OPTIONS'])
 def login():
     """Authenticate user and return user data with session"""
     if request.method == 'OPTIONS':
