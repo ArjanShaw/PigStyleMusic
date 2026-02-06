@@ -579,7 +579,8 @@ select.form-control option {
 }
 
 /* ================================================ */
-/* NEW: Price Calculation Component Styles - ALL BLACK */
+/* UPDATED: Price Calculation Component Styles */
+/* Larger font and table format for eBay summary */
 /* ================================================ */
 
 .calculation-toggle {
@@ -622,42 +623,80 @@ select.form-control option {
 }
 
 .calculation-details.expanded {
-    max-height: 300px;
+    max-height: 500px; /* Increased for larger content */
     opacity: 1;
     margin-top: 10px;
     overflow-y: auto;
 }
 
+/* UPDATED: Larger calculation content */
 .calculation-content {
     background: rgba(0, 0, 0, 0.03) !important; /* Very light gray */
     border-radius: 6px;
-    padding: 12px;
-    font-size: 11px;
-    line-height: 1.4;
+    padding: 15px !important; /* Increased padding */
+    font-size: 25px !important; /* LARGER FONT: Changed from 11px to 13px */
+    line-height: 1.5 !important; /* Better line spacing */
     color: #000 !important; /* CHANGED: All text black */
 }
 
 .calculation-step {
-    margin: 5px 0;
-    padding-left: 8px;
+    margin: 6px 0 !important; /* Increased margin */
+    padding-left: 10px !important; /* Increased padding */
     border-left: 2px solid rgba(0, 0, 0, 0.2) !important; /* Black border */
     color: #000 !important; /* CHANGED: All text black */
+    font-size: 20px !important; /* LARGER FONT */
 }
 
 .calculation-step:last-child {
     border-left-color: rgba(0, 0, 0, 0.3) !important; /* Black border */
     background: rgba(0, 0, 0, 0.05) !important; /* Light gray */
-    padding: 6px 8px;
+    padding: 8px 10px !important; /* Increased padding */
     border-radius: 4px;
-    margin-top: 8px;
+    margin-top: 10px !important; /* Increased margin */
     color: #000 !important; /* CHANGED: All text black */
+    font-size: 20px !important; /* LARGER FONT */
+    font-weight: bold !important;
 }
 
 .ebay-summary {
-    margin-top: 10px;
-    padding-top: 10px;
+    margin-top: 15px !important; /* Increased margin */
+    padding-top: 15px !important; /* Increased padding */
     border-top: 1px dashed rgba(0, 0, 0, 0.2) !important; /* Black border */
     color: #000 !important; /* CHANGED: All text black */
+}
+
+/* NEW: eBay Summary Table Styles */
+.ebay-summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 12px !important; /* Slightly smaller than calculation text */
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.ebay-summary-table th {
+    background: rgba(0, 0, 0, 0.05) !important; /* Light gray */
+    color: #000 !important; /* CHANGED: All text black */
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2) !important; /* Black border */
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.ebay-summary-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important; /* Black border */
+    vertical-align: top;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.ebay-summary-table tr:last-child td {
+    border-bottom: none;
+}
+
+.ebay-summary-table tr:nth-child(even) {
+    background: rgba(0, 0, 0, 0.02) !important; /* Very light gray */
 }
 
 .price-source-badge {
@@ -683,7 +722,8 @@ select.form-control option {
 }
 
 /* ================================================ */
-/* NEW: eBay Listings Table Styles - ALL BLACK */
+/* UPDATED: eBay Listings Table Styles */
+/* Columns snug to text width, title column 20% max */
 /* ================================================ */
 
 .ebay-listings-table {
@@ -692,6 +732,7 @@ select.form-control option {
     margin-top: 10px;
     font-size: 11px;
     color: #000 !important; /* CHANGED: All text black */
+    table-layout: fixed; /* NEW: Fixed layout for column control */
 }
 
 .ebay-listings-table th {
@@ -704,6 +745,9 @@ select.form-control option {
     position: sticky;
     top: 0;
     z-index: 10;
+    white-space: nowrap; /* Prevent header text wrapping */
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .ebay-listings-table td {
@@ -711,6 +755,51 @@ select.form-control option {
     border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important; /* Black border */
     vertical-align: top;
     color: #000 !important; /* CHANGED: All text black */
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* UPDATED: Column width adjustments - snug to content */
+.ebay-listings-table th:nth-child(1), /* Price column */
+.ebay-listings-table td:nth-child(1) {
+    width: 70px !important; /* Snug width for price */
+    min-width: 70px !important;
+    max-width: 70px !important;
+}
+
+.ebay-listings-table th:nth-child(2), /* Shipping column */
+.ebay-listings-table td:nth-child(2) {
+    width: 70px !important; /* Snug width for shipping */
+    min-width: 70px !important;
+    max-width: 70px !important;
+}
+
+.ebay-listings-table th:nth-child(3), /* Total column */
+.ebay-listings-table td:nth-child(3) {
+    width: 80px !important; /* Slightly wider for total */
+    min-width: 80px !important;
+    max-width: 80px !important;
+}
+
+.ebay-listings-table th:nth-child(4), /* Condition column */
+.ebay-listings-table td:nth-child(4) {
+    width: 90px !important; /* Snug width for condition */
+    min-width: 90px !important;
+    max-width: 90px !important;
+}
+
+.ebay-listings-table th:nth-child(5), /* Title column - 20% of screen width */
+.ebay-listings-table td:nth-child(5) {
+    width: 20% !important; /* 20% of table width */
+    min-width: 100px !important;
+    max-width: 20% !important;
+}
+
+.ebay-listings-table th:nth-child(6), /* Link column */
+.ebay-listings-table td:nth-child(6) {
+    width: 60px !important; /* Snug width for link */
+    min-width: 60px !important;
+    max-width: 60px !important;
 }
 
 .ebay-listings-table tr:nth-child(even) {
@@ -773,7 +862,6 @@ select.form-control option {
 }
 
 .ebay-title {
-    max-width: 150px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -863,6 +951,17 @@ select.form-control option {
     .stats-row {
         grid-template-columns: 1fr 1fr;
     }
+    
+    /* Responsive table adjustments */
+    .ebay-listings-table th:nth-child(5),
+    .ebay-listings-table td:nth-child(5) {
+        width: 30% !important; /* Wider on mobile */
+        max-width: 30% !important;
+    }
+    
+    .ebay-summary-table {
+        font-size: 11px !important;
+    }
 }
 
 @media (max-width: 480px) {
@@ -877,5 +976,18 @@ select.form-control option {
     .tab-btn {
         padding: 10px 15px;
         font-size: 14px;
+    }
+    
+    /* Mobile table adjustments */
+    .ebay-listings-table th,
+    .ebay-listings-table td {
+        padding: 4px 6px !important;
+        font-size: 10px !important;
+    }
+    
+    .ebay-listings-table th:nth-child(5),
+    .ebay-listings-table td:nth-child(5) {
+        width: 40% !important; /* Even wider on small mobile */
+        max-width: 40% !important;
     }
 }
