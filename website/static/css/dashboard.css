@@ -162,13 +162,15 @@ body::before {
 }
 
 /* === INVENTORY STYLES (Streamlit-like) === */
+/* UPDATED: White background with ALL BLACK TEXT */
 .inventory-container {
-    background: rgba(0, 0, 0, 0.7);
+    background: white; /* Changed from rgba(0, 0, 0, 0.7) */
     border-radius: 15px;
     padding: 25px;
-    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.3); /* Slightly lighter shadow */
+    border: 2px solid rgba(0, 0, 0, 0.1); /* Changed to black border */
     width: 100%;
+    color: #000 !important; /* ALL text black, never yellow or white */
 }
 
 .stats-row {
@@ -179,22 +181,23 @@ body::before {
 }
 
 .stat-card {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.05); /* Light gray background */
     border-radius: 10px;
     padding: 20px;
     text-align: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(0, 0, 0, 0.1); /* Changed to black border */
+    color: #000 !important; /* ALL text black */
 }
 
 .stat-value {
     font-size: 28px;
     font-weight: 700;
-    color: #ffcc00;
+    color: #000 !important; /* CHANGED: Total Records is now black, not yellow */
     margin-bottom: 5px;
 }
 
 .stat-label {
-    color: rgba(255, 255, 255, 0.7);
+    color: #000 !important; /* CHANGED: All labels black */
     font-size: 14px;
     font-weight: 500;
 }
@@ -218,15 +221,15 @@ body::before {
     flex: 1;
     min-width: 300px;
     padding: 12px 15px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.2); /* Changed to black border */
     border-radius: 8px;
-    color: white;
+    color: #000 !important; /* CHANGED: Input text black */
     font-size: 16px;
 }
 
 .search-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(0, 0, 0, 0.5); /* Changed from rgba(255, 255, 255, 0.5) */
 }
 
 .action-buttons {
@@ -248,7 +251,7 @@ body::before {
 
 .btn-primary {
     background: linear-gradient(135deg, #ffcc00, #ff9900);
-    color: #333;
+    color: #000 !important; /* CHANGED: Button text black */
 }
 
 .btn-primary:hover {
@@ -257,13 +260,13 @@ body::before {
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.1); /* Changed from rgba(255, 255, 255, 0.1) */
+    color: #000 !important; /* CHANGED: Button text black */
+    border: 1px solid rgba(0, 0, 0, 0.2); /* Changed from rgba(255, 255, 255, 0.2) */
 }
 
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.15); /* Changed from rgba(255, 255, 255, 0.2) */
     transform: translateY(-2px);
 }
 
@@ -273,9 +276,10 @@ body::before {
     gap: 20px;
     margin-bottom: 20px;
     padding: 15px;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.05); /* Changed from rgba(255, 255, 255, 0.05) */
     border-radius: 10px;
     width: 100%;
+    color: #000 !important; /* CHANGED: All text black */
 }
 
 .radio-option {
@@ -283,6 +287,7 @@ body::before {
     align-items: center;
     gap: 8px;
     cursor: pointer;
+    color: #000 !important; /* CHANGED: All text black */
 }
 
 .radio-option input[type="radio"] {
@@ -296,18 +301,19 @@ body::before {
 }
 
 .record-card {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.05); /* Changed from rgba(255, 255, 255, 0.05) */
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(0, 0, 0, 0.1); /* Changed from rgba(255, 255, 255, 0.1) */
     transition: transform 0.3s;
     width: 100%;
+    color: #000 !important; /* CHANGED: All text black */
 }
 
 .record-card:hover {
     transform: translateY(-3px);
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.08); /* Changed from rgba(255, 255, 255, 0.08) */
 }
 
 .record-header {
@@ -330,14 +336,15 @@ body::before {
 .record-title {
     font-size: 18px;
     font-weight: 600;
-    color: #ffcc00;
+    color: #000 !important; /* CHANGED: Artist-title is now black, not yellow */
     margin-bottom: 5px;
 }
 
 .record-details {
-    color: rgba(255, 255, 255, 0.7);
+    color: #000 !important; /* CHANGED: All text black */
     font-size: 14px;
     line-height: 1.4;
+    opacity: 0.9;
 }
 
 .record-details p {
@@ -361,17 +368,17 @@ body::before {
 .form-label {
     display: block;
     margin-bottom: 8px;
-    color: rgba(255, 255, 255, 0.9);
+    color: #000 !important; /* CHANGED: All labels black */
     font-weight: 500;
 }
 
 .form-control {
     width: 100%;
     padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.2); /* Changed from rgba(255, 255, 255, 0.2) */
     border-radius: 6px;
-    color: white;
+    color: #000 !important; /* CHANGED: All text black */
     font-size: 14px;
 }
 
@@ -379,14 +386,14 @@ body::before {
 .form-control:focus {
     outline: none;
     border-color: #ffcc00;
-    background: rgba(255, 255, 255, 0.15);
+    background: white; /* Changed from rgba(255, 255, 255, 0.15) */
 }
 
 /* Fix for select dropdowns */
 select.form-control {
-    color: white;
-    background-color: rgba(255, 255, 255, 0.1);
-    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='white' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E") !important;
+    color: #000 !important; /* CHANGED: All text black */
+    background-color: white;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23000' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E") !important; /* Arrow is black */
     background-repeat: no-repeat !important;
     background-position: right 12px center !important;
     background-size: 16px !important;
@@ -394,8 +401,8 @@ select.form-control {
 }
 
 select.form-control option {
-    background: #333 !important;
-    color: white !important;
+    background: white !important;
+    color: #000 !important; /* CHANGED: All text black */
     padding: 10px !important;
 }
 
@@ -403,63 +410,62 @@ select.form-control option {
 .genre-prediction {
     margin: 10px 0;
     padding: 12px;
-    background: rgba(255, 204, 0, 0.1);
-    border: 1px solid rgba(255, 204, 0, 0.3);
+    background: rgba(0, 0, 0, 0.05); /* Light gray background */
+    border: 1px solid rgba(0, 0, 0, 0.2); /* Black border */
     border-radius: 8px;
     display: flex;
     align-items: center;
     gap: 10px;
     animation: fadeIn 0.5s ease;
     width: 100%;
+    color: #000 !important; /* CHANGED: All text black, including "Genre Prediction" */
 }
 
 .genre-prediction.prediction-available {
-    background: rgba(76, 175, 80, 0.1);
-    border-color: rgba(76, 175, 80, 0.3);
+    background: rgba(0, 0, 0, 0.05); /* Light gray */
+    border-color: rgba(0, 0, 0, 0.2); /* Black border */
 }
 
 .genre-prediction.prediction-success {
-    background: rgba(76, 175, 80, 0.15) !important;
-    border-color: rgba(76, 175, 80, 0.4) !important;
+    background: rgba(0, 0, 0, 0.05) !important; /* Light gray */
+    border-color: rgba(0, 0, 0, 0.2) !important; /* Black border */
 }
 
 .prediction-icon {
-    color: #ffcc00;
+    color: #000 !important; /* CHANGED: Icon black */
     font-size: 18px;
 }
 
 .prediction-text {
     flex: 1;
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.9);
+    color: #000 !important; /* CHANGED: All text black, never white */
 }
 
 .prediction-hint {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.6);
+    color: #000 !important; /* CHANGED: All text black */
     margin-top: 3px;
+    opacity: 0.8;
 }
 
 /* Price estimation styles */
 .predicted-genre {
-    background: linear-gradient(135deg, #ffcc00, #ff9900) !important;
-    color: #333 !important;
-    border-color: #ffcc00 !important;
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
+    color: #000 !important; /* CHANGED: All text black */
+    border-color: rgba(0, 0, 0, 0.3) !important; /* Black border */
     font-weight: bold !important;
 }
 
 .price-estimating {
-    background: linear-gradient(90deg, 
-        rgba(255, 204, 0, 0.1) 0%, 
-        rgba(255, 204, 0, 0.3) 50%, 
-        rgba(255, 204, 0, 0.1) 100%) !important;
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
     animation: pulse 2s infinite !important;
-    border-color: #ffcc00 !important;
+    border-color: rgba(0, 0, 0, 0.3) !important; /* Black border */
 }
 
 .price-estimated {
-    background: rgba(76, 175, 80, 0.15) !important;
-    border-color: #4CAF50 !important;
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
+    border-color: rgba(0, 0, 0, 0.3) !important; /* Black border */
 }
 
 @keyframes pulse {
@@ -470,7 +476,7 @@ select.form-control option {
 
 .estimation-hint {
     font-size: 12px;
-    color: rgba(255, 204, 0, 0.8);
+    color: #000 !important; /* CHANGED: All text black */
     margin-top: 5px;
     display: flex;
     align-items: center;
@@ -478,28 +484,28 @@ select.form-control option {
 }
 
 .accept-prediction-btn {
-    background: rgba(76, 175, 80, 0.2) !important;
-    border: 1px solid rgba(76, 175, 80, 0.4) !important;
-    color: #4CAF50 !important;
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
+    border: 1px solid rgba(0, 0, 0, 0.3) !important; /* Black border */
+    color: #000 !important; /* CHANGED: Button text black */
     font-size: 12px !important;
     padding: 6px 12px !important;
 }
 
 .accept-prediction-btn:hover {
-    background: rgba(76, 175, 80, 0.3) !important;
+    background: rgba(0, 0, 0, 0.15) !important;
 }
 
 /* Loading States */
 .loading {
     text-align: center;
     padding: 50px;
-    color: rgba(255, 255, 255, 0.7);
+    color: #000 !important; /* CHANGED: All text black */
     width: 100%;
 }
 
 .loading i {
     font-size: 40px;
-    color: #ffcc00;
+    color: #000 !important; /* CHANGED: Spinner black */
     margin-bottom: 20px;
     animation: spin 1s linear infinite;
 }
@@ -570,6 +576,251 @@ select.form-control option {
     padding: 2px 8px !important;
     font-size: 10px !important;
     min-height: unset !important;
+}
+
+/* ================================================ */
+/* NEW: Price Calculation Component Styles - ALL BLACK */
+/* ================================================ */
+
+.calculation-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px !important; /* Larger font as requested */
+    color: #000 !important; /* CHANGED: All text black */
+    background: rgba(0, 0, 0, 0.05) !important; /* Light gray */
+    border: 1px solid rgba(0, 0, 0, 0.2) !important; /* Black border */
+    border-radius: 4px;
+    padding: 6px 10px !important; /* Slightly larger padding */
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.calculation-toggle:hover {
+    background: rgba(0, 0, 0, 0.08) !important; /* Slightly darker gray */
+    border-color: rgba(0, 0, 0, 0.3) !important; /* Black border */
+}
+
+.calculation-toggle i {
+    font-size: 10px;
+    transition: transform 0.3s ease;
+    color: #000 !important; /* CHANGED: Arrow black */
+}
+
+.calculation-toggle.expanded i {
+    transform: rotate(180deg);
+}
+
+.calculation-details {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: all 0.3s ease;
+    margin-top: 0;
+}
+
+.calculation-details.expanded {
+    max-height: 300px;
+    opacity: 1;
+    margin-top: 10px;
+    overflow-y: auto;
+}
+
+.calculation-content {
+    background: rgba(0, 0, 0, 0.03) !important; /* Very light gray */
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.calculation-step {
+    margin: 5px 0;
+    padding-left: 8px;
+    border-left: 2px solid rgba(0, 0, 0, 0.2) !important; /* Black border */
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.calculation-step:last-child {
+    border-left-color: rgba(0, 0, 0, 0.3) !important; /* Black border */
+    background: rgba(0, 0, 0, 0.05) !important; /* Light gray */
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin-top: 8px;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.ebay-summary {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(0, 0, 0, 0.2) !important; /* Black border */
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.price-source-badge {
+    display: inline-block;
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
+    color: #000 !important; /* CHANGED: ESTIMATED/CALCULATED text black */
+    font-size: 11px !important; /* Larger font as requested */
+    padding: 3px 8px !important;
+    border-radius: 10px;
+    margin-left: 8px;
+    font-weight: bold !important;
+    border: 1px solid rgba(0, 0, 0, 0.2) !important; /* Black border */
+}
+
+.price-source-badge.estimated {
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
+    color: #000 !important; /* CHANGED: ESTIMATED text black */
+}
+
+.price-source-badge.calculated {
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
+    color: #000 !important; /* CHANGED: CALCULATED text black */
+}
+
+/* ================================================ */
+/* NEW: eBay Listings Table Styles - ALL BLACK */
+/* ================================================ */
+
+.ebay-listings-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.ebay-listings-table th {
+    background: rgba(0, 0, 0, 0.08) !important; /* Light gray */
+    color: #000 !important; /* CHANGED: All text black */
+    padding: 6px 8px;
+    text-align: left;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.3) !important; /* Black border */
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.ebay-listings-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important; /* Black border */
+    vertical-align: top;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.ebay-listings-table tr:nth-child(even) {
+    background: rgba(0, 0, 0, 0.03) !important; /* Very light gray */
+}
+
+.ebay-listings-table tr:hover {
+    background: rgba(0, 0, 0, 0.05) !important; /* Light gray */
+}
+
+.ebay-listings-table tr.matches-condition {
+    background: rgba(0, 0, 0, 0.05) !important; /* Light gray */
+    border-left: 3px solid rgba(0, 0, 0, 0.3) !important; /* Black border */
+}
+
+.ebay-listings-table tr.matches-condition:hover {
+    background: rgba(0, 0, 0, 0.08) !important; /* Slightly darker gray */
+}
+
+.condition-match-badge {
+    display: inline-block;
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
+    color: #000 !important; /* CHANGED: All text black */
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-left: 5px;
+    font-weight: bold;
+    border: 1px solid rgba(0, 0, 0, 0.2) !important; /* Black border */
+}
+
+.ebay-price {
+    font-weight: bold;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.ebay-shipping {
+    color: #000 !important; /* CHANGED: All text black */
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.ebay-total {
+    font-weight: bold;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.ebay-link {
+    color: #000 !important; /* CHANGED: Link text black */
+    text-decoration: none;
+    font-size: 10px;
+    white-space: nowrap;
+    border-bottom: 1px dotted rgba(0, 0, 0, 0.3) !important; /* Black border */
+}
+
+.ebay-link:hover {
+    text-decoration: underline;
+    color: #000 !important; /* CHANGED: Hover text black */
+    border-bottom: 1px solid rgba(0, 0, 0, 0.5) !important; /* Black border */
+}
+
+.ebay-title {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.ebay-condition {
+    font-size: 10px;
+    color: #000 !important; /* CHANGED: All text black */
+    opacity: 0.8;
+}
+
+.table-scroll-container {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.2) !important; /* Black border */
+    border-radius: 4px;
+    padding: 2px;
+    background: white;
+}
+
+.table-header {
+    background: rgba(0, 0, 0, 0.05) !important; /* Light gray */
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #000 !important; /* CHANGED: All text black */
+}
+
+.table-header h4 {
+    margin: 0;
+    color: #000 !important; /* CHANGED: All text black */
+    font-size: 13px;
+}
+
+.table-count {
+    background: rgba(0, 0, 0, 0.1) !important; /* Light gray */
+    color: #000 !important; /* CHANGED: All text black */
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: bold;
+    border: 1px solid rgba(0, 0, 0, 0.2) !important; /* Black border */
 }
 
 /* Responsive */
