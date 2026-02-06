@@ -1,17 +1,10 @@
 // PigStyle Records API Utilities
-// Centralized API calls for the PigStyle Records application
-
 const pigstyleAPI = {
-    // Base API URL - change this based on your deployment environment
-    baseURL: window.location.hostname.includes('localhost') 
-        ? 'http://localhost:5000' 
-        : 'https://www.pigstylemusic.com',
+    // Use the centralized config
+    baseURL: AppConfig.baseUrl,
     
-    // Common headers for all requests
-    headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    },
+    // Common headers
+    headers: AppConfig.getHeaders(),
     
     // Escape HTML to prevent XSS attacks
     escapeHtml: function(text) {
@@ -31,14 +24,17 @@ const pigstyleAPI = {
         return Array.from(artists).sort();
     },
     
-    // Get all records from API
-    loadAllRecords: async function() {
+    // Generic request method
+    async request(endpoint, options = {}) {
+        const url = AppConfig.getUrl(endpoint, options.params);
+        const config = {
+            method: options.method || 'GET',
+            headers: this.headers,
+            ...options
+        };
+        
         try {
-            console.log('Loading all records from API...');
-            const response = await fetch(`${this.baseURL}/records`, {
-                method: 'GET',
-                headers: this.headers
-            });
+            const response = await fetch(url, config);
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -46,311 +42,101 @@ const pigstyleAPI = {
             
             const data = await response.json();
             
-            if (data.status === 'success') {
-                console.log(`Loaded ${data.records.length} records`);
-                return data.records;
-            } else {
-                throw new Error(data.error || 'Failed to load records');
+            if (data.status === 'error') {
+                throw new Error(data.error || 'API returned error status');
             }
+            
+            return data;
         } catch (error) {
-            console.error('Error loading records:', error);
+            console.error(`API request failed for ${endpoint}:`, error);
             throw error;
         }
+    },
+    
+    // Get all records from API
+    loadAllRecords: async function() {
+        console.log('Loading all records from API...');
+        return this.request('records');
     },
     
     // Get random records for streaming page
     loadRandomRecords: async function(limit = 500, hasYouTube = true) {
-        try {
-            console.log(`Loading ${limit} random records ${hasYouTube ? 'with YouTube' : ''}...`);
-            
-            const url = `${this.baseURL}/records/random?limit=${limit}&has_youtube=${hasYouTube}`;
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                console.log(`Loaded ${data.count} random records`);
-                return data.records;
-            } else {
-                throw new Error(data.error || 'Failed to load random records');
-            }
-        } catch (error) {
-            console.error('Error loading random records:', error);
-            throw error;
-        }
+        console.log(`Loading ${limit} random records ${hasYouTube ? 'with YouTube' : ''}...`);
+        return this.request('records', {
+            params: { random: true, limit, has_youtube: hasYouTube }
+        });
     },
     
-    // Alternative method if /records/random doesn't exist
-    getRecordsWithYouTube: async function(limit = 500) {
-        try {
-            console.log(`Loading records with YouTube videos...`);
-            const response = await fetch(`${this.baseURL}/records?has_youtube=true&limit=${limit}`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                console.log(`Loaded ${data.records.length} records with YouTube`);
-                return data.records;
-            } else {
-                throw new Error(data.error || 'Failed to load records');
-            }
-        } catch (error) {
-            console.error('Error loading records with YouTube:', error);
-            throw error;
-        }
-    },
-    
-    // Get catalog grouped records for catalog.html
+    // Get catalog grouped records
     loadCatalogGroupedRecords: async function() {
-        try {
-            console.log('Loading catalog grouped records...');
-            const response = await fetch(`${this.baseURL}/catalog/grouped-records`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                console.error('HTTP error:', response.status, response.statusText);
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                console.log(`Loaded ${data.count} records in ${data.groups.length} price groups`);
-                return data;
-            } else {
-                console.error('API error:', data.error);
-                throw new Error(data.error || 'Failed to load catalog records');
-            }
-        } catch (error) {
-            console.error('Error loading catalog grouped records:', error);
-            throw error;
-        }
+        console.log('Loading catalog grouped records...');
+        return this.request('records', {
+            params: { grouped: true }
+        });
     },
     
     // Get a single record by ID
     getRecord: async function(recordId) {
-        try {
-            const response = await fetch(`${this.baseURL}/records/${recordId}`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Error getting record:', error);
-            throw error;
-        }
+        return this.request(`records/${recordId}`);
     },
     
     // Search records
     searchRecords: async function(searchTerm) {
-        try {
-            const response = await fetch(`${this.baseURL}/search?q=${encodeURIComponent(searchTerm)}`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data.records || [];
-        } catch (error) {
-            console.error('Error searching records:', error);
-            throw error;
-        }
+        return this.request('search', {
+            params: { q: searchTerm }
+        });
     },
     
     // Vote on a record
     voteOnRecord: async function(recordId, voterIp, voteType) {
-        try {
-            const response = await fetch(`${this.baseURL}/vote/${recordId}/${voterIp}/${voteType}`, {
-                method: 'POST',
-                headers: this.headers,
-                body: JSON.stringify({})
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Error voting on record:', error);
-            throw error;
-        }
+        return this.request(`vote/${recordId}/${voterIp}/${voteType}`, {
+            method: 'POST'
+        });
     },
     
     // Get user's votes
     getUserVotes: async function(voterIp) {
-        try {
-            const response = await fetch(`${this.baseURL}/user-votes/${voterIp}`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data.votes || {};
-        } catch (error) {
-            console.error('Error getting user votes:', error);
-            throw error;
-        }
+        return this.request(`userVotes/${voterIp}`);
     },
     
     // Get vote counts for a record
     getVoteCounts: async function(recordId) {
-        try {
-            const response = await fetch(`${this.baseURL}/votes/${recordId}`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Error getting vote counts:', error);
-            throw error;
-        }
+        return this.request(`votes/${recordId}`);
     },
     
     // Get Spotify playlists
     getSpotifyPlaylists: async function(genreFilter = null) {
-        try {
-            let url = `${this.baseURL}/spotify/stored-playlists`;
-            if (genreFilter) {
-                url += `?genre=${encodeURIComponent(genreFilter)}`;
-            }
-            
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Error getting Spotify playlists:', error);
-            throw error;
-        }
+        const params = genreFilter ? { genre: genreFilter } : null;
+        return this.request('spotify', { params });
     },
     
     // Get all users
     getUsers: async function() {
-        try {
-            const response = await fetch(`${this.baseURL}/users`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data.users || [];
-        } catch (error) {
-            console.error('Error getting users:', error);
-            throw error;
-        }
+        return this.request('users');
     },
     
     // Get all genres
     getGenres: async function() {
-        try {
-            const response = await fetch(`${this.baseURL}/genres`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data.genres || [];
-        } catch (error) {
-            console.error('Error getting genres:', error);
-            throw error;
-        }
+        return this.request('genres');
     },
     
     // Get database statistics
     getStats: async function() {
-        try {
-            const response = await fetch(`${this.baseURL}/stats`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Error getting stats:', error);
-            throw error;
-        }
+        return this.request('stats');
     },
     
     // Health check
     healthCheck: async function() {
-        try {
-            const response = await fetch(`${this.baseURL}/health`, {
-                method: 'GET',
-                headers: this.headers
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Error checking health:', error);
-            throw error;
-        }
+        return this.request('health');
     },
     
     // Generate voter hash from IP address
     generateVoterHash: function(ipAddress) {
-        // Simple hash function - in production, use a more secure method
         let hash = 0;
         for (let i = 0; i < ipAddress.length; i++) {
             const char = ipAddress.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32-bit integer
+            hash = hash & hash;
         }
         return Math.abs(hash).toString(16);
     },
@@ -358,14 +144,11 @@ const pigstyleAPI = {
     // Get user's IP address (client-side approximation)
     getUserIP: async function() {
         try {
-            // This is a client-side approximation - real IP needs server-side handling
-            // Using a service to get public IP
             const response = await fetch('https://api.ipify.org?format=json');
             const data = await response.json();
             return data.ip || 'unknown';
         } catch (error) {
             console.log('Could not get public IP, using fallback');
-            // Fallback to a session-based identifier
             if (!sessionStorage.getItem('clientId')) {
                 sessionStorage.setItem('clientId', Date.now().toString(36) + Math.random().toString(36).substr(2));
             }
@@ -399,6 +182,4 @@ const pigstyleAPI = {
 };
 
 // Export for use in other scripts
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = pigstyleAPI;
-}
+window.pigstyleAPI = pigstyleAPI;

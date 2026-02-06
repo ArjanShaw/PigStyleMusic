@@ -6,6 +6,10 @@
     <title>Dashboard - PigStyle Music</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    
+    <!-- Load centralized configuration first -->
+    <script src="/static/js/config.js"></script>
+    
     <style>
         /* Additional styles for genre prediction */
         .genre-prediction {
@@ -439,7 +443,7 @@
         </div>
     </div>
 
-    <!-- Inventory JavaScript -->
+    <!-- JavaScript Files -->
     <script src="/static/js/auth.js"></script>
     <script>
         // ============================================================================
@@ -447,9 +451,8 @@
         // ============================================================================
         
         const APIUtils = {
-            baseUrl: window.location.hostname.includes('localhost') 
-                ? 'http://localhost:5000' 
-                : 'https://www.pigstylemusic.com',
+            // Use centralized configuration
+            baseUrl: AppConfig.baseUrl,
             
             getHeaders() {
                 const headers = {
@@ -540,7 +543,7 @@
                 }
                 
                 try {
-                    // Call the mapping API
+                    // Call the mapping API using centralized configuration
                     const response = await APIUtils.get(
                         `/discogs-genre-mappings/${encodeURIComponent(cleanGenre)}`
                     );
@@ -698,7 +701,7 @@
 
                 // Get commission rate from API
                 const commissionResponse = await APIUtils.get('/api/commission-rate');
-                this.commissionRate = commissionResponse.commission_rate /100;
+                this.commissionRate = commissionResponse.commission_rate / 100;
                 document.getElementById('commission-rate').textContent = 
                     `${commissionResponse.commission_rate || 20.0}%`;
 
@@ -1185,16 +1188,16 @@
             async estimatePriceForRecord(record, selectedCondition) {
                 console.log('ESTIMATE_PRICE: Estimating price for', record.artist, '-', record.title, 'Condition:', selectedCondition);
                     
-                    const response = await APIUtils.post('/api/price-estimate', {
-                        artist: record.artist,
-                        title: record.title,
-                        condition: selectedCondition,
-                        discogs_genre: record.genre || '',
-                        discogs_id: record.discogs_id || ''
-                    });
-                    
-                    console.log('ESTIMATE_PRICE: API response:', response);
-                    return response;
+                const response = await APIUtils.post('/api/price-estimate', {
+                    artist: record.artist,
+                    title: record.title,
+                    condition: selectedCondition,
+                    discogs_genre: record.genre || '',
+                    discogs_id: record.discogs_id || ''
+                });
+                
+                console.log('ESTIMATE_PRICE: API response:', response);
+                return response;
             }
 
             // 2. Condition change handler
