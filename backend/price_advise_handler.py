@@ -1,6 +1,5 @@
 """
-PriceAdviseHandler - Integrated price estimation with eBay and Discogs
-Restored detailed calculation logic from old application
+PriceAdviseHandler - Integrated price estimation with eBay and Discogs with detailed eBay listings
 """
 import re
 import time
@@ -9,9 +8,8 @@ import base64
 import logging
 import os
 import json
-import statistics
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -54,162 +52,156 @@ class PriceAdviseHandler:
                 @staticmethod
                 def round_to_99(price):
                     return round(price, 2)
-                @staticmethod
-                def round_to_store_price(price):
-                    # Implement store pricing rules
-                    if price <= 5:
-                        return round(price + 0.99, 2)
-                    elif price <= 15:
-                        return round(price * 1.5, 2)
-                    else:
-                        return round(price, 2)
             self.RoundingHandler = SimpleRounding
     
     def get_price_estimate(self, artist: str, title: str, selected_condition: str, 
-                          discogs_genre: str = None, discogs_id: str = None) -> Dict[str, Any]:
+                          discogs_genre: Optional[str] = None, discogs_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get comprehensive price estimate from eBay and Discogs with detailed calculations
+        Get price estimate from eBay and Discogs with detailed eBay listings
+        Returns enriched result with calculation steps and eBay listing data
         """
-        # Initialize result with all required keys
         result = {
             'discogs_price': None,
             'ebay_price': None,
-            'ebay_condition_price': None,
+            'ebay_listings': [],  # Detailed eBay listings
+            'ebay_summary': {},   # Summary statistics
             'estimated_price': 0.0,
             'price_source': 'unknown',
-            'calculation': [],  # This will store detailed calculation steps
-            'ebay_summary': '',  # Initialize as empty string, not None
-            'ebay_listings_count': 0,
-            'condition_listings_count': 0,
+            'calculation': [],
             'success': False,
             'error': None,
-            'ebay_search_query': '',
-            'ebay_raw_data': [],
-            'price_range': (0, 0),
-            'average_price': 0
+            'search_query': f"{artist} {title}"
         }
         
         try:
-            # Generate search query
-            search_query = self._generate_search_query(artist, title)
-            result['ebay_search_query'] = search_query
-            
             # Step 1: Get Discogs price
             discogs_price = self._get_discogs_price(artist, title, selected_condition, discogs_id)
             result['discogs_price'] = discogs_price
             
-            # Step 2: Get comprehensive eBay data
-            ebay_data = self._get_comprehensive_ebay_data(search_query, selected_condition)
-            # Update result with ebay_data, ensuring all keys exist
-            for key in ['ebay_generic_median', 'ebay_condition_median', 'ebay_listings', 
-                       'condition_listings', 'ebay_listings_count', 'condition_listings_count',
-                       'price_range', 'average_price', 'raw_listings']:
-                if key in ebay_data:
-                    result[key] = ebay_data[key]
-            
-            # Step 3: Build detailed calculation
-            calculation = []
-            
-            # Start with header
-            calculation.append("📊 Price Details\n")
-            calculation.append("\n🧮 Price Calculation:\n")
-            
-            # Add Discogs info
             if discogs_price:
-                calculation.append(f"• Discogs Price (cached): ${discogs_price:.2f}")
+                result['calculation'].append(f"Discogs Price (cached): ${discogs_price:.2f}")
             
-            # Add eBay search query
-            calculation.append(f"\neBay Search: {search_query}")
+            # Step 2: Get eBay price with detailed listings
+            ebay_result = self._get_ebay_price_with_listings(artist, title, selected_condition)
+            result['ebay_price'] = ebay_result.get('median_price')
+            result['ebay_listings'] = ebay_result.get('listings', [])
+            result['ebay_summary'] = ebay_result.get('summary', {})
             
-            # Add price sources
-            if discogs_price:
-                calculation.append(f"• Discogs: ${discogs_price:.2f}")
+            # Step 3: Build calculation details
+            self._build_calculation_details(result)
             
-            ebay_generic = result.get('ebay_generic_median')
-            ebay_condition = result.get('ebay_condition_median')
-            ebay_count = result.get('ebay_listings_count', 0)
-            condition_count = result.get('condition_listings_count', 0)
-            
-            if ebay_generic:
-                calculation.append(f"• eBay (generic): ${ebay_generic:.2f} (n={ebay_count})")
-            
-            if ebay_condition and condition_count > 0:
-                calculation.append(f"• eBay (condition): ${ebay_condition:.2f} (n={condition_count})")
-            else:
-                calculation.append(f"• Using eBay generic price (condition n={condition_count} < 3.0)")
-            
-            # Step 4: Calculate minimum price
-            prices = []
-            if discogs_price and discogs_price > 0:
-                prices.append(('Discogs', discogs_price))
-            if ebay_generic and ebay_generic > 0:
-                prices.append(('eBay', ebay_generic))
-            if ebay_condition and ebay_condition > 0:
-                prices.append(('eBay (condition)', ebay_condition))
-            
-            if prices:
-                # Find minimum price
-                min_source, min_price = min(prices, key=lambda x: x[1])
-                calculation.append(f"• Minimum market price: ${min_price:.2f} (min of Discogs and eBay)")
-                
-                # Apply 0.9x multiplier
-                multiplied_price = min_price * 0.9
-                calculation.append(f"• Multiplier: 0.9× = ${multiplied_price:.2f}")
-                
-                # Round to store pricing
-                final_price = self.RoundingHandler.round_to_store_price(multiplied_price)
-                calculation.append(f"• Rounded to store pricing rules: ${final_price:.2f}")
-                calculation.append(f"\nFinal advised price: ${final_price:.2f}")
-                
-                result['estimated_price'] = final_price
-                result['price_source'] = min_source.lower()
-                result['success'] = True
-            else:
-                # Fallback
-                calculation.append("• No market prices found, using fallback price")
-                final_price = 19.99
-                result['estimated_price'] = final_price
-                result['price_source'] = 'fallback'
-                result['success'] = True
-            
-            # Store calculation steps
-            result['calculation'] = calculation
-            
-            # Step 5: Generate eBay summary (ensure it always returns a string)
-            result['ebay_summary'] = self._generate_ebay_summary(result)
+            # Step 4: Calculate final price
+            self._calculate_final_price(result)
             
             return result
             
         except Exception as e:
-            logger.error(f"Price estimation error: {str(e)}", exc_info=True)
+            logger.error(f"Price estimation error: {str(e)}")
             result['error'] = str(e)
-            result['calculation'] = [f"Error: {str(e)}"]
-            result['estimated_price'] = 19.99
-            result['ebay_summary'] = "Error generating eBay summary"
+            result['estimated_price'] = 19.99  # Fallback price
             return result
     
-    def _generate_search_query(self, artist: str, title: str) -> str:
-        """Generate search query for eBay/Discogs"""
-        # Clean and format artist/title
-        clean_artist = re.sub(r'[^\w\s\-&]', '', artist).strip()
-        clean_title = re.sub(r'[^\w\s\-&]', '', title).strip()
+    def _build_calculation_details(self, result: Dict[str, Any]) -> None:
+        """Build detailed calculation steps"""
+        discogs_price = result['discogs_price']
+        ebay_price = result['ebay_price']
+        ebay_summary = result['ebay_summary']
+        ebay_listings = result['ebay_listings']
         
-        # Handle special characters and multiple artists
-        if ',' in clean_artist or '&' in clean_artist:
-            artists = re.split(r'[,&]', clean_artist)
-            artist_query = ', '.join([a.strip() + '*' for a in artists if a.strip()])
-        else:
-            artist_query = clean_artist + '*'
+        calculation = result['calculation']
         
-        return f"{artist_query}, {clean_title} - VINYL"
+        # Add eBay summary
+        if ebay_price:
+            calculation.append(f"eBay (generic): ${ebay_price:.2f} (n={ebay_summary.get('total_listings', 0)})")
+        
+        # Add condition-specific info
+        condition_count = ebay_summary.get('condition_listings', 0)
+        calculation.append(f"Using eBay generic price (condition n={condition_count} < 3.0)")
+        
+        # Add eBay listings info
+        if ebay_listings:
+            condition_matches = [l for l in ebay_listings if l.get('matches_condition', False)]
+            if condition_matches:
+                calculation.append(f"Found {len(condition_matches)} eBay listings matching condition '{result.get('search_query', '')}'")
+            else:
+                calculation.append(f"Found {len(ebay_listings)} eBay listings total")
+        
+        # Calculate minimum market price
+        prices = []
+        if discogs_price and discogs_price > 0:
+            prices.append(discogs_price)
+        if ebay_price and ebay_price > 0:
+            prices.append(ebay_price)
+        
+        if prices:
+            min_price = min(prices)
+            calculation.append(f"Minimum market price: ${min_price:.2f} (min of Discogs and eBay)")
+            
+            # Apply multiplier (example: 0.9x)
+            multiplier = 0.9
+            adjusted_price = min_price * multiplier
+            calculation.append(f"Multiplier: {multiplier}× = ${adjusted_price:.2f}")
+            
+            # Round to store pricing
+            rounded_price = self.RoundingHandler.round_to_store_price(adjusted_price)
+            calculation.append(f"Rounded to store pricing rules: ${rounded_price:.2f}")
+            
+            result['calculation_steps'] = {
+                'discogs_price': discogs_price,
+                'ebay_price': ebay_price,
+                'min_price': min_price,
+                'multiplier': multiplier,
+                'adjusted_price': adjusted_price,
+                'rounded_price': rounded_price
+            }
     
-    def _get_discogs_price(self, artist: str, title: str, condition: str, discogs_id: str = None) -> Optional[float]:
-        """Get comprehensive price data from Discogs"""
+    def _calculate_final_price(self, result: Dict[str, Any]) -> None:
+        """Calculate final advised price"""
+        steps = result.get('calculation_steps', {})
+        
+        if steps:
+            final_price = steps.get('rounded_price', 0)
+            result['estimated_price'] = final_price
+            result['price'] = final_price
+            result['source'] = 'calculated'
+            result['success'] = True
+            
+            # Add final calculation step
+            result['calculation'].append(f"Final advised price: ${final_price:.2f}")
+        else:
+            # Fallback calculation
+            prices = []
+            if result['discogs_price'] and result['discogs_price'] > 0:
+                prices.append(result['discogs_price'])
+            if result['ebay_price'] and result['ebay_price'] > 0:
+                prices.append(result['ebay_price'])
+            
+            if prices:
+                min_price = min(prices)
+                result['estimated_price'] = self.RoundingHandler.round_to_store_price(min_price)
+                
+                if result['discogs_price'] == min_price and result['ebay_price'] == min_price:
+                    result['price_source'] = 'both'
+                elif result['discogs_price'] == min_price:
+                    result['price_source'] = 'discogs'
+                else:
+                    result['price_source'] = 'ebay'
+                
+                result['calculation'].append(f"Minimum: ${min_price:.2f}")
+                result['calculation'].append(f"Rounded: ${result['estimated_price']:.2f}")
+                result['success'] = True
+            else:
+                result['error'] = "No prices found from either source"
+                result['estimated_price'] = 19.99  # Default fallback price
+    
+    def _get_discogs_price(self, artist: str, title: str, condition: str, discogs_id: Optional[str] = None) -> Optional[float]:
+        """Get price from Discogs API"""
         try:
             if not self.discogs_token:
                 logger.warning("No Discogs token available")
                 return None
             
+            # Try to get price from Discogs Marketplace
             search_query = f"{artist} {title}"
             encoded_query = requests.utils.quote(search_query)
             
@@ -218,27 +210,9 @@ class PriceAdviseHandler:
                 'Authorization': f'Discogs token={self.discogs_token}'
             }
             
-            # Try to get specific release if ID provided
-            if discogs_id:
-                try:
-                    release_url = f"https://api.discogs.com/releases/{discogs_id}"
-                    release_response = requests.get(release_url, headers=headers, timeout=10)
-                    
-                    if release_response.status_code == 200:
-                        # Get marketplace stats for this specific release
-                        stats_url = f"https://api.discogs.com/marketplace/stats/{discogs_id}"
-                        stats_response = requests.get(stats_url, headers=headers, timeout=10)
-                        
-                        if stats_response.status_code == 200:
-                            stats_data = stats_response.json()
-                            lowest_price = stats_data.get('lowest_price', {}).get('value')
-                            if lowest_price:
-                                return float(lowest_price)
-                except Exception as e:
-                    logger.warning(f"Could not get specific Discogs release {discogs_id}: {e}")
-            
             # Search for the release
             search_url = f"https://api.discogs.com/database/search?q={encoded_query}&type=release&per_page=5"
+            
             response = requests.get(search_url, headers=headers, timeout=10)
             
             if response.status_code == 200:
@@ -246,39 +220,63 @@ class PriceAdviseHandler:
                 results = data.get('results', [])
                 
                 if results:
-                    # Get the first result's ID
-                    first_result_id = results[0].get('id')
-                    if first_result_id:
+                    # Get the first result's ID if discogs_id not provided
+                    release_id = discogs_id or results[0].get('id')
+                    
+                    if release_id:
                         # Get marketplace stats
-                        stats_url = f"https://api.discogs.com/marketplace/stats/{first_result_id}"
+                        stats_url = f"https://api.discogs.com/marketplace/stats/{release_id}"
                         stats_response = requests.get(stats_url, headers=headers, timeout=10)
                         
                         if stats_response.status_code == 200:
                             stats_data = stats_response.json()
+                            
+                            # Try to find price for our condition
+                            condition_prices = {}
+                            
+                            # Check lowest price
                             lowest_price = stats_data.get('lowest_price', {}).get('value')
                             if lowest_price:
-                                return float(lowest_price)
+                                condition_prices['lowest'] = float(lowest_price)
+                            
+                            # Check for condition-specific prices
+                            for price_info in stats_data.get('prices', []):
+                                cond = price_info.get('condition', '').lower()
+                                price_val = price_info.get('value')
+                                
+                                if price_val:
+                                    # Map to our condition system
+                                    for our_cond, patterns in self.DiscogsConditions.CONDITION_PATTERNS.items():
+                                        if any(re.search(p, cond, re.IGNORECASE) for p in patterns):
+                                            condition_prices[our_cond] = float(price_val)
+                                            break
+                            
+                            # Return price for selected condition, or lowest price
+                            if condition in condition_prices:
+                                return condition_prices[condition]
+                            elif 'lowest' in condition_prices:
+                                return condition_prices['lowest']
             
-            logger.info(f"No Discogs price found for {artist} - {title}")
             return None
             
         except Exception as e:
             logger.error(f"Discogs price error: {str(e)}")
             return None
     
-    def _get_comprehensive_ebay_data(self, search_query: str, selected_condition: str) -> Dict[str, Any]:
-        """Get comprehensive eBay data including all listings"""
-        # Initialize with default values
+    def _get_ebay_price_with_listings(self, artist: str, title: str, condition: str) -> Dict[str, Any]:
+        """Get price and detailed listings from eBay API"""
         result = {
-            'ebay_generic_median': None,
-            'ebay_condition_median': None,
-            'ebay_listings': [],
-            'condition_listings': [],
-            'ebay_listings_count': 0,
-            'condition_listings_count': 0,
-            'price_range': (0, 0),
-            'average_price': 0,
-            'raw_listings': []
+            'median_price': None,
+            'listings': [],
+            'summary': {
+                'total_listings': 0,
+                'condition_listings': 0,
+                'condition_median': 0,
+                'generic_median': 0,
+                'price_range': (0, 0),
+                'average_price': 0,
+                'search_query': f"{artist} {title} vinyl"
+            }
         }
         
         try:
@@ -286,10 +284,13 @@ class PriceAdviseHandler:
                 logger.warning("No eBay credentials available")
                 return result
             
+            # Get eBay access token
             token = self._get_ebay_token()
             if not token:
-                logger.warning("Could not get eBay token")
                 return result
+            
+            # Search eBay for vinyl records
+            search_query = f"{artist} {title} vinyl"
             
             headers = {
                 'Authorization': f'Bearer {token}',
@@ -297,11 +298,10 @@ class PriceAdviseHandler:
                 'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
             }
             
-            # Search eBay
             params = {
                 'q': search_query,
-                'limit': '50',  # Increased for better statistics
-                'filter': 'buyingOptions:{FIXED_PRICE},priceCurrency:USD'
+                'limit': '50',  # Get more listings for better stats
+                'filter': 'conditions:{USED}'
             }
             
             search_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
@@ -309,137 +309,115 @@ class PriceAdviseHandler:
             
             if response.status_code == 200:
                 data = response.json()
-                all_listings = data.get('itemSummaries', [])
-                result['raw_listings'] = all_listings
-                result['ebay_listings_count'] = len(all_listings)
+                items = data.get('itemSummaries', [])
                 
-                # Extract prices from all listings
-                all_prices = []
-                condition_prices = []
+                # Process all listings
+                all_listings = []
+                condition_listings = []
                 
-                for item in all_listings:
-                    # Get price
-                    price_data = item.get('price', {})
-                    price_value = price_data.get('value')
-                    
-                    if price_value:
-                        price = float(price_value)
-                        all_prices.append(price)
+                for item in items:
+                    listing = self._process_ebay_listing(item, artist, title, condition)
+                    if listing:
+                        all_listings.append(listing)
                         
-                        # Check if matches condition
-                        item_cond = item.get('condition', '').lower()
-                        item_title = item.get('title', '').lower()
-                        
-                        # Check condition matching
-                        if self._matches_condition(selected_condition, item_cond, item_title):
-                            condition_prices.append(price)
-                            result['condition_listings'].append({
-                                'title': item.get('title'),
-                                'price': price,
-                                'condition': item_cond
-                            })
+                        # Check if matches our condition
+                        if listing.get('matches_condition', False):
+                            condition_listings.append(listing)
                 
-                # Calculate statistics for all listings
-                if all_prices:
-                    try:
-                        result['ebay_generic_median'] = statistics.median(all_prices)
-                        result['price_range'] = (min(all_prices), max(all_prices))
-                        result['average_price'] = statistics.mean(all_prices)
-                        result['ebay_listings'] = all_prices
-                    except statistics.StatisticsError as e:
-                        logger.warning(f"Statistics error for all listings: {e}")
+                # Sort by total price (price + shipping)
+                all_listings.sort(key=lambda x: x.get('total', 0))
+                condition_listings.sort(key=lambda x: x.get('total', 0))
                 
-                # Calculate statistics for condition listings
-                if condition_prices:
-                    try:
-                        result['ebay_condition_median'] = statistics.median(condition_prices)
-                        result['condition_listings_count'] = len(condition_prices)
-                        result['condition_listings'] = condition_prices
-                    except statistics.StatisticsError as e:
-                        logger.warning(f"Statistics error for condition listings: {e}")
-            
-            else:
-                logger.warning(f"eBay API returned status {response.status_code}: {response.text}")
+                # Calculate statistics
+                result['listings'] = all_listings
+                result['summary']['total_listings'] = len(all_listings)
+                result['summary']['condition_listings'] = len(condition_listings)
+                
+                # Calculate median prices
+                if all_listings:
+                    generic_prices = [l.get('total', 0) for l in all_listings if l.get('total', 0) > 0]
+                    if generic_prices:
+                        result['summary']['generic_median'] = self._calculate_median(generic_prices)
+                        result['median_price'] = result['summary']['generic_median']
+                        result['summary']['price_range'] = (min(generic_prices), max(generic_prices))
+                        result['summary']['average_price'] = sum(generic_prices) / len(generic_prices)
+                
+                if condition_listings:
+                    condition_prices = [l.get('total', 0) for l in condition_listings if l.get('total', 0) > 0]
+                    if condition_prices:
+                        result['summary']['condition_median'] = self._calculate_median(condition_prices)
             
             return result
             
         except Exception as e:
-            logger.error(f"eBay data error: {str(e)}")
+            logger.error(f"eBay price error: {str(e)}")
             return result
     
-    def _matches_condition(self, selected_condition: str, item_condition: str, item_title: str) -> bool:
-        """Check if item matches the selected condition"""
-        patterns = self.DiscogsConditions.CONDITION_PATTERNS.get(selected_condition, [])
-        
-        # Check condition field
-        for pattern in patterns:
-            if re.search(pattern, item_condition, re.IGNORECASE):
-                return True
-        
-        # Also check title for condition mentions
-        for pattern in patterns:
-            if re.search(pattern, item_title, re.IGNORECASE):
-                return True
-        
-        return False
-    
-    def _generate_ebay_summary(self, result: Dict[str, Any]) -> str:
-        """Generate detailed eBay summary string matching old format"""
+    def _process_ebay_listing(self, item: Dict, artist: str, title: str, condition: str) -> Optional[Dict]:
+        """Process individual eBay listing with detailed information"""
         try:
-            logger.info(f"Generating eBay summary with data: {result.keys()}")
-            logger.info(f"eBay listings count: {result.get('ebay_listings_count')}")
-            logger.info(f"eBay generic median: {result.get('ebay_generic_median')}")
+            item_id = item.get('itemId', '')
+            item_title = item.get('title', '')
+            item_cond = item.get('condition', '')
+            item_url = item.get('itemWebUrl', '')
             
-            summary_lines = []
+            # Get price and shipping
+            price_data = item.get('price', {})
+            price_value = price_data.get('value', 0)
             
-            # eBay Listings Summary header
-            summary_lines.append("🛒 eBay Listings Summary\n")
-            summary_lines.append("")
-            summary_lines.append(f"Search Query: {result.get('ebay_search_query', 'N/A')}\n")
-            summary_lines.append("")
-            summary_lines.append("Total Listings")
-            summary_lines.append(f"{result.get('ebay_listings_count', 0)}\n")
-            summary_lines.append("")
-            summary_lines.append("Condition Listings")
-            summary_lines.append(f"{result.get('condition_listings_count', 0)}\n")
-            summary_lines.append("")
-            summary_lines.append("Condition Median")
+            shipping_data = item.get('shippingOptions', [{}])[0] if item.get('shippingOptions') else {}
+            shipping_cost = shipping_data.get('shippingCost', {}).get('value', 0)
             
-            # FIX: Handle None value for ebay_condition_median
-            ebay_condition_median = result.get('ebay_condition_median')
-            if ebay_condition_median is not None:
-                summary_lines.append(f"${ebay_condition_median:.2f}\n")
-            else:
-                summary_lines.append("$0.00\n")
+            # Calculate total
+            total_price = float(price_value) + float(shipping_cost)
             
-            summary_lines.append("")
+            # Check if matches our condition
+            matches_condition = False
+            patterns = self.DiscogsConditions.CONDITION_PATTERNS.get(condition, [])
             
-            # All eBay Listings details
-            ebay_listings_count = result.get('ebay_listings_count', 0)
-            ebay_generic_median = result.get('ebay_generic_median')
+            title_lower = item_title.lower()
+            cond_lower = item_cond.lower()
             
-            if ebay_listings_count > 0 and ebay_generic_median is not None:
-                summary_lines.append(f"📊 All eBay Listings ({ebay_listings_count} listings) - Generic Median: ${ebay_generic_median:.2f}\n")
-                summary_lines.append("")
-                
-                # Get price range
-                price_range = result.get('price_range', (0, 0))
-                price_min = price_range[0] if isinstance(price_range, (tuple, list)) and len(price_range) >= 2 else 0
-                price_max = price_range[1] if isinstance(price_range, (tuple, list)) and len(price_range) >= 2 else 0
-                average_price = result.get('average_price', 0)
-                
-                summary_lines.append(f"Median Calculation: ${ebay_generic_median:.2f}")
-                summary_lines.append(f"Number of Listings: {ebay_listings_count}")
-                summary_lines.append(f"Price Range: {price_min:.2f} - {price_max:.2f}")
-                summary_lines.append(f"Average Price: ${average_price:.2f}")
+            for pattern in patterns:
+                if re.search(pattern, title_lower, re.IGNORECASE) or \
+                   re.search(pattern, cond_lower, re.IGNORECASE):
+                    matches_condition = True
+                    break
             
-            return "\n".join(summary_lines)
+            # Format eBay link
+            search_slug = requests.utils.quote(f"{artist} {title} VINYL")
+            formatted_url = f"{item_url}"
+            
+            return {
+                'item_id': item_id,
+                'title': item_title[:80] + ('...' if len(item_title) > 80 else ''),
+                'condition': item_cond,
+                'price': float(price_value),
+                'shipping': float(shipping_cost),
+                'total': total_price,
+                'url': formatted_url,
+                'matches_condition': matches_condition,
+                'full_title': item_title  # Keep full title for reference
+            }
             
         except Exception as e:
-            logger.error(f"Error generating eBay summary: {e}", exc_info=True)
-            return "Error generating eBay summary"   
+            logger.error(f"Error processing eBay listing: {str(e)}")
+            return None
     
-    def _get_ebay_token(self):
+    def _calculate_median(self, prices: List[float]) -> float:
+        """Calculate median of prices"""
+        if not prices:
+            return 0.0
+        
+        sorted_prices = sorted(prices)
+        n = len(sorted_prices)
+        
+        if n % 2 == 1:
+            return sorted_prices[n // 2]
+        else:
+            return (sorted_prices[n // 2 - 1] + sorted_prices[n // 2]) / 2
+    
+    def _get_ebay_token(self) -> Optional[str]:
         """Get OAuth token for eBay API"""
         try:
             # Check if token is still valid
@@ -473,7 +451,6 @@ class PriceAdviseHandler:
                 self.token_expiry = time.time() + token_data.get('expires_in', 7200) - 300
                 return self.ebay_access_token
             
-            logger.warning(f"Failed to get eBay token: {response.status_code} - {response.text}")
             return None
             
         except Exception as e:

@@ -96,6 +96,50 @@ def get_db():
     return conn
 
 #===========================================================================
+
+@app.route('/api/price-estimate-debug', methods=['POST'])
+def price_estimate_debug():
+    """Debug endpoint: Get price estimate with raw eBay data"""
+    try:
+        data = request.json
+        artist = data.get('artist')
+        title = data.get('title')
+        condition = data.get('condition')
+        discogs_genre = data.get('discogs_genre', '')
+        discogs_id = data.get('discogs_id', '')
+        
+        # Initialize price advisor
+        price_advisor = PriceAdviseHandler(
+            discogs_token=app.config.get('DISCOGS_USER_TOKEN'),
+            ebay_client_id=app.config.get('EBAY_CLIENT_ID'),
+            ebay_client_secret=app.config.get('EBAY_CLIENT_SECRET')
+        )
+        
+        # Call internal method directly to get raw eBay data
+        ebay_result = price_advisor._get_ebay_price_with_listings(
+            artist=artist,
+            title=title,
+            condition=condition
+        )
+        
+        # Return the RAW eBay result for debugging
+        return jsonify({
+            'status': 'success',
+            'debug_info': 'Raw eBay API result',
+            'ebay_raw_result': ebay_result,
+            'artist': artist,
+            'title': title,
+            'condition': condition
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+ 
 @app.route('/api/price-estimate', methods=['POST'])
 def price_estimate():
     try:
@@ -107,7 +151,8 @@ def price_estimate():
         discogs_id = data.get('discogs_id', '')
         
         # Debug log
-         
+        app.logger.info(f"Price estimate called: {artist} - {title}")
+        
         # Initialize price advisor
         price_advisor = PriceAdviseHandler(
             discogs_token=app.config.get('DISCOGS_USER_TOKEN'),
@@ -124,9 +169,11 @@ def price_estimate():
             discogs_id=discogs_id
         )
         
-        # Debug log
-         
-        # Return the FULL result
+        # Debug log the result structure
+        app.logger.info(f"Result keys: {list(result.keys())}")
+        app.logger.info(f"eBay listings count: {len(result.get('ebay_listings', []))}")
+        
+        # Return the FULL result including ebay_listings
         return jsonify({
             'status': 'success' if result['success'] else 'error',
             'success': result['success'],
@@ -134,21 +181,24 @@ def price_estimate():
             'price': result['estimated_price'],  # For compatibility
             'price_source': result.get('price_source', 'unknown'),
             'calculation': result.get('calculation', []),
-            'ebay_summary': result.get('ebay_summary', ''),
-            'ebay_listings_count': result.get('ebay_listings_count', 0),
-            'condition_listings_count': result.get('condition_listings_count', 0),
-            'source': result.get('price_source', 'unknown')  # For compatibility
+            'ebay_summary': result.get('ebay_summary', {}),
+            'ebay_listings': result.get('ebay_listings', []),  # ← THIS WAS MISSING
+            'ebay_listings_count': len(result.get('ebay_listings', [])),
+            'condition_listings_count': result.get('ebay_summary', {}).get('condition_listings', 0),
+            'source': result.get('price_source', 'unknown')
         })
         
     except Exception as e:
-         return jsonify({
+        app.logger.error(f"Price estimate error: {str(e)}")
+        return jsonify({
             'status': 'error',
             'error': str(e),
             'estimated_price': 19.99,
             'calculation': [f"Error: {str(e)}"],
-            'ebay_summary': ''
+            'ebay_summary': {},
+            'ebay_listings': [],
+            'ebay_listings_count': 0
         }), 500
- 
 
 @app.route('/api/price-advice', methods=['POST'])
 def get_price_advice():
