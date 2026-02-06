@@ -326,6 +326,91 @@
             border-radius: 10px;
             font-weight: bold;
         }
+
+        /* Inventory Table Styles */
+        .inventory-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .inventory-table th {
+            background: rgba(255, 204, 0, 0.2);
+            color: #ffcc00;
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 2px solid rgba(255, 204, 0, 0.3);
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .inventory-table td {
+            padding: 10px 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .inventory-table tr:nth-child(even) {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .inventory-table tr:hover {
+            background: rgba(255, 204, 0, 0.1);
+        }
+
+        .table-actions {
+            display: flex;
+            gap: 5px;
+            flex-wrap: nowrap;
+        }
+
+        .table-action-btn {
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            background: rgba(255, 204, 0, 0.1);
+            color: #ffcc00;
+            transition: all 0.2s ease;
+        }
+
+        .table-action-btn:hover {
+            background: rgba(255, 204, 0, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .consignor-filter {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+        }
+
+        .consignor-filter label {
+            color: #ffcc00;
+            font-weight: bold;
+        }
+
+        .consignor-filter select {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 204, 0, 0.3);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            min-width: 200px;
+        }
+
+        .no-records {
+            text-align: center;
+            padding: 40px;
+            color: rgba(255, 255, 255, 0.6);
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -363,13 +448,59 @@
             <button class="tab-btn active" data-tab="inventory">
                 <i class="fas fa-boxes"></i> Inventory
             </button>
-            <button class="tab-btn" data-tab="consignment">
-                <i class="fas fa-record-vinyl"></i> Consignment
+            <button class="tab-btn" data-tab="add-edit-delete">
+                <i class="fas fa-edit"></i> Add/Edit & Delete
             </button>
         </div>
 
         <!-- Inventory Tab -->
         <div id="inventory-tab" class="tab-content active">
+            <div class="inventory-container">
+                <!-- Consignor Filter (Admin Only) -->
+                <div id="consignor-filter-container" class="consignor-filter" style="display: none;">
+                    <label for="consignor-filter"><i class="fas fa-filter"></i> Filter by Consignor:</label>
+                    <select id="consignor-filter">
+                        <option value="all">All Consignors</option>
+                    </select>
+                </div>
+
+                <!-- Inventory Table -->
+                <div id="inventory-table-container">
+                    <table class="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>Artist</th>
+                                <th>Title</th>
+                                <th>Genre</th>
+                                <th>Condition</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Barcode</th>
+                                <th>Catalog #</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-table-body">
+                            <!-- Records will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Loading/Empty States -->
+                <div id="inventory-loading" class="loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading inventory...</p>
+                </div>
+
+                <div id="inventory-empty" class="no-records" style="display: none;">
+                    <i class="fas fa-box-open" style="font-size: 48px; margin-bottom: 15px;"></i>
+                    <p>No records found in inventory</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add/Edit & Delete Tab -->
+        <div id="add-edit-delete-tab" class="tab-content">
             <div class="inventory-container">
                 <!-- Stats Row -->
                 <div class="stats-row">
@@ -422,23 +553,10 @@
 
                 <!-- Results Container -->
                 <div id="results-container" class="results-container">
-                    <!-- Results will be loaded here -->
                     <div class="loading" id="default-loading">
                         <i class="fas fa-search"></i>
                         <p>Search for records to get started</p>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Consignment Tab (Empty for now) -->
-        <div id="consignment-tab" class="tab-content">
-            <div class="inventory-container">
-                <div class="loading">
-                    <i class="fas fa-record-vinyl"></i>
-                    <h3>Consignment Management</h3>
-                    <p>Your consignment dashboard will appear here</p>
-                    <p><em>Coming soon...</em></p>
                 </div>
             </div>
         </div>
@@ -452,7 +570,6 @@
         // ============================================================================
         
         const APIUtils = {
-            // Use centralized configuration
             baseUrl: AppConfig.baseUrl,
             
             getHeaders() {
@@ -531,37 +648,27 @@
             async predictGenre(discogsGenre) {
                 if (!discogsGenre) return null;
                 
-                // Clean genre for API call
                 let cleanGenre = discogsGenre;
                 if (cleanGenre.includes('/')) {
                     cleanGenre = cleanGenre.replace('/', ' ');
                 }
                 
-                // Check cache first
                 if (this.genreMappingCache[cleanGenre]) {
                     console.log(`GENRE_CACHE: Using cached prediction for "${cleanGenre}"`);
                     return this.genreMappingCache[cleanGenre];
                 }
                 
-                try {
-                    // Call the mapping API using centralized configuration
-                    const response = await APIUtils.get(
-                        `/discogs-genre-mappings/${encodeURIComponent(cleanGenre)}`
-                    );
-                    
-                    if (response.status === 'success' && response.mapping) {
-                        // Cache the result
-                        this.genreMappingCache[cleanGenre] = response.mapping;
-                        console.log(`GENRE_PREDICTION: Found mapping for "${cleanGenre}" -> ${response.mapping.local_genre_name}`);
-                        return response.mapping;
-                    } else {
-                        // No mapping found
-                        console.log(`GENRE_PREDICTION: No mapping found for "${cleanGenre}"`);
-                        this.genreMappingCache[cleanGenre] = null;
-                        return null;
-                    }
-                } catch (error) {
-                    console.error(`GENRE_PREDICTION: Error checking mapping for "${cleanGenre}":`, error);
+                const response = await APIUtils.get(
+                    `/discogs-genre-mappings/${encodeURIComponent(cleanGenre)}`
+                );
+                
+                if (response.status === 'success' && response.mapping) {
+                    this.genreMappingCache[cleanGenre] = response.mapping;
+                    console.log(`GENRE_PREDICTION: Found mapping for "${cleanGenre}" -> ${response.mapping.local_genre_name}`);
+                    return response.mapping;
+                } else {
+                    console.log(`GENRE_PREDICTION: No mapping found for "${cleanGenre}"`);
+                    this.genreMappingCache[cleanGenre] = null;
                     return null;
                 }
             }
@@ -579,24 +686,18 @@
                     local_genre_id: localGenreId
                 };
                 
-                try {
-                    const response = await APIUtils.post('/discogs-genre-mappings', mappingData);
+                const response = await APIUtils.post('/discogs-genre-mappings', mappingData);
+                
+                if (response.status === 'success') {
+                    this.genreMappingCache[cleanGenre] = {
+                        local_genre_id: localGenreId,
+                        local_genre_name: localGenreName
+                    };
                     
-                    if (response.status === 'success') {
-                        // Update cache
-                        this.genreMappingCache[cleanGenre] = {
-                            local_genre_id: localGenreId,
-                            local_genre_name: localGenreName
-                        };
-                        
-                        console.log(`GENRE_MAPPING: Saved mapping "${cleanGenre}" -> ${localGenreName}`);
-                        return response;
-                    }
-                    return null;
-                } catch (error) {
-                    console.error(`GENRE_MAPPING: Error saving mapping:`, error);
-                    return null;
+                    console.log(`GENRE_MAPPING: Saved mapping "${cleanGenre}" -> ${localGenreName}`);
+                    return response;
                 }
+                return null;
             }
         }
 
@@ -612,7 +713,9 @@
                 this.conditions = [];
                 this.statuses = ['new', 'active', 'sold', 'removed'];
                 this.genrePredictor = new GenrePredictor();
-                this.commissionRate = 0.20; // Default, will be updated from API
+                this.commissionRate = 0.20;
+                this.consignors = [];
+                this.selectedConsignorId = 'all';
                 
                 this.init();
             }
@@ -628,6 +731,8 @@
                     this.loadConditions();
                     this.setupEventListeners();
                     this.setupTabs();
+                    await this.loadConsignors();
+                    await this.loadInventory();
                 } else {
                     console.log('INIT: User not authenticated, showing guest message');
                     this.showGuestMessage();
@@ -684,6 +789,130 @@
                     document.getElementById('searchInput').value = '';
                     this.clearResults();
                 });
+
+                const consignorFilter = document.getElementById('consignor-filter');
+                if (consignorFilter) {
+                    consignorFilter.addEventListener('change', (e) => {
+                        this.selectedConsignorId = e.target.value;
+                        this.loadInventory();
+                    });
+                }
+            }
+
+            async loadConsignors() {
+                const user = Auth.getUser();
+                if (user.role === 'admin') {
+                    try {
+                        // Use the correct endpoint: /api/consignor/records
+                        const response = await APIUtils.get('/api/consignor/records');
+                        console.log('LOAD_CONSIGNORS: Response from /api/consignor/records:', response);
+                        
+                        if (response && response.records) {
+                            // Extract unique consignors from records
+                            const consignorMap = {};
+                            response.records.forEach(record => {
+                                if (record.consignor_id && record.consignor_name) {
+                                    if (!consignorMap[record.consignor_id]) {
+                                        consignorMap[record.consignor_id] = {
+                                            id: record.consignor_id,
+                                            name: record.consignor_name,
+                                            email: record.consignor_email || ''
+                                        };
+                                    }
+                                }
+                            });
+                            
+                            this.consignors = Object.values(consignorMap);
+                            
+                            const filterContainer = document.getElementById('consignor-filter-container');
+                            const filterSelect = document.getElementById('consignor-filter');
+                            
+                            if (this.consignors.length > 0) {
+                                filterContainer.style.display = 'flex';
+                                filterSelect.innerHTML = '<option value="all">All Consignors</option>' +
+                                    this.consignors.map(consignor => 
+                                        `<option value="${consignor.id}">${consignor.name}</option>`
+                                    ).join('');
+                            } else {
+                                filterContainer.style.display = 'none';
+                            }
+                        }
+                    } catch (error) {
+                        console.error('LOAD_CONSIGNORS: Error loading consignors:', error);
+                        document.getElementById('consignor-filter-container').style.display = 'none';
+                    }
+                }
+            }
+
+            async loadInventory() {
+                const user = Auth.getUser();
+                const loadingDiv = document.getElementById('inventory-loading');
+                const emptyDiv = document.getElementById('inventory-empty');
+                const tableBody = document.getElementById('inventory-table-body');
+                
+                loadingDiv.style.display = 'block';
+                emptyDiv.style.display = 'none';
+                tableBody.innerHTML = '';
+                
+                let records = [];
+                
+                try {
+                    if (user.role === 'admin') {
+                        if (this.selectedConsignorId !== 'all') {
+                            // Filter records by specific consignor
+                            const allRecords = await APIUtils.get('/records');
+                            records = allRecords.records ? allRecords.records.filter(record => 
+                                record.consignor_id == this.selectedConsignorId
+                            ) : [];
+                        } else {
+                            // Get all records
+                            const response = await APIUtils.get('/records');
+                            records = response.records || [];
+                        }
+                    } else {
+                        // For consignors, get their own records
+                        const response = await APIUtils.get(`/records/user/${user.id}`);
+                        records = response.records || [];
+                    }
+                    
+                    loadingDiv.style.display = 'none';
+                    
+                    if (records.length === 0) {
+                        emptyDiv.style.display = 'block';
+                        return;
+                    }
+                    
+                    tableBody.innerHTML = records.map(record => `
+                        <tr>
+                            <td>${record.artist || 'N/A'}</td>
+                            <td>${record.title || 'N/A'}</td>
+                            <td>${record.genre_name || 'N/A'}</td>
+                            <td>${record.condition || 'N/A'}</td>
+                            <td>$${(record.store_price || 0).toFixed(2)}</td>
+                            <td>${record.status_name || 'N/A'}</td>
+                            <td>${record.barcode || 'N/A'}</td>
+                            <td>${record.catalog_number || 'N/A'}</td>
+                            <td>
+                                <div class="table-actions">
+                                    <button class="table-action-btn" onclick="window.inventoryManager.editRecord(${record.id})">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="table-action-btn" onclick="window.inventoryManager.deleteRecord(${record.id}, true)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+                } catch (error) {
+                    console.error('LOAD_INVENTORY: Error loading inventory:', error);
+                    loadingDiv.style.display = 'none';
+                    emptyDiv.innerHTML = `
+                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 15px; color: #ffcc00;"></i>
+                        <p>Error loading inventory: ${error.message}</p>
+                    `;
+                    emptyDiv.style.display = 'block';
+                }
             }
 
             async loadStats() {
@@ -700,7 +929,6 @@
                 
                 document.getElementById('total-records').textContent = recordsCount;
 
-                // Get commission rate from API
                 const commissionResponse = await APIUtils.get('/api/commission-rate');
                 this.commissionRate = commissionResponse.commission_rate / 100;
                 document.getElementById('commission-rate').textContent = 
@@ -814,11 +1042,9 @@
                 const response = await APIUtils.get('/api/discogs/search', { q: searchTerm });
                 
                 if (response.status === 'success' && response.results) {
-                    // Enhance results with genre predictions
                     const enhancedResults = await Promise.all(
                         response.results.map(async (record) => {
                             if (record.genre) {
-                                // Get genre prediction
                                 const prediction = await this.genrePredictor.predictGenre(record.genre);
                                 if (prediction) {
                                     record.predicted_genre = prediction;
@@ -920,7 +1146,6 @@
                 console.log('RENDER_DISCOGS: this.genres =', this.genres);
                 console.log('RENDER_DISCOGS: this.conditions =', this.conditions);
                 
-                // Helper function to find genre index by ID
                 const findGenreIndex = (genreId) => {
                     if (!this.genres || !genreId) return -1;
                     return this.genres.findIndex(g => g.id == genreId);
@@ -929,13 +1154,11 @@
                 return `
                     <h3>Search Results (${resultsCount})</h3>
                     ${this.currentResults.map((record, index) => {
-                        // Check if we have a genre prediction
                         const hasPrediction = record.predicted_genre;
                         const predictedGenreId = hasPrediction ? record.predicted_genre.local_genre_id : null;
                         const predictedGenreName = hasPrediction ? record.predicted_genre.local_genre_name : null;
                         const predictionIndex = findGenreIndex(predictedGenreId);
                         
-                        // Generate genre options with prediction selected
                         const genreOptions = this.genres.map((genre, idx) => {
                             const selected = hasPrediction && idx === predictionIndex ? 'selected' : '';
                             return `<option value="${genre.id}" ${selected}>${genre.genre_name}</option>`;
@@ -969,7 +1192,6 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Genre Prediction Banner -->
                                 ${hasPrediction ? `
                                     <div class="genre-prediction prediction-available" id="prediction-banner-${record.discogs_id}">
                                         <i class="fas fa-lightbulb prediction-icon"></i>
@@ -999,7 +1221,6 @@
                                     </div>
                                 ` : ''}
                                 
-                                <!-- Add Record Form -->
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label class="form-label">Genre *</label>
@@ -1030,7 +1251,6 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Price Calculation Details (will be filled dynamically) -->
                                 <div id="calculation-${record.discogs_id}" class="calculation-container"></div>
                                 
                                 <div class="form-row">
@@ -1069,7 +1289,6 @@
                     `;
                 }
                 
-                // Helper function to get genre options for edit forms
                 const getGenreOptions = (recordId) => {
                     const record = this.currentResults.find(r => r.id == recordId);
                     return this.genres.map(genre => {
@@ -1114,10 +1333,8 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Price Calculation Details (for existing records if available) -->
                                 <div id="calculation-${record.id}" class="calculation-container"></div>
                                 
-                                <!-- Edit Form -->
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label class="form-label">Genre</label>
@@ -1185,7 +1402,6 @@
                 `;
             }
 
-            // 1. Price estimation method
             async estimatePriceForRecord(record, selectedCondition) {
                 console.log('ESTIMATE_PRICE: Estimating price for', record.artist, '-', record.title, 'Condition:', selectedCondition);
                     
@@ -1201,7 +1417,6 @@
                 return response;
             }
 
-            // 2. Condition change handler
             async handleConditionChange(event, isEditMode = false) {
                 const selectElement = event.target;
                 const card = selectElement.closest('.record-card');
@@ -1209,16 +1424,13 @@
                 const selectedCondition = selectElement.value;
                 
                 if (!selectedCondition) {
-                    return; // Don't estimate if no condition selected
+                    return;
                 }
                 
-                // Find the record
                 let record;
                 if (isEditMode) {
-                    // For edit mode, find in database results
                     record = this.currentResults.find(r => r.id == recordId);
                 } else {
-                    // For add mode, find in Discogs results
                     const index = card.getAttribute('data-index');
                     record = this.currentResults[index];
                 }
@@ -1228,7 +1440,6 @@
                     return;
                 }
                 
-                // Get price input field
                 let priceInput;
                 if (isEditMode) {
                     priceInput = card.querySelector('.edit-price-input');
@@ -1241,16 +1452,13 @@
                     return;
                 }
                 
-                // If price is already entered, don't auto-estimate
                 if (priceInput.value && priceInput.value.trim() !== '' && !isNaN(parseFloat(priceInput.value))) {
                     return;
                 }
                 
-                // Store current value and disable input
                 const originalValue = priceInput.value;
                 priceInput.disabled = true;
                 
-                // Create a temporary overlay to show "Estimating..."
                 const priceContainer = priceInput.parentElement;
                 const tempOverlay = document.createElement('div');
                 tempOverlay.className = 'price-estimating';
@@ -1275,84 +1483,63 @@
                 priceContainer.style.position = 'relative';
                 priceContainer.appendChild(tempOverlay);
                 
-                try {
-                    const estimate = await this.estimatePriceForRecord(record, selectedCondition);
+                const estimate = await this.estimatePriceForRecord(record, selectedCondition);
+                
+                tempOverlay.remove();
+                priceInput.disabled = false;
+                
+                if (estimate.success || estimate.estimated_price || estimate.calculation) {
+                    let finalPrice;
+                    let priceSource = 'unknown';
                     
-                    // Remove the overlay
-                    tempOverlay.remove();
-                    priceInput.disabled = false;
-                    
-                    if (estimate.success || estimate.estimated_price || estimate.calculation) {
-                        // Determine the price to use
-                        let finalPrice;
-                        let priceSource = 'unknown';
-                        
-                        if (estimate.estimated_price) {
-                            finalPrice = estimate.estimated_price;
-                            priceSource = estimate.price_source || 'estimated';
-                        } else if (estimate.price) {
-                            finalPrice = estimate.price;
-                            priceSource = estimate.source || 'estimated';
-                        } else if (estimate.calculation && estimate.calculation.length > 0) {
-                            // Try to find price from calculation steps
-                            const finalStep = estimate.calculation[estimate.calculation.length - 1];
-                            if (finalStep.includes('Final advised price:')) {
-                                const priceMatch = finalStep.match(/\$([\d.]+)/);
-                                if (priceMatch) {
-                                    finalPrice = parseFloat(priceMatch[1]);
-                                    priceSource = 'calculated';
-                                }
+                    if (estimate.estimated_price) {
+                        finalPrice = estimate.estimated_price;
+                        priceSource = estimate.price_source || 'estimated';
+                    } else if (estimate.price) {
+                        finalPrice = estimate.price;
+                        priceSource = estimate.source || 'estimated';
+                    } else if (estimate.calculation && estimate.calculation.length > 0) {
+                        const finalStep = estimate.calculation[estimate.calculation.length - 1];
+                        if (finalStep.includes('Final advised price:')) {
+                            const priceMatch = finalStep.match(/\$([\d.]+)/);
+                            if (priceMatch) {
+                                finalPrice = parseFloat(priceMatch[1]);
+                                priceSource = 'calculated';
                             }
                         }
+                    }
+                    
+                    if (finalPrice) {
+                        priceInput.value = parseFloat(finalPrice).toFixed(2);
+                        priceInput.classList.add('price-estimated');
                         
-                        if (finalPrice) {
-                            // Update price field with estimated value
-                            priceInput.value = parseFloat(finalPrice).toFixed(2);
-                            priceInput.classList.add('price-estimated');
-                            
-                            // Show estimation source hint
-                            const existingHint = priceInput.parentElement.querySelector('.estimation-hint');
-                            if (!existingHint) {
-                                const hint = document.createElement('div');
-                                hint.className = 'estimation-hint';
-                                hint.innerHTML = `
-                                    <i class="fas fa-bolt"></i>
-                                    Estimated from ${priceSource} data
-                                    <button class="btn btn-small" style="margin-left: auto; padding: 2px 8px; font-size: 10px;" 
-                                            onclick="this.closest('.estimation-hint').remove()">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                `;
-                                priceInput.parentElement.appendChild(hint);
-                            }
-                            
-                            // Show calculation details as expandable component
-                            this.showExpandableCalculationDetails(record, selectedCondition, estimate, recordId);
-                            
-                        } else {
-                            // No price found
-                            priceInput.value = '';
-                            this.showMessage('Could not estimate price. Please enter manually.', 'warning');
+                        const existingHint = priceInput.parentElement.querySelector('.estimation-hint');
+                        if (!existingHint) {
+                            const hint = document.createElement('div');
+                            hint.className = 'estimation-hint';
+                            hint.innerHTML = `
+                                <i class="fas fa-bolt"></i>
+                                Estimated from ${priceSource} data
+                                <button class="btn btn-small" style="margin-left: auto; padding: 2px 8px; font-size: 10px;" 
+                                        onclick="this.closest('.estimation-hint').remove()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            `;
+                            priceInput.parentElement.appendChild(hint);
                         }
+                        
+                        this.showExpandableCalculationDetails(record, selectedCondition, estimate, recordId);
+                        
                     } else {
-                        // Estimation failed
-                        priceInput.value = originalValue;
+                        priceInput.value = '';
                         this.showMessage('Could not estimate price. Please enter manually.', 'warning');
                     }
-                } catch (error) {
-                    console.error('HANDLE_CONDITION_CHANGE: Estimation error:', error);
-                    tempOverlay.remove();
-                    priceInput.disabled = false;
+                } else {
                     priceInput.value = originalValue;
-                    this.showMessage('Error estimating price. Please enter manually.', 'error');
-                } finally {
-                    // Focus on price input for easy editing
-                    setTimeout(() => priceInput.focus(), 100);
+                    this.showMessage('Could not estimate price. Please enter manually.', 'warning');
                 }
             }
 
-            // Helper method to show expandable price calculation details
-            // Updated to include eBay listings table
             showExpandableCalculationDetails(record, condition, estimate, recordId) {
                 const calculationContainer = document.getElementById(`calculation-${recordId}`);
                 if (!calculationContainer) return;
@@ -1360,7 +1547,6 @@
                 let calculationHTML = '';
                 let priceSourceClass = 'estimated';
                 
-                // Determine price source for badge
                 if (estimate.estimated_price || estimate.price) {
                     if (estimate.price_source === 'discogs' || estimate.source === 'discogs') {
                         priceSourceClass = 'estimated';
@@ -1369,7 +1555,6 @@
                     }
                 }
                 
-                // Build calculation details
                 if (estimate.calculation && estimate.calculation.length > 0) {
                     calculationHTML = `
                         <div class="calculation-content">
@@ -1383,7 +1568,6 @@
                     `;
                 }
                 
-                // Add eBay summary table if available
                 if (estimate.ebay_summary && Object.keys(estimate.ebay_summary).length > 0) {
                     const searchQuery = estimate.search_query || estimate.ebay_summary.search_query || 'Nirvana Nevermind vinyl';
                     
@@ -1426,7 +1610,6 @@
                     `;
                 }
                 
-                // Add eBay listings table if available
                 if (estimate.ebay_listings && estimate.ebay_listings.length > 0) {
                     calculationHTML += `
                         <div class="ebay-listings" style="margin-top: 15px;">
@@ -1489,7 +1672,6 @@
                     `;
                 }
                 
-                // Only show if we have calculation details
                 if (calculationHTML) {
                     calculationContainer.innerHTML = `
                         <div class="calculation-toggle" onclick="this.classList.toggle('expanded'); 
@@ -1509,21 +1691,17 @@
                 }
             }
 
-            // 3. Add event listeners for condition dropdowns
             addConditionChangeListeners() {
-                // For add mode condition dropdowns
                 document.querySelectorAll('.condition-select').forEach(select => {
                     select.addEventListener('change', (e) => this.handleConditionChange(e, false));
                 });
                 
-                // For edit mode condition dropdowns
                 document.querySelectorAll('.edit-condition-select').forEach(select => {
                     select.addEventListener('change', (e) => this.handleConditionChange(e, true));
                 });
             }
 
             attachResultEventListeners() {
-                // Add record buttons
                 document.querySelectorAll('.add-record-btn').forEach(button => {
                     button.addEventListener('click', async (e) => {
                         const card = e.target.closest('.record-card');
@@ -1534,7 +1712,6 @@
                     });
                 });
 
-                // Accept prediction buttons
                 document.querySelectorAll('.accept-prediction-btn').forEach(button => {
                     button.addEventListener('click', async (e) => {
                         e.preventDefault();
@@ -1544,11 +1721,9 @@
                         const genreName = button.getAttribute('data-genre-name');
                         const recordId = button.getAttribute('data-record-id');
                         
-                        // Save the mapping
                         const saved = await this.genrePredictor.saveMapping(discogsGenre, genreId, genreName);
                         
                         if (saved) {
-                            // Update the button and banner
                             const banner = document.getElementById(`prediction-banner-${recordId}`);
                             if (banner) {
                                 banner.innerHTML = `
@@ -1561,7 +1736,6 @@
                                 banner.classList.remove('prediction-available');
                             }
                             
-                            // Hide the button
                             button.style.display = 'none';
                             
                             this.showMessage(`Genre mapping saved: "${discogsGenre}" → ${genreName}`, 'success');
@@ -1569,7 +1743,6 @@
                     });
                 });
 
-                // Save changes buttons
                 document.querySelectorAll('.save-changes-btn').forEach(button => {
                     button.addEventListener('click', async (e) => {
                         const recordId = e.target.getAttribute('data-record-id');
@@ -1577,7 +1750,6 @@
                     });
                 });
 
-                // Delete record buttons
                 document.querySelectorAll('.delete-record-btn').forEach(button => {
                     button.addEventListener('click', async (e) => {
                         const recordId = e.target.getAttribute('data-record-id');
@@ -1587,7 +1759,6 @@
                     });
                 });
                 
-                // Add condition change listeners
                 this.addConditionChangeListeners();
             }
 
@@ -1614,7 +1785,6 @@
                 const genre = this.genres.find(g => g.id == genreId);
                 const genreName = genre ? genre.genre_name : '';
                 
-                // Handle barcode array
                 let barcode = discogsRecord.barcode || '';
                 if (Array.isArray(barcode)) {
                     barcode = barcode.filter(b => b && b.toString().trim()).join(', ');
@@ -1633,7 +1803,7 @@
                     store_price: price,
                     youtube_url: '',
                     consignor_id: user.role === 'consignor' ? user.id : null,
-                    commission_rate: this.commissionRate, // Use dynamic commission rate from API
+                    commission_rate: this.commissionRate,
                     compilation: false,
                     status_id: 1,
                     discogs_id: discogsRecord.discogs_id,
@@ -1646,37 +1816,32 @@
                 console.log('ADD_RECORD: Commission rate used:', this.commissionRate);
                 console.log('ADD_RECORD: Sending data:', recordData);
                 
-                try {
-                    const response = await APIUtils.post('/records', recordData);
+                const response = await APIUtils.post('/records', recordData);
+                
+                if (response.status === 'success') {
+                    this.showMessage(`Record added successfully! ID: ${response.record_id}`, 'success');
                     
-                    if (response.status === 'success') {
-                        this.showMessage(`Record added successfully! ID: ${response.record_id}`, 'success');
-                        
-                        // Auto-save genre mapping
-                        if (discogsRecord.genre && discogsRecord.predicted_genre && 
-                            discogsRecord.predicted_genre.local_genre_id == genreId) {
-                            await this.genrePredictor.saveMapping(
-                                discogsRecord.genre,
-                                genreId,
-                                genreName
-                            );
-                        } else if (discogsRecord.genre && genreId) {
-                            await this.genrePredictor.saveMapping(
-                                discogsRecord.genre,
-                                genreId,
-                                genreName
-                            );
-                        }
-                        
-                        await this.loadStats();
-                        this.clearResults();
-                        document.getElementById('searchInput').value = '';
-                    } else {
-                        this.showMessage(`Error: ${response.error || 'Failed to add record'}`, 'error');
+                    if (discogsRecord.genre && discogsRecord.predicted_genre && 
+                        discogsRecord.predicted_genre.local_genre_id == genreId) {
+                        await this.genrePredictor.saveMapping(
+                            discogsRecord.genre,
+                            genreId,
+                            genreName
+                        );
+                    } else if (discogsRecord.genre && genreId) {
+                        await this.genrePredictor.saveMapping(
+                            discogsRecord.genre,
+                            genreId,
+                            genreName
+                        );
                     }
-                } catch (error) {
-                    console.error('ADD_RECORD: Failed to add record:', error);
-                    this.showMessage(`Failed to add record: ${error.message}`, 'error');
+                    
+                    await this.loadStats();
+                    await this.loadInventory();
+                    this.clearResults();
+                    document.getElementById('searchInput').value = '';
+                } else {
+                    this.showMessage(`Error: ${response.error || 'Failed to add record'}`, 'error');
                 }
             }
 
@@ -1732,21 +1897,49 @@
                         await this.performSearch(currentSearch);
                     }
                     await this.loadStats();
+                    await this.loadInventory();
                 } else {
                     this.showMessage(`Error: ${response.error || 'Failed to update record'}`, 'error');
                 }
             }
 
-            async deleteRecord(recordId) {
+            async editRecord(recordId) {
+                const tabButtons = document.querySelectorAll('.tab-btn');
+                const tabContents = document.querySelectorAll('.tab-content');
+                
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+                
+                document.querySelector('.tab-btn[data-tab="add-edit-delete"]').classList.add('active');
+                document.getElementById('add-edit-delete-tab').classList.add('active');
+                
+                document.querySelector('input[name="searchType"][value="edit"]').checked = true;
+                this.currentSearchType = 'edit';
+                
+                await this.performSearch(recordId.toString());
+                
+                const recordCard = document.querySelector(`.record-card[data-record-id="${recordId}"]`);
+                if (recordCard) {
+                    recordCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+
+            async deleteRecord(recordId, fromTable = false) {
                 const response = await APIUtils.delete(`/records/${recordId}`);
                 
                 if (response.status === 'success') {
                     this.showMessage('Record deleted successfully!', 'success');
-                    const card = document.querySelector(`[data-record-id="${recordId}"]`);
-                    if (card) {
-                        card.remove();
+                    
+                    if (fromTable) {
+                        await this.loadInventory();
+                    } else {
+                        const card = document.querySelector(`[data-record-id="${recordId}"]`);
+                        if (card) {
+                            card.remove();
+                        }
+                        await this.loadStats();
+                        await this.loadInventory();
                     }
-                    await this.loadStats();
                 } else {
                     this.showMessage(`Error: ${response.error || 'Failed to delete record'}`, 'error');
                 }
