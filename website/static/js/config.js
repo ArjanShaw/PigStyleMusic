@@ -3,8 +3,8 @@ const AppConfig = {
     getUrl: function(endpoint, params) {
         // Use relative URLs - much simpler!
         const endpointMap = {
-            'sessionCheck': '/session/check',
-            'login': '/api/login',
+            'sessionCheck': '/sessioncheck',
+            'login': '/login',
             'logout': '/logout',
             'users': '/users',
             'records': '/records',
