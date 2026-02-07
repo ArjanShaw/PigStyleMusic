@@ -1,16 +1,26 @@
-// config.js - App Configuration
+// config.js - Simplified version
 const AppConfig = {
-    // Flask API runs on port 5000
-    baseUrl: 'http://localhost:5000',
-    
     getUrl: function(endpoint, params) {
-        let url = `${this.baseUrl}/${endpoint}`;
+        // Use relative URLs - much simpler!
+        const endpointMap = {
+            'sessionCheck': '/session/check',
+            'login': '/api/login',
+            'logout': '/logout',
+            'users': '/users',
+            'records': '/records',
+            // Add all your endpoints here
+        };
+        
+        const actualEndpoint = endpointMap[endpoint] || endpoint;
+        let url = actualEndpoint;  // Just use the relative path
+        
         if (params) {
             const queryString = new URLSearchParams(params).toString();
             if (queryString) {
                 url += `?${queryString}`;
             }
         }
+        
         console.log('API URL:', url);
         return url;
     },
@@ -22,6 +32,3 @@ const AppConfig = {
         };
     }
 };
-
-// Make available globally
-window.AppConfig = AppConfig;
