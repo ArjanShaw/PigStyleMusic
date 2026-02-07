@@ -11,12 +11,21 @@ let allGenres = [];
 let selectedGenres = new Set();
 let lastAddedDate = null;
 let showNewAdditionsOnly = false;
-let isInitialLoad = true; // Track if this is the first load
+let isInitialLoad = true;
 
 // ========== INITIALIZATION ==========
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing streaming station...');
+    
+    // Check if pigstyleAPI is available
+    if (typeof pigstyleAPI === 'undefined') {
+        console.error('pigstyleAPI is not defined!');
+        showError('API utilities not loaded. Please check if api-utils.js is loaded.');
+        return;
+    }
+    
+    console.log('pigstyleAPI is available:', pigstyleAPI);
     
     // Setup UI event listeners
     setupUI();
@@ -24,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load YouTube API first
     loadYouTubeAPI();
     
-    // Load records from API after YouTube API is ready
+    // Load records from API
     setTimeout(loadRecords, 1000);
 });
 
@@ -61,13 +70,16 @@ window.onYouTubeIframeAPIReady = function() {
 
 async function loadRecords() {
     try {
-        console.log('Loading records from API...');
+        console.log('Loading records from API using pigstyleAPI...');
         
         // Use the API utility function
-        const records = await pigstyleAPI.loadRandomRecords(500, true);
+        const response = await pigstyleAPI.loadRandomRecords(500, true);
         
-        if (records && records.length > 0) {
-            allRecords = records;
+        console.log('API Response:', response);
+        
+        // FIXED: The API returns {records: [...]}, not just the array
+        if (response && response.records && response.records.length > 0) {
+            allRecords = response.records;
             console.log(`Loaded ${allRecords.length} records`);
             
             // Extract unique genres
@@ -79,6 +91,9 @@ async function loadRecords() {
             // Initialize tabs
             initTabs();
             
+            // Load saved scale preference
+            loadSavedScale();
+            
             // Show player
             document.getElementById('loading').style.display = 'none';
             document.getElementById('playerContent').style.display = 'block';
@@ -87,6 +102,7 @@ async function loadRecords() {
             applyGenreFilter();
             
         } else {
+            console.error('API returned empty or invalid response:', response);
             throw new Error('No records returned from API');
         }
         
@@ -114,6 +130,9 @@ function extractUniqueGenres() {
     
     // Select all genres by default
     selectedGenres = new Set(allGenres);
+    
+    // Load saved selections
+    loadSavedSelections();
 }
 
 function setupGenreCheckboxes() {
@@ -140,7 +159,7 @@ function setupGenreCheckboxes() {
         checkbox.type = 'checkbox';
         checkbox.id = checkboxId;
         checkbox.value = genre;
-        checkbox.checked = true;
+        checkbox.checked = selectedGenres.has(genre);
         
         checkbox.addEventListener('change', (e) => {
             if (e.target.checked) {
@@ -212,7 +231,7 @@ function updateCheckboxes() {
 
 function applyGenreFilter() {
     console.log('Applying filter for genres:', Array.from(selectedGenres));
-    isInitialLoad = false; // No longer the initial load
+    isInitialLoad = false;
     
     if (selectedGenres.size === 0) {
         filteredRecords = [];
@@ -230,10 +249,8 @@ function applyGenreFilter() {
             }
             
             if (showNewAdditionsOnly) {
-                // Check if this record is a new addition
                 if (!record.created_at) return false;
                 if (!lastAddedDate) {
-                    // Find the most recent date
                     findLastAddedDate();
                 }
                 const recordDate = new Date(record.created_at);
@@ -250,8 +267,6 @@ function applyGenreFilter() {
         
         if (filteredRecords.length > 0) {
             currentTrackIndex = 0;
-            
-            // Load the YouTube track immediately
             loadCurrentYouTubeTrack();
         } else {
             showNoTracksMessage();
@@ -296,6 +311,8 @@ function loadCurrentYouTubeTrack() {
     const priceElement = document.getElementById('trackPrice');
     if (priceElement && currentRecord.store_price) {
         priceElement.textContent = `Price: $${parseFloat(currentRecord.store_price).toFixed(2)}`;
+    } else if (priceElement) {
+        priceElement.textContent = 'Price N/A';
     }
     
     // Update record info tab if active
@@ -318,7 +335,11 @@ function loadCurrentYouTubeTrack() {
     document.getElementById('youtube-player').innerHTML = '<div id="player"></div>';
     
     if (youtubePlayer) {
-        youtubePlayer.destroy();
+        try {
+            youtubePlayer.destroy();
+        } catch (e) {
+            console.log('Error destroying previous player:', e);
+        }
     }
     
     // Force autoplay by setting muted if autoplay is blocked
@@ -335,17 +356,25 @@ function loadCurrentYouTubeTrack() {
         playerVars.mute = 1;
     }
     
-    youtubePlayer = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
-        videoId: youtubeId,
-        playerVars: playerVars,
-        events: {
-            'onReady': onPlayerReady,
-            'onStateChange': onPlayerStateChange,
-            'onError': onPlayerError
+    // Wait a moment for the DOM to update
+    setTimeout(() => {
+        if (!window.YT || !window.YT.Player) {
+            console.error('YouTube API not ready yet');
+            return;
         }
-    });
+        
+        youtubePlayer = new YT.Player('player', {
+            height: '100%',
+            width: '100%',
+            videoId: youtubeId,
+            playerVars: playerVars,
+            events: {
+                'onReady': onPlayerReady,
+                'onStateChange': onPlayerStateChange,
+                'onError': onPlayerError
+            }
+        });
+    }, 100);
 }
 
 function extractYouTubeId(url) {
@@ -377,7 +406,11 @@ function onPlayerReady(event) {
         event.target.playVideo();
     } catch (error) {
         console.log('Could not unmute, trying to play anyway...');
-        event.target.playVideo();
+        try {
+            event.target.playVideo();
+        } catch (e) {
+            console.error('Could not play video:', e);
+        }
     }
 }
 
@@ -423,19 +456,26 @@ function playNextTrack() {
     loadCurrentYouTubeTrack();
 }
 
-// ... [REST OF THE CODE REMAINS THE SAME AS PREVIOUS VERSION] ...
-
 // ========== ERROR HANDLING ==========
 
 function showError(message) {
     const loadingElement = document.getElementById('loading');
     if (loadingElement) {
         loadingElement.innerHTML = `
-            <div style="padding: 40px; text-align: center; color: white;">
+            <div style="color: #ff6b6b; text-align: center;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 3em; margin-bottom: 20px;"></i>
                 <h3>Error Loading Records</h3>
                 <p>${message}</p>
-                <button onclick="location.reload()" style="padding: 10px 20px; background: #ff4081; color: white; border: none; border-radius: 5px;">
-                    Retry
+                <button onclick="window.location.reload()" style="
+                    background: #ff6b6b;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    margin-top: 10px;
+                ">
+                    Refresh Page
                 </button>
             </div>
         `;
@@ -545,9 +585,6 @@ function setupUI() {
     
     if (prevBtn) prevBtn.addEventListener('click', playPreviousTrack);
     if (nextBtn) nextBtn.addEventListener('click', playNextTrack);
-    
-    // Initialize tabs
-    initTabs();
 }
 
 // ========== TAB MANAGEMENT ==========
@@ -719,9 +756,69 @@ function loadSavedScale() {
     }
 }
 
+// ========== KEYBOARD SHORTCUTS ==========
+
+document.addEventListener('keydown', function(e) {
+    // Space bar: Play/Pause
+    if (e.code === 'Space' && youtubePlayer) {
+        e.preventDefault();
+        try {
+            if (youtubePlayer.getPlayerState() === 1) { // Playing
+                youtubePlayer.pauseVideo();
+            } else {
+                youtubePlayer.playVideo();
+            }
+        } catch (err) {
+            console.log('Error toggling play/pause:', err);
+        }
+    }
+    
+    // Left arrow: Previous track
+    if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        playPreviousTrack();
+    }
+    
+    // Right arrow: Next track
+    if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        playNextTrack();
+    }
+    
+    // N: Toggle new additions
+    if (e.code === 'KeyN' && e.ctrlKey) {
+        e.preventDefault();
+        const newAdditionsBtn = document.getElementById('newAdditionsToggleBtn');
+        if (newAdditionsBtn) newAdditionsBtn.click();
+    }
+    
+    // G: Toggle genre filter
+    if (e.code === 'KeyG' && e.ctrlKey) {
+        e.preventDefault();
+        const genreToggleBtn = document.getElementById('genreToggleBtn');
+        if (genreToggleBtn) genreToggleBtn.click();
+    }
+    
+    // 1: Player tab
+    if (e.code === 'Digit1' && e.ctrlKey) {
+        e.preventDefault();
+        const playerTabBtn = document.querySelector('[data-tab="player-tab"]');
+        if (playerTabBtn) playerTabBtn.click();
+    }
+    
+    // 2: Info tab
+    if (e.code === 'Digit2' && e.ctrlKey) {
+        e.preventDefault();
+        const infoTabBtn = document.querySelector('[data-tab="info-tab"]');
+        if (infoTabBtn) infoTabBtn.click();
+    }
+});
+
 // Make functions available globally
 window.playPreviousTrack = playPreviousTrack;
 window.playNextTrack = playNextTrack;
 window.scaleDown = scaleDown;
 window.scaleUp = scaleUp;
 window.resetScale = resetScale;
+
+console.log('Streaming station initialization complete');

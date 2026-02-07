@@ -1,3 +1,34 @@
+// api-utils.js - PigStyle Records API Utilities
+console.log('Loading PigStyle API Utilities...');
+
+// Ensure AppConfig is available
+if (typeof AppConfig === 'undefined') {
+    console.error('AppConfig is not defined. Using fallback config.');
+    
+    // Provide a minimal fallback config
+    window.AppConfig = {
+        baseUrl: 'http://localhost:5000',
+        getUrl: function(endpoint, params) {
+            let url = `${this.baseUrl}/${endpoint}`;
+            if (params) {
+                const queryString = new URLSearchParams(params).toString();
+                if (queryString) {
+                    url += `?${queryString}`;
+                }
+            }
+            console.log('API URL:', url);
+            return url;
+        },
+        getHeaders: function() {
+            return {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+        }
+    };
+    console.log('Using fallback AppConfig');
+}
+
 // PigStyle Records API Utilities
 const pigstyleAPI = {
     // Use the centralized config
@@ -8,6 +39,7 @@ const pigstyleAPI = {
     
     // Escape HTML to prevent XSS attacks
     escapeHtml: function(text) {
+        if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
@@ -34,6 +66,7 @@ const pigstyleAPI = {
         };
         
         try {
+            console.log(`API Request: ${config.method} ${url}`);
             const response = await fetch(url, config);
             
             if (!response.ok) {
@@ -62,17 +95,15 @@ const pigstyleAPI = {
     // Get random records for streaming page
     loadRandomRecords: async function(limit = 500, hasYouTube = true) {
         console.log(`Loading ${limit} random records ${hasYouTube ? 'with YouTube' : ''}...`);
-        return this.request('records', {
-            params: { random: true, limit, has_youtube: hasYouTube }
+        return this.request('records/random', {
+            params: { limit, has_youtube: hasYouTube }
         });
     },
     
     // Get catalog grouped records
     loadCatalogGroupedRecords: async function() {
         console.log('Loading catalog grouped records...');
-        return this.request('records', {
-            params: { grouped: true }
-        });
+        return this.request('catalog/grouped-records');
     },
     
     // Get a single record by ID
@@ -181,5 +212,8 @@ const pigstyleAPI = {
     }
 };
 
-// Export for use in other scripts
-window.pigstyleAPI = pigstyleAPI;
+// Make sure it's available globally with a fallback
+if (typeof window !== 'undefined') {
+    window.pigstyleAPI = pigstyleAPI;
+    console.log('pigstyleAPI loaded and available globally');
+}
