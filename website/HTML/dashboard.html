@@ -6,412 +6,153 @@
     <title>Dashboard - PigStyle Music</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
-    
-    <!-- Load centralized configuration first -->
     <script src="/static/js/config.js"></script>
-    
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">PigStyle Music</a>
+        </div>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/catalog">Catalog</a>
+            <a href="/streaming">Streaming</a>
+            <a href="/consignment">Consignment</a>
+            <div id="auth-section"></div>
+        </div>
+    </nav>
 
-    <style>
-        /* Additional styles for genre prediction */
-        .genre-prediction {
-            margin: 10px 0;
-            padding: 12px;
-            background: rgba(255, 204, 0, 0.1);
-            border: 1px solid rgba(255, 204, 0, 0.3);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            animation: fadeIn 0.5s ease;
-        }
-        
-        .genre-prediction.prediction-available {
-            background: rgba(76, 175, 80, 0.1);
-            border-color: rgba(76, 175, 80, 0.3);
-        }
-        
-        .prediction-icon {
-            color: #ffcc00;
-            font-size: 18px;
-        }
-        
-        .prediction-text {
-            flex: 1;
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.9);
-        }
-        
-        .prediction-hint {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-top: 3px;
-        }
-        
-        .predicted-genre {
-            background: linear-gradient(135deg, #ffcc00, #ff9900) !important;
-            color: #333 !important;
-            border-color: #ffcc00 !important;
-            font-weight: bold !important;
-        }
-        
-        .predicted-genre option {
-            background: #333 !important;
-            color: white !important;
-        }
-        
-        .accept-prediction-btn {
-            background: rgba(76, 175, 80, 0.2) !important;
-            border: 1px solid rgba(76, 175, 80, 0.4) !important;
-            color: #4CAF50 !important;
-            font-size: 12px !important;
-            padding: 6px 12px !important;
-        }
-        
-        .accept-prediction-btn:hover {
-            background: rgba(76, 175, 80, 0.3) !important;
-        }
-        
-        .prediction-success {
-            background: rgba(76, 175, 80, 0.15) !important;
-            border-color: rgba(76, 175, 80, 0.4) !important;
-        }
+    <div id="guest-message" class="guest-message">
+        <div class="login-prompt">
+            <h1>Welcome to PigStyle Music</h1>
+            <p>This dashboard is for registered users only. Please log in to access inventory management.</p>
+            <a href="/login-page" class="btn btn-primary">
+                <i class="fas fa-sign-in-alt"></i> Log In to Continue
+            </a>
+        </div>
+    </div>
 
-        /* Price Estimation Visual Feedback */
-        .price-estimating {
-            background: linear-gradient(90deg, 
-                rgba(255, 204, 0, 0.1) 0%, 
-                rgba(255, 204, 0, 0.3) 50%, 
-                rgba(255, 204, 0, 0.1) 100%) !important;
-            animation: pulse 2s infinite !important;
-            border-color: #ffcc00 !important;
-        }
+    <div id="dashboard-content" class="dashboard-container">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="inventory">
+                <i class="fas fa-boxes"></i> Inventory
+            </button>
+            <button class="tab-btn" data-tab="add-edit-delete">
+                <i class="fas fa-edit"></i> Add/Edit & Delete
+            </button>
+        </div>
 
-        .price-estimated {
-            background: rgba(76, 175, 80, 0.15) !important;
-            border-color: #4CAF50 !important;
-        }
+        <div id="inventory-tab" class="tab-content active">
+            <div class="inventory-container">
+                <div id="consignor-filter-container" class="consignor-filter" style="display: none;">
+                    <label for="consignor-filter"><i class="fas fa-filter"></i> Filter by Consignor:</label>
+                    <select id="consignor-filter">
+                        <option value="all">All Consignors</option>
+                    </select>
+                </div>
 
-        @keyframes pulse {
-            0% { opacity: 0.8; }
-            50% { opacity: 1; }
-            100% { opacity: 0.8; }
-        }
+                <div id="inventory-table-container">
+                    <table class="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>Image</th>
+                                <th>Artist</th>
+                                <th>Title</th>
+                                <th>Genre</th>
+                                <th>Condition</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Catalog #</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-table-body"></tbody>
+                    </table>
+                </div>
 
-        .estimation-hint {
-            font-size: 12px;
-            color: rgba(255, 204, 0, 0.8);
-            margin-top: 5px;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
+                <div id="inventory-loading" class="loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading inventory...</p>
+                </div>
 
-        /* Expandable Price Calculation Component */
-        .calculation-toggle {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            color: #ffcc00;
-            background: rgba(255, 204, 0, 0.1);
-            border: 1px solid rgba(255, 204, 0, 0.3);
-            border-radius: 4px;
-            padding: 4px 8px;
-            cursor: pointer;
-            margin-top: 8px;
-            transition: all 0.2s ease;
-        }
+                <div id="inventory-empty" class="no-records" style="display: none;">
+                    <i class="fas fa-box-open"></i>
+                    <p>No records found in inventory</p>
+                </div>
+            </div>
+        </div>
 
-        .calculation-toggle:hover {
-            background: rgba(255, 204, 0, 0.2);
-            border-color: rgba(255, 204, 0, 0.5);
-        }
+        <div id="add-edit-delete-tab" class="tab-content">
+            <div class="inventory-container">
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-value" id="total-records">0</div>
+                        <div class="stat-label">Total Records</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="commission-rate">20.0%</div>
+                        <div class="stat-label">Commission Rate</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="store-fill">0%</div>
+                        <div class="stat-label">Store Fill</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="last-added">--</div>
+                        <div class="stat-label">Last Added</div>
+                    </div>
+                </div>
 
-        .calculation-toggle i {
-            font-size: 10px;
-            transition: transform 0.3s ease;
-        }
+                <div class="search-section">
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="searchType" value="add" checked>
+                            Add Item
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="searchType" value="edit">
+                            Edit or Delete Item
+                        </label>
+                    </div>
 
-        .calculation-toggle.expanded i {
-            transform: rotate(180deg);
-        }
+                    <form class="search-form" id="searchForm">
+                        <input type="text" 
+                               class="search-input" 
+                               id="searchInput" 
+                               placeholder="Enter barcode, artist, or title...">
+                        <div class="action-buttons">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="clearSearch">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </form>
+                </div>
 
-        .calculation-details {
-            max-height: 0;
-            overflow: hidden;
-            opacity: 0;
-            transition: all 0.3s ease;
-            margin-top: 0;
-        }
+                <div id="results-container" class="results-container">
+                    <div class="loading" id="default-loading">
+                        <i class="fas fa-search"></i>
+                        <p>Search for records to get started</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        .calculation-details.expanded {
-            max-height: 300px;
-            opacity: 1;
-            margin-top: 10px;
-            overflow-y: auto;
-        }
-
-        .calculation-content {
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 6px;
-            padding: 12px;
-            font-size: 11px;
-            line-height: 1.4;
-        }
-
-        .calculation-step {
-            margin: 5px 0;
-            padding-left: 8px;
-            border-left: 2px solid rgba(255, 204, 0, 0.3);
-        }
-
-        .calculation-step:last-child {
-            border-left-color: #4CAF50;
-            background: rgba(76, 175, 80, 0.1);
-            padding: 6px 8px;
-            border-radius: 4px;
-            margin-top: 8px;
-        }
-
-        .ebay-summary {
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px dashed rgba(255, 255, 255, 0.2);
-        }
-
-        .price-source-badge {
-            display: inline-block;
-            background: rgba(76, 175, 80, 0.2);
-            color: #4CAF50;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            margin-left: 8px;
-            font-weight: bold;
-        }
-
-        .price-source-badge.estimated {
-            background: rgba(255, 204, 0, 0.2);
-            color: #ffcc00;
-        }
-
-        .price-source-badge.calculated {
-            background: rgba(33, 150, 243, 0.2);
-            color: #2196F3;
-        }
-
-        /* eBay Listings Table Styles */
-        .ebay-listings-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-            font-size: 11px;
-        }
-
-        .ebay-listings-table th {
-            background: rgba(255, 204, 0, 0.2);
-            color: #ffcc00;
-            padding: 6px 8px;
-            text-align: left;
-            border-bottom: 1px solid rgba(255, 204, 0, 0.3);
-            font-weight: bold;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        .ebay-listings-table td {
-            padding: 6px 8px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            vertical-align: top;
-        }
-
-        .ebay-listings-table tr:nth-child(even) {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .ebay-listings-table tr:hover {
-            background: rgba(255, 204, 0, 0.1);
-        }
-
-        .ebay-listings-table tr.matches-condition {
-            background: rgba(76, 175, 80, 0.1);
-            border-left: 3px solid #4CAF50;
-        }
-
-        .ebay-listings-table tr.matches-condition:hover {
-            background: rgba(76, 175, 80, 0.2);
-        }
-
-        .condition-match-badge {
-            display: inline-block;
-            background: rgba(76, 175, 80, 0.3);
-            color: #4CAF50;
-            font-size: 9px;
-            padding: 1px 4px;
-            border-radius: 3px;
-            margin-left: 5px;
-            font-weight: bold;
-        }
-
-        .ebay-price {
-            font-weight: bold;
-            color: #4CAF50;
-        }
-
-        .ebay-shipping {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 10px;
-        }
-
-        .ebay-total {
-            font-weight: bold;
-            color: #ffcc00;
-        }
-
-        .ebay-link {
-            color: #2196F3;
-            text-decoration: none;
-            font-size: 10px;
-            white-space: nowrap;
-        }
-
-        .ebay-link:hover {
-            text-decoration: underline;
-            color: #64b5f6;
-        }
-
-        .ebay-title {
-            max-width: 150px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .ebay-condition {
-            font-size: 10px;
-            color: rgba(255, 255, 255, 0.7);
-        }
-
-        .table-scroll-container {
-            max-height: 300px;
-            overflow-y: auto;
-            margin-top: 8px;
-            border: 1px solid rgba(255, 204, 0, 0.2);
-            border-radius: 4px;
-            padding: 2px;
-        }
-
-        .table-header {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-bottom: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .table-header h4 {
-            margin: 0;
-            color: #ffcc00;
-            font-size: 13px;
-        }
-
-        .table-count {
-            background: rgba(255, 204, 0, 0.2);
-            color: #ffcc00;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-weight: bold;
-        }
-
-        /* Inventory Table Styles */
-        .inventory-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        .inventory-table th {
-            background: rgba(255, 204, 0, 0.2);
-            color: #ffcc00;
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 2px solid rgba(255, 204, 0, 0.3);
-            font-weight: bold;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        .inventory-table td {
-            padding: 10px 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .inventory-table tr:nth-child(even) {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .inventory-table tr:hover {
-            background: rgba(255, 204, 0, 0.1);
-        }
-
-        .table-actions {
-            display: flex;
-            gap: 5px;
-            flex-wrap: nowrap;
-        }
-
-        .table-action-btn {
-            padding: 4px 8px;
-            font-size: 12px;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            background: rgba(255, 204, 0, 0.1);
-            color: #ffcc00;
-            transition: all 0.2s ease;
-        }
-
-        .table-action-btn:hover {
-            background: rgba(255, 204, 0, 0.3);
-            transform: translateY(-1px);
-        }
-
-        .consignor-filter {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-        }
-
-        .consignor-filter label {
-            color: #ffcc00;
-            font-weight: bold;
-        }
-
-        .consignor-filter select {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 204, 0, 0.3);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            min-width: 200px;
-        }
-
-        .no-records {
-            text-align: center;
-            padding: 40px;
-            color: rgba(255, 255, 255, 0.6);
-            font-style: italic;
-        }
-    </style>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/inventory-manager.js"></script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - PigStyle Music</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script src="/static/js/config.js"></script>
 </head>
 <body>
     <!-- Navbar -->
@@ -469,13 +210,13 @@
                     <table class="inventory-table">
                         <thead>
                             <tr>
+                                <th>Image</th>
                                 <th>Artist</th>
                                 <th>Title</th>
                                 <th>Genre</th>
                                 <th>Condition</th>
                                 <th>Price</th>
                                 <th>Status</th>
-                                <th>Barcode</th>
                                 <th>Catalog #</th>
                                 <th>Actions</th>
                             </tr>
@@ -493,7 +234,7 @@
                 </div>
 
                 <div id="inventory-empty" class="no-records" style="display: none;">
-                    <i class="fas fa-box-open" style="font-size: 48px; margin-bottom: 15px;"></i>
+                    <i class="fas fa-box-open"></i>
                     <p>No records found in inventory</p>
                 </div>
             </div>
@@ -803,12 +544,10 @@
                 const user = Auth.getUser();
                 if (user.role === 'admin') {
                     try {
-                        // Use the correct endpoint: /api/consignor/records
                         const response = await APIUtils.get('/api/consignor/records');
                         console.log('LOAD_CONSIGNORS: Response from /api/consignor/records:', response);
                         
                         if (response && response.records) {
-                            // Extract unique consignors from records
                             const consignorMap = {};
                             response.records.forEach(record => {
                                 if (record.consignor_id && record.consignor_name) {
@@ -859,18 +598,15 @@
                 try {
                     if (user.role === 'admin') {
                         if (this.selectedConsignorId !== 'all') {
-                            // Filter records by specific consignor
                             const allRecords = await APIUtils.get('/records');
                             records = allRecords.records ? allRecords.records.filter(record => 
                                 record.consignor_id == this.selectedConsignorId
                             ) : [];
                         } else {
-                            // Get all records
                             const response = await APIUtils.get('/records');
                             records = response.records || [];
                         }
                     } else {
-                        // For consignors, get their own records
                         const response = await APIUtils.get(`/records/user/${user.id}`);
                         records = response.records || [];
                     }
@@ -884,13 +620,21 @@
                     
                     tableBody.innerHTML = records.map(record => `
                         <tr>
+                            <td>
+                                ${record.image_url ? 
+                                    `<img src="${record.image_url}" alt="${record.artist}" class="record-image-small" 
+                                          onerror="this.src='https://via.placeholder.com/60x60/333/666?text=No+Image'">` : 
+                                    `<div class="record-image-small" style="background: #333; display: flex; align-items: center; justify-content: center;">
+                                        <i class="fas fa-record-vinyl" style="font-size: 24px; color: #666;"></i>
+                                    </div>`
+                                }
+                            </td>
                             <td>${record.artist || 'N/A'}</td>
                             <td>${record.title || 'N/A'}</td>
                             <td>${record.genre_name || 'N/A'}</td>
                             <td>${record.condition || 'N/A'}</td>
                             <td>$${(record.store_price || 0).toFixed(2)}</td>
                             <td>${record.status_name || 'N/A'}</td>
-                            <td>${record.barcode || 'N/A'}</td>
                             <td>${record.catalog_number || 'N/A'}</td>
                             <td>
                                 <div class="table-actions">
@@ -908,7 +652,7 @@
                     console.error('LOAD_INVENTORY: Error loading inventory:', error);
                     loadingDiv.style.display = 'none';
                     emptyDiv.innerHTML = `
-                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 15px; color: #ffcc00;"></i>
+                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 15px; color: #000;"></i>
                         <p>Error loading inventory: ${error.message}</p>
                     `;
                     emptyDiv.style.display = 'block';
@@ -1258,7 +1002,7 @@
                                         <button class="btn btn-primary add-record-btn">
                                             <i class="fas fa-plus"></i> Add to Inventory
                                         </button>
-                                        <div class="form-hint" style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 5px;">
+                                        <div class="form-hint" style="font-size: 12px; color: rgba(0,0,0,0.5); margin-top: 5px;">
                                             * Required fields
                                         </div>
                                     </div>
@@ -1468,13 +1212,13 @@
                     left: 0;
                     right: 0;
                     bottom: 0;
-                    background: linear-gradient(90deg, rgba(255, 204, 0, 0.1) 0%, rgba(255, 204, 0, 0.3) 50%, rgba(255, 204, 0, 0.1) 100%);
-                    border: 1px solid #ffcc00;
+                    background: linear-gradient(90deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.1) 100%);
+                    border: 1px solid rgba(0, 0, 0, 0.3);
                     border-radius: 4px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    color: #ffcc00;
+                    color: #000;
                     font-weight: bold;
                     z-index: 10;
                     animation: pulse 2s infinite;
@@ -1727,7 +1471,7 @@
                             const banner = document.getElementById(`prediction-banner-${recordId}`);
                             if (banner) {
                                 banner.innerHTML = `
-                                    <i class="fas fa-check-circle" style="color: #4CAF50;"></i>
+                                    <i class="fas fa-check-circle"></i>
                                     <div class="prediction-text">
                                         <strong>✅ Mapping Saved!</strong> Future "${discogsGenre}" records will default to ${genreName}
                                     </div>
@@ -1962,13 +1706,6 @@
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message-popup message-${type}`;
                 
-                const icons = {
-                    success: 'check-circle',
-                    error: 'exclamation-circle',
-                    warning: 'exclamation-triangle',
-                    info: 'info-circle'
-                };
-                
                 const colors = {
                     success: '#4CAF50',
                     error: '#f44336',
@@ -1993,7 +1730,8 @@
                         max-width: 400px;
                         animation: slideIn 0.3s ease;
                     ">
-                        <i class="fas fa-${icons[type] || 'info-circle'}" style="font-size: 20px;"></i>
+                        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'}" 
+                           style="font-size: 20px;"></i>
                         <span>${message}</span>
                     </div>
                 `;
