@@ -64,10 +64,49 @@ async function loadRecords() {
         console.log('Loading records from API...');
         
         // Use the API utility function
-        const records = await pigstyleAPI.loadRandomRecords(500, true);
+        const response = await pigstyleAPI.loadRandomRecords(500, true);
         
-        if (records && records.length > 0) {
-            allRecords = records;
+        // Handle different response formats
+        let recordsArray;
+        
+        if (Array.isArray(response)) {
+            // Response is already an array
+            recordsArray = response;
+        } else if (response && response.records && Array.isArray(response.records)) {
+            // Response is { records: [...] }
+            recordsArray = response.records;
+        } else if (response && response.data && Array.isArray(response.data)) {
+            // Response is { data: [...] }
+            recordsArray = response.data;
+        } else if (response && response.items && Array.isArray(response.items)) {
+            // Response is { items: [...] }
+            recordsArray = response.items;
+        } else if (response && response.count !== undefined) {
+            // Response is { count: X, ... } - check for nested array
+            if (response.results && Array.isArray(response.results)) {
+                recordsArray = response.results;
+            } else if (response.records && Array.isArray(response.records)) {
+                recordsArray = response.records;
+            } else if (response.data && Array.isArray(response.data)) {
+                recordsArray = response.data;
+            } else {
+                // Try to find any array property
+                for (const key in response) {
+                    if (Array.isArray(response[key])) {
+                        recordsArray = response[key];
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!recordsArray) {
+            console.error('Could not find records array in response:', response);
+            throw new Error('Invalid response format from API');
+        }
+        
+        if (recordsArray.length > 0) {
+            allRecords = recordsArray;
             console.log(`Loaded ${allRecords.length} records`);
             
             // Extract unique genres
@@ -78,6 +117,9 @@ async function loadRecords() {
             
             // Initialize tabs
             initTabs();
+            
+            // Load saved scale
+            loadSavedScale();
             
             // Show player
             document.getElementById('loading').style.display = 'none';
@@ -423,8 +465,6 @@ function playNextTrack() {
     loadCurrentYouTubeTrack();
 }
 
-// ... [REST OF THE CODE REMAINS THE SAME AS PREVIOUS VERSION] ...
-
 // ========== ERROR HANDLING ==========
 
 function showError(message) {
@@ -475,6 +515,7 @@ function loadSavedSelections() {
                 const validGenres = parsedGenres.filter(genre => allGenres.includes(genre));
                 if (validGenres.length > 0) {
                     selectedGenres = new Set(validGenres);
+                    updateCheckboxes();
                 }
             }
         } catch (e) {

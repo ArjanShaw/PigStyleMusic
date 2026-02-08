@@ -5,7 +5,7 @@
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
     <link rel="icon" href="/static/images/PigStyle.ico">
     <title>Record Gallery - PigStyle Records</title>
-    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
     <script>
@@ -16,9 +16,7 @@
     </script>
     
     <link rel="stylesheet" href="/static/css/catalog.css">
-    <script src="/static/js/api-utils.js"></script>
-    <!-- Authentication JavaScript -->
-    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/app-config.js"></script>
 </head>
 <body>
     <!-- Navbar -->
@@ -32,7 +30,6 @@
             <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
             <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
             <div id="auth-section">
-                <!-- Will be populated by auth.js -->
             </div>
         </div>
     </nav>
@@ -91,14 +88,64 @@
         async function loadCatalogData() {
             try {
                 console.log('Loading catalog data from API...');
-                const catalogData = await pigstyleAPI.loadCatalogGroupedRecords();
+                const response = await pigstyleAPI.loadCatalogGroupedRecords();
+                
+                // Debug: log the response format
+                console.log('API Response:', response);
+                
+                // Handle different response formats
+                let catalogData;
+                if (Array.isArray(response)) {
+                    // Response is already an array of records
+                    console.log('Response is array, converting to grouped format...');
+                    catalogData = {
+                        count: response.length,
+                        groups: createPriceGroupsFromArray(response)
+                    };
+                } else if (response && response.groups && Array.isArray(response.groups)) {
+                    // Response already has groups property
+                    catalogData = response;
+                } else if (response && response.records && Array.isArray(response.records)) {
+                    // Response has records property
+                    console.log('Response has records property, converting to grouped format...');
+                    catalogData = {
+                        count: response.records.length,
+                        groups: createPriceGroupsFromArray(response.records)
+                    };
+                } else if (response && response.data && Array.isArray(response.data)) {
+                    // Response has data property
+                    console.log('Response has data property, converting to grouped format...');
+                    catalogData = {
+                        count: response.data.length,
+                        groups: createPriceGroupsFromArray(response.data)
+                    };
+                } else {
+                    // Unknown format, try to find any array
+                    console.log('Unknown response format, attempting to find array...');
+                    for (const key in response) {
+                        if (Array.isArray(response[key])) {
+                            console.log(`Found array in property: ${key}`);
+                            catalogData = {
+                                count: response[key].length,
+                                groups: createPriceGroupsFromArray(response[key])
+                            };
+                            break;
+                        }
+                    }
+                }
+                
+                if (!catalogData || !catalogData.groups) {
+                    throw new Error(`Invalid response format: ${JSON.stringify(response).substring(0, 200)}...`);
+                }
                 
                 console.log(`Loaded ${catalogData.count} records in ${catalogData.groups.length} price groups`);
                 
                 // Flatten all records for search functionality
                 allRecords = [];
                 catalogData.groups.forEach(group => {
-                    allRecords = allRecords.concat(group.records);
+                    if (group.records && Array.isArray(group.records)) {
+                        allRecords = allRecords.concat(group.records);
+                    }
                 });
                 
                 currentFilteredRecords = allRecords;
@@ -108,8 +155,49 @@
                 
             } catch (error) {
                 console.error('Error loading catalog data:', error);
-                document.getElementById('catalogContainer').innerHTML = '<div class="error-message">Error loading catalog. Please try again later.</div>';
+                document.getElementById('catalogContainer').innerHTML = 
+                    '<div class="error-message">Error loading catalog. Please try again later.<br>' + 
+                    error.message + '</div>';
             }
+        }
+
+        // Helper function to create price groups from a flat array
+        function createPriceGroupsFromArray(recordsArray) {
+            if (!recordsArray || !Array.isArray(recordsArray)) {
+                return [];
+            }
+            
+            // Define price ranges
+            const priceRanges = [
+                { label: "$0 - $5", min: 0, max: 5 },
+                { label: "$5 - $10", min: 5, max: 10 },
+                { label: "$10 - $15", min: 10, max: 15 },
+                { label: "$15 - $20", min: 15, max: 20 },
+                { label: "$20 - $25", min: 20, max: 25 },
+                { label: "$25 - $30", min: 25, max: 30 },
+                { label: "$30 - $40", min: 30, max: 40 },
+                { label: "$40 - $50", min: 40, max: 50 },
+                { label: "$50 - $100", min: 50, max: 100 },
+                { label: "$100+", min: 100, max: 99999 }
+            ];
+            
+            // Group records by price range
+            const groups = priceRanges.map(range => {
+                const recordsInRange = recordsArray.filter(record => {
+                    const price = parseFloat(record.store_price) || 0;
+                    return price >= range.min && price < range.max;
+                });
+                
+                return {
+                    label: range.label,
+                    min: range.min,
+                    max: range.max,
+                    records: recordsInRange
+                };
+            });
+            
+            // Filter out empty groups
+            return groups.filter(group => group.records && group.records.length > 0);
         }
 
         // Display catalog groups
@@ -154,10 +242,12 @@
             gallery.className = 'group-gallery';
             
             // Add cards for each record in this group
-            group.records.forEach(record => {
-                const card = createCardElement(record);
-                gallery.appendChild(card);
-            });
+            if (group.records && Array.isArray(group.records)) {
+                group.records.forEach(record => {
+                    const card = createCardElement(record);
+                    gallery.appendChild(card);
+                });
+            }
             
             groupDiv.appendChild(gallery);
             
@@ -171,7 +261,7 @@
             
             const artist = record.artist || 'Unknown Artist';
             const title = record.title || 'Unknown Title';
-            const imageUrl = record.image_url || 'images/default-record.jpg';
+            const imageUrl = record.image_url || '/static/images/default-record.jpg';
             const genre = record.genre_name || 'Unknown Genre';
             const price = record.store_price ? pigstyleAPI.formatPrice(record.store_price) : 'Price N/A';
             const youtubeUrl = record.youtube_url || '';
@@ -196,7 +286,7 @@
             
             card.innerHTML = `
                 <div class="card-image">
-                    <img src="${imageUrl}" alt="${title}" onerror="this.src='images/default-record.jpg'">
+                    <img src="${imageUrl}" alt="${title}" onerror="this.src='/static/images/default-record.jpg'">
                 </div>
                 <div class="card-info">
                     <h3>${pigstyleAPI.escapeHtml(title)}</h3>
@@ -299,6 +389,11 @@
         function populateArtistFilter() {
             const artistFilter = document.getElementById('artistFilter');
             const artists = pigstyleAPI.getUniqueArtists(allRecords);
+            
+            // Clear existing options (keeping "All Artists")
+            while (artistFilter.options.length > 1) {
+                artistFilter.remove(1);
+            }
             
             artists.forEach(artist => {
                 const option = document.createElement('option');

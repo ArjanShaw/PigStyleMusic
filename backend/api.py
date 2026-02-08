@@ -27,25 +27,23 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-here-change-this')
 
 # CORS Configuration - UPDATED to support credentials
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "https://pigstylemusic.com",
-            "https://www.pigstylemusic.com",  # ADD THIS LINE
-            "https://arjanshaw.github.io",
-            "https://pigstylerecords.github.io",
-            "http://localhost:8000",
-            "http://127.0.0.1:8000",
-            "http://localhost:5000",
-            "http://127.0.0.1:5000" 
-        ],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        "allow_headers": ["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
-        "expose_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True,
-        "max_age": 600
-    }
-})
+CORS(app, 
+     supports_credentials=True,
+     origins=[
+         "http://localhost:8000",
+         "http://127.0.0.1:8000", 
+         "http://localhost:5000",
+         "http://127.0.0.1:5000",
+         "https://pigstylemusic.com",
+         "https://www.pigstylemusic.com",
+         "https://arjanshaw.github.io",
+         "https://pigstylerecords.github.io"
+     ],
+     allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+     expose_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
+
+
 
 # Database configuration
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "records.db")
