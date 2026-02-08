@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - PigStyle Music</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/admin.css">
+    <script src="/static/js/app-config.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">PigStyle Music</a>
+        </div>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/catalog">Catalog</a>
+            <a href="/streaming">Streaming</a>
+            <a href="/consignment">Consignment</a>
+            <a href="/dashboard">Dashboard</a>
+            <div id="auth-section">
+                <!-- Populated by app-config.js -->
+            </div>
+        </div>
+    </nav>
+
+    <div class="admin-container">
+        <h1>Admin Panel</h1>
+        <p>Hello World - Admin panel is under construction</p>
+        
+        <div class="admin-stats">
+            <div class="stat-card">
+                <h3><i class="fas fa-users"></i> Total Users</h3>
+                <p class="stat-number">0</p>
+            </div>
+            <div class="stat-card">
+                <h3><i class="fas fa-record-vinyl"></i> Total Records</h3>
+                <p class="stat-number">0</p>
+            </div>
+            <div class="stat-card">
+                <h3><i class="fas fa-money-bill-wave"></i> Revenue</h3>
+                <p class="stat-number">$0.00</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Admin access check - using localStorage for reliability
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Admin page loaded, checking access...');
+            
+            // Function to check admin access with multiple methods
+            const checkAdminAccess = () => {
+                console.log('Checking admin access...');
+                
+                // Method 1: Check localStorage directly (most reliable)
+                const userData = localStorage.getItem('user');
+                console.log('LocalStorage user data:', userData);
+                
+                if (userData) {
+                    try {
+                        const user = JSON.parse(userData);
+                        console.log('User role from localStorage:', user.role);
+                        
+                        if (user.role === 'admin') {
+                            console.log('✅ Admin access granted via localStorage');
+                            return true;
+                        }
+                    } catch (error) {
+                        console.error('Error parsing user data:', error);
+                    }
+                }
+                
+                // Method 2: Check window.Auth if available
+                if (window.Auth) {
+                    console.log('Auth object found:', window.Auth);
+                    console.log('Auth.isLoggedIn:', window.Auth.isLoggedIn);
+                    console.log('Auth.role:', window.Auth.role);
+                    
+                    if (window.Auth.isLoggedIn && window.Auth.role === 'admin') {
+                        console.log('✅ Admin access granted via Auth object');
+                        return true;
+                    }
+                }
+                
+                // Method 3: Check sessionStorage as fallback
+                const sessionUser = sessionStorage.getItem('user');
+                if (sessionUser) {
+                    try {
+                        const user = JSON.parse(sessionUser);
+                        if (user.role === 'admin') {
+                            console.log('✅ Admin access granted via sessionStorage');
+                            return true;
+                        }
+                    } catch (error) {
+                        console.error('Error parsing session user data:', error);
+                    }
+                }
+                
+                console.log('❌ No admin access found');
+                return false;
+            };
+            
+            // Try checking multiple times with increasing delays
+            let attempts = 0;
+            const maxAttempts = 5;
+            
+            const tryCheckAccess = () => {
+                attempts++;
+                console.log(`Admin access check attempt ${attempts}/${maxAttempts}`);
+                
+                if (checkAdminAccess()) {
+                    console.log('✅ Admin access confirmed');
+                    // Admin access granted, do nothing
+                    return;
+                }
+                
+                if (attempts < maxAttempts) {
+                    // Try again after delay
+                    const delay = 500 * attempts; // 500ms, 1000ms, 1500ms, etc.
+                    console.log(`Will retry in ${delay}ms...`);
+                    setTimeout(tryCheckAccess, delay);
+                } else {
+                    console.log('❌ Max attempts reached, redirecting to home...');
+                    // Redirect to home page
+                    window.location.href = '/';
+                }
+            };
+            
+            // Start checking
+            tryCheckAccess();
+        });
+    </script>
+</body>
+</html>
