@@ -28,6 +28,10 @@ def login():
 def dashboard():
     return send_from_directory('HTML', 'dashboard.html')
 
+@app.route('/admin')
+def admin():
+    return send_from_directory('HTML', 'admin.html')
+
 # Serve static files
 @app.route('/static/<path:path>')
 def serve_static(path):
