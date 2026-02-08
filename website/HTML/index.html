@@ -19,9 +19,8 @@
     <link rel="stylesheet" href="/static/css/index.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     
-    <!-- Authentication JavaScript -->
-    <script src="/static/js/auth.js"></script>
-    
+    <script src="../static/js/app-config.js"></script>
+     
     <!-- JavaScript for expandable photos and commission rate -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -70,27 +69,82 @@
             });
 
             // Fetch and display commission rate
+            // Now you can simply use AppConfig.getUrl() which will use the correct base URL
+            // Fetch and display commission rate
             async function fetchCommissionRate() {
                 try {
-                    const response = await fetch('/api/commission-rate');
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
+                    // Check if AppConfig is loaded
+                    if (typeof AppConfig === 'undefined') {
+                        console.warn('AppConfig not loaded yet, retrying...');
+                        // Try again in 500ms
+                        setTimeout(fetchCommissionRate, 500);
+                        return;
                     }
+                    
+                    // Get the API URL using AppConfig
+                    const apiUrl = AppConfig.getUrl('commissionRate');
+                    console.log('Fetching commission rate from:', apiUrl);
+                    
+                    // Make the API request
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+                    }
+                    
                     const data = await response.json();
                     
-                    // Display the commission rate in the list
-                    const consignmentLink = document.querySelector('a[href="consignment.html"]');
-                    if (consignmentLink) {
-                        consignmentLink.parentElement.innerHTML = 
-                            `Sell your record collection on <a href="consignment.html">consignment</a> - Current rate: <strong>${data.commission_rate_percent}</strong>`;
+                    // Check if we got the expected data
+                    if (data && data.commission_rate_percent) {
+                        // Update the consignment item with the commission rate
+                        const consignmentItem = document.getElementById('consignment-item');
+                        if (consignmentItem) {
+                            consignmentItem.innerHTML = 
+                                `Sell your record collection on <a href="consignment.html">consignment</a> - Current rate: <strong>${data.commission_rate_percent}</strong>`;
+                            console.log('Commission rate displayed:', data.commission_rate_percent);
+                        }
+                    } else {
+                        throw new Error('Invalid response format: missing commission_rate_percent');
                     }
+                    
                 } catch (error) {
                     console.error('Error fetching commission rate:', error);
-                    // Optional: Display a fallback message
-                    const consignmentLink = document.querySelector('a[href="consignment.html"]');
-                    if (consignmentLink) {
-                        consignmentLink.parentElement.innerHTML = 
+                    
+                    // Show fallback message
+                    const consignmentItem = document.getElementById('consignment-item');
+                    if (consignmentItem) {
+                        consignmentItem.innerHTML = 
                             `Sell your record collection on <a href="consignment.html">consignment</a> - Rate info currently unavailable`;
+                    }
+                    
+                    // Try direct fetch as fallback (without AppConfig)
+                    try {
+                        console.log('Trying direct fetch as fallback...');
+                        const isLocalhost = window.location.hostname === 'localhost' || 
+                                        window.location.hostname === '127.0.0.1';
+                        const fallbackUrl = isLocalhost 
+                            ? 'http://localhost:5000/api/commission-rate'
+                            : `https://${window.location.hostname}/api/commission-rate`;
+                        
+                        const fallbackResponse = await fetch(fallbackUrl);
+                        if (fallbackResponse.ok) {
+                            const fallbackData = await fallbackResponse.json();
+                            if (fallbackData.commission_rate_percent) {
+                                const consignmentItem = document.getElementById('consignment-item');
+                                if (consignmentItem) {
+                                    consignmentItem.innerHTML = 
+                                        `Sell your record collection on <a href="consignment.html">consignment</a> - Current rate: <strong>${fallbackData.commission_rate_percent}</strong>`;
+                                }
+                            }
+                        }
+                    } catch (fallbackError) {
+                        console.error('Fallback also failed:', fallbackError);
                     }
                 }
             }
@@ -113,7 +167,6 @@
             <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
             <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
             <div id="auth-section">
-                <!-- Will be populated by auth.js -->
             </div>
         </div>
     </nav>
