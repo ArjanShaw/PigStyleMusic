@@ -94,8 +94,97 @@ body::before {
     width: 100%;
 }
 
+/* === AUTH SECTION STYLES (CRITICAL - WAS MISSING) === */
 #auth-section {
     margin-left: 20px;
+}
+
+/* User menu styles for logged-in users */
+.user-menu {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.user-greeting {
+    color: white;
+    font-weight: 500;
+}
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-toggle {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.3s;
+}
+
+.dropdown-toggle:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    min-width: 180px;
+    padding: 8px 0;
+    margin-top: 5px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    display: none;
+    z-index: 1001;
+}
+
+.dropdown:hover .dropdown-menu {
+    display: block;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 15px;
+    color: white;
+    text-decoration: none;
+    transition: background 0.3s;
+}
+
+.dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 5px 0;
+}
+
+/* Nav link styling for login button */
+.nav-link {
+    color: white;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.nav-link:hover {
+    color: #ffcc00;
 }
 
 /* === DASHBOARD CONTAINER === */
@@ -116,10 +205,9 @@ body::before {
     padding-bottom: 10px;
     gap: 10px;
 }
- 
+
 .tab-btn {
     flex: 0 0 auto;
-    /* background: rgba(0, 0, 0, 0.9); */
     border: 1px solid rgba(0, 0, 0, 0.2);
     color: #000;
     padding: 12px 24px;
@@ -133,10 +221,9 @@ body::before {
     gap: 10px;
     min-width: 160px;
     justify-content: center;
-}  
+}
 
 .tab-btn:hover {
-    /* background: rgba(0, 0, 0, 0.15); */
     transform: translateY(-2px);
 }
 
@@ -156,7 +243,6 @@ body::before {
 .tab-content.active {
     display: block;
 }
- 
 
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -1047,6 +1133,10 @@ select.form-control option {
     .ebay-summary-table {
         font-size: 11px;
     }
+    
+    .nav-links {
+        gap: 15px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1055,7 +1145,7 @@ select.form-control option {
     }
     
     .nav-links {
-        gap: 15px;
+        gap: 10px;
     }
     
     .tab-btn {
@@ -1073,5 +1163,15 @@ select.form-control option {
     .ebay-listings-table td:nth-child(5) {
         width: 40%;
         max-width: 40%;
+    }
+    
+    /* Adjust auth section for mobile */
+    .user-menu {
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .user-greeting {
+        font-size: 0.9rem;
     }
 }
