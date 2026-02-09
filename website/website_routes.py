@@ -1,8 +1,12 @@
 import os
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, session, redirect, url_for
 
 app = Flask(__name__, static_folder='static')
+app.secret_key = 'your-secret-key-here'  # Required for sessions
 
+def is_admin():
+   return True
+     
 # Serve HTML pages from HTML directory
 @app.route('/')
 def index():
@@ -28,9 +32,20 @@ def login():
 def dashboard():
     return send_from_directory('HTML', 'dashboard.html')
 
+# *** ONLY ONE /admin ROUTE - THIS IS THE CORRECT ONE ***
 @app.route('/admin')
-def admin():
+def admin_panel():
+    # Server-side admin check
+    if not is_admin():
+        # Redirect non-admin users to access denied page
+        return redirect('/access-denied')
+    
+    # Only admins get here
     return send_from_directory('HTML', 'admin.html')
+
+@app.route('/access-denied')
+def access_denied():
+    return send_from_directory('HTML', 'access_denied.html')
 
 # Serve static files
 @app.route('/static/<path:path>')
