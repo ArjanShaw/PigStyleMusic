@@ -63,6 +63,7 @@
                                 <th>Price</th>
                                 <th>Status</th>
                                 <th>Catalog #</th>
+                                <th>Barcode</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -279,6 +280,33 @@
         }
 
         // ============================================================================
+        // BARCODE GENERATOR
+        // ============================================================================
+        
+        class BarcodeGenerator {
+            constructor() {
+                this.counter = 1;
+                this.prefix = 'PS';
+            }
+            
+            generateBarcode() {
+                const now = new Date();
+                const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
+                const randomPart = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+                const counterPart = this.counter.toString().padStart(3, '0');
+                
+                const barcode = `${this.prefix}-${datePart}-${randomPart}-${counterPart}`;
+                this.counter++;
+                
+                return barcode;
+            }
+            
+            resetCounter() {
+                this.counter = 1;
+            }
+        }
+
+        // ============================================================================
         // INVENTORY MANAGER CLASS
         // ============================================================================
         
@@ -290,6 +318,7 @@
                 this.conditions = [];
                 this.statuses = ['new', 'active', 'sold', 'removed'];
                 this.genrePredictor = new GenrePredictor();
+                this.barcodeGenerator = new BarcodeGenerator();
                 this.commissionRate = 0.20;
                 this.consignors = [];
                 this.selectedConsignorId = 'all';
@@ -472,6 +501,7 @@
                             <td>$${(record.store_price || 0).toFixed(2)}</td>
                             <td>${record.status_name || 'N/A'}</td>
                             <td>${record.catalog_number || 'N/A'}</td>
+                            <td>${record.barcode || 'N/A'}</td>
                             <td>
                                 <div class="table-actions">
                                     <button class="table-action-btn" onclick="window.inventoryManager.editRecord(${record.id})">
@@ -673,7 +703,7 @@
                             image_url: 'https://img.discogs.com/GHS-24425.jpg',
                             catalog_number: 'GHS 24425',
                             discogs_id: '123456',
-                            barcode: '075992442517',
+                            barcode: ['GHS 24425', '075992442517'],
                             predicted_genre: { local_genre_id: 1, local_genre_name: 'Rock' }
                         }
                     ];
@@ -690,7 +720,7 @@
                             image_url: '',
                             catalog_number: 'SMP001',
                             discogs_id: '999999',
-                            barcode: '123456789012',
+                            barcode: ['123456789012'],
                             predicted_genre: null
                         }
                     ];
@@ -748,6 +778,16 @@
                             return `<option value="${condition}">${condition}</option>`;
                         }).join('');
                         
+                        // Display original Discogs identifiers (for reference only)
+                        let discogsIdentifiers = '';
+                        if (record.barcode) {
+                            if (Array.isArray(record.barcode)) {
+                                discogsIdentifiers = record.barcode.join(', ');
+                            } else {
+                                discogsIdentifiers = record.barcode;
+                            }
+                        }
+                        
                         return `
                             <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}">
                                 <div class="record-header">
@@ -766,8 +806,8 @@
                                             ${record.genre ? `<p><strong>Discogs Genre:</strong> ${record.genre}</p>` : ''}
                                             ${record.format ? `<p><strong>Format:</strong> ${record.format}</p>` : ''}
                                             ${record.country ? `<p><strong>Country:</strong> ${record.country}</p>` : ''}
-                                            ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
-                                            ${record.barcode ? `<p><strong>Barcode:</strong> ${record.barcode}</p>` : ''}
+                                            ${record.catalog_number ? `<p><strong>Discogs Catalog #:</strong> ${record.catalog_number}</p>` : ''}
+                                            ${discogsIdentifiers ? `<p><strong>Discogs Identifiers:</strong> ${discogsIdentifiers}</p>` : ''}
                                         </div>
                                     </div>
                                 </div>
@@ -829,6 +869,11 @@
                                         <input type="number" class="form-control price-input" step="0.01" min="0" 
                                                placeholder="Enter price" required>
                                     </div>
+                                </div>
+                                
+                                <div class="barcode-info">
+                                    <i class="fas fa-barcode"></i>
+                                    <span>A PigStyle barcode will be automatically generated when you add this record</span>
                                 </div>
                                 
                                 <div id="calculation-${record.discogs_id}" class="calculation-container"></div>
@@ -903,7 +948,7 @@
                                         <div class="record-title">${record.artist} - ${record.title}</div>
                                         <div class="record-details">
                                             ${record.genre_name ? `<p><strong>Genre:</strong> ${record.genre_name}</p>` : ''}
-                                            ${record.barcode ? `<p><strong>Barcode:</strong> ${record.barcode}</p>` : ''}
+                                            ${record.barcode ? `<p><strong>PigStyle Barcode:</strong> ${record.barcode}</p>` : ''}
                                             ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
                                             ${record.store_price ? `<p><strong>Price:</strong> $${parseFloat(record.store_price).toFixed(2)}</p>` : ''}
                                             ${record.condition ? `<p><strong>Condition:</strong> ${record.condition}</p>` : ''}
@@ -1365,15 +1410,22 @@
                 const genre = this.genres.find(g => g.id == genreId);
                 const genreName = genre ? genre.genre_name : '';
                 
-                let barcode = discogsRecord.barcode || '';
-                if (Array.isArray(barcode)) {
-                    barcode = barcode.filter(b => b && b.toString().trim()).join(', ');
-                }
+                // Generate PigStyle barcode
+                const pigstyleBarcode = this.barcodeGenerator.generateBarcode();
+                
+                console.log('=== ADDING RECORD ===');
+                console.log('Generated PigStyle barcode:', pigstyleBarcode);
+                console.log('Discogs barcode (ignored):', discogsRecord.barcode);
+                console.log('Artist:', discogsRecord.artist);
+                console.log('Title:', discogsRecord.title);
+                console.log('Genre ID:', genreId);
+                console.log('Condition:', condition);
+                console.log('Price:', price);
                 
                 const recordData = {
                     artist: discogsRecord.artist,
                     title: discogsRecord.title,
-                    barcode: barcode,
+                    barcode: pigstyleBarcode,  // Use our generated barcode
                     genre_id: parseInt(genreId),
                     genre_name: genreName,
                     image_url: discogsRecord.image_url || '',
@@ -1392,14 +1444,12 @@
                     discogs_genre: discogsRecord.genre || ''
                 };
                 
-                console.log('ADD_RECORD: Fixed barcode:', barcode);
-                console.log('ADD_RECORD: Commission rate used:', this.commissionRate);
-                console.log('ADD_RECORD: Sending data:', recordData);
+                console.log('Sending to /records endpoint:', recordData);
                 
                 const response = await APIUtils.post('/records', recordData);
                 
                 if (response.status === 'success') {
-                    this.showMessage(`Record added successfully! ID: ${response.record_id}`, 'success');
+                    this.showMessage(`Record added successfully! PigStyle Barcode: ${pigstyleBarcode}`, 'success');
                     
                     if (discogsRecord.genre && discogsRecord.predicted_genre && 
                         discogsRecord.predicted_genre.local_genre_id == genreId) {

@@ -1523,7 +1523,7 @@ def delete_record(record_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('DELETE FROM votes WHERE record_id = ?', (record_id,))
+    
     cursor.execute('DELETE FROM records WHERE id = ?', (record_id,))
     conn.commit()
     conn.close()
