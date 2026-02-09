@@ -6,7 +6,310 @@
     <title>Admin Panel - PigStyle Music</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="/static/js/app-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <style>
+        body, .admin-container, .tab-content, .config-section, 
+        .stat-card, .stat-card h3, .stat-number,
+        .records-table, .records-table th, .records-table td,
+        .input-group label, .status-message,
+        .btn, .expandable-header, .code-block,
+        .tooltip, .tooltip-text, 
+        .page-layout-preview, .preview-label,
+        .tag-preview, .tag-preview-content,
+        .tag-price, .tag-info, .tag-initials {
+            color: #000000 !important;
+        }
+        
+        .status-success { color: #155724 !important; }
+        .status-error { color: #721c24 !important; }
+        .status-info { color: #0c5460 !important; }
+        
+        .records-table th { color: #000000 !important; }
+        .records-table td { color: #333333 !important; }
+        
+        .btn-primary, .btn-success, .btn-secondary {
+            color: #ffffff !important;
+        }
+        
+        .btn-primary:hover, .btn-success:hover, .btn-secondary:hover {
+            color: #ffffff !important;
+        }
+        
+        .btn:disabled {
+            color: #666666 !important;
+        }
+        
+        .admin-container {
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 20px;
+            color: #000000;
+        }
+        
+        .tab-container {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            background: #f5f5f5;
+            border: 1px solid #e0e0e0;
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            margin-right: 5px;
+            font-weight: 500;
+            color: #000000;
+        }
+        
+        .tab.active {
+            background: #3498db;
+            color: #ffffff !important;
+            border-color: #3498db;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 20px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 0 0 8px 8px;
+            color: #000000;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .records-table-container {
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        
+        .records-table {
+            width: 100%;
+            border-collapse: collapse;
+            color: #000000;
+        }
+        
+        .records-table th {
+            background: #f5f5f5;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+            position: sticky;
+            top: 0;
+            font-size: 14px;
+            color: #000000 !important;
+        }
+        
+        .records-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+            color: #333333 !important;
+        }
+        
+        .records-table tr:hover {
+            background: #f9f9f9;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #3498db;
+        }
+        
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+        
+        .btn-success {
+            background: #27ae60;
+        }
+        
+        .btn-success:hover {
+            background: #219653;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            color: #666666 !important;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+            color: #000000;
+        }
+        
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #666666 !important;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50 !important;
+            margin: 0;
+        }
+        
+        .status-message {
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+        
+        .status-success {
+            background: #d4edda;
+            color: #155724 !important;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #721c24 !important;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460 !important;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        
+        .select2-container {
+            width: 100% !important;
+        }
+        
+        .select2-selection {
+            border: 1px solid #ddd !important;
+            border-radius: 4px !important;
+            min-height: 38px !important;
+            color: #000000;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #000000 !important;
+        }
+        
+        .input-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666666;
+            font-size: 12px;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .condition-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #ffffff !important;
+        }
+        
+        .condition-mint { background: #4CAF50; }
+        .condition-nm { background: #8BC34A; }
+        .condition-vgplus { background: #FFC107; color: #333333 !important; }
+        .condition-vg { background: #FF9800; }
+        .condition-gplus { background: #FF5722; }
+        .condition-g { background: #795548; }
+        
+        .consignor-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            background: #6c757d;
+            color: #ffffff !important;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -26,110 +329,508 @@
     </nav>
 
     <div class="admin-container">
-        <h1>Admin Panel</h1>
-        <p>Hello World - Admin panel is under construction</p>
+        <h1><i class="fas fa-cogs"></i> Admin Panel</h1>
         
-        <div class="admin-stats">
-            <div class="stat-card">
-                <h3><i class="fas fa-users"></i> Total Users</h3>
-                <p class="stat-number">0</p>
+        <div class="tab-container">
+            <div class="tab active" onclick="switchTab('price-tags')">
+                <i class="fas fa-tags"></i> Print Price Tags
             </div>
-            <div class="stat-card">
-                <h3><i class="fas fa-record-vinyl"></i> Total Records</h3>
-                <p class="stat-number">0</p>
+        </div>
+        
+        <!-- Price Tags Tab -->
+        <div id="price-tags-tab" class="tab-content active">
+            <h2><i class="fas fa-tags"></i> Print Price Tags</h2>
+            
+            <!-- User Selection -->
+            <div class="input-group">
+                <label for="user-select"><i class="fas fa-user"></i> Select User:</label>
+                <select id="user-select" class="select2" style="width: 100%;">
+                    <option value="all">All Users</option>
+                </select>
             </div>
-            <div class="stat-card">
-                <h3><i class="fas fa-money-bill-wave"></i> Revenue</h3>
-                <p class="stat-number">$0.00</p>
+            
+            <!-- Records Section -->
+            <div id="records-section">
+                <h3><i class="fas fa-list"></i> Inactive Records Ready for Printing</h3>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Records</h3>
+                        <p class="stat-number" id="total-records">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Inactive Records</h3>
+                        <p class="stat-number" id="inactive-records">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Selected Tags</h3>
+                        <p class="stat-number" id="selected-tags">0</p>
+                    </div>
+                </div>
+                
+                <!-- Batch Size Input -->
+                <div class="input-group">
+                    <label for="batch-size"><i class="fas fa-sort-numeric-down"></i> Number of tags to print:</label>
+                    <input type="number" id="batch-size" min="1" value="10" style="width: 200px; padding: 8px;">
+                    <small>Most recent inactive records will be selected (sorted by creation date descending)</small>
+                </div>
+                
+                <!-- Records Table -->
+                <div class="records-table-container">
+                    <table class="records-table" id="records-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="select-all"></th>
+                                <th>#</th>
+                                <th>Created Date <i class="fas fa-sort-down"></i></th>
+                                <th>Artist</th>
+                                <th>Title</th>
+                                <th>Price</th>
+                                <th>Catalog #</th>
+                                <th>Genre</th>
+                                <th>Barcode</th>
+                                <th>Consignor</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="records-body">
+                            <!-- Records will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="loadRecords()">
+                        <i class="fas fa-sync-alt"></i> Refresh Records
+                    </button>
+                    <button class="btn btn-success" onclick="printSelectedTags()" id="print-btn" disabled>
+                        <i class="fas fa-print"></i> Print Price Tags
+                    </button>
+                </div>
+                
+                <!-- Status Messages -->
+                <div id="status-message" class="status-message"></div>
+                
+                <!-- Loading Indicator -->
+                <div class="loading" id="loading">
+                    <div class="loading-spinner"></div>
+                    <p>Processing...</p>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Admin access check - using localStorage for reliability
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Admin page loaded, checking access...');
+        // Global variables
+        let consignorCache = {};
+        let allRecords = [];
+        
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
-            // Function to check admin access with multiple methods
-            const checkAdminAccess = () => {
-                console.log('Checking admin access...');
-                
-                // Method 1: Check localStorage directly (most reliable)
-                const userData = localStorage.getItem('user');
-                console.log('LocalStorage user data:', userData);
-                
-                if (userData) {
-                    try {
-                        const user = JSON.parse(userData);
-                        console.log('User role from localStorage:', user.role);
+            document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+        }
+        
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status-message');
+            statusEl.textContent = message;
+            statusEl.className = `status-message status-${type}`;
+            statusEl.style.display = 'block';
+            
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 5000);
+        }
+        
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+        
+        function truncateText(text, maxLength) {
+            if (!text) return '';
+            return text.length > maxLength ? text.substring(0, maxLength - 1) + '…' : text;
+        }
+        
+        function formatDate(dateString) {
+            if (!dateString) return 'Unknown';
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            } catch (e) {
+                return dateString.split('T')[0] || 'Unknown';
+            }
+        }
+        
+        function getStatusClass(statusId) {
+            switch(statusId) {
+                case 1: return 'condition-gplus';
+                case 2: return 'condition-vgplus';
+                case 3: return 'condition-mint';
+                default: return 'condition-g';
+            }
+        }
+        
+        function getStatusText(statusId) {
+            switch(statusId) {
+                case 1: return 'Inactive';
+                case 2: return 'Active';
+                case 3: return 'Sold';
+                default: return `Status ${statusId || '?'}`;
+            }
+        }
+        
+        async function getConsignorInfo(consignorId) {
+            if (!consignorId) return { username: 'None', initials: '' };
+            
+            if (consignorCache[consignorId]) {
+                return consignorCache[consignorId];
+            }
+            
+            try {
+                const url = `${AppConfig.baseUrl}/users/${consignorId}`;
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        const user = data.user || {};
+                        const consignorInfo = {
+                            username: user.username || `User ${consignorId}`,
+                            initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
+                        };
+                        consignorCache[consignorId] = consignorInfo;
+                        return consignorInfo;
+                    }
+                }
+            } catch (error) {
+                console.log('Error fetching consignor:', error);
+            }
+            
+            return { username: `User ${consignorId}`, initials: '' };
+        }
+        
+        async function loadUsers() {
+            try {
+                const url = `${AppConfig.baseUrl}/users`;
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        const users = data.users || [];
+                        const userSelect = $('#user-select');
+                        userSelect.empty();
+                        userSelect.append('<option value="all">All Users</option>');
                         
-                        if (user.role === 'admin') {
-                            console.log('✅ Admin access granted via localStorage');
-                            return true;
-                        }
-                    } catch (error) {
-                        console.error('Error parsing user data:', error);
+                        users.forEach(user => {
+                            userSelect.append(`<option value="${user.id}">${user.username} (ID: ${user.id})</option>`);
+                        });
+                        
+                        users.forEach(user => {
+                            consignorCache[user.id] = {
+                                username: user.username || `User ${user.id}`,
+                                initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
+                            };
+                        });
                     }
                 }
+            } catch (error) {
+                showStatus('Error loading users', 'error');
+            }
+        }
+        
+        async function loadRecords() {
+            showLoading(true);
+            
+            try {
+                const userSelect = document.getElementById('user-select');
+                const selectedUserId = userSelect.value === 'all' ? null : userSelect.value;
                 
-                // Method 2: Check window.Auth if available
-                if (window.Auth) {
-                    console.log('Auth object found:', window.Auth);
-                    console.log('Auth.isLoggedIn:', window.Auth.isLoggedIn);
-                    console.log('Auth.role:', window.Auth.role);
+                let url;
+                if (selectedUserId) {
+                    url = `${AppConfig.baseUrl}/records/user/${selectedUserId}`;
+                } else {
+                    url = `${AppConfig.baseUrl}/records`;
+                }
+                
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        allRecords = data.records || [];
+                        
+                        // Sort by created_at descending (newest first)
+                        allRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                        
+                        // Update counts
+                        document.getElementById('total-records').textContent = allRecords.length;
+                        const inactiveCount = allRecords.filter(r => r.status_id === 1).length;
+                        document.getElementById('inactive-records').textContent = inactiveCount;
+                        
+                        // Update batch size
+                        const batchSizeInput = document.getElementById('batch-size');
+                        batchSizeInput.max = inactiveCount;
+                        batchSizeInput.value = Math.min(parseInt(batchSizeInput.value), inactiveCount);
+                        
+                        // Pre-fetch consignor data
+                        const consignorIds = new Set();
+                        allRecords.forEach(r => { if (r.consignor_id) consignorIds.add(r.consignor_id); });
+                        const fetchPromises = Array.from(consignorIds).map(id => getConsignorInfo(id));
+                        await Promise.all(fetchPromises);
+                        
+                        // Render table
+                        renderRecordsTable(allRecords);
+                        
+                        showStatus(`Loaded ${allRecords.length} records, ${inactiveCount} inactive`, 'success');
+                    }
+                }
+            } catch (error) {
+                showStatus('Error loading records', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function renderRecordsTable(records) {
+            const tbody = document.getElementById('records-body');
+            tbody.innerHTML = '';
+            
+            window.selectedRecords = new Set();
+            updateSelectionUI();
+            
+            if (records.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 20px; color: #666;">No records found</td></tr>`;
+                return;
+            }
+            
+            // Show inactive records first
+            const inactiveRecords = records.filter(r => r.status_id === 1);
+            const displayRecords = [...inactiveRecords].slice(0, 100);
+            
+            displayRecords.forEach((record, index) => {
+                const consignorInfo = consignorCache[record.consignor_id] || { username: 'None', initials: '' };
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><input type="checkbox" class="record-checkbox" data-id="${record.id}"></td>
+                    <td>${index + 1}</td>
+                    <td><strong>${formatDate(record.created_at)}</strong></td>
+                    <td>${truncateText(record.artist || 'Unknown', 25)}</td>
+                    <td>${truncateText(record.title || 'Unknown', 30)}</td>
+                    <td>$${(record.store_price || 0).toFixed(2)}</td>
+                    <td>${truncateText(record.catalog_number || 'N/A', 15)}</td>
+                    <td>${truncateText(record.genre_name || record.genre || 'Unknown', 20)}</td>
+                    <td>${record.barcode || 'N/A'}</td>
+                    <td>
+                        ${record.consignor_id ? 
+                            `<span class="consignor-badge" title="${consignorInfo.username}">${consignorInfo.initials || consignorInfo.username.substring(0, 2)}</span>` : 
+                            '<span style="color: #999;">None</span>'}
+                    </td>
+                    <td>
+                        <span class="condition-badge ${getStatusClass(record.status_id)}">
+                            ${getStatusText(record.status_id)}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            // Add checkbox event listeners
+            document.querySelectorAll('.record-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    const recordId = this.getAttribute('data-id');
+                    if (this.checked) {
+                        window.selectedRecords.add(recordId);
+                    } else {
+                        window.selectedRecords.delete(recordId);
+                    }
+                    updateSelectionUI();
+                });
+            });
+            
+            // Select all checkbox
+            const selectAllCheckbox = document.getElementById('select-all');
+            selectAllCheckbox.addEventListener('change', function() {
+                const checkboxes = document.querySelectorAll('.record-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                    const recordId = checkbox.getAttribute('data-id');
+                    if (this.checked) {
+                        window.selectedRecords.add(recordId);
+                    } else {
+                        window.selectedRecords.delete(recordId);
+                    }
+                });
+                updateSelectionUI();
+            });
+            
+            updateSelectionUI();
+            
+            if (records.length > 100) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td colspan="11" style="text-align: center; padding: 15px; color: #666; font-style: italic;">
+                        Showing 100 of ${records.length} records. 
+                        ${inactiveRecords.length} are inactive (status_id=1).
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+        }
+        
+        function updateSelectionUI() {
+            const count = window.selectedRecords ? window.selectedRecords.size : 0;
+            document.getElementById('selected-tags').textContent = count;
+            document.getElementById('print-btn').disabled = count === 0;
+        }
+        
+        async function printSelectedTags() {
+            const selectedIds = Array.from(window.selectedRecords);
+            const batchSize = parseInt(document.getElementById('batch-size').value);
+            
+            if (selectedIds.length === 0) {
+                showStatus('No records selected for printing', 'error');
+                return;
+            }
+            
+            showLoading(true);
+            
+            // Get selected inactive records (already sorted by date)
+            const selectedRecords = allRecords
+            .filter(r => selectedIds.includes(r.id.toString()) && r.status_id === 1)
+            .slice(0, batchSize);
+                
+            if (selectedRecords.length === 0) {
+                showStatus('No inactive records selected', 'error');
+                showLoading(false);
+                return;
+            }
+                
+            // Generate PDF
+            const pdfBlob = await generatePDF(selectedRecords);
+                
+            // Download PDF
+            const url = URL.createObjectURL(pdfBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `price_tags_${new Date().toISOString().slice(0, 10)}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+                
+            showStatus(`PDF generated for ${selectedRecords.length} records`, 'success');
+        }
+        
+        function generatePDF(records) {
+            return new Promise((resolve) => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({
+                    unit: 'mm',
+                    format: 'letter'
+                });
+                
+                // Simple layout
+                const labelWidth = 48;
+                const labelHeight = 25;
+                const leftMargin = 5;
+                const topMargin = 10;
+                const gutter = 2;
+                const rows = 15;
+                const cols = 4;
+                
+                let currentLabel = 0;
+                
+                records.forEach((record) => {
+                    if (currentLabel > 0 && currentLabel % (rows * cols) === 0) {
+                        doc.addPage();
+                    }
                     
-                    if (window.Auth.isLoggedIn && window.Auth.role === 'admin') {
-                        console.log('✅ Admin access granted via Auth object');
-                        return true;
+                    const row = Math.floor((currentLabel % (rows * cols)) / cols);
+                    const col = currentLabel % cols;
+                    
+                    const x = leftMargin + (col * (labelWidth + gutter));
+                    const y = topMargin + (row * labelHeight);
+                    
+                    // Draw border
+                    doc.setDrawColor(0);
+                    doc.setLineWidth(0.2);
+                    doc.rect(x, y, labelWidth, labelHeight);
+                    
+                    // Draw price
+                    const price = record.store_price || 0;
+                    const priceText = `$${price.toFixed(2)}`;
+                    doc.setFontSize(14);
+                    doc.setFont('helvetica', 'bold');
+                    const priceWidth = doc.getTextWidth(priceText);
+                    const priceX = x + (labelWidth - priceWidth) / 2;
+                    const priceY = y + 5;
+                    doc.text(priceText, priceX, priceY);
+                    
+                    // Draw artist and genre
+                    const artist = record.artist || 'Unknown';
+                    const genre = record.genre_name || record.genre || 'Unknown';
+                    const infoText = `${genre} | ${artist}`;
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'normal');
+                    const infoWidth = doc.getTextWidth(infoText);
+                    const infoX = x + (labelWidth - infoWidth) / 2;
+                    const infoY = priceY + 5;
+                    doc.text(infoText, infoX, infoY);
+                    
+                    // Draw barcode if available
+                    const barcodeNum = record.barcode;
+                    if (barcodeNum) {
+                        const canvas = document.createElement('canvas');
+                        JsBarcode(canvas, barcodeNum, {
+                            format: "CODE128",
+                            displayValue: false,
+                            height: 20,
+                            margin: 0
+                        });
+                        
+                        const barcodeData = canvas.toDataURL('image/png');
+                        const barcodeX = x + (labelWidth - 25) / 2;
+                        const barcodeY = y + labelHeight - 15;
+                        
+                        doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, 25, 10);
                     }
-                }
+                    
+                    currentLabel++;
+                });
                 
-                // Method 3: Check sessionStorage as fallback
-                const sessionUser = sessionStorage.getItem('user');
-                if (sessionUser) {
-                    try {
-                        const user = JSON.parse(sessionUser);
-                        if (user.role === 'admin') {
-                            console.log('✅ Admin access granted via sessionStorage');
-                            return true;
-                        }
-                    } catch (error) {
-                        console.error('Error parsing session user data:', error);
+                const pdfBlob = doc.output('blob');
+                resolve(pdfBlob);
+            });
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            const userData = localStorage.getItem('user');
+            if (userData) {
+                try {
+                    const user = JSON.parse(userData);
+                    if (user.role !== 'admin') {
+                        window.location.href = '/';
+                        return;
                     }
-                }
-                
-                console.log('❌ No admin access found');
-                return false;
-            };
-            
-            // Try checking multiple times with increasing delays
-            let attempts = 0;
-            const maxAttempts = 5;
-            
-            const tryCheckAccess = () => {
-                attempts++;
-                console.log(`Admin access check attempt ${attempts}/${maxAttempts}`);
-                
-                if (checkAdminAccess()) {
-                    console.log('✅ Admin access confirmed');
-                    // Admin access granted, do nothing
+                } catch {
+                    window.location.href = '/';
                     return;
                 }
-                
-                if (attempts < maxAttempts) {
-                    // Try again after delay
-                    const delay = 500 * attempts; // 500ms, 1000ms, 1500ms, etc.
-                    console.log(`Will retry in ${delay}ms...`);
-                    setTimeout(tryCheckAccess, delay);
-                } else {
-                    console.log('❌ Max attempts reached, redirecting to home...');
-                    // Redirect to home page
-                    window.location.href = '/';
-                }
-            };
+            } else {
+                window.location.href = '/';
+                return;
+            }
             
-            // Start checking
-            tryCheckAccess();
+            $('#user-select').select2({
+                placeholder: "Select a user...",
+                allowClear: true
+            }).on('change', loadRecords);
+            
+            loadUsers();
+            loadRecords();
         });
     </script>
 </body>
