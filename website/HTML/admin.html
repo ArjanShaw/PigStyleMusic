@@ -596,7 +596,58 @@
         let currentPage = 1;
         let pageSize = 100;
         let totalPages = 1;
+        let configValues = {};
         
+        // Configuration fetching functions
+        async function fetchConfigValues() {
+            try {
+                const response = await fetch(`${AppConfig.baseUrl}/config`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        configValues = data.config || {};
+                        console.log('Loaded config values:', configValues);
+                        return configValues;
+                    }
+                }
+                // Return default values if API fails
+                return getDefaultConfig();
+            } catch (error) {
+                console.error('Error fetching config:', error);
+                return getDefaultConfig();
+            }
+        }
+        
+        function getDefaultConfig() {
+            return {
+                LABEL_WIDTH_MM: 45.0,
+                LABEL_HEIGHT_MM: 16.8,
+                LEFT_MARGIN_MM: 6.5,
+                GUTTER_SPACING_MM: 6.5,
+                TOP_MARGIN_MM: 14.0,
+                FONT_SIZE: 7,
+                PRICE_FONT_SIZE: 10,
+                PRICE_Y_POS: 2.0,
+                TEXT_FONT_SIZE: 6,
+                BARCODE_Y_POS: 2.0,
+                BARCODE_HEIGHT: 6.0,
+                PRINT_BORDERS: false
+            };
+        }
+        
+        async function getConfigValue(key, defaultValue) {
+            if (Object.keys(configValues).length === 0) {
+                await fetchConfigValues();
+            }
+            return configValues[key] !== undefined ? configValues[key] : defaultValue;
+        }
+        
+        // Convert mm to points (1 mm = 2.83465 points)
+        function mmToPoints(mm) {
+            return mm * 2.83465;
+        }
+        
+        // Helper functions
         function switchTab(tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -1021,78 +1072,150 @@
                 showLoading(false);
                 return;
             }
+            
+            try {
+                // Fetch configuration values
+                await fetchConfigValues();
                 
-            // Generate PDF
-            const pdfBlob = await generatePDF(selectedRecords);
+                // Generate PDF
+                const pdfBlob = await generatePDF(selectedRecords);
                 
-            // Download PDF
-            const url = URL.createObjectURL(pdfBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `price_tags_${new Date().toISOString().slice(0, 10)}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+                // Download PDF
+                const url = URL.createObjectURL(pdfBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `price_tags_${new Date().toISOString().slice(0, 10)}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
                 
-            showStatus(`PDF generated for ${selectedRecords.length} records`, 'success');
-            showLoading(false);
+                showStatus(`PDF generated for ${selectedRecords.length} records`, 'success');
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                showStatus(`Error generating PDF: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
         }
         
-        function generatePDF(records) {
-            return new Promise((resolve) => {
+        async function generatePDF(records) {
+            return new Promise(async (resolve) => {
                 const { jsPDF } = window.jspdf;
+                
+                // Load configuration values
+                const config = await fetchConfigValues();
+                
+                // Extract configuration values with defaults
+                const labelWidthMM = config.LABEL_WIDTH_MM || 45.0;
+                const labelHeightMM = config.LABEL_HEIGHT_MM || 16.8;
+                const leftMarginMM = config.LEFT_MARGIN_MM || 6.5;
+                const gutterSpacingMM = config.GUTTER_SPACING_MM || 6.5;
+                const topMarginMM = config.TOP_MARGIN_MM || 14.0;
+                const priceFontSize = config.PRICE_FONT_SIZE || 10;
+                const textFontSize = config.TEXT_FONT_SIZE || 6;
+                const barcodeHeightMM = config.BARCODE_HEIGHT || 6.0;
+                const printBorders = config.PRINT_BORDERS === 'true' || config.PRINT_BORDERS === true;
+                
+                // Convert mm to points for jsPDF (1 mm = 2.83465 points)
+                const mmToPt = 2.83465;
+                const labelWidthPt = labelWidthMM * mmToPt;
+                const labelHeightPt = labelHeightMM * mmToPt;
+                const leftMarginPt = leftMarginMM * mmToPt;
+                const gutterSpacingPt = gutterSpacingMM * mmToPt;
+                const topMarginPt = topMarginMM * mmToPt;
+                const barcodeHeightPt = barcodeHeightMM * mmToPt;
+                
                 const doc = new jsPDF({
-                    unit: 'mm',
+                    unit: 'pt',
                     format: 'letter'
                 });
                 
-                // Simple layout
-                const labelWidth = 48;
-                const labelHeight = 25;
-                const leftMargin = 5;
-                const topMargin = 10;
-                const gutter = 2;
+                // Layout calculations
+                const pageWidthPt = doc.internal.pageSize.getWidth();
+                const pageHeightPt = doc.internal.pageSize.getHeight();
                 const rows = 15;
                 const cols = 4;
+                const labelsPerPage = rows * cols;
                 
                 let currentLabel = 0;
                 
-                records.forEach((record) => {
-                    if (currentLabel > 0 && currentLabel % (rows * cols) === 0) {
+                // Pre-fetch consignor data
+                const consignorCache = {};
+                const consignorIds = new Set();
+                records.forEach(r => { 
+                    if (r.consignor_id) consignorIds.add(r.consignor_id); 
+                });
+                
+                // Fetch consignor data
+                for (const consignorId of consignorIds) {
+                    const consignorInfo = await getConsignorInfo(consignorId);
+                    consignorCache[consignorId] = consignorInfo.initials || '';
+                }
+                
+                // Generate labels
+                for (const record of records) {
+                    // Add new page if needed
+                    if (currentLabel > 0 && currentLabel % labelsPerPage === 0) {
                         doc.addPage();
                     }
                     
-                    const row = Math.floor((currentLabel % (rows * cols)) / cols);
-                    const col = currentLabel % cols;
+                    // Calculate position
+                    const pageIndex = currentLabel % labelsPerPage;
+                    const row = Math.floor(pageIndex / cols);
+                    const col = pageIndex % cols;
                     
-                    const x = leftMargin + (col * (labelWidth + gutter));
-                    const y = topMargin + (row * labelHeight);
+                    const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
+                    const y = topMarginPt + (row * labelHeightPt);
                     
-                    // Draw border
-                    doc.setDrawColor(0);
-                    doc.setLineWidth(0.2);
-                    doc.rect(x, y, labelWidth, labelHeight);
+                    // Draw border if enabled
+                    if (printBorders) {
+                        doc.setDrawColor(0);
+                        doc.setLineWidth(0.5);
+                        doc.rect(x, y, labelWidthPt, labelHeightPt);
+                    }
+                    
+                    // Get consignor initials
+                    const consignorId = record.consignor_id;
+                    const consignorInitials = consignorCache[consignorId] || '';
                     
                     // Draw price
                     const price = record.store_price || 0;
                     const priceText = `$${price.toFixed(2)}`;
-                    doc.setFontSize(14);
+                    doc.setFontSize(priceFontSize);
                     doc.setFont('helvetica', 'bold');
+                    
                     const priceWidth = doc.getTextWidth(priceText);
-                    const priceX = x + (labelWidth - priceWidth) / 2;
-                    const priceY = y + 5;
+                    const priceX = x + (labelWidthPt - priceWidth) / 2;
+                    const priceY = y + labelHeightPt - (4 * mmToPt); // Position from top
+                    
                     doc.text(priceText, priceX, priceY);
                     
-                    // Draw artist and genre
+                    // Draw artist, genre, and consignor initials
                     const artist = record.artist || 'Unknown';
                     const genre = record.genre_name || record.genre || 'Unknown';
-                    const infoText = `${genre} | ${artist}`;
-                    doc.setFontSize(8);
+                    
+                    let infoText = genre;
+                    if (artist !== 'Unknown') {
+                        infoText += ` | ${artist}`;
+                    }
+                    if (consignorInitials) {
+                        infoText += ` | (${consignorInitials})`;
+                    }
+                    
+                    // Truncate if too long
+                    const maxLength = 35;
+                    if (infoText.length > maxLength) {
+                        infoText = infoText.substring(0, maxLength - 1) + '…';
+                    }
+                    
+                    doc.setFontSize(textFontSize);
                     doc.setFont('helvetica', 'normal');
+                    
                     const infoWidth = doc.getTextWidth(infoText);
-                    const infoX = x + (labelWidth - infoWidth) / 2;
-                    const infoY = priceY + 5;
+                    const infoX = x + (labelWidthPt - infoWidth) / 2;
+                    const infoY = priceY - (3 * mmToPt);
+                    
                     doc.text(infoText, infoX, infoY);
                     
                     // Draw barcode if available
@@ -1103,18 +1226,19 @@
                             format: "CODE128",
                             displayValue: false,
                             height: 20,
-                            margin: 0
+                            margin: 0,
+                            width: 2
                         });
                         
                         const barcodeData = canvas.toDataURL('image/png');
-                        const barcodeX = x + (labelWidth - 25) / 2;
-                        const barcodeY = y + labelHeight - 15;
+                        const barcodeX = x + (labelWidthPt - (25 * mmToPt)) / 2;
+                        const barcodeY = y + (2 * mmToPt);
                         
-                        doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, 25, 10);
+                        doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, 25 * mmToPt, barcodeHeightPt);
                     }
                     
                     currentLabel++;
-                });
+                }
                 
                 const pdfBlob = doc.output('blob');
                 resolve(pdfBlob);
@@ -1122,7 +1246,7 @@
         }
         
         // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             const userData = localStorage.getItem('user');
             if (userData) {
                 try {
@@ -1140,14 +1264,19 @@
                 return;
             }
             
+            // Initialize selected records set
+            window.selectedRecords = new Set();
+            
+            // Fetch configuration values first
+            await fetchConfigValues();
+            
+            // Initialize UI components
             $('#user-select').select2({
                 placeholder: "Select a user...",
                 allowClear: true
             }).on('change', loadRecords);
             
-            // Initialize selected records set
-            window.selectedRecords = new Set();
-            
+            // Load data
             loadUsers();
             loadRecords();
         });
