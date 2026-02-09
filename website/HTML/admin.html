@@ -309,6 +309,92 @@
             background: #6c757d;
             color: #ffffff !important;
         }
+        
+        .filter-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .filter-group label {
+            margin-bottom: 5px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .filter-select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            font-size: 14px;
+            min-width: 150px;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+            padding: 10px;
+        }
+        
+        .pagination-info {
+            font-size: 14px;
+            color: #666;
+            margin: 0 10px;
+        }
+        
+        .page-btn {
+            padding: 8px 16px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .page-btn:hover:not(:disabled) {
+            background: #e9e9e9;
+        }
+        
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .page-input {
+            width: 60px;
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .records-per-page {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+        
+        .records-per-page select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -341,17 +427,38 @@
         <div id="price-tags-tab" class="tab-content active">
             <h2><i class="fas fa-tags"></i> Print Price Tags</h2>
             
-            <!-- User Selection -->
-            <div class="input-group">
-                <label for="user-select"><i class="fas fa-user"></i> Select User:</label>
-                <select id="user-select" class="select2" style="width: 100%;">
-                    <option value="all">All Users</option>
-                </select>
+            <!-- Filter Controls -->
+            <div class="filter-controls">
+                <!-- User Selection -->
+                <div class="filter-group">
+                    <label for="user-select"><i class="fas fa-user"></i> Select User:</label>
+                    <select id="user-select" class="select2 filter-select" style="width: 250px;">
+                        <option value="all">All Users</option>
+                    </select>
+                </div>
+                
+                <!-- Status Filter -->
+                <div class="filter-group">
+                    <label for="status-filter"><i class="fas fa-filter"></i> Filter by Status:</label>
+                    <select id="status-filter" class="filter-select" onchange="filterRecords()">
+                        <option value="all">All Statuses</option>
+                        <option value="inactive">Inactive Only</option>
+                        <option value="active">Active Only</option>
+                        <option value="sold">Sold Only</option>
+                    </select>
+                </div>
+                
+                <!-- Refresh Button -->
+                <div class="filter-group">
+                    <button class="btn btn-secondary" onclick="loadRecords()" style="height: 38px;">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
             </div>
             
             <!-- Records Section -->
             <div id="records-section">
-                <h3><i class="fas fa-list"></i> Inactive Records Ready for Printing</h3>
+                <h3><i class="fas fa-list"></i> Records</h3>
                 
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -361,6 +468,14 @@
                     <div class="stat-card">
                         <h3>Inactive Records</h3>
                         <p class="stat-number" id="inactive-records">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Records</h3>
+                        <p class="stat-number" id="active-records">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Sold Records</h3>
+                        <p class="stat-number" id="sold-records">0</p>
                     </div>
                     <div class="stat-card">
                         <h3>Selected Tags</h3>
@@ -373,6 +488,40 @@
                     <label for="batch-size"><i class="fas fa-sort-numeric-down"></i> Number of tags to print:</label>
                     <input type="number" id="batch-size" min="1" value="10" style="width: 200px; padding: 8px;">
                     <small>Most recent inactive records will be selected (sorted by creation date descending)</small>
+                </div>
+                
+                <!-- Pagination Controls -->
+                <div class="pagination" id="pagination-controls">
+                    <button class="page-btn" onclick="goToFirstPage()" id="first-page-btn" disabled>
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="page-btn" onclick="goToPreviousPage()" id="prev-page-btn" disabled>
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                    
+                    <span class="pagination-info">
+                        Page <input type="number" class="page-input" id="current-page" min="1" value="1" 
+                               onchange="goToPage(parseInt(this.value))" onblur="goToPage(parseInt(this.value))"> 
+                        of <span id="total-pages">1</span>
+                    </span>
+                    
+                    <button class="page-btn" onclick="goToNextPage()" id="next-page-btn" disabled>
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="page-btn" onclick="goToLastPage()" id="last-page-btn" disabled>
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                    
+                    <div class="records-per-page">
+                        <span>Show:</span>
+                        <select id="page-size" onchange="changePageSize(parseInt(this.value))">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
+                        </select>
+                        <span>records per page</span>
+                    </div>
                 </div>
                 
                 <!-- Records Table -->
@@ -399,6 +548,15 @@
                     </table>
                 </div>
                 
+                <!-- Pagination Footer -->
+                <div class="pagination" id="pagination-footer">
+                    <span class="pagination-info">
+                        Showing <span id="showing-start">0</span>-<span id="showing-end">0</span> 
+                        of <span id="total-filtered">0</span> records
+                        (<span id="selected-count">0</span> selected)
+                    </span>
+                </div>
+                
                 <!-- Action Buttons -->
                 <div class="action-buttons">
                     <button class="btn btn-primary" onclick="loadRecords()">
@@ -406,6 +564,15 @@
                     </button>
                     <button class="btn btn-success" onclick="printSelectedTags()" id="print-btn" disabled>
                         <i class="fas fa-print"></i> Print Price Tags
+                    </button>
+                    <button class="btn btn-secondary" onclick="selectInactiveRecords()" id="select-inactive-btn">
+                        <i class="fas fa-check-square"></i> Select Inactive Records
+                    </button>
+                    <button class="btn btn-secondary" onclick="selectAllOnPage()">
+                        <i class="fas fa-check-double"></i> Select All on Page
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearSelection()">
+                        <i class="fas fa-times-circle"></i> Clear Selection
                     </button>
                 </div>
                 
@@ -425,6 +592,10 @@
         // Global variables
         let consignorCache = {};
         let allRecords = [];
+        let filteredRecords = [];
+        let currentPage = 1;
+        let pageSize = 100;
+        let totalPages = 1;
         
         function switchTab(tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
@@ -479,6 +650,15 @@
                 case 2: return 'Active';
                 case 3: return 'Sold';
                 default: return `Status ${statusId || '?'}`;
+            }
+        }
+        
+        function getStatusIdFromFilter(filterValue) {
+            switch(filterValue) {
+                case 'inactive': return 1;
+                case 'active': return 2;
+                case 'sold': return 3;
+                default: return null;
             }
         }
         
@@ -566,7 +746,12 @@
                         // Update counts
                         document.getElementById('total-records').textContent = allRecords.length;
                         const inactiveCount = allRecords.filter(r => r.status_id === 1).length;
+                        const activeCount = allRecords.filter(r => r.status_id === 2).length;
+                        const soldCount = allRecords.filter(r => r.status_id === 3).length;
+                        
                         document.getElementById('inactive-records').textContent = inactiveCount;
+                        document.getElementById('active-records').textContent = activeCount;
+                        document.getElementById('sold-records').textContent = soldCount;
                         
                         // Update batch size
                         const batchSizeInput = document.getElementById('batch-size');
@@ -579,10 +764,10 @@
                         const fetchPromises = Array.from(consignorIds).map(id => getConsignorInfo(id));
                         await Promise.all(fetchPromises);
                         
-                        // Render table
-                        renderRecordsTable(allRecords);
+                        // Apply current filter
+                        filterRecords();
                         
-                        showStatus(`Loaded ${allRecords.length} records, ${inactiveCount} inactive`, 'success');
+                        showStatus(`Loaded ${allRecords.length} records (${inactiveCount} inactive, ${activeCount} active, ${soldCount} sold)`, 'success');
                     }
                 }
             } catch (error) {
@@ -592,29 +777,85 @@
             }
         }
         
-        function renderRecordsTable(records) {
+        function filterRecords() {
+            const statusFilter = document.getElementById('status-filter').value;
+            const statusId = getStatusIdFromFilter(statusFilter);
+            
+            if (statusId) {
+                filteredRecords = allRecords.filter(r => r.status_id === statusId);
+            } else {
+                filteredRecords = [...allRecords];
+            }
+            
+            // Sort by created_at descending (newest first)
+            filteredRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            
+            // Reset to first page when filtering
+            currentPage = 1;
+            updatePagination();
+            renderCurrentPage();
+            
+            // Update status message
+            const statusText = statusFilter === 'all' ? 'All records' : 
+                              statusFilter === 'inactive' ? 'Inactive records' :
+                              statusFilter === 'active' ? 'Active records' : 'Sold records';
+            
+            showStatus(`Showing ${filteredRecords.length} ${statusText}`, 'info');
+        }
+        
+        function updatePagination() {
+            totalPages = Math.ceil(filteredRecords.length / pageSize);
+            if (totalPages === 0) totalPages = 1;
+            
+            // Update page controls
+            document.getElementById('total-pages').textContent = totalPages;
+            document.getElementById('current-page').value = currentPage;
+            document.getElementById('total-filtered').textContent = filteredRecords.length;
+            
+            // Update button states
+            document.getElementById('first-page-btn').disabled = currentPage === 1;
+            document.getElementById('prev-page-btn').disabled = currentPage === 1;
+            document.getElementById('next-page-btn').disabled = currentPage === totalPages;
+            document.getElementById('last-page-btn').disabled = currentPage === totalPages;
+            
+            // Update showing info
+            const startIndex = (currentPage - 1) * pageSize + 1;
+            const endIndex = Math.min(currentPage * pageSize, filteredRecords.length);
+            
+            document.getElementById('showing-start').textContent = startIndex;
+            document.getElementById('showing-end').textContent = endIndex;
+            document.getElementById('total-filtered').textContent = filteredRecords.length;
+            
+            // Update selected count
+            const selectedCount = window.selectedRecords ? window.selectedRecords.size : 0;
+            document.getElementById('selected-count').textContent = selectedCount;
+        }
+        
+        function renderCurrentPage() {
             const tbody = document.getElementById('records-body');
             tbody.innerHTML = '';
             
-            window.selectedRecords = new Set();
             updateSelectionUI();
             
-            if (records.length === 0) {
+            if (filteredRecords.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 20px; color: #666;">No records found</td></tr>`;
+                updatePagination();
                 return;
             }
             
-            // Show inactive records first
-            const inactiveRecords = records.filter(r => r.status_id === 1);
-            const displayRecords = [...inactiveRecords].slice(0, 100);
+            // Calculate slice for current page
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, filteredRecords.length);
+            const pageRecords = filteredRecords.slice(startIndex, endIndex);
             
-            displayRecords.forEach((record, index) => {
+            pageRecords.forEach((record, index) => {
+                const globalIndex = startIndex + index;
                 const consignorInfo = consignorCache[record.consignor_id] || { username: 'None', initials: '' };
                 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><input type="checkbox" class="record-checkbox" data-id="${record.id}"></td>
-                    <td>${index + 1}</td>
+                    <td><input type="checkbox" class="record-checkbox" data-id="${record.id}" ${window.selectedRecords && window.selectedRecords.has(record.id.toString()) ? 'checked' : ''}></td>
+                    <td>${globalIndex + 1}</td>
                     <td><strong>${formatDate(record.created_at)}</strong></td>
                     <td>${truncateText(record.artist || 'Unknown', 25)}</td>
                     <td>${truncateText(record.title || 'Unknown', 30)}</td>
@@ -646,11 +887,13 @@
                         window.selectedRecords.delete(recordId);
                     }
                     updateSelectionUI();
+                    updatePagination();
                 });
             });
             
             // Select all checkbox
             const selectAllCheckbox = document.getElementById('select-all');
+            selectAllCheckbox.checked = false;
             selectAllCheckbox.addEventListener('change', function() {
                 const checkboxes = document.querySelectorAll('.record-checkbox');
                 checkboxes.forEach(checkbox => {
@@ -663,26 +906,98 @@
                     }
                 });
                 updateSelectionUI();
+                updatePagination();
             });
             
-            updateSelectionUI();
+            updatePagination();
+        }
+        
+        function goToPage(page) {
+            if (page < 1) page = 1;
+            if (page > totalPages) page = totalPages;
             
-            if (records.length > 100) {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td colspan="11" style="text-align: center; padding: 15px; color: #666; font-style: italic;">
-                        Showing 100 of ${records.length} records. 
-                        ${inactiveRecords.length} are inactive (status_id=1).
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            }
+            currentPage = page;
+            renderCurrentPage();
+            updatePagination();
+        }
+        
+        function goToFirstPage() {
+            goToPage(1);
+        }
+        
+        function goToPreviousPage() {
+            goToPage(currentPage - 1);
+        }
+        
+        function goToNextPage() {
+            goToPage(currentPage + 1);
+        }
+        
+        function goToLastPage() {
+            goToPage(totalPages);
+        }
+        
+        function changePageSize(newSize) {
+            pageSize = newSize;
+            currentPage = 1;
+            updatePagination();
+            renderCurrentPage();
         }
         
         function updateSelectionUI() {
             const count = window.selectedRecords ? window.selectedRecords.size : 0;
             document.getElementById('selected-tags').textContent = count;
             document.getElementById('print-btn').disabled = count === 0;
+        }
+        
+        function selectInactiveRecords() {
+            // Get all inactive records from the current page
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, filteredRecords.length);
+            const pageRecords = filteredRecords.slice(startIndex, endIndex);
+            
+            let selectedCount = 0;
+            
+            pageRecords.forEach((record, index) => {
+                if (record.status_id === 1) { // Inactive
+                    const recordId = record.id.toString();
+                    window.selectedRecords.add(recordId);
+                    selectedCount++;
+                }
+            });
+            
+            // Re-render to update checkboxes
+            renderCurrentPage();
+            
+            if (selectedCount > 0) {
+                showStatus(`Selected ${selectedCount} inactive records on this page`, 'success');
+            } else {
+                showStatus('No inactive records on this page', 'info');
+            }
+        }
+        
+        function selectAllOnPage() {
+            // Select all records on current page
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, filteredRecords.length);
+            const pageRecords = filteredRecords.slice(startIndex, endIndex);
+            
+            pageRecords.forEach((record) => {
+                const recordId = record.id.toString();
+                window.selectedRecords.add(recordId);
+            });
+            
+            // Re-render to update checkboxes
+            renderCurrentPage();
+            
+            showStatus(`Selected all ${pageRecords.length} records on this page`, 'success');
+        }
+        
+        function clearSelection() {
+            window.selectedRecords.clear();
+            renderCurrentPage();
+            
+            showStatus('Selection cleared', 'info');
         }
         
         async function printSelectedTags() {
@@ -698,8 +1013,8 @@
             
             // Get selected inactive records (already sorted by date)
             const selectedRecords = allRecords
-            .filter(r => selectedIds.includes(r.id.toString()) && r.status_id === 1)
-            .slice(0, batchSize);
+                .filter(r => selectedIds.includes(r.id.toString()) && r.status_id === 1)
+                .slice(0, batchSize);
                 
             if (selectedRecords.length === 0) {
                 showStatus('No inactive records selected', 'error');
@@ -721,6 +1036,7 @@
             URL.revokeObjectURL(url);
                 
             showStatus(`PDF generated for ${selectedRecords.length} records`, 'success');
+            showLoading(false);
         }
         
         function generatePDF(records) {
@@ -828,6 +1144,9 @@
                 placeholder: "Select a user...",
                 allowClear: true
             }).on('change', loadRecords);
+            
+            // Initialize selected records set
+            window.selectedRecords = new Set();
             
             loadUsers();
             loadRecords();
