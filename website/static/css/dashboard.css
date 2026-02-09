@@ -54,7 +54,7 @@ body::before {
 }
 
 .nav-brand a {
-    color: #ffcc00;
+    color: black;
     text-decoration: none;
     font-family: 'Arial Black', sans-serif;
     letter-spacing: 1px;
@@ -76,7 +76,7 @@ body::before {
 }
 
 .nav-links a:hover {
-    color: #ffcc00;
+    color: black;
 }
 
 .nav-links a::after {
@@ -151,21 +151,7 @@ body::before {
 .dropdown:hover .dropdown-menu {
     display: block;
 }
-
-.dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 15px;
-    color: white;
-    text-decoration: none;
-    transition: background 0.3s;
-}
-
-.dropdown-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
+ 
 .dropdown-divider {
     height: 1px;
     background: rgba(255, 255, 255, 0.1);
@@ -1174,4 +1160,15 @@ select.form-control option {
     .user-greeting {
         font-size: 0.9rem;
     }
+}
+
+/* OVERRIDE: Force dropdown text to be black */
+#auth-section .dropdown-item,
+#auth-section .dropdown-item i {
+    color: #000000 !important;
+}
+
+#auth-section .dropdown-item:hover {
+    color: #333333 !important;
+    background: rgba(0, 0, 0, 0.1) !important;
 }

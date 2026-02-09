@@ -154,7 +154,7 @@ body::before {
     align-items: center;
     gap: 10px;
     padding: 8px 15px;
-    color: white;
+    color: black;
     text-decoration: none;
     transition: background 0.3s;
 }
@@ -304,4 +304,14 @@ body::before {
     .stat-number {
         font-size: 1.8rem;
     }
+}
+/* OVERRIDE: Force dropdown text to be black */
+#auth-section .dropdown-item,
+#auth-section .dropdown-item i {
+    color: #000000 !important;
+}
+
+#auth-section .dropdown-item:hover {
+    color: #333333 !important;
+    background: rgba(0, 0, 0, 0.1) !important;
 }
