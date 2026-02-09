@@ -32,16 +32,24 @@
         .records-table th { color: #000000 !important; }
         .records-table td { color: #333333 !important; }
         
-        .btn-primary, .btn-success, .btn-secondary {
+        .btn-primary, .btn-success, .btn-secondary, .btn-warning {
             color: #ffffff !important;
         }
         
-        .btn-primary:hover, .btn-success:hover, .btn-secondary:hover {
+        .btn-primary:hover, .btn-success:hover, .btn-secondary:hover, .btn-warning:hover {
             color: #ffffff !important;
         }
         
         .btn:disabled {
             color: #666666 !important;
+        }
+        
+        .btn-warning {
+            background: #f39c12;
+        }
+        
+        .btn-warning:hover {
+            background: #e67e22;
         }
         
         .admin-container {
@@ -167,6 +175,14 @@
         
         .btn-secondary:hover {
             background: #5a6268;
+        }
+        
+        .btn-warning {
+            background: #f39c12;
+        }
+        
+        .btn-warning:hover {
+            background: #e67e22;
         }
         
         .btn:disabled {
@@ -395,6 +411,103 @@
             background: white;
             font-size: 14px;
         }
+        
+        /* Confirmation Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            color: #000000;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 0;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .modal-body {
+            margin-bottom: 20px;
+        }
+        
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .print-summary {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .print-summary h4 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .print-summary ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .print-summary li {
+            margin-bottom: 5px;
+        }
+        
+        .confirmation-check {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+            padding: 15px;
+            background: #e8f4fd;
+            border-radius: 4px;
+        }
+        
+        .confirmation-check input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .confirmation-check label {
+            font-weight: 500;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -562,8 +675,11 @@
                     <button class="btn btn-primary" onclick="loadRecords()">
                         <i class="fas fa-sync-alt"></i> Refresh Records
                     </button>
-                    <button class="btn btn-success" onclick="printSelectedTags()" id="print-btn" disabled>
+                    <button class="btn btn-success" onclick="showPrintConfirmation()" id="print-btn" disabled>
                         <i class="fas fa-print"></i> Print Price Tags
+                    </button>
+                    <button class="btn btn-warning" onclick="showMarkActiveConfirmation()" id="mark-active-btn" disabled>
+                        <i class="fas fa-check-circle"></i> Mark as Active
                     </button>
                     <button class="btn btn-secondary" onclick="selectInactiveRecords()" id="select-inactive-btn">
                         <i class="fas fa-check-square"></i> Select Inactive Records
@@ -588,6 +704,67 @@
         </div>
     </div>
 
+    <!-- Print Confirmation Modal -->
+    <div id="print-confirmation-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-print"></i> Print Price Tags</h3>
+                <button class="modal-close" onclick="closePrintConfirmation()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="print-summary">
+                    <h4>Print Summary</h4>
+                    <p>You are about to print price tags for <strong id="print-count">0</strong> selected records.</p>
+                    <ul id="print-summary-list">
+                        <!-- Will be populated dynamically -->
+                    </ul>
+                    <p>After printing successfully, you should mark these records as <strong>Active</strong> using the "Mark as Active" button.</p>
+                </div>
+                <div class="confirmation-check">
+                    <input type="checkbox" id="print-confirmation-check">
+                    <label for="print-confirmation-check">I have confirmed the print settings and am ready to print</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePrintConfirmation()">Cancel</button>
+                <button class="btn btn-success" onclick="confirmPrint()" id="confirm-print-btn" disabled>
+                    <i class="fas fa-print"></i> Print Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mark Active Confirmation Modal -->
+    <div id="mark-active-confirmation-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-check-circle"></i> Mark as Active</h3>
+                <button class="modal-close" onclick="closeMarkActiveConfirmation()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="print-summary">
+                    <h4>Confirmation Required</h4>
+                    <p>You are about to mark <strong id="mark-active-count">0</strong> selected records as <strong>Active</strong>.</p>
+                    <ul id="mark-active-summary-list">
+                        <!-- Will be populated dynamically -->
+                    </ul>
+                    <p><strong>Important:</strong> Only mark records as Active <em>after</em> you have successfully printed their price tags.</p>
+                    <p>This will change their status from "Inactive" to "Active" in the system.</p>
+                </div>
+                <div class="confirmation-check">
+                    <input type="checkbox" id="mark-active-confirmation-check">
+                    <label for="mark-active-confirmation-check">I have successfully printed price tags for these records</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeMarkActiveConfirmation()">Cancel</button>
+                <button class="btn btn-warning" onclick="confirmMarkActive()" id="confirm-mark-active-btn" disabled>
+                    <i class="fas fa-check-circle"></i> Mark as Active
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Global variables
         let consignorCache = {};
@@ -597,6 +774,7 @@
         let pageSize = 100;
         let totalPages = 1;
         let configValues = {};
+        let recentlyPrintedIds = new Set(); // Track recently printed records
         
         // Configuration fetching functions
         async function fetchConfigValues() {
@@ -640,11 +818,6 @@
                 await fetchConfigValues();
             }
             return configValues[key] !== undefined ? configValues[key] : defaultValue;
-        }
-        
-        // Convert mm to points (1 mm = 2.83465 points)
-        function mmToPoints(mm) {
-            return mm * 2.83465;
         }
         
         // Helper functions
@@ -880,13 +1053,22 @@
             // Update selected count
             const selectedCount = window.selectedRecords ? window.selectedRecords.size : 0;
             document.getElementById('selected-count').textContent = selectedCount;
+            
+            // Update button states based on selection
+            updateButtonStates();
+        }
+        
+        function updateButtonStates() {
+            const selectedCount = window.selectedRecords ? window.selectedRecords.size : 0;
+            const hasSelection = selectedCount > 0;
+            
+            document.getElementById('print-btn').disabled = !hasSelection;
+            document.getElementById('mark-active-btn').disabled = !hasSelection;
         }
         
         function renderCurrentPage() {
             const tbody = document.getElementById('records-body');
             tbody.innerHTML = '';
-            
-            updateSelectionUI();
             
             if (filteredRecords.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 20px; color: #666;">No records found</td></tr>`;
@@ -903,7 +1085,16 @@
                 const globalIndex = startIndex + index;
                 const consignorInfo = consignorCache[record.consignor_id] || { username: 'None', initials: '' };
                 
+                // Check if this record was recently printed
+                const isRecentlyPrinted = recentlyPrintedIds.has(record.id.toString());
+                const rowClass = isRecentlyPrinted ? 'recently-printed' : '';
+                
                 const tr = document.createElement('tr');
+                if (isRecentlyPrinted) {
+                    tr.style.backgroundColor = '#f0fff0';
+                    tr.style.borderLeft = '3px solid #27ae60';
+                }
+                
                 tr.innerHTML = `
                     <td><input type="checkbox" class="record-checkbox" data-id="${record.id}" ${window.selectedRecords && window.selectedRecords.has(record.id.toString()) ? 'checked' : ''}></td>
                     <td>${globalIndex + 1}</td>
@@ -923,6 +1114,7 @@
                         <span class="condition-badge ${getStatusClass(record.status_id)}">
                             ${getStatusText(record.status_id)}
                         </span>
+                        ${isRecentlyPrinted ? '<br><small style="color: #27ae60; font-size: 10px;">(Printed)</small>' : ''}
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -937,7 +1129,7 @@
                     } else {
                         window.selectedRecords.delete(recordId);
                     }
-                    updateSelectionUI();
+                    updateButtonStates();
                     updatePagination();
                 });
             });
@@ -956,7 +1148,7 @@
                         window.selectedRecords.delete(recordId);
                     }
                 });
-                updateSelectionUI();
+                updateButtonStates();
                 updatePagination();
             });
             
@@ -998,7 +1190,7 @@
         function updateSelectionUI() {
             const count = window.selectedRecords ? window.selectedRecords.size : 0;
             document.getElementById('selected-tags').textContent = count;
-            document.getElementById('print-btn').disabled = count === 0;
+            updateButtonStates();
         }
         
         function selectInactiveRecords() {
@@ -1047,19 +1239,55 @@
         function clearSelection() {
             window.selectedRecords.clear();
             renderCurrentPage();
-            
             showStatus('Selection cleared', 'info');
         }
         
-        async function printSelectedTags() {
+        // Modal Functions
+        function showPrintConfirmation() {
             const selectedIds = Array.from(window.selectedRecords);
-            const batchSize = parseInt(document.getElementById('batch-size').value);
-            
             if (selectedIds.length === 0) {
                 showStatus('No records selected for printing', 'error');
                 return;
             }
             
+            const selectedRecords = allRecords.filter(r => selectedIds.includes(r.id.toString()));
+            const inactiveRecords = selectedRecords.filter(r => r.status_id === 1);
+            const activeRecords = selectedRecords.filter(r => r.status_id === 2);
+            const soldRecords = selectedRecords.filter(r => r.status_id === 3);
+            
+            // Update modal content
+            document.getElementById('print-count').textContent = selectedRecords.length;
+            
+            const summaryList = document.getElementById('print-summary-list');
+            summaryList.innerHTML = `
+                <li>Total selected: ${selectedRecords.length} records</li>
+                <li>Inactive records: ${inactiveRecords.length} (will be printed)</li>
+                <li>Active records: ${activeRecords.length} (already active)</li>
+                <li>Sold records: ${soldRecords.length} (won't be printed)</li>
+            `;
+            
+            // Reset confirmation checkbox
+            document.getElementById('print-confirmation-check').checked = false;
+            document.getElementById('confirm-print-btn').disabled = true;
+            
+            // Show modal
+            document.getElementById('print-confirmation-modal').style.display = 'flex';
+            
+            // Add event listener for confirmation checkbox
+            document.getElementById('print-confirmation-check').addEventListener('change', function() {
+                document.getElementById('confirm-print-btn').disabled = !this.checked;
+            });
+        }
+        
+        function closePrintConfirmation() {
+            document.getElementById('print-confirmation-modal').style.display = 'none';
+        }
+        
+        async function confirmPrint() {
+            const selectedIds = Array.from(window.selectedRecords);
+            const batchSize = parseInt(document.getElementById('batch-size').value);
+            
+            closePrintConfirmation();
             showLoading(true);
             
             // Get selected inactive records (already sorted by date)
@@ -1090,10 +1318,144 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
                 
-                showStatus(`PDF generated for ${selectedRecords.length} records`, 'success');
+                // Add to recently printed set
+                selectedRecords.forEach(record => {
+                    recentlyPrintedIds.add(record.id.toString());
+                });
+                
+                // Clear selection after successful print
+                window.selectedRecords.clear();
+                
+                showStatus(`PDF generated for ${selectedRecords.length} records. Now mark them as Active.`, 'success');
+                
+                // Refresh the display to show "Printed" indicator
+                renderCurrentPage();
+                
             } catch (error) {
                 console.error('Error generating PDF:', error);
                 showStatus(`Error generating PDF: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function showMarkActiveConfirmation() {
+            const selectedIds = Array.from(window.selectedRecords);
+            if (selectedIds.length === 0) {
+                showStatus('No records selected', 'error');
+                return;
+            }
+            
+            const selectedRecords = allRecords.filter(r => selectedIds.includes(r.id.toString()));
+            const inactiveRecords = selectedRecords.filter(r => r.status_id === 1);
+            const activeRecords = selectedRecords.filter(r => r.status_id === 2);
+            const soldRecords = selectedRecords.filter(r => r.status_id === 3);
+            
+            // Update modal content
+            document.getElementById('mark-active-count').textContent = selectedRecords.length;
+            
+            const summaryList = document.getElementById('mark-active-summary-list');
+            summaryList.innerHTML = `
+                <li>Total selected: ${selectedRecords.length} records</li>
+                <li>Inactive records: ${inactiveRecords.length} (will be marked as Active)</li>
+                <li>Active records: ${activeRecords.length} (already active - no change)</li>
+                <li>Sold records: ${soldRecords.length} (won't be changed)</li>
+            `;
+            
+            // Reset confirmation checkbox
+            document.getElementById('mark-active-confirmation-check').checked = false;
+            document.getElementById('confirm-mark-active-btn').disabled = true;
+            
+            // Show modal
+            document.getElementById('mark-active-confirmation-modal').style.display = 'flex';
+            
+            // Add event listener for confirmation checkbox
+            document.getElementById('mark-active-confirmation-check').addEventListener('change', function() {
+                document.getElementById('confirm-mark-active-btn').disabled = !this.checked;
+            });
+        }
+        
+        function closeMarkActiveConfirmation() {
+            document.getElementById('mark-active-confirmation-modal').style.display = 'none';
+        }
+        
+        async function confirmMarkActive() {
+            const selectedIds = Array.from(window.selectedRecords);
+            
+            closeMarkActiveConfirmation();
+            showLoading(true);
+            
+            try {
+                // Filter for inactive records only
+                const inactiveRecordIds = selectedIds.filter(id => {
+                    const record = allRecords.find(r => r.id.toString() === id);
+                    return record && record.status_id === 1;
+                });
+                
+                if (inactiveRecordIds.length === 0) {
+                    showStatus('No inactive records to mark as active', 'info');
+                    showLoading(false);
+                    return;
+                }
+                
+                // Update each record's status
+                let successCount = 0;
+                let errorCount = 0;
+                
+                for (const recordId of inactiveRecordIds) {
+                    try {
+                        const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                status_id: 2 // Active status
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.status === 'success') {
+                                successCount++;
+                                
+                                // Update local record status
+                                const recordIndex = allRecords.findIndex(r => r.id.toString() === recordId);
+                                if (recordIndex !== -1) {
+                                    allRecords[recordIndex].status_id = 2;
+                                }
+                            } else {
+                                errorCount++;
+                            }
+                        } else {
+                            errorCount++;
+                        }
+                    } catch (error) {
+                        console.error(`Error updating record ${recordId}:`, error);
+                        errorCount++;
+                    }
+                }
+                
+                // Clear selection
+                window.selectedRecords.clear();
+                
+                // Clear recently printed indicators for these records
+                inactiveRecordIds.forEach(id => {
+                    recentlyPrintedIds.delete(id);
+                });
+                
+                // Refresh data
+                await loadRecords();
+                
+                if (successCount > 0) {
+                    showStatus(`Successfully marked ${successCount} records as Active${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
+                } else {
+                    showStatus(`Failed to mark records as Active: ${errorCount} errors`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error marking records as active:', error);
+                showStatus(`Error: ${error.message}`, 'error');
             } finally {
                 showLoading(false);
             }
