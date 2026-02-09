@@ -116,20 +116,32 @@
                         </label>
                     </div>
 
-                    <form class="search-form" id="searchForm">
-                        <input type="text" 
-                               class="search-input" 
-                               id="searchInput" 
-                               placeholder="Enter barcode, artist, or title...">
-                        <div class="action-buttons">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search"></i> Search
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="clearSearch">
-                                <i class="fas fa-times"></i> Clear
-                            </button>
+                    <div class="search-options-row">
+                        <div class="search-field-select">
+                            <label for="searchField"><i class="fas fa-search"></i> Search by:</label>
+                            <select id="searchField" class="search-field-select">
+                                <option value="all">Barcode, Artist, or Title</option>
+                                <option value="barcode">Barcode</option>
+                                <option value="artist">Artist</option>
+                                <option value="title">Title</option>
+                            </select>
                         </div>
-                    </form>
+                        
+                        <form class="search-form" id="searchForm">
+                            <input type="text" 
+                                   class="search-input" 
+                                   id="searchInput" 
+                                   placeholder="Enter search term...">
+                            <div class="action-buttons">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-search"></i> Search
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="clearSearch">
+                                    <i class="fas fa-times"></i> Clear
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
 
                 <div id="results-container" class="results-container">
@@ -313,6 +325,7 @@
         class InventoryManager {
             constructor() {
                 this.currentSearchType = 'add';
+                this.currentSearchField = 'all'; // Default to search all fields
                 this.currentResults = [];
                 this.genres = [];
                 this.conditions = [];
@@ -372,13 +385,22 @@
             }
 
             setupEventListeners() {
+                // Search type radio buttons
                 document.querySelectorAll('input[name="searchType"]').forEach(radio => {
                     radio.addEventListener('change', (e) => {
                         this.currentSearchType = e.target.value;
+                        this.updateSearchPlaceholder();
                         this.clearResults();
                     });
                 });
 
+                // Search field select
+                document.getElementById('searchField').addEventListener('change', (e) => {
+                    this.currentSearchField = e.target.value;
+                    this.updateSearchPlaceholder();
+                });
+
+                // Search form
                 document.getElementById('searchForm').addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const searchTerm = document.getElementById('searchInput').value.trim();
@@ -391,11 +413,13 @@
                     await this.performSearch(searchTerm);
                 });
 
+                // Clear search button
                 document.getElementById('clearSearch').addEventListener('click', () => {
                     document.getElementById('searchInput').value = '';
                     this.clearResults();
                 });
 
+                // Consignor filter
                 const consignorFilter = document.getElementById('consignor-filter');
                 if (consignorFilter) {
                     consignorFilter.addEventListener('change', (e) => {
@@ -403,6 +427,38 @@
                         this.loadInventory();
                     });
                 }
+
+                // Initialize placeholder
+                this.updateSearchPlaceholder();
+            }
+
+            updateSearchPlaceholder() {
+                const searchInput = document.getElementById('searchInput');
+                const searchField = this.currentSearchField;
+                
+                let placeholderText = 'Enter search term...';
+                
+                if (this.currentSearchType === 'add') {
+                    placeholderText = 'Search Discogs (artist, album, catalog #)...';
+                } else {
+                    switch(searchField) {
+                        case 'barcode':
+                            placeholderText = 'Enter barcode...';
+                            break;
+                        case 'artist':
+                            placeholderText = 'Enter artist name...';
+                            break;
+                        case 'title':
+                            placeholderText = 'Enter album title...';
+                            break;
+                        case 'all':
+                        default:
+                            placeholderText = 'Enter barcode, artist, or title...';
+                            break;
+                    }
+                }
+                
+                searchInput.placeholder = placeholderText;
             }
 
             async loadConsignors() {
@@ -635,6 +691,8 @@
                 `;
 
                 console.log('PERFORM_SEARCH: Starting search for:', searchTerm);
+                console.log('PERFORM_SEARCH: Search type:', this.currentSearchType);
+                console.log('PERFORM_SEARCH: Search field:', this.currentSearchField);
                 console.log('PERFORM_SEARCH: Current genres:', this.genres);
                 console.log('PERFORM_SEARCH: Current conditions:', this.conditions);
 
@@ -673,7 +731,10 @@
 
             async searchDatabase(searchTerm) {
                 const user = Auth.getUser();
-                let params = { q: searchTerm };
+                let params = { 
+                    q: searchTerm,
+                    search_field: this.currentSearchField
+                };
                 
                 if (user.role === 'consignor') {
                     params.user_id = user.id;
