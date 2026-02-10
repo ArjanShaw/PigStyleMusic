@@ -372,58 +372,60 @@
         }
 
         // ============================================================================
-        // PRICE ROUNDING UTILITIES
+        // PRICE ROUNDING UTILITIES - ALWAYS ROUND DOWN TO .99 FOR ANY PRICE
         // ============================================================================
         
         class PriceRounding {
             /**
-             * Apply store-specific rounding rules
-             * @param {number} price - The price to round
-             * @returns {number} Rounded price
+             * Apply store pricing rules: ALWAYS round DOWN to .99, enforce minimum $1.99
+             * @param {number} price - The price to process
+             * @param {number} minimumPrice - Minimum store price (default: 1.99)
+             * @returns {number} Final price after rounding and minimum enforcement
              */
-            static roundToStorePrice(price) {
+            static roundToStorePrice(price, minimumPrice = 1.99) {
                 if (!price || price <= 0) {
-                    return 0.0;
+                    return minimumPrice;
                 }
                 
-                if (price < 5) {
-                    // For prices under $5, round to 2 decimal places
-                    return Math.round(price * 100) / 100;
-                } else if (price < 20) {
-                    // For prices $5-$20, round to nearest .49 or .99
-                    return this.roundTo49or99(price);
-                } else {
-                    // For prices $20+, round to nearest $0.50
-                    return this.roundToNearest(price, 0.5);
+                // FIRST: Always round DOWN to nearest .99
+                let roundedPrice = this.roundDownTo99(price);
+                
+                // SECOND: If rounded price is below minimum, use minimum
+                if (roundedPrice < minimumPrice) {
+                    roundedPrice = minimumPrice;
                 }
+                
+                return roundedPrice;
             }
             
             /**
-             * Round price to nearest .49 or .99
+             * ALWAYS round DOWN to nearest .99 for ANY price
+             * Examples: 
+             * - $9.75 → $8.99 (rounds DOWN to previous dollar + .99)
+             * - $9.25 → $8.99 (rounds DOWN to previous dollar + .99)
+             * - $10.10 → $9.99 (rounds DOWN to previous dollar + .99)
+             * - $10.99 → $10.99 (stays the same)
+             * - $3.90 → $2.99 (rounds DOWN to previous dollar + .99)
+             * - $1.50 → $0.99 (rounds DOWN to previous dollar + .99)
              * @param {number} price - The price to round
-             * @returns {number} Price ending in .49 or .99
+             * @returns {number} Price ending in .99
              */
-            static roundTo49or99(price) {
+            static roundDownTo99(price) {
                 const floorPrice = Math.floor(price);
-                const decimalPart = price - floorPrice;
                 
-                if (decimalPart < 0.25) {
-                    return floorPrice + 0.49;
-                } else if (decimalPart < 0.75) {
+                // If price already ends with .99 (within small tolerance), keep it
+                if (Math.abs(price - (floorPrice + 0.99)) < 0.01) {
                     return floorPrice + 0.99;
-                } else {
-                    return floorPrice + 1 + 0.49;
                 }
-            }
-            
-            /**
-             * Round to nearest specified increment
-             * @param {number} value - The value to round
-             * @param {number} nearest - The increment to round to
-             * @returns {number} Rounded value
-             */
-            static roundToNearest(value, nearest = 0.5) {
-                return Math.round(value / nearest) * nearest;
+                
+                // If price is less than 1, round to 0.99
+                if (floorPrice < 1) {
+                    return 0.99;
+                }
+                
+                // Otherwise, round DOWN to previous dollar + .99
+                // Example: $9.75 → $8.99, $10.10 → $9.99, $3.90 → $2.99
+                return (floorPrice - 1) + 0.99;
             }
             
             /**
@@ -433,6 +435,25 @@
              */
             static formatPrice(price) {
                 return `$${parseFloat(price).toFixed(2)}`;
+            }
+            
+            /**
+             * Get rounding explanation for display
+             * @param {number} originalPrice - Original price
+             * @param {number} roundedPrice - Rounded price
+             * @param {number} minimumPrice - Minimum price
+             * @returns {string} Explanation text
+             */
+            static getRoundingExplanation(originalPrice, roundedPrice, minimumPrice) {
+                let explanation = `Always rounded DOWN to nearest .99`;
+                
+                if (roundedPrice === minimumPrice && originalPrice < minimumPrice) {
+                    explanation += ` • Minimum price $${minimumPrice.toFixed(2)} applied`;
+                } else if (roundedPrice === minimumPrice) {
+                    explanation += ` • Matches minimum price $${minimumPrice.toFixed(2)}`;
+                }
+                
+                return explanation;
             }
         }
 
@@ -453,7 +474,7 @@
                 this.commissionRate = 0.20;
                 this.consignors = [];
                 this.selectedConsignorId = 'all';
-                this.minimumPrice = 0.99;
+                this.minimumPrice = 1.99; // Default minimum price
                 
                 this.init();
             }
@@ -481,11 +502,11 @@
             async loadMinimumPrice() {
                 try {
                     const response = await APIUtils.get('/config/MIN_STORE_PRICE');
-                    this.minimumPrice = parseFloat(response.config_value) || 0.99;
+                    this.minimumPrice = parseFloat(response.config_value) || 1.99;
                     console.log(`MIN_PRICE: Minimum store price loaded: $${this.minimumPrice.toFixed(2)}`);
                 } catch (error) {
                     console.warn('MIN_PRICE: Could not load MIN_STORE_PRICE, using default:', error);
-                    this.minimumPrice = 0.99;
+                    this.minimumPrice = 1.99;
                 }
             }
 
@@ -955,7 +976,11 @@
                     <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
                         <i class="fas fa-info-circle"></i>
                         <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
-                        Prices are automatically rounded: Under $5 (exact), $5-$20 (.49/.99), $20+ (nearest $0.50)
+                        <div style="margin-top: 5px;">
+                            <div>• <strong>ALL prices</strong> rounded DOWN to nearest .99</div>
+                            <div>• If rounded price &lt; $${this.minimumPrice.toFixed(2)}, price becomes $${this.minimumPrice.toFixed(2)}</div>
+                            <div><small>Examples: $3.90 → $2.99, $9.75 → $8.99, $1.50 → $1.99 (minimum)</small></div>
+                        </div>
                     </div>
                     ${this.currentResults.map((record, index) => {
                         const hasPrediction = record.predicted_genre;
@@ -1060,9 +1085,9 @@
                                     <div class="form-group">
                                         <label class="form-label">Price ($) *</label>
                                         <input type="number" class="form-control price-input" step="0.01" min="${this.minimumPrice}" 
-                                               placeholder="Enter price (min $${this.minimumPrice.toFixed(2)})" required>
+                                               placeholder="Min: $${this.minimumPrice.toFixed(2)}" required>
                                         <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                            Min: $${this.minimumPrice.toFixed(2)} • Will be rounded to store pricing rules
+                                            Min: $${this.minimumPrice.toFixed(2)} • All prices rounded DOWN to .99
                                         </div>
                                     </div>
                                 </div>
@@ -1131,7 +1156,11 @@
                     <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
                         <i class="fas fa-info-circle"></i>
                         <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
-                        Prices are automatically rounded: Under $5 (exact), $5-$20 (.49/.99), $20+ (nearest $0.50)
+                        <div style="margin-top: 5px;">
+                            <div>• <strong>ALL prices</strong> rounded DOWN to nearest .99</div>
+                            <div>• If rounded price &lt; $${this.minimumPrice.toFixed(2)}, price becomes $${this.minimumPrice.toFixed(2)}</div>
+                            <div><small>Examples: $3.90 → $2.99, $9.75 → $8.99, $1.50 → $1.99 (minimum)</small></div>
+                        </div>
                     </div>
                     ${filteredResults.map((record, index) => {
                         const displayPrice = PriceRounding.formatPrice(record.store_price || 0);
@@ -1191,9 +1220,9 @@
                                                value="${record.store_price || ''}" 
                                                step="0.01" 
                                                min="${this.minimumPrice}"
-                                               placeholder="Enter price (min $${this.minimumPrice.toFixed(2)})">
+                                               placeholder="Min: $${this.minimumPrice.toFixed(2)}">
                                         <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                            Min: $${this.minimumPrice.toFixed(2)} • Will be rounded to store pricing rules
+                                            Min: $${this.minimumPrice.toFixed(2)} • All prices rounded DOWN to .99
                                         </div>
                                     </div>
                                 </div>
@@ -1282,8 +1311,6 @@
                     return;
                 }
                 
-                // Check if price already has a value - if it does, we should still update with the estimated price
-                // but we'll show what the advised price would be
                 const hasExistingValue = priceInput.value && priceInput.value.trim() !== '' && !isNaN(parseFloat(priceInput.value));
                 
                 const originalValue = priceInput.value;
@@ -1309,7 +1336,7 @@
                     z-index: 10;
                     animation: pulse 2s infinite;
                 `;
-                tempOverlay.textContent = hasExistingValue ? 'Updating advised price...' : 'Estimating...';
+                tempOverlay.textContent = hasExistingValue ? 'Calculating advised price...' : 'Estimating...';
                 priceContainer.style.position = 'relative';
                 priceContainer.appendChild(tempOverlay);
                 
@@ -1319,38 +1346,32 @@
                 priceInput.disabled = false;
                 
                 if (estimate.success || estimate.estimated_price || estimate.calculation) {
-                    let finalPrice;
+                    let estimatedPrice;
                     let priceSource = 'unknown';
                     
                     if (estimate.estimated_price) {
-                        finalPrice = estimate.estimated_price;
+                        estimatedPrice = estimate.estimated_price;
                         priceSource = estimate.price_source || 'estimated';
                     } else if (estimate.price) {
-                        finalPrice = estimate.price;
+                        estimatedPrice = estimate.price;
                         priceSource = estimate.source || 'estimated';
                     } else if (estimate.calculation && estimate.calculation.length > 0) {
                         const finalStep = estimate.calculation[estimate.calculation.length - 1];
                         if (finalStep.includes('Final advised price:')) {
                             const priceMatch = finalStep.match(/\$([\d.]+)/);
                             if (priceMatch) {
-                                finalPrice = parseFloat(priceMatch[1]);
+                                estimatedPrice = parseFloat(priceMatch[1]);
                                 priceSource = 'calculated';
                             }
                         }
                     }
                     
-                    if (finalPrice) {
-                        // Apply minimum price check FIRST
-                        if (finalPrice < this.minimumPrice) {
-                            finalPrice = this.minimumPrice;
-                        }
+                    if (estimatedPrice) {
+                        // Apply store pricing rules: ALWAYS round DOWN to .99, then enforce minimum
+                        const finalPrice = PriceRounding.roundToStorePrice(estimatedPrice, this.minimumPrice);
                         
-                        // Apply store rounding rules SECOND
-                        const roundedPrice = PriceRounding.roundToStorePrice(finalPrice);
-                        
-                        // Always update the input with the advised price (rounded and min-adjusted)
-                        // Even if user already entered a value, show them what the advised price would be
-                        priceInput.value = parseFloat(roundedPrice).toFixed(2);
+                        // Always update the input with the final advised price
+                        priceInput.value = parseFloat(finalPrice).toFixed(2);
                         priceInput.classList.add('price-estimated');
                         
                         // Remove any existing estimation hints
@@ -1361,12 +1382,14 @@
                         const hint = document.createElement('div');
                         hint.className = 'estimation-hint';
                         
-                        if (hasExistingValue && parseFloat(originalValue) !== roundedPrice) {
+                        const roundingExplanation = PriceRounding.getRoundingExplanation(estimatedPrice, finalPrice, this.minimumPrice);
+                        
+                        if (hasExistingValue && Math.abs(parseFloat(originalValue) - finalPrice) > 0.01) {
                             hint.innerHTML = `
                                 <i class="fas fa-lightbulb"></i>
-                                <strong>Advised Price:</strong> $${roundedPrice.toFixed(2)} (Your entry: $${parseFloat(originalValue).toFixed(2)})
+                                <strong>Advised Price:</strong> $${finalPrice.toFixed(2)} (Your entry: $${parseFloat(originalValue).toFixed(2)})
                                 <div style="font-size: 11px; color: #666; margin-top: 2px;">
-                                    Based on ${priceSource} data, minimum price, and store rounding rules
+                                    Based on ${priceSource} data • ${roundingExplanation}
                                 </div>
                                 <button class="btn btn-small" style="margin-left: auto; padding: 2px 8px; font-size: 10px;" 
                                         onclick="this.closest('.estimation-hint').remove(); this.closest('.form-group').querySelector('input').value = '${originalValue}';">
@@ -1376,9 +1399,9 @@
                         } else {
                             hint.innerHTML = `
                                 <i class="fas fa-bolt"></i>
-                                <strong>Advised Price:</strong> $${roundedPrice.toFixed(2)}
+                                <strong>Advised Price:</strong> $${finalPrice.toFixed(2)}
                                 <div style="font-size: 11px; color: #666; margin-top: 2px;">
-                                    Based on ${priceSource} data, minimum price ($${this.minimumPrice.toFixed(2)}), and store rounding rules
+                                    Based on ${priceSource} data • ${roundingExplanation}
                                 </div>
                                 <button class="btn btn-small" style="margin-left: auto; padding: 2px 8px; font-size: 10px;" 
                                         onclick="this.closest('.estimation-hint').remove()">
@@ -1389,7 +1412,7 @@
                         
                         priceInput.parentElement.appendChild(hint);
                         
-                        this.showExpandableCalculationDetails(record, selectedCondition, estimate, recordId, finalPrice, roundedPrice);
+                        this.showExpandableCalculationDetails(record, selectedCondition, estimate, recordId, estimatedPrice, finalPrice);
                         
                     } else {
                         if (!hasExistingValue) {
@@ -1405,7 +1428,7 @@
                 }
             }
 
-            showExpandableCalculationDetails(record, condition, estimate, recordId, originalPrice, roundedPrice) {
+            showExpandableCalculationDetails(record, condition, estimate, recordId, estimatedPrice, finalPrice) {
                 const calculationContainer = document.getElementById(`calculation-${recordId}`);
                 if (!calculationContainer) return;
                 
@@ -1420,17 +1443,17 @@
                     }
                 }
                 
-                // Always show the rounding information since we're applying it
+                // Always show the rounding information
+                const roundingExplanation = PriceRounding.getRoundingExplanation(estimatedPrice, finalPrice, this.minimumPrice);
                 calculationHTML += `
                     <div class="rounding-info" style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
                         <strong>💰 Price Rules Applied:</strong>
                         <div style="margin-top: 5px;">
-                            <div>1. <strong>Minimum Price:</strong> $${this.minimumPrice.toFixed(2)} ${originalPrice < this.minimumPrice ? '✓ Applied' : '✓ Met'}</div>
-                            <div>2. <strong>Store Rounding:</strong> $${originalPrice.toFixed(2)} → $${roundedPrice.toFixed(2)}</div>
+                            <div>1. <strong>Estimated Price:</strong> $${estimatedPrice.toFixed(2)}</div>
+                            <div>2. <strong>Rounded DOWN to .99:</strong> $${estimatedPrice.toFixed(2)} → $${PriceRounding.roundDownTo99(estimatedPrice).toFixed(2)}</div>
+                            <div>3. <strong>Minimum Price Check:</strong> $${finalPrice.toFixed(2)} ${finalPrice === this.minimumPrice && PriceRounding.roundDownTo99(estimatedPrice) < this.minimumPrice ? '✓ Minimum applied' : '✓ Met minimum'}</div>
                             <div style="font-size: 11px; color: #666; margin-top: 3px;">
-                                ${roundedPrice < 5 ? 'Under $5: Exact price' : 
-                                  roundedPrice < 20 ? '$5-$20: Rounded to .49/.99' : 
-                                  '$20+: Rounded to nearest $0.50'}
+                                ${roundingExplanation}
                             </div>
                         </div>
                     </div>
@@ -1676,12 +1699,12 @@
                 }
                 
                 // Apply store rounding to the price (again, in case user changed it)
-                const finalPrice = PriceRounding.roundToStorePrice(Math.max(price, this.minimumPrice));
+                const finalPrice = PriceRounding.roundToStorePrice(price, this.minimumPrice);
                 
                 console.log('=== ADDING RECORD ===');
                 console.log('Generated PigStyle barcode (numeric):', pigstyleBarcode);
                 console.log('Barcode validation:', this.barcodeGenerator.validateBarcode(pigstyleBarcode));
-                console.log('Input price:', price, 'Final price (after min & rounding):', finalPrice);
+                console.log('Input price:', price, 'Final price (after rounding & min):', finalPrice);
                 console.log('Artist:', discogsRecord.artist);
                 console.log('Title:', discogsRecord.title);
                 console.log('Genre ID:', genreId);
@@ -1767,7 +1790,7 @@
                             this.showMessage(`Price must be at least $${this.minimumPrice.toFixed(2)}`, 'error');
                             return;
                         }
-                        updates.store_price = PriceRounding.roundToStorePrice(price);
+                        updates.store_price = PriceRounding.roundToStorePrice(price, this.minimumPrice);
                     }
                 }
                 
@@ -1791,7 +1814,7 @@
                 const response = await APIUtils.put(`/records/${recordId}`, updates);
                 
                 if (response.status === 'success') {
-                    this.showMessage(`Record updated successfully! Price rounded to: $${updates.store_price ? updates.store_price.toFixed(2) : 'unchanged'}`, 'success');
+                    this.showMessage(`Record updated successfully! Price: $${updates.store_price ? updates.store_price.toFixed(2) : 'unchanged'}`, 'success');
                     const currentSearch = document.getElementById('searchInput').value;
                     if (currentSearch) {
                         await this.performSearch(currentSearch);
