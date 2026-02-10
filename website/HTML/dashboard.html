@@ -1626,12 +1626,7 @@
                     youtube_url: '',
                     consignor_id:  user.id ,
                     commission_rate: this.commissionRate,
-                    compilation: false,
                     status_id: 1,
-                    discogs_id: discogsRecord.discogs_id,
-                    year: discogsRecord.year,
-                    country: discogsRecord.country,
-                    discogs_genre: discogsRecord.genre || ''
                 };
                 
                 console.log('Sending to /records endpoint:', recordData);
