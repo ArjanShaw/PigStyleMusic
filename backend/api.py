@@ -167,7 +167,58 @@ def price_estimate():
             discogs_id=discogs_id
         )
         
+        # Apply rounding rules HERE on the backend
+        estimated_price = result['estimated_price'] if result['success'] else 19.99
+        
+        # ALWAYS round DOWN to nearest .99
+        def round_down_to_99(price):
+            """Round any price DOWN to nearest .99 below it"""
+            import math
+            price_float = float(price)
+            
+            # Get the integer dollar part
+            dollars = math.floor(price_float)
+            
+            # Check if already ends with .99 (within 0.01 tolerance)
+            cents = price_float - dollars
+            if abs(cents - 0.99) < 0.01:
+                return dollars + 0.99
+            
+            # For prices less than 1, return 0.99
+            if dollars == 0:
+                return 0.99
+            
+            # Otherwise, return previous dollar + .99
+            return (dollars - 1) + 0.99
+        
+        # Apply minimum price (from config or default 1.99)
+        min_price = float(app.config.get('MIN_STORE_PRICE', 1.99))
+        
+        # Round the price
+        rounded_price = round_down_to_99(estimated_price)
+        
+        # Apply minimum price check AFTER rounding
+        if rounded_price < min_price:
+            rounded_price = min_price
+        
+        # Update the result with rounded price
+        result['estimated_price'] = rounded_price
+        result['original_estimated_price'] = estimated_price  # Keep original for reference
+        result['rounded_price'] = rounded_price
+        result['minimum_price'] = min_price
+        result['price_source'] = result.get('price_source', 'unknown')
+        
+        # Add rounding explanation to calculation
+        if 'calculation' not in result:
+            result['calculation'] = []
+        
+        result['calculation'].append(f"Original estimated price: ${estimated_price:.2f}")
+        result['calculation'].append(f"Rounded DOWN to nearest .99: ${rounded_price:.2f}")
+        if rounded_price == min_price and round_down_to_99(estimated_price) < min_price:
+            result['calculation'].append(f"Minimum price ${min_price:.2f} applied")
+        
         # Debug log the result structure
+        app.logger.info(f"Original price: ${estimated_price:.2f}, Rounded price: ${rounded_price:.2f}")
         app.logger.info(f"Result keys: {list(result.keys())}")
         app.logger.info(f"eBay listings count: {len(result.get('ebay_listings', []))}")
         
@@ -175,7 +226,10 @@ def price_estimate():
         return jsonify({
             'status': 'success' if result['success'] else 'error',
             'success': result['success'],
-            'estimated_price': result['estimated_price'],
+            'estimated_price': result['estimated_price'],  # This is now ROUNDED price
+            'original_estimated_price': result.get('original_estimated_price', estimated_price),
+            'rounded_price': result['rounded_price'],
+            'minimum_price': result['minimum_price'],
             'price': result['estimated_price'],  # For compatibility
             'price_source': result.get('price_source', 'unknown'),
             'calculation': result.get('calculation', []),
@@ -192,12 +246,14 @@ def price_estimate():
             'status': 'error',
             'error': str(e),
             'estimated_price': 19.99,
+            'rounded_price': 19.99,
+            'minimum_price': 1.99,
             'calculation': [f"Error: {str(e)}"],
             'ebay_summary': {},
             'ebay_listings': [],
             'ebay_listings_count': 0
         }), 500
-
+    
 @app.route('/api/price-advice', methods=['POST'])
 def get_price_advice():
     """Get price advice based on eBay and Discogs data"""
