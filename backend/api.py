@@ -632,8 +632,8 @@ def add_consignor_record():
             artist, title, barcode, genre_id, image_url,
             catalog_number, condition, store_price,
             youtube_url, consignor_id, commission_rate,
-            compilation, status_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            status_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ''', (
         data.get('artist'),
         data.get('title'),
@@ -646,7 +646,6 @@ def add_consignor_record():
         data.get('youtube_url', ''),
         session['user_id'],  # Set consignor_id to logged-in user
         commission_rate,
-        data.get('compilation', False),
         1  # Default status: new
     ))
 
@@ -1445,6 +1444,94 @@ def assign_barcodes():
 
     return jsonify({'status': 'success', 'barcode_mapping': barcode_mapping})
 
+@app.route('/records', methods=['POST'])
+def create_record():
+    """Create a new record in the database"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+    
+    # Validate required fields
+    required_fields = ['artist', 'title', 'genre_id', 'store_price']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'status': 'error', 'error': f'{field} required'}), 400
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Extract data with defaults
+        consignor_id = data.get('consignor_id')
+        commission_rate = data.get('commission_rate', 0.20)
+        status_id = data.get('status_id', 1)  # Default to 'new'
+        
+        # Insert only the columns that actually exist in the table
+        cursor.execute('''
+            INSERT INTO records (
+                artist, title, barcode, genre_id, image_url,
+                catalog_number, condition, store_price,
+                youtube_url, consignor_id, commission_rate,
+                 status_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data.get('artist'),
+            data.get('title'),
+            data.get('barcode', ''),
+            data.get('genre_id'),
+            data.get('image_url', ''),
+            data.get('catalog_number', ''),
+            data.get('condition', 'Very Good (VG)'),
+            float(data.get('store_price', 0.0)),
+            data.get('youtube_url', ''),
+            consignor_id,
+            float(commission_rate),
+            int(status_id)
+        ))
+        
+        record_id = cursor.lastrowid
+        conn.commit()
+        
+        # Fetch the created record
+        cursor.execute('''
+            SELECT r.*, g.genre_name, s.status_name 
+            FROM records r
+            LEFT JOIN genres g ON r.genre_id = g.id
+            LEFT JOIN d_status s ON r.status_id = s.id
+            WHERE r.id = ?
+        ''', (record_id,))
+        
+        record = cursor.fetchone()
+        
+        # Return success response
+        response = jsonify({
+            'status': 'success',
+            'record': dict(record) if record else {},
+            'message': f'Record added successfully with ID: {record_id}'
+        })
+        
+        # Add CORS headers
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        
+        return response
+        
+    except Exception as e:
+        conn.rollback()
+        error_msg = f"Database error: {str(e)}"
+        print(f"ERROR in create_record: {error_msg}")
+        
+        # Return error with CORS headers
+        response = jsonify({
+            'status': 'error',
+            'error': error_msg
+        })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
+    finally:
+        conn.close()
+ 
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()
@@ -1550,11 +1637,9 @@ def update_record(record_id):
         'youtube_url': 'youtube_url',
         'consignor_id': 'consignor_id',
         'commission_rate': 'commission_rate',
-        'compilation': 'compilation',
         'up_votes': 'up_votes',
         'down_votes': 'down_votes',
         'kill_votes': 'kill_votes',
-        'original_consignor_price': 'original_consignor_price',
         'status_id': 'status_id',
         'date_sold': 'date_sold',
         'date_paid': 'date_paid'
@@ -2755,7 +2840,6 @@ def search_records():
             r.store_price,
             r.condition,
             r.youtube_url,
-            r.compilation,
             r.consignor_id,
             r.created_at,
             r.status_id,
