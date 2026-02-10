@@ -1445,55 +1445,59 @@ def assign_barcodes():
 
     return jsonify({'status': 'success', 'barcode_mapping': barcode_mapping})
 
-@app.route('/records', methods=['POST'])
-def create_record():
-    data = request.get_json()
-    if not data:
-        return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-
-    required_fields = ['artist', 'title']
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'status': 'error', 'error': f'{field} required'}), 400
-
+@app.route('/records', methods=['GET'])
+def get_records():
     conn = get_db()
     cursor = conn.cursor()
-
-    consignor_id = data.get('consignor_id')
-    commission_rate = data.get('commission_rate')
-
-    # Default status_id is 1 (new) if not provided
-    status_id = data.get('status_id', 1)
-
-    cursor.execute('''
-        INSERT INTO records (
-            artist, title, barcode, genre_id, image_url,
-            catalog_number, condition, store_price,
-            youtube_url, consignor_id, commission_rate,
-            compilation, status_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        data.get('artist'),
-        data.get('title'),
-        data.get('barcode', ''),
-        data.get('genre_id'),
-        data.get('image_url', ''),
-        data.get('catalog_number', ''),
-        data.get('condition', '4'),
-        data.get('store_price'),
-        data.get('youtube_url', ''),
-        consignor_id,
-        commission_rate,
-        data.get('compilation', False),
-        status_id
-    ))
-
-    record_id = cursor.lastrowid
-    conn.commit()
+    
+    # Check if random parameter is present
+    random_order = request.args.get('random', 'false').lower() == 'true'
+    limit = request.args.get('limit', type=int)
+    has_youtube = request.args.get('has_youtube', 'false').lower() == 'true'
+    
+    # Build the base query
+    query = '''
+        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
+               s.status_name
+        FROM records r
+        LEFT JOIN genres g ON r.genre_id = g.id
+        LEFT JOIN d_status s ON r.status_id = s.id
+        WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
+        AND r.artist != '' AND r.title != ''
+    '''
+    
+    # Add YouTube filter if requested
+    if has_youtube:
+        query += '''
+            AND (r.youtube_url LIKE '%youtube.com%' OR
+                 r.youtube_url LIKE '%youtu.be%')
+        '''
+    
+    # Add ORDER BY clause
+    if random_order:
+        query += ' ORDER BY RANDOM()'  # Truly random each time
+    else:
+        query += ' ORDER BY r.id DESC'  # Default order
+    
+    # Add LIMIT if specified
+    if limit:
+        query += f' LIMIT {limit}'
+    
+    cursor.execute(query)
+    records = cursor.fetchall()
     conn.close()
-
-    return jsonify({'status': 'success', 'record_id': record_id})
-
+    
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        records_list.append(record_dict)
+    
+    return jsonify({
+        'status': 'success',
+        'count': len(records_list),
+        'records': records_list
+    })
+ 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
     conn = get_db()
