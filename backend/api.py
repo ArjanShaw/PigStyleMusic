@@ -2719,40 +2719,7 @@ def get_random_records():
         'records': records_list
     })
 
-
-
-@app.route('/records', methods=['GET'])
-def get_records():
-    conn = get_db()
-    cursor = conn.cursor()
-
-
-    cursor.execute('''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
-        FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
-        LEFT JOIN d_status s ON r.status_id = s.id
-        WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
-        AND r.artist != '' AND r.title != ''
-        ORDER BY r.id DESC
-
-    ''' )
-
-    records = cursor.fetchall()
-    conn.close()
-
-    records_list = []
-    for record in records:
-        record_dict = dict(record)
-        records_list.append(record_dict)
-
-    return jsonify({
-        'status': 'success',
-        'count': len(records_list),
-        'total': len(records_list),
-        'records': records_list
-    })
+ 
 
 @app.route('/records/count', methods=['GET'])
 def get_records_count():
