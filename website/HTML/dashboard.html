@@ -7,6 +7,31 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="/static/js/app-config.js"></script>
+    <style>
+        /* Status Badge Styles */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+        .status-badge.active { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-badge.new { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+        .status-badge.sold { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .status-badge.removed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        
+        /* Price Input Step Styling */
+        input[type="number"][step="1"] {
+            -moz-appearance: textfield;
+        }
+        input[type="number"][step="1"]::-webkit-inner-spin-button,
+        input[type="number"][step="1"]::-webkit-outer-spin-button {
+            opacity: 1;
+            height: 24px;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -298,8 +323,8 @@
         
         class BarcodeGenerator {
             constructor() {
-                this.baseCounter = 3290; // Starting after 3289 from your examples
-                this.prefix = '22'; // Based on newer barcodes: 220000003290, 220000003291, etc.
+                this.baseCounter = 3290;
+                this.prefix = '22';
                 this.loadCounter();
             }
             
@@ -326,28 +351,15 @@
                 }
             }
             
-            /**
-             * Generate a numeric barcode matching the database format
-             * Format: 22 + 000000 + 4-digit incrementing sequence
-             * Example: 220000003290, 220000003291, etc.
-             */
             generateBarcode() {
-                // Format: 22 (prefix) + 000000 (padding) + 4-digit sequence
                 const sequence = this.baseCounter.toString().padStart(4, '0');
                 const barcode = `${this.prefix}000000${sequence}`;
-                
                 console.log('BARCODE_GENERATED:', barcode, 'Sequence:', this.baseCounter);
-                
-                // Increment for next time
                 this.baseCounter++;
                 this.saveCounter();
-                
                 return barcode;
             }
             
-            /**
-             * Validate barcode is numeric (matching old application validation)
-             */
             validateBarcode(barcode) {
                 if (!barcode || typeof barcode !== 'string') {
                     return false;
@@ -355,16 +367,10 @@
                 return /^\d+$/.test(barcode);
             }
             
-            /**
-             * Get current counter value
-             */
             getCurrentCounter() {
                 return this.baseCounter;
             }
             
-            /**
-             * Reset counter (for testing)
-             */
             resetCounter(startFrom = 3290) {
                 this.baseCounter = startFrom;
                 this.saveCounter();
@@ -389,7 +395,7 @@
                 this.commissionRate = 0.20;
                 this.consignors = [];
                 this.selectedConsignorId = 'all';
-                this.minimumPrice = 1.99; // Default minimum price
+                this.minimumPrice = 1.99;
                 
                 this.init();
             }
@@ -580,20 +586,28 @@
                 try {
                     if (user.role === 'admin') {
                         if (this.selectedConsignorId !== 'all') {
-                            const allRecords = await APIUtils.get('/records');
+                            const allRecords = await APIUtils.get('/records', { 
+                                order_by: 'created_at', 
+                                order: 'desc' 
+                            });
                             records = allRecords.records ? allRecords.records.filter(record => 
                                 record.consignor_id == this.selectedConsignorId
                             ) : [];
                         } else {
-                            const response = await APIUtils.get('/records');
+                            const response = await APIUtils.get('/records', { 
+                                order_by: 'created_at', 
+                                order: 'desc' 
+                            });
                             records = response.records || [];
                         }
                     } else {
-                        const response = await APIUtils.get(`/records/user/${user.id}`);
+                        const response = await APIUtils.get(`/records/user/${user.id}`, {
+                            order_by: 'created_at',
+                            order: 'desc'
+                        });
                         records = response.records || [];
                     }
                     
-                    // Get commission rate for display
                     const commissionResponse = await APIUtils.get('/api/commission-rate');
                     const commissionRate = commissionResponse.commission_rate / 100;
                     
@@ -608,6 +622,10 @@
                         const barcodeDisplay = record.barcode ? 
                             `<span class="barcode-value" title="${record.barcode}">${record.barcode}</span>` : 
                             'N/A';
+                        
+                        const statusName = (record.status_name || 'active').toLowerCase();
+                        const statusClass = statusName.replace(/\s+/g, '-');
+                        const displayStatus = record.status_name || 'Active';
                         
                         return `
                         <tr>
@@ -628,7 +646,9 @@
                             <td>
                                 <span class="commission-badge">${(commissionRate * 100).toFixed(1)}%</span>
                             </td>
-                            <td>${record.status_name || 'N/A'}</td>
+                            <td>
+                                <span class="status-badge ${statusClass}">${displayStatus}</span>
+                            </td>
                             <td>${record.catalog_number || 'N/A'}</td>
                             <td>${barcodeDisplay}</td>
                             <td>
@@ -692,7 +712,7 @@
                 if (user.role === 'admin') {
                     const response = await APIUtils.get('/records', { 
                         limit: 1, 
-                        order_by: 'id', 
+                        order_by: 'created_at', 
                         order: 'desc' 
                     });
                     
@@ -703,7 +723,7 @@
                 } else {
                     const response = await APIUtils.get(`/records/user/${user.id}`, {
                         limit: 1,
-                        order_by: 'id',
+                        order_by: 'created_at',
                         order: 'desc'
                     });
                     
@@ -899,6 +919,7 @@
                         <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
                         <div style="margin-top: 5px;">
                             <div>• Prices are rounded according to store pricing rules</div>
+                            <div>• <strong>Price step: $1.00</strong> - Use +/- buttons to adjust by whole dollars</div>
                         </div>
                     </div>
                     ${this.currentResults.map((record, index) => {
@@ -1003,10 +1024,14 @@
                                     
                                     <div class="form-group">
                                         <label class="form-label">Price ($) *</label>
-                                        <input type="number" class="form-control price-input" step="0.01" min="${this.minimumPrice}" 
-                                               placeholder="Min: $${this.minimumPrice.toFixed(2)}" required>
+                                        <input type="number" 
+                                               class="form-control price-input" 
+                                               step="1" 
+                                               min="${this.minimumPrice}" 
+                                               placeholder="Min: $${this.minimumPrice.toFixed(2)}" 
+                                               required>
                                         <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                            Min: $${this.minimumPrice.toFixed(2)}
+                                            <i class="fas fa-plus-circle"></i> <i class="fas fa-minus-circle"></i> Use +/- buttons to adjust by $1.00
                                         </div>
                                     </div>
                                 </div>
@@ -1070,6 +1095,14 @@
                     }).join('');
                 };
                 
+                const getStatusOptions = (recordId) => {
+                    const record = this.currentResults.find(r => r.id == recordId);
+                    return this.statuses.map(status => {
+                        const selected = record && (record.status_name || 'active').toLowerCase() === status ? 'selected' : '';
+                        return `<option value="${status}" ${selected}>${status.charAt(0).toUpperCase() + status.slice(1)}</option>`;
+                    }).join('');
+                };
+                
                 return `
                     <h3>Database Results (${filteredResults.length})</h3>
                     <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
@@ -1077,9 +1110,14 @@
                         <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
                         <div style="margin-top: 5px;">
                             <div>• Prices are rounded according to store pricing rules</div>
+                            <div>• <strong>Price step: $1.00</strong> - Use +/- buttons to adjust by whole dollars</div>
                         </div>
                     </div>
                     ${filteredResults.map((record, index) => {
+                        const statusName = (record.status_name || 'active').toLowerCase();
+                        const statusClass = statusName.replace(/\s+/g, '-');
+                        const displayStatus = record.status_name || 'Active';
+                        
                         return `
                             <div class="record-card" data-record-id="${record.id}" data-index="${index}">
                                 <div class="record-header">
@@ -1100,7 +1138,7 @@
                                             <p><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</p>
                                             <p><strong>Commission:</strong> ${(this.commissionRate * 100).toFixed(1)}%</p>
                                             ${record.condition ? `<p><strong>Condition:</strong> ${record.condition}</p>` : ''}
-                                            ${record.status_name ? `<p><strong>Status:</strong> ${record.status_name}</p>` : ''}
+                                            <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></p>
                                             ${record.consignor_name ? `<p><strong>Consignor:</strong> ${record.consignor_name}</p>` : ''}
                                         </div>
                                     </div>
@@ -1135,11 +1173,11 @@
                                                class="form-control edit-price-input" 
                                                data-record-id="${record.id}"
                                                value="${record.store_price || ''}" 
-                                               step="0.01" 
+                                               step="1" 
                                                min="${this.minimumPrice}"
                                                placeholder="Min: $${this.minimumPrice.toFixed(2)}">
                                         <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                            Min: $${this.minimumPrice.toFixed(2)}
+                                            <i class="fas fa-plus-circle"></i> <i class="fas fa-minus-circle"></i> Use +/- buttons to adjust by $1.00
                                         </div>
                                     </div>
                                 </div>
@@ -1150,11 +1188,7 @@
                                             <div style="margin-bottom: 10px;">
                                                 <label class="form-label">Status</label>
                                                 <select class="form-control edit-status-select" data-record-id="${record.id}">
-                                                    ${this.statuses.map(status => `
-                                                        <option value="${status}" ${record.status_name === status ? 'selected' : ''}>
-                                                            ${status.charAt(0).toUpperCase() + status.slice(1)}
-                                                        </option>
-                                                    `).join('')}
+                                                    ${getStatusOptions(record.id)}
                                                 </select>
                                             </div>
                                         ` : ''}
@@ -1284,18 +1318,14 @@
                     }
                     
                     if (estimatedPrice) {
-                        // Price is already rounded by the API, so we can use it directly
                         const finalPrice = estimatedPrice;
                         
-                        // Always update the input with the final advised price
                         priceInput.value = parseFloat(finalPrice).toFixed(2);
                         priceInput.classList.add('price-estimated');
                         
-                        // Remove any existing estimation hints
                         const existingHints = priceInput.parentElement.querySelectorAll('.estimation-hint, .advised-price-note');
                         existingHints.forEach(hint => hint.remove());
                         
-                        // Add new estimation hint
                         const hint = document.createElement('div');
                         hint.className = 'estimation-hint';
                         
@@ -1358,7 +1388,6 @@
                     }
                 }
                 
-                // Show that price is already rounded by API
                 calculationHTML += `
                     <div class="rounding-info" style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
                         <strong>💰 Price Rules Applied by API:</strong>
@@ -1602,10 +1631,8 @@
                 const genre = this.genres.find(g => g.id == genreId);
                 const genreName = genre ? genre.genre_name : '';
                 
-                // Generate PigStyle barcode (numeric format)
                 const pigstyleBarcode = this.barcodeGenerator.generateBarcode();
                 
-                // Validate barcode is numeric
                 if (!this.barcodeGenerator.validateBarcode(pigstyleBarcode)) {
                     this.showMessage('Error: Generated barcode is not valid numeric format', 'error');
                     return;
@@ -1619,21 +1646,21 @@
                 console.log('Title:', discogsRecord.title);
                 console.log('Genre ID:', genreId);
                 console.log('Condition:', condition);
-                console.log('Final Price:', price); // Price will be rounded by API
+                console.log('Final Price:', price);
                 
                 const recordData = {
                     artist: discogsRecord.artist,
                     title: discogsRecord.title,
-                    barcode: pigstyleBarcode,  // Numeric barcode matching database format
+                    barcode: pigstyleBarcode,
                     genre_id: parseInt(genreId),
                     genre_name: genreName,
                     image_url: discogsRecord.image_url || '',
                     catalog_number: discogsRecord.catalog_number || '',
                     format: discogsRecord.format || 'Vinyl',
                     condition: condition,
-                    store_price: price, // API will handle rounding
+                    store_price: price,
                     youtube_url: '',
-                    consignor_id:  user.id ,
+                    consignor_id: user.id,
                     commission_rate: this.commissionRate,
                     status_id: 1,
                 };
@@ -1695,7 +1722,7 @@
                             this.showMessage(`Price must be at least $${this.minimumPrice.toFixed(2)}`, 'error');
                             return;
                         }
-                        updates.store_price = price; // API will handle rounding
+                        updates.store_price = price;
                     }
                 }
                 
