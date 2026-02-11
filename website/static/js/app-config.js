@@ -72,9 +72,9 @@ const AppConfig = {
     
     // API Endpoints Configuration
     endpoints: {
-        // Authentication
+        // Authentication - FIXED: Changed from /api/logout to /logout to match Flask route
         login: '/api/login',
-        logout: '/api/logout',
+        logout: '/logout', // FIXED: Correct endpoint for Flask session logout
         session: '/session/check',
         sessionCheck: '/session/check', // Alias for backward compatibility
         
@@ -422,7 +422,7 @@ const pigstyleAPI = {
     }
 };
 
-// AUTHENTICATION MODULE
+// AUTHENTICATION MODULE - FIXED logout method
 const Auth = {
     // Current user state
     user: null,
@@ -517,20 +517,59 @@ const Auth = {
         }
     },
     
-    // Logout user
+    // FIXED: Logout user - proper endpoint, cookie clearing, and redirect
     async logout() {
+        console.log('Logging out...');
+        
         try {
-            await fetch(AppConfig.getUrl('logout'), {
+            // Call the logout endpoint - FIXED: Now uses correct /logout endpoint
+            const response = await fetch(AppConfig.getUrl('logout'), {
                 method: 'POST',
                 headers: AppConfig.getHeaders(),
-                credentials: 'include'
+                credentials: 'include' // Important: sends cookies
             });
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Logout successful:', data.message);
+            } else {
+                console.error('Logout failed with status:', response.status);
+            }
         } catch (error) {
-            console.error('Logout failed:', error);
+            console.error('Logout request failed:', error);
         }
         
+        // Clear all client-side auth data
         this.clearAuth();
+        
+        // FIXED: Force clear all cookies (including any non-HttpOnly ones)
+        this.clearAllCookies();
+        
+        // Update UI to show logged out state
         this.updateUI();
+        
+        // FIXED: Redirect to home page immediately
+        window.location.href = '/';
+        
+        return { success: true };
+    },
+    
+    // FIXED: New method to clear all cookies
+    clearAllCookies() {
+        const cookies = document.cookie.split(";");
+        
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i];
+            const eqPos = cookie.indexOf("=");
+            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+            
+            // Clear cookie for all paths and domains
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" + window.location.hostname;
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=." + window.location.hostname;
+        }
+        
+        console.log('All cookies cleared');
     },
     
     // Clear authentication data
@@ -541,6 +580,8 @@ const Auth = {
         localStorage.removeItem('user');
         localStorage.removeItem('auth_timestamp');
         localStorage.removeItem('auth_token');
+        sessionStorage.removeItem('clientId'); // Also clear session storage
+        console.log('Auth data cleared from localStorage');
     },
     
     // Check if user has specific permission
@@ -604,12 +645,15 @@ const Auth = {
             });
         }
         
-        // Logout button handler (will be set up after navbar is rendered)
+        // FIXED: Improved logout button event listener
+        // Use both event delegation and direct attachment for reliability
         document.addEventListener('click', (e) => {
-            if (e.target.id === 'logout-button' || e.target.closest('#logout-button')) {
+            const logoutButton = e.target.closest('#logout-button');
+            if (logoutButton) {
                 e.preventDefault();
+                e.stopPropagation();
+                console.log('Logout button clicked');
                 this.logout();
-                window.location.href = '/';
             }
         });
     },
@@ -621,22 +665,17 @@ const Auth = {
         this.updateButtons();
     },
     
-    // Update navbar based on auth state
+    // Update navbar based on auth state - FIXED: Added direct logout button handler
     updateNavbar() {
         const authSection = document.getElementById('auth-section');
 
-        console.log(`authSection...${authSection}`);
-
-
         if (!authSection) return;
         
-        console.log(`isLoggedIn...${this.isLoggedIn}`);
-
         if (this.isLoggedIn) {
             
             authSection.innerHTML = `
                 <div class="user-menu">
-                    <span class="user-greeting">Hi, ${this.user.username}</span>
+                    <span class="user-greeting">Hi, ${this.user?.username || 'User'}</span>
                     <div class="dropdown">
                         <button class="dropdown-toggle" id="dropdown-toggle-button" aria-label="User menu">
                             <i class="fas fa-user"></i>
@@ -662,6 +701,24 @@ const Auth = {
             
             // Set up dropdown interaction
             this.setupDropdown();
+            
+            // FIXED: Direct attachment of logout button click handler
+            setTimeout(() => {
+                const logoutBtn = document.getElementById('logout-button');
+                if (logoutBtn) {
+                    // Remove any existing listeners to avoid duplicates
+                    const newLogoutBtn = logoutBtn.cloneNode(true);
+                    logoutBtn.parentNode.replaceChild(newLogoutBtn, logoutBtn);
+                    
+                    newLogoutBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Logout button clicked (direct handler)');
+                        this.logout();
+                    });
+                }
+            }, 50);
+            
         } else {
             authSection.innerHTML = `
                 <a href="/login" class="nav-link">
@@ -679,15 +736,19 @@ const Auth = {
             const dropdownMenu = document.getElementById('dropdown-menu');
             
             if (toggleButton && dropdownMenu) {
+                // Remove existing listeners to avoid duplicates
+                const newToggleButton = toggleButton.cloneNode(true);
+                toggleButton.parentNode.replaceChild(newToggleButton, toggleButton);
+                
                 // Toggle dropdown on click
-                toggleButton.addEventListener('click', function(e) {
+                newToggleButton.addEventListener('click', function(e) {
                     e.stopPropagation();
                     dropdownMenu.classList.toggle('show');
                 });
                 
                 // Close dropdown when clicking outside
                 document.addEventListener('click', function(e) {
-                    if (!toggleButton.contains(e.target) && !dropdownMenu.contains(e.target)) {
+                    if (!newToggleButton.contains(e.target) && !dropdownMenu.contains(e.target)) {
                         dropdownMenu.classList.remove('show');
                     }
                 });
