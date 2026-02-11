@@ -61,6 +61,8 @@
                                 <th>Genre</th>
                                 <th>Condition</th>
                                 <th>Price</th>
+                                <th>Commission</th>
+                                <th>You Get</th>
                                 <th>Status</th>
                                 <th>Catalog #</th>
                                 <th>Barcode</th>
@@ -269,7 +271,7 @@
             
             async saveMapping(discogsGenre, localGenreId, localGenreName) {
                 const cleanGenre = discogsGenre.includes('/') ? 
-                    discogsRecord.genre.replace('/', ' ') : discogsGenre;
+                    discogsGenre.replace('/', ' ') : discogsGenre;
                 
                 const mappingData = {
                     discogs_genre: cleanGenre,
@@ -592,6 +594,10 @@
                         records = response.records || [];
                     }
                     
+                    // Get commission rate for calculations
+                    const commissionResponse = await APIUtils.get('/api/commission-rate');
+                    const commissionRate = commissionResponse.commission_rate / 100;
+                    
                     loadingDiv.style.display = 'none';
                     
                     if (records.length === 0) {
@@ -603,6 +609,11 @@
                         const barcodeDisplay = record.barcode ? 
                             `<span class="barcode-value" title="${record.barcode}">${record.barcode}</span>` : 
                             'N/A';
+                        
+                        // Calculate commission amount and consignor payout
+                        const storePrice = record.store_price || 0;
+                        const commissionAmount = storePrice * commissionRate;
+                        const consignorPayout = storePrice - commissionAmount;
                         
                         return `
                         <tr>
@@ -619,7 +630,18 @@
                             <td>${record.title || 'N/A'}</td>
                             <td>${record.genre_name || 'N/A'}</td>
                             <td>${record.condition || 'N/A'}</td>
-                            <td>$${(record.store_price || 0).toFixed(2)}</td>
+                            <td>$${storePrice.toFixed(2)}</td>
+                            <td>
+                                <div class="commission-info">
+                                    <span class="commission-rate">${(commissionRate * 100).toFixed(1)}%</span>
+                                    <span class="commission-amount">$${commissionAmount.toFixed(2)}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="payout-info">
+                                    <span class="payout-amount">$${consignorPayout.toFixed(2)}</span>
+                                </div>
+                            </td>
                             <td>${record.status_name || 'N/A'}</td>
                             <td>${record.catalog_number || 'N/A'}</td>
                             <td>${barcodeDisplay}</td>
@@ -1072,6 +1094,9 @@
                         </div>
                     </div>
                     ${filteredResults.map((record, index) => {
+                        const commissionAmount = record.store_price * this.commissionRate;
+                        const consignorPayout = record.store_price - commissionAmount;
+                        
                         return `
                             <div class="record-card" data-record-id="${record.id}" data-index="${index}">
                                 <div class="record-header">
@@ -1089,7 +1114,9 @@
                                             ${record.genre_name ? `<p><strong>Genre:</strong> ${record.genre_name}</p>` : ''}
                                             ${record.barcode ? `<p><strong>PigStyle Barcode:</strong> <span class="barcode-value">${record.barcode}</span></p>` : ''}
                                             ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
-                                            ${record.store_price ? `<p><strong>Current Price:</strong> $${(record.store_price || 0).toFixed(2)}</p>` : ''}
+                                            <p><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</p>
+                                            <p><strong>Commission (${(this.commissionRate * 100).toFixed(1)}%):</strong> $${commissionAmount.toFixed(2)}</p>
+                                            <p><strong>You Get:</strong> $${consignorPayout.toFixed(2)}</p>
                                             ${record.condition ? `<p><strong>Condition:</strong> ${record.condition}</p>` : ''}
                                             ${record.status_name ? `<p><strong>Status:</strong> ${record.status_name}</p>` : ''}
                                             ${record.consignor_name ? `<p><strong>Consignor:</strong> ${record.consignor_name}</p>` : ''}
