@@ -1464,6 +1464,8 @@ def assign_barcodes():
 
     return jsonify({'status': 'success', 'barcode_mapping': barcode_mapping})
 
+
+
 @app.route('/records', methods=['POST'])
 def create_record():
     """Create a new record in the database"""
@@ -2838,58 +2840,61 @@ def get_records_count():
 
 
 # ==================== SEARCH ENDPOINT ====================
-@app.route('/search', methods=['GET'])
+@app.route('/records/search', methods=['GET'])
 def search_records():
-    search_term = request.args.get('q', '')
-    if not search_term:
-        return jsonify({'status': 'error', 'error': 'Search term required'}), 400
-
+    """Search records by barcode, title, artist, or catalog number"""
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify({'status': 'error', 'error': 'Search query required'}), 400
+    
     conn = get_db()
     cursor = conn.cursor()
-
-    search_pattern = f'%{search_term}%'
-
-    cursor.execute('''
-        SELECT
-            r.id,
-            r.artist,
-            r.title,
-            r.barcode,
-            r.catalog_number,
-            r.image_url,
-            r.store_price,
-            r.condition,
-            r.youtube_url,
-            r.consignor_id,
-            r.created_at,
-            r.status_id,
-            s.status_name as status,
-            COALESCE(g.genre_name, 'Unknown') as genre_name,
-            u.username as consignor_name
-        FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
-        LEFT JOIN users u ON r.consignor_id = u.id
-        LEFT JOIN d_status s ON r.status_id = s.id
-        WHERE (r.artist LIKE ? OR r.title LIKE ? OR
-               r.catalog_number LIKE ? OR r.barcode LIKE ? OR
-               r.artist || ' - ' || r.title LIKE ?)
-        ORDER BY
-            CASE
-                WHEN r.artist LIKE ? THEN 1
-                WHEN r.title LIKE ? THEN 2
-                ELSE 3
-            END,
-            r.artist, r.title
-        LIMIT 50
-    ''', (search_pattern, search_pattern, search_pattern, search_pattern,
-          search_pattern, search_pattern, search_pattern))
-
-    records = cursor.fetchall()
-    conn.close()
-
-    records_list = [dict(record) for record in records]
-    return jsonify({'status': 'success', 'records': records_list})
-
+    
+    try:
+        # Search across multiple fields
+        search_term = f'%{query}%'
+        cursor.execute('''
+            SELECT r.*, g.genre_name, s.status_name 
+            FROM records r
+            LEFT JOIN genres g ON r.genre_id = g.id
+            LEFT JOIN d_status s ON r.status_id = s.id
+            WHERE r.barcode LIKE ? 
+               OR r.title LIKE ? 
+               OR r.artist LIKE ? 
+               OR r.catalog_number LIKE ?
+            ORDER BY r.created_at DESC
+        ''', (search_term, search_term, search_term, search_term))
+        
+        records = cursor.fetchall()
+        
+        # Convert to list of dicts
+        records_list = [dict(record) for record in records]
+        
+        response = jsonify({
+            'status': 'success',
+            'records': records_list,
+            'count': len(records_list)
+        })
+        
+        # Add CORS headers
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        
+        return response
+        
+    except Exception as e:
+        error_msg = f"Search error: {str(e)}"
+        print(f"ERROR in search_records: {error_msg}")
+        
+        response = jsonify({
+            'status': 'error',
+            'error': error_msg
+        })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
+    finally:
+        conn.close()
 
 @app.route('/api/discogs/search', methods=['GET'])
 def api_discogs_search():
