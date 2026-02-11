@@ -205,8 +205,13 @@
                 let url = `${this.baseUrl}${endpoint}`;
                 
                 if (queryParams) {
-                    const params = new URLSearchParams(queryParams).toString();
-                    url += `?${params}`;
+                    const params = new URLSearchParams();
+                    Object.keys(queryParams).forEach(key => {
+                        if (queryParams[key] !== undefined && queryParams[key] !== null) {
+                            params.append(key, queryParams[key]);
+                        }
+                    });
+                    url += `?${params.toString()}`;
                 }
                 
                 const options = {
@@ -249,6 +254,40 @@
             
             async delete(endpoint) {
                 return this.request('DELETE', endpoint);
+            }
+        };
+
+        // ============================================================================
+        // AUTH HELPER (simplified for demo)
+        // ============================================================================
+        
+        const Auth = {
+            isLoggedIn: true,
+            user: { id: 1, role: 'admin', name: 'Admin User' },
+            
+            async checkSession() {
+                // In a real app, this would verify the token with the server
+                const token = localStorage.getItem('auth_token');
+                if (token) {
+                    this.isLoggedIn = true;
+                    try {
+                        const response = await APIUtils.get('/auth/me');
+                        if (response.status === 'success' && response.user) {
+                            this.user = response.user;
+                        }
+                    } catch (error) {
+                        console.error('Auth check failed:', error);
+                    }
+                }
+                return this.isLoggedIn;
+            },
+            
+            getUser() {
+                return this.user;
+            },
+            
+            isAdmin() {
+                return this.user && this.user.role === 'admin';
             }
         };
 
@@ -584,30 +623,31 @@
                 let records = [];
                 
                 try {
+                    // Always sort by created_at DESC for consistent ordering
+                    const sortParams = { 
+                        order_by: 'created_at', 
+                        order: 'desc' 
+                    };
+                    
                     if (user.role === 'admin') {
                         if (this.selectedConsignorId !== 'all') {
-                            const allRecords = await APIUtils.get('/records', { 
-                                order_by: 'created_at', 
-                                order: 'desc' 
-                            });
+                            // Get all records sorted, then filter by consignor
+                            const allRecords = await APIUtils.get('/records', sortParams);
                             records = allRecords.records ? allRecords.records.filter(record => 
                                 record.consignor_id == this.selectedConsignorId
                             ) : [];
                         } else {
-                            const response = await APIUtils.get('/records', { 
-                                order_by: 'created_at', 
-                                order: 'desc' 
-                            });
+                            // Get records sorted by created_at descending
+                            const response = await APIUtils.get('/records', sortParams);
                             records = response.records || [];
                         }
                     } else {
-                        const response = await APIUtils.get(`/records/user/${user.id}`, {
-                            order_by: 'created_at',
-                            order: 'desc'
-                        });
+                        // Consignor view - get their records sorted by created_at descending
+                        const response = await APIUtils.get(`/records/user/${user.id}`, sortParams);
                         records = response.records || [];
                     }
                     
+                    // Get commission rate for display
                     const commissionResponse = await APIUtils.get('/api/commission-rate');
                     const commissionRate = commissionResponse.commission_rate / 100;
                     
@@ -616,6 +656,12 @@
                     if (records.length === 0) {
                         emptyDiv.style.display = 'block';
                         return;
+                    }
+                    
+                    // Log first few records to verify sort order
+                    console.log('INVENTORY: Loaded records sorted by created_at DESC');
+                    if (records.length > 0) {
+                        console.log('Most recent record:', records[0].artist, records[0].title, 'Created:', records[0].created_at);
                     }
                     
                     tableBody.innerHTML = records.map(record => {
