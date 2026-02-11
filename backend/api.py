@@ -440,10 +440,30 @@ def login():
 def logout():
     """Log out the current user"""
     session.clear()
-    return jsonify({
+    
+    # Create response and explicitly delete the session cookie
+    response = jsonify({
         'status': 'success',
         'message': 'Logged out successfully'
     })
+    
+    # Force expire the session cookie
+    response.set_cookie(
+        'session',  # This is Flask's default session cookie name
+        '',
+        expires=0,
+        max_age=0,
+        path='/',
+        domain=None,  # Adjust if you're using a specific domain
+        secure=False,  # Set to True if using HTTPS
+        httponly=True,
+        samesite='Lax'
+    )
+    
+    # Also clear any other cookies you might have set
+    response.set_cookie('remember_token', '', expires=0, path='/')
+    
+    return response
 
 @app.route('/session/check', methods=['GET'])
 def check_session():
