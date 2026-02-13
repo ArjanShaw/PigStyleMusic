@@ -31,6 +31,141 @@
             opacity: 1;
             height: 24px;
         }
+
+        /* Pagination Styles */
+        .pagination-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px 0;
+            border-top: 1px solid #333;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .pagination-info {
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .pagination-btn {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            min-width: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: #3a3a3a;
+            border-color: #666;
+        }
+
+        .pagination-btn.active {
+            background: #007bff;
+            border-color: #0056b3;
+            color: white;
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination-ellipsis {
+            color: #aaa;
+            padding: 0 5px;
+        }
+
+        .pagination-size-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .pagination-size-selector select {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .pagination-size-selector select:hover {
+            background: #3a3a3a;
+        }
+
+        .pagination-size-selector select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .pagination-jump {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .pagination-jump input {
+            width: 60px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .pagination-jump input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .pagination-jump button {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .pagination-jump button:hover {
+            background: #3a3a3a;
+        }
+
+        @media (max-width: 768px) {
+            .pagination-container {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .pagination-controls {
+                width: 100%;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -95,6 +230,37 @@
                         </thead>
                         <tbody id="inventory-table-body"></tbody>
                     </table>
+                </div>
+
+                <!-- Pagination Controls for Inventory -->
+                <div id="inventory-pagination" class="pagination-container" style="display: none;">
+                    <div class="pagination-info" id="pagination-info">
+                        Showing 0-0 of 0 records
+                    </div>
+                    <div class="pagination-controls">
+                        <button class="pagination-btn" id="page-first" title="First Page">
+                            <i class="fas fa-angle-double-left"></i>
+                        </button>
+                        <button class="pagination-btn" id="page-prev" title="Previous Page">
+                            <i class="fas fa-angle-left"></i>
+                        </button>
+                        <div id="page-numbers" style="display: flex; gap: 5px; align-items: center;"></div>
+                        <button class="pagination-btn" id="page-next" title="Next Page">
+                            <i class="fas fa-angle-right"></i>
+                        </button>
+                        <button class="pagination-btn" id="page-last" title="Last Page">
+                            <i class="fas fa-angle-double-right"></i>
+                        </button>
+                    </div>
+                    <div class="pagination-size-selector">
+                        <label for="page-size">Records per page:</label>
+                        <select id="page-size">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="250">250</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div id="inventory-loading" class="loading">
@@ -416,6 +582,170 @@
         }
 
         // ============================================================================
+        // PAGINATION MANAGER CLASS
+        // ============================================================================
+        
+        class PaginationManager {
+            constructor(containerId, onPageChange) {
+                this.container = document.getElementById(containerId);
+                this.onPageChange = onPageChange;
+                this.currentPage = 1;
+                this.pageSize = 50;
+                this.totalItems = 0;
+                this.totalPages = 0;
+                this.items = [];
+                
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                document.getElementById('page-first')?.addEventListener('click', () => {
+                    if (this.currentPage !== 1) {
+                        this.goToPage(1);
+                    }
+                });
+
+                document.getElementById('page-prev')?.addEventListener('click', () => {
+                    if (this.currentPage > 1) {
+                        this.goToPage(this.currentPage - 1);
+                    }
+                });
+
+                document.getElementById('page-next')?.addEventListener('click', () => {
+                    if (this.currentPage < this.totalPages) {
+                        this.goToPage(this.currentPage + 1);
+                    }
+                });
+
+                document.getElementById('page-last')?.addEventListener('click', () => {
+                    if (this.currentPage !== this.totalPages) {
+                        this.goToPage(this.totalPages);
+                    }
+                });
+
+                document.getElementById('page-size')?.addEventListener('change', (e) => {
+                    this.pageSize = parseInt(e.target.value);
+                    this.currentPage = 1;
+                    if (this.onPageChange) {
+                        this.onPageChange(this.currentPage, this.pageSize);
+                    }
+                });
+            }
+
+            setItems(items) {
+                this.items = items || [];
+                this.totalItems = this.items.length;
+                this.totalPages = Math.ceil(this.totalItems / this.pageSize);
+                
+                if (this.currentPage > this.totalPages) {
+                    this.currentPage = Math.max(1, this.totalPages);
+                }
+                
+                this.render();
+                return this.getCurrentPageItems();
+            }
+
+            getCurrentPageItems() {
+                const start = (this.currentPage - 1) * this.pageSize;
+                const end = start + this.pageSize;
+                return this.items.slice(start, end);
+            }
+
+            goToPage(page) {
+                if (page < 1 || page > this.totalPages) return;
+                
+                this.currentPage = page;
+                const pageItems = this.getCurrentPageItems();
+                
+                if (this.onPageChange) {
+                    this.onPageChange(this.currentPage, this.pageSize, pageItems);
+                }
+                
+                this.render();
+            }
+
+            render() {
+                if (!this.container) return;
+                
+                if (this.totalItems === 0) {
+                    this.container.style.display = 'none';
+                    return;
+                }
+
+                this.container.style.display = 'flex';
+                
+                // Update info text
+                const start = (this.currentPage - 1) * this.pageSize + 1;
+                const end = Math.min(this.currentPage * this.pageSize, this.totalItems);
+                document.getElementById('pagination-info').textContent = 
+                    `Showing ${start}-${end} of ${this.totalItems} records`;
+
+                // Update button states
+                document.getElementById('page-first').disabled = this.currentPage === 1;
+                document.getElementById('page-prev').disabled = this.currentPage === 1;
+                document.getElementById('page-next').disabled = this.currentPage === this.totalPages;
+                document.getElementById('page-last').disabled = this.currentPage === this.totalPages;
+
+                // Render page numbers
+                this.renderPageNumbers();
+            }
+
+            renderPageNumbers() {
+                const pageNumbersContainer = document.getElementById('page-numbers');
+                if (!pageNumbersContainer) return;
+
+                let html = '';
+                const maxVisiblePages = 5;
+                
+                if (this.totalPages <= maxVisiblePages + 2) {
+                    // Show all pages
+                    for (let i = 1; i <= this.totalPages; i++) {
+                        html += this.getPageButtonHtml(i);
+                    }
+                } else {
+                    // Show first page
+                    html += this.getPageButtonHtml(1);
+                    
+                    if (this.currentPage > 3) {
+                        html += '<span class="pagination-ellipsis">...</span>';
+                    }
+                    
+                    // Show pages around current page
+                    let start = Math.max(2, this.currentPage - 1);
+                    let end = Math.min(this.totalPages - 1, this.currentPage + 1);
+                    
+                    for (let i = start; i <= end; i++) {
+                        html += this.getPageButtonHtml(i);
+                    }
+                    
+                    if (this.currentPage < this.totalPages - 2) {
+                        html += '<span class="pagination-ellipsis">...</span>';
+                    }
+                    
+                    // Show last page
+                    if (this.totalPages > 1) {
+                        html += this.getPageButtonHtml(this.totalPages);
+                    }
+                }
+                
+                pageNumbersContainer.innerHTML = html;
+                
+                // Add click handlers to page buttons
+                document.querySelectorAll('.page-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const page = parseInt(btn.getAttribute('data-page'));
+                        this.goToPage(page);
+                    });
+                });
+            }
+
+            getPageButtonHtml(page) {
+                const isActive = page === this.currentPage;
+                return `<button class="pagination-btn page-btn ${isActive ? 'active' : ''}" data-page="${page}">${page}</button>`;
+            }
+        }
+
+        // ============================================================================
         // INVENTORY MANAGER CLASS
         // ============================================================================
         
@@ -433,6 +763,14 @@
                 this.consignors = [];
                 this.selectedConsignorId = 'all';
                 this.minimumPrice = 1.99;
+                this.allInventoryRecords = [];
+                
+                // Initialize pagination for inventory
+                this.inventoryPagination = new PaginationManager('inventory-pagination', 
+                    (page, pageSize, pageItems) => {
+                        this.renderInventoryPage(pageItems);
+                    }
+                );
                 
                 this.init();
             }
@@ -618,8 +956,6 @@
                 emptyDiv.style.display = 'none';
                 tableBody.innerHTML = '';
                 
-                let records = [];
-                
                 try {
                     if (user.role === 'admin') {
                         if (this.selectedConsignorId !== 'all') {
@@ -627,7 +963,7 @@
                                 order_by: 'created_at', 
                                 order: 'desc' 
                             });
-                            records = allRecords.records ? allRecords.records.filter(record => 
+                            this.allInventoryRecords = allRecords.records ? allRecords.records.filter(record => 
                                 record.consignor_id == this.selectedConsignorId
                             ) : [];
                         } else {
@@ -635,78 +971,33 @@
                                 order_by: 'created_at', 
                                 order: 'desc' 
                             });
-                            records = response.records || [];
+                            this.allInventoryRecords = response.records || [];
                         }
                     } else {
                         const response = await APIUtils.get(`/records/user/${user.id}`, {
                             order_by: 'created_at',
                             order: 'desc'
                         });
-                        records = response.records || [];
+                        this.allInventoryRecords = response.records || [];
                     }
-                    
-                    // Get commission rate for display
-                    const commissionResponse = await APIUtils.get('/api/commission-rate');
-                    const commissionRate = commissionResponse.commission_rate / 100;
                     
                     loadingDiv.style.display = 'none';
                     
-                    if (records.length === 0) {
+                    if (this.allInventoryRecords.length === 0) {
                         emptyDiv.style.display = 'block';
+                        document.getElementById('inventory-pagination').style.display = 'none';
                         return;
                     }
                     
-                    // Log first few records to verify sort order
-                    console.log('INVENTORY: Loaded', records.length, 'records sorted by created_at DESC');
-                    if (records.length > 0) {
-                        console.log('Most recent record:', records[0].artist, records[0].title, 'Created:', records[0].created_at);
-                    }
+                    // Set records in pagination and render first page
+                    const pageItems = this.inventoryPagination.setItems(this.allInventoryRecords);
+                    this.renderInventoryPage(pageItems);
                     
-                    tableBody.innerHTML = records.map(record => {
-                        const barcodeDisplay = record.barcode ? 
-                            `<span class="barcode-value" title="${record.barcode}">${record.barcode}</span>` : 
-                            'N/A';
-                        
-                        const statusName = (record.status_name || 'active').toLowerCase();
-                        const statusClass = statusName.replace(/\s+/g, '-');
-                        const displayStatus = record.status_name || 'Active';
-                        
-                        return `
-                        <tr>
-                            <td>
-                                ${record.image_url ? 
-                                    `<img src="${record.image_url}" alt="${record.artist}" class="record-image-small" 
-                                          onerror="this.src='https://via.placeholder.com/60x60/333/666?text=No+Image'">` : 
-                                    `<div class="record-image-small" style="background: #333; display: flex; align-items: center; justify-content: center;">
-                                        <i class="fas fa-record-vinyl" style="font-size: 24px; color: #666;"></i>
-                                    </div>`
-                                }
-                            </td>
-                            <td>${record.artist || 'N/A'}</td>
-                            <td>${record.title || 'N/A'}</td>
-                            <td>${record.genre_name || 'N/A'}</td>
-                            <td>${record.condition || 'N/A'}</td>
-                            <td>$${(record.store_price || 0).toFixed(2)}</td>
-                            <td>
-                                <span class="commission-badge">${(commissionRate * 100).toFixed(1)}%</span>
-                            </td>
-                            <td>
-                                <span class="status-badge ${statusClass}">${displayStatus}</span>
-                            </td>
-                            <td>${record.catalog_number || 'N/A'}</td>
-                            <td>${barcodeDisplay}</td>
-                            <td>
-                                <div class="table-actions">
-                                    <button class="table-action-btn" onclick="window.inventoryManager.editRecord(${record.id})">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    <button class="table-action-btn" onclick="window.inventoryManager.deleteRecord(${record.id}, true)">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    `}).join('');
+                    // Log first few records to verify sort order
+                    console.log('INVENTORY: Loaded', this.allInventoryRecords.length, 'records sorted by created_at DESC');
+                    if (this.allInventoryRecords.length > 0) {
+                        console.log('Most recent record:', this.allInventoryRecords[0].artist, this.allInventoryRecords[0].title, 'Created:', this.allInventoryRecords[0].created_at);
+                    }
                 } catch (error) {
                     console.error('LOAD_INVENTORY: Error loading inventory:', error);
                     loadingDiv.style.display = 'none';
@@ -715,7 +1006,70 @@
                         <p>Error loading inventory: ${error.message}</p>
                     `;
                     emptyDiv.style.display = 'block';
+                    document.getElementById('inventory-pagination').style.display = 'none';
                 }
+            }
+
+            renderInventoryPage(records) {
+                const tableBody = document.getElementById('inventory-table-body');
+                const emptyDiv = document.getElementById('inventory-empty');
+                
+                if (records.length === 0) {
+                    tableBody.innerHTML = '';
+                    emptyDiv.style.display = 'block';
+                    return;
+                }
+                
+                emptyDiv.style.display = 'none';
+                
+                // Get commission rate for display
+                const commissionRate = this.commissionRate;
+                
+                tableBody.innerHTML = records.map(record => {
+                    const barcodeDisplay = record.barcode ? 
+                        `<span class="barcode-value" title="${record.barcode}">${record.barcode}</span>` : 
+                        'N/A';
+                    
+                    const statusName = (record.status_name || 'active').toLowerCase();
+                    const statusClass = statusName.replace(/\s+/g, '-');
+                    const displayStatus = record.status_name || 'Active';
+                    
+                    return `
+                    <tr>
+                        <td>
+                            ${record.image_url ? 
+                                `<img src="${record.image_url}" alt="${record.artist}" class="record-image-small" 
+                                      onerror="this.src='https://via.placeholder.com/60x60/333/666?text=No+Image'">` : 
+                                `<div class="record-image-small" style="background: #333; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-record-vinyl" style="font-size: 24px; color: #666;"></i>
+                                </div>`
+                            }
+                        </td>
+                        <td>${record.artist || 'N/A'}</td>
+                        <td>${record.title || 'N/A'}</td>
+                        <td>${record.genre_name || 'N/A'}</td>
+                        <td>${record.condition || 'N/A'}</td>
+                        <td>$${(record.store_price || 0).toFixed(2)}</td>
+                        <td>
+                            <span class="commission-badge">${(commissionRate * 100).toFixed(1)}%</span>
+                        </td>
+                        <td>
+                            <span class="status-badge ${statusClass}">${displayStatus}</span>
+                        </td>
+                        <td>${record.catalog_number || 'N/A'}</td>
+                        <td>${barcodeDisplay}</td>
+                        <td>
+                            <div class="table-actions">
+                                <button class="table-action-btn" onclick="window.inventoryManager.editRecord(${record.id})">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="table-action-btn" onclick="window.inventoryManager.deleteRecord(${record.id}, true)">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `}).join('');
             }
 
             async loadStats() {
@@ -1830,7 +2184,20 @@
                     this.showMessage('Record deleted successfully!', 'success');
                     
                     if (fromTable) {
-                        await this.loadInventory();
+                        // Remove from allInventoryRecords
+                        this.allInventoryRecords = this.allInventoryRecords.filter(r => r.id != recordId);
+                        
+                        if (this.allInventoryRecords.length === 0) {
+                            document.getElementById('inventory-table-body').innerHTML = '';
+                            document.getElementById('inventory-empty').style.display = 'block';
+                            document.getElementById('inventory-pagination').style.display = 'none';
+                        } else {
+                            // Update pagination with new records
+                            const pageItems = this.inventoryPagination.setItems(this.allInventoryRecords);
+                            this.renderInventoryPage(pageItems);
+                        }
+                        
+                        await this.loadStats();
                     } else {
                         const card = document.querySelector(`[data-record-id="${recordId}"]`);
                         if (card) {
