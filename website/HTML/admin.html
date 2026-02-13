@@ -34,11 +34,11 @@
         .records-table th { color: #000000 !important; }
         .records-table td { color: #333333 !important; }
         
-        .btn-primary, .btn-success, .btn-secondary, .btn-warning, .btn-square {
+        .btn-primary, .btn-success, .btn-secondary, .btn-warning, .btn-square, .btn-terminal {
             color: #ffffff !important;
         }
         
-        .btn-primary:hover, .btn-success:hover, .btn-secondary:hover, .btn-warning:hover, .btn-square:hover {
+        .btn-primary:hover, .btn-success:hover, .btn-secondary:hover, .btn-warning:hover, .btn-square:hover, .btn-terminal:hover {
             color: #ffffff !important;
         }
         
@@ -60,6 +60,14 @@
         
         .btn-square:hover {
             background: #5e34a5;
+        }
+        
+        .btn-terminal {
+            background: #00a982;
+        }
+        
+        .btn-terminal:hover {
+            background: #008f6b;
         }
         
         .btn-cash {
@@ -430,7 +438,7 @@
             font-size: 14px;
         }
         
-        /* Confirmation Modal */
+        /* Terminal Checkout Modal */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -525,6 +533,124 @@
         .confirmation-check label {
             font-weight: 500;
             cursor: pointer;
+        }
+
+        /* Terminal Device Selector */
+        .terminal-device-selector {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .terminal-device {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .terminal-device:hover {
+            background: #f0f0f0;
+        }
+        
+        .terminal-device.selected {
+            border: 2px solid #00a982;
+            background: #f0fff8;
+        }
+        
+        .terminal-device input[type="radio"] {
+            margin-right: 10px;
+        }
+        
+        .terminal-device-info {
+            flex: 1;
+        }
+        
+        .terminal-device-name {
+            font-weight: bold;
+        }
+        
+        .terminal-device-status {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .terminal-device-status.online {
+            color: #28a745;
+        }
+        
+        .terminal-device-status.offline {
+            color: #dc3545;
+        }
+
+        /* Payment Status */
+        .payment-status {
+            text-align: center;
+            padding: 30px;
+        }
+        
+        .payment-status-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        .payment-status-icon.processing {
+            color: #3498db;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .payment-status-icon.success {
+            color: #28a745;
+        }
+        
+        .payment-status-icon.error {
+            color: #dc3545;
+        }
+        
+        .payment-status-icon.pending {
+            color: #f39c12;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .payment-status-message {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .payment-status-detail {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .payment-progress {
+            margin-top: 20px;
+            height: 4px;
+            background: #f0f0f0;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .payment-progress-bar {
+            height: 100%;
+            background: #3498db;
+            width: 0%;
+            transition: width 0.3s;
+            animation: progress 30s linear;
+        }
+        
+        @keyframes progress {
+            0% { width: 0%; }
+            100% { width: 100%; }
         }
 
         /* Check Out Styles */
@@ -688,6 +814,88 @@
         .recently-printed {
             background-color: #f0fff0;
             border-left: 3px solid #27ae60;
+        }
+
+        /* Terminal Management Section */
+        .terminal-management {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .terminal-header h3 {
+            margin: 0;
+        }
+        
+        .terminal-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+        }
+        
+        .terminal-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .terminal-item:last-child {
+            border-bottom: none;
+        }
+        
+        .terminal-icon {
+            width: 32px;
+            height: 32px;
+            background: #00a982;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+        }
+        
+        .terminal-details {
+            flex: 1;
+        }
+        
+        .terminal-name {
+            font-weight: bold;
+        }
+        
+        .terminal-id {
+            font-size: 11px;
+            color: #666;
+            font-family: monospace;
+        }
+        
+        .terminal-status {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: #f0f0f0;
+        }
+        
+        .terminal-status.online {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .terminal-status.offline {
+            background: #f8d7da;
+            color: #721c24;
         }
     </style>
 </head>
@@ -891,6 +1099,23 @@
         <div id="check-out-tab" class="tab-content">
             <h2><i class="fas fa-shopping-cart"></i> Check Out</h2>
             
+            <!-- Terminal Management Section -->
+            <div class="terminal-management">
+                <div class="terminal-header">
+                    <h3><i class="fas fa-square"></i> Square Terminal Status</h3>
+                    <button class="btn btn-secondary" onclick="refreshTerminals()">
+                        <i class="fas fa-sync-alt"></i> Refresh Terminals
+                    </button>
+                </div>
+                <div id="terminal-list" class="terminal-list">
+                    <!-- Terminal list will be populated here -->
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        <i class="fas fa-square" style="font-size: 24px; margin-bottom: 10px; color: #ccc;"></i>
+                        <p>Click refresh to load available terminals</p>
+                    </div>
+                </div>
+            </div>
+            
             <div class="search-container">
                 <div class="search-box">
                     <input type="text" id="search-query" class="search-input" 
@@ -1001,6 +1226,40 @@
         </div>
     </div>
 
+    <!-- Terminal Checkout Modal -->
+    <div id="terminal-checkout-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-square"></i> Square Terminal Checkout</h3>
+                <button class="modal-close" onclick="closeTerminalCheckoutModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="terminal-checkout-body">
+                <!-- Content will be dynamically populated -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminal Selection Modal -->
+    <div id="terminal-selection-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-square"></i> Select Terminal</h3>
+                <button class="modal-close" onclick="closeTerminalSelectionModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="terminal-selection-list" class="terminal-device-selector">
+                    <!-- Terminal selection will be populated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeTerminalSelectionModal()">Cancel</button>
+                <button class="btn btn-success" onclick="initiateTerminalCheckout()" id="confirm-terminal-btn" disabled>
+                    <i class="fas fa-check-circle"></i> Start Checkout
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Cash Sale Confirmation Modal -->
     <div id="cash-sale-modal" class="modal-overlay">
         <div class="modal-content">
@@ -1044,6 +1303,10 @@
         let configValues = {};
         let recentlyPrintedIds = new Set(); // Track recently printed records
         let currentSearchResults = []; // Store current search results for check out tab
+        let availableTerminals = []; // Store available Square terminals
+        let selectedTerminalId = null; // Currently selected terminal ID
+        let activeCheckoutId = null; // Active terminal checkout ID
+        let checkoutPollInterval = null; // Interval for polling checkout status
         
         // Configuration fetching functions
         async function fetchConfigValues() {
@@ -1108,6 +1371,8 @@
                         </div>
                     `;
                 }
+                // Refresh terminals when switching to check out tab
+                refreshTerminals();
             }
         }
         
@@ -1912,6 +2177,91 @@
             });
         }
         
+        // ============= TERMINAL MANAGEMENT FUNCTIONS =============
+        
+        async function refreshTerminals() {
+            const terminalList = document.getElementById('terminal-list');
+            terminalList.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="loading-spinner" style="width: 30px; height: 30px;"></div><p>Loading terminals...</p></div>';
+            
+            try {
+                const response = await fetch(`${AppConfig.baseUrl}/api/square/terminals`, {
+                    credentials: 'include'  // Important: include cookies/session
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Terminal fetch error:', response.status, errorText);
+                    terminalList.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">
+                        <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 10px;"></i>
+                        <p>Error ${response.status}: ${response.statusText}</p>
+                        <p style="font-size: 12px;">${errorText.substring(0, 100)}</p>
+                    </div>`;
+                    return;
+                }
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    availableTerminals = data.terminals || [];
+                    renderTerminalList(availableTerminals);
+                } else {
+                    terminalList.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">
+                        <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 10px;"></i>
+                        <p>Error: ${data.message || 'Unknown error'}</p>
+                    </div>`;
+                }
+            } catch (error) {
+                console.error('Error refreshing terminals:', error);
+                terminalList.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">
+                    <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 10px;"></i>
+                    <p>Error: ${error.message}</p>
+                </div>`;
+            }
+        }
+ 
+        
+        function renderTerminalList(terminals) {
+            const terminalList = document.getElementById('terminal-list');
+            
+            if (terminals.length === 0) {
+                terminalList.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        <i class="fas fa-square" style="font-size: 24px; margin-bottom: 10px; color: #ccc;"></i>
+                        <p>No Square Terminals found</p>
+                        <small>Make sure your terminal is registered and online</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            terminals.forEach(terminal => {
+                const isOnline = terminal.status === 'ONLINE';
+                const isSelected = selectedTerminalId === terminal.id;
+                
+                html += `
+                    <div class="terminal-item ${isSelected ? 'selected' : ''}" onclick="selectTerminal('${terminal.id}')">
+                        <div class="terminal-icon">
+                            <i class="fas fa-square"></i>
+                        </div>
+                        <div class="terminal-details">
+                            <div class="terminal-name">${terminal.device_name || 'Square Terminal'}</div>
+                            <div class="terminal-id">ID: ${terminal.id}</div>
+                        </div>
+                        <div class="terminal-status ${isOnline ? 'online' : 'offline'}">
+                            ${isOnline ? 'Online' : 'Offline'}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            terminalList.innerHTML = html;
+        }
+        
+        function selectTerminal(terminalId) {
+            selectedTerminalId = terminalId;
+            renderTerminalList(availableTerminals);
+        }
+        
         // ============= CHECK OUT FUNCTIONS =============
         
         async function searchRecords() {
@@ -1978,6 +2328,8 @@
             let html = '';
             results.forEach(record => {
                 const consignorInfo = consignorCache[record.consignor_id] || { username: 'None', initials: '' };
+                const hasTerminal = availableTerminals.length > 0;
+                const terminalOnline = availableTerminals.some(t => t.status === 'ONLINE');
                 
                 html += `
                     <div class="search-result-item">
@@ -1996,7 +2348,8 @@
                             ${record.status_id === 3 ? 
                                 '<span class="sold-badge"><i class="fas fa-check-circle"></i> Sold</span>' : 
                                 record.status_id === 2 ?
-                                `<button class="btn btn-square" onclick="squareSale(${record.id})">
+                                `<button class="btn btn-square" onclick="showTerminalSelection(${JSON.stringify(record).replace(/"/g, '&quot;')})" 
+                                    ${!hasTerminal || !terminalOnline ? 'disabled title="No online terminal available"' : ''}>
                                     <i class="fas fa-square"></i> Square
                                 </button>
                                 <button class="btn btn-cash" onclick="showCashSaleConfirmation(${JSON.stringify(record).replace(/"/g, '&quot;')})">
@@ -2012,13 +2365,343 @@
             container.innerHTML = html;
         }
         
-        function squareSale(recordId) {
-            // Not implemented exception
-            console.error('Square integration not implemented yet');
-            showCheckoutStatus('Square integration is not implemented yet. This is a placeholder.', 'error');
+        function showTerminalSelection(record) {
+            if (availableTerminals.length === 0) {
+                showCheckoutStatus('No Square Terminals available. Please check terminal status.', 'error');
+                return;
+            }
             
-            // Throw exception-style message
-            throw new Error('Square integration not implemented');
+            // Filter online terminals
+            const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+            if (onlineTerminals.length === 0) {
+                showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
+                return;
+            }
+            
+            window.pendingTerminalSale = record;
+            
+            // Render terminal selection
+            const selectionList = document.getElementById('terminal-selection-list');
+            let html = '<h4>Select Terminal</h4>';
+            
+            onlineTerminals.forEach(terminal => {
+                html += `
+                    <div class="terminal-device" onclick="selectTerminalForCheckout('${terminal.id}')">
+                        <input type="radio" name="terminal" value="${terminal.id}" ${selectedTerminalId === terminal.id ? 'checked' : ''}>
+                        <div class="terminal-device-info">
+                            <div class="terminal-device-name">${terminal.device_name || 'Square Terminal'}</div>
+                            <div class="terminal-device-status online">Online</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            selectionList.innerHTML = html;
+            
+            // Enable confirm button if a terminal is already selected
+            if (selectedTerminalId && onlineTerminals.some(t => t.id === selectedTerminalId)) {
+                document.getElementById('confirm-terminal-btn').disabled = false;
+            } else {
+                document.getElementById('confirm-terminal-btn').disabled = true;
+            }
+            
+            document.getElementById('terminal-selection-modal').style.display = 'flex';
+        }
+        
+        function selectTerminalForCheckout(terminalId) {
+            selectedTerminalId = terminalId;
+            
+            // Update radio buttons
+            document.querySelectorAll('input[name="terminal"]').forEach(radio => {
+                radio.checked = radio.value === terminalId;
+            });
+            
+            document.getElementById('confirm-terminal-btn').disabled = false;
+        }
+        
+        function closeTerminalSelectionModal() {
+            document.getElementById('terminal-selection-modal').style.display = 'none';
+            window.pendingTerminalSale = null;
+        }
+        
+        async function initiateTerminalCheckout() {
+            if (!window.pendingTerminalSale) {
+                showCheckoutStatus('No record selected for checkout', 'error');
+                closeTerminalSelectionModal();
+                return;
+            }
+            
+            if (!selectedTerminalId) {
+                showCheckoutStatus('Please select a terminal', 'error');
+                return;
+            }
+            
+            const record = window.pendingTerminalSale;
+            const amountCents = Math.round(record.store_price * 100);
+            const recordIds = [record.id];
+            const recordTitles = [record.title];
+            
+            closeTerminalSelectionModal();
+            
+            // Show processing modal
+            const modalBody = document.getElementById('terminal-checkout-body');
+            modalBody.innerHTML = `
+                <div class="payment-status">
+                    <div class="payment-status-icon processing">
+                        <i class="fas fa-spinner fa-pulse"></i>
+                    </div>
+                    <div class="payment-status-message">Creating Terminal Checkout...</div>
+                    <div class="payment-status-detail">Please wait while we prepare the terminal</div>
+                    <div class="payment-progress">
+                        <div class="payment-progress-bar" style="animation: progress 30s linear;"></div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('terminal-checkout-modal').style.display = 'flex';
+            
+            try {
+                // Create terminal checkout
+                const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        amount_cents: amountCents,
+                        record_ids: recordIds,
+                        record_titles: recordTitles,
+                        device_id: selectedTerminalId
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const checkout = data.checkout;
+                    activeCheckoutId = checkout.id;
+                    
+                    // Update modal to show waiting for payment
+                    modalBody.innerHTML = `
+                        <div class="payment-status">
+                            <div class="payment-status-icon processing">
+                                <i class="fas fa-credit-card fa-pulse"></i>
+                            </div>
+                            <div class="payment-status-message">Waiting for payment on terminal</div>
+                            <div class="payment-status-detail">Amount: $${(amountCents / 100).toFixed(2)}</div>
+                            <div class="payment-status-detail">Please present card to the terminal</div>
+                            <div class="payment-progress">
+                                <div class="payment-progress-bar" style="animation: progress 30s linear;"></div>
+                            </div>
+                            <button class="btn btn-warning" onclick="cancelTerminalCheckout()" style="margin-top: 20px;">
+                                <i class="fas fa-times"></i> Cancel Payment
+                            </button>
+                        </div>
+                    `;
+                    
+                    // Start polling for status
+                    startCheckoutPolling(checkout.id, record);
+                    
+                } else {
+                    throw new Error(data.message || 'Failed to create checkout');
+                }
+                
+            } catch (error) {
+                console.error('Error creating terminal checkout:', error);
+                modalBody.innerHTML = `
+                    <div class="payment-status">
+                        <div class="payment-status-icon error">
+                            <i class="fas fa-exclamation-circle"></i>
+                        </div>
+                        <div class="payment-status-message">Checkout Failed</div>
+                        <div class="payment-status-detail">${error.message}</div>
+                        <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        function startCheckoutPolling(checkoutId, record) {
+            // Clear any existing interval
+            if (checkoutPollInterval) {
+                clearInterval(checkoutPollInterval);
+            }
+            
+            let pollCount = 0;
+            const maxPolls = 60; // Poll for 5 minutes (5 seconds * 60)
+            
+            checkoutPollInterval = setInterval(async () => {
+                pollCount++;
+                
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout/${checkoutId}/status`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        const checkout = data.checkout;
+                        const checkoutStatus = checkout.status;
+                        
+                        // Update based on status
+                        if (checkoutStatus === 'COMPLETED') {
+                            // Payment successful
+                            clearInterval(checkoutPollInterval);
+                            
+                            // Mark record as sold
+                            await markRecordAsSold(record.id);
+                            
+                            const modalBody = document.getElementById('terminal-checkout-body');
+                            modalBody.innerHTML = `
+                                <div class="payment-status">
+                                    <div class="payment-status-icon success">
+                                        <i class="fas fa-check-circle"></i>
+                                    </div>
+                                    <div class="payment-status-message">Payment Successful!</div>
+                                    <div class="payment-status-detail">Amount: $${(record.store_price).toFixed(2)}</div>
+                                    <div class="payment-status-detail">Thank you for your purchase</div>
+                                    <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                        <i class="fas fa-check"></i> Done
+                                    </button>
+                                </div>
+                            `;
+                            
+                            // Refresh search results
+                            const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
+                            if (searchIndex !== -1) {
+                                currentSearchResults[searchIndex].status_id = 3;
+                                renderSearchResults(currentSearchResults);
+                            }
+                            
+                            showCheckoutStatus('Payment completed successfully!', 'success');
+                            
+                        } else if (checkoutStatus === 'CANCELED' || checkoutStatus === 'FAILED') {
+                            // Payment failed or cancelled
+                            clearInterval(checkoutPollInterval);
+                            
+                            const modalBody = document.getElementById('terminal-checkout-body');
+                            modalBody.innerHTML = `
+                                <div class="payment-status">
+                                    <div class="payment-status-icon error">
+                                        <i class="fas fa-times-circle"></i>
+                                    </div>
+                                    <div class="payment-status-message">Payment ${checkoutStatus}</div>
+                                    <div class="payment-status-detail">The transaction was ${checkoutStatus.toLowerCase()}</div>
+                                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                        <i class="fas fa-times"></i> Close
+                                    </button>
+                                </div>
+                            `;
+                            
+                            showCheckoutStatus(`Payment ${checkoutStatus.toLowerCase()}`, 'error');
+                        }
+                        
+                        // Stop polling after max attempts
+                        if (pollCount >= maxPolls) {
+                            clearInterval(checkoutPollInterval);
+                            
+                            const modalBody = document.getElementById('terminal-checkout-body');
+                            modalBody.innerHTML = `
+                                <div class="payment-status">
+                                    <div class="payment-status-icon error">
+                                        <i class="fas fa-clock"></i>
+                                    </div>
+                                    <div class="payment-status-message">Checkout Timed Out</div>
+                                    <div class="payment-status-detail">The terminal did not respond in time</div>
+                                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                        <i class="fas fa-times"></i> Close
+                                    </button>
+                                </div>
+                            `;
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.error('Error polling checkout status:', error);
+                }
+                
+            }, 5000); // Poll every 5 seconds
+        }
+        
+        async function cancelTerminalCheckout() {
+            if (!activeCheckoutId) return;
+            
+            try {
+                const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout/${activeCheckoutId}/cancel`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        showCheckoutStatus('Checkout cancelled', 'info');
+                        
+                        const modalBody = document.getElementById('terminal-checkout-body');
+                        modalBody.innerHTML = `
+                            <div class="payment-status">
+                                <div class="payment-status-icon error">
+                                    <i class="fas fa-ban"></i>
+                                </div>
+                                <div class="payment-status-message">Checkout Cancelled</div>
+                                <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                    <i class="fas fa-times"></i> Close
+                                </button>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (error) {
+                console.error('Error cancelling checkout:', error);
+            } finally {
+                if (checkoutPollInterval) {
+                    clearInterval(checkoutPollInterval);
+                }
+                activeCheckoutId = null;
+            }
+        }
+        
+        async function markRecordAsSold(recordId) {
+            try {
+                const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        status_id: 3 // Sold status
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        // Update local record status
+                        const recordIndex = allRecords.findIndex(r => r.id === recordId);
+                        if (recordIndex !== -1) {
+                            allRecords[recordIndex].status_id = 3;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error marking record as sold:', error);
+            }
+        }
+        
+        function closeTerminalCheckoutModal() {
+            document.getElementById('terminal-checkout-modal').style.display = 'none';
+            if (checkoutPollInterval) {
+                clearInterval(checkoutPollInterval);
+                checkoutPollInterval = null;
+            }
+            activeCheckoutId = null;
         }
         
         function showCashSaleConfirmation(record) {
@@ -2143,6 +2826,7 @@
             // Load data
             loadUsers();
             loadRecords();
+            refreshTerminals(); // Load terminals on startup
             
             // Set up search on enter key
             document.getElementById('search-query').addEventListener('keypress', function(e) {
