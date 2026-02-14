@@ -91,7 +91,8 @@ const AppConfig = {
         userRecords: (userId) => `/records/user/${userId}`,
         userRecordsCount: (userId) => `/records/user/${userId}/count`,
         consignorRecords: '/api/consignor/records',
-        
+        'catalog/grouped-records': '/catalog/grouped-records',
+
         // Genres
         genres: '/api/genres',
         genreByName: (name) => `/api/genres/by-name/${encodeURIComponent(name)}`,
