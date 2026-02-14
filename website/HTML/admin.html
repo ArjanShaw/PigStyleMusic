@@ -23,7 +23,9 @@
         .tag-preview, .tag-preview-content,
         .tag-price, .tag-info, .tag-initials,
         .search-result-item, .result-details span,
-        .result-artist, .result-title, .result-catalog, .result-price {
+        .result-artist, .result-title, .result-catalog, .result-price,
+        .cart-item, .cart-summary, .receipt-content,
+        .receipt-card, .receipt-card-title, .receipt-card-meta {
             color: #000000 !important;
         }
         
@@ -34,11 +36,11 @@
         .records-table th { color: #000000 !important; }
         .records-table td { color: #333333 !important; }
         
-        .btn-primary, .btn-success, .btn-secondary, .btn-warning, .btn-square, .btn-terminal {
+        .btn-primary, .btn-success, .btn-secondary, .btn-warning, .btn-square, .btn-terminal, .btn-cart, .btn-receipt {
             color: #ffffff !important;
         }
         
-        .btn-primary:hover, .btn-success:hover, .btn-secondary:hover, .btn-warning:hover, .btn-square:hover, .btn-terminal:hover {
+        .btn-primary:hover, .btn-success:hover, .btn-secondary:hover, .btn-warning:hover, .btn-square:hover, .btn-terminal:hover, .btn-cart:hover, .btn-receipt:hover {
             color: #ffffff !important;
         }
         
@@ -78,6 +80,22 @@
             background: #218838;
         }
         
+        .btn-cart {
+            background: #fd7e14;
+        }
+        
+        .btn-cart:hover {
+            background: #dc6c12;
+        }
+        
+        .btn-receipt {
+            background: #9b59b6;
+        }
+        
+        .btn-receipt:hover {
+            background: #8e44ad;
+        }
+        
         .admin-container {
             max-width: 1400px;
             margin: 20px auto;
@@ -89,6 +107,7 @@
             display: flex;
             border-bottom: 2px solid #e0e0e0;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
         
         .tab {
@@ -99,6 +118,7 @@
             border-bottom: none;
             border-radius: 8px 8px 0 0;
             margin-right: 5px;
+            margin-bottom: 5px;
             font-weight: 500;
             color: #000000;
         }
@@ -173,10 +193,15 @@
             cursor: pointer;
             font-size: 14px;
             font-weight: 500;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 8px;
             transition: all 0.3s;
+        }
+        
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
         }
         
         .btn-primary {
@@ -209,6 +234,14 @@
         
         .btn-warning:hover {
             background: #e67e22;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
         }
         
         .btn:disabled {
@@ -380,6 +413,15 @@
             min-width: 150px;
         }
         
+        .date-input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            font-size: 14px;
+            min-width: 180px;
+        }
+        
         .pagination {
             display: flex;
             justify-content: center;
@@ -437,222 +479,89 @@
             background: white;
             font-size: 14px;
         }
-        
-        /* Terminal Checkout Modal */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .modal-content {
-            background: white;
-            padding: 30px;
+
+        /* Terminal Management Section */
+        .terminal-management {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
             border-radius: 8px;
-            max-width: 500px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-            color: #000000;
+            border: 1px solid #e0e0e0;
         }
         
-        .modal-header {
+        .terminal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
         
-        .modal-title {
-            font-size: 20px;
-            font-weight: bold;
+        .terminal-header h3 {
             margin: 0;
         }
         
-        .modal-close {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #666;
-        }
-        
-        .modal-body {
-            margin-bottom: 20px;
-        }
-        
-        .modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-        }
-        
-        .print-summary {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-        }
-        
-        .print-summary h4 {
-            margin-top: 0;
-            margin-bottom: 10px;
-        }
-        
-        .print-summary ul {
-            margin: 0;
-            padding-left: 20px;
-        }
-        
-        .print-summary li {
-            margin-bottom: 5px;
-        }
-        
-        .confirmation-check {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 20px 0;
-            padding: 15px;
-            background: #e8f4fd;
-            border-radius: 4px;
-        }
-        
-        .confirmation-check input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-        }
-        
-        .confirmation-check label {
-            font-weight: 500;
-            cursor: pointer;
-        }
-
-        /* Terminal Device Selector */
-        .terminal-device-selector {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 4px;
-        }
-        
-        .terminal-device {
-            display: flex;
-            align-items: center;
-            padding: 10px;
-            margin: 5px 0;
+        .terminal-list {
+            max-height: 200px;
+            overflow-y: auto;
             border: 1px solid #ddd;
             border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
+            background: white;
         }
         
-        .terminal-device:hover {
-            background: #f0f0f0;
+        .terminal-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
         }
         
-        .terminal-device.selected {
-            border: 2px solid #00a982;
-            background: #f0fff8;
+        .terminal-item:last-child {
+            border-bottom: none;
         }
         
-        .terminal-device input[type="radio"] {
-            margin-right: 10px;
+        .terminal-icon {
+            width: 32px;
+            height: 32px;
+            background: #00a982;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
         }
         
-        .terminal-device-info {
+        .terminal-details {
             flex: 1;
         }
         
-        .terminal-device-name {
+        .terminal-name {
             font-weight: bold;
         }
         
-        .terminal-device-status {
+        .terminal-id {
+            font-size: 11px;
+            color: #666;
+            font-family: monospace;
+        }
+        
+        .terminal-status {
             font-size: 12px;
-            color: #666;
-        }
-        
-        .terminal-device-status.online {
-            color: #28a745;
-        }
-        
-        .terminal-device-status.offline {
-            color: #dc3545;
-        }
-
-        /* Payment Status */
-        .payment-status {
-            text-align: center;
-            padding: 30px;
-        }
-        
-        .payment-status-icon {
-            font-size: 48px;
-            margin-bottom: 20px;
-        }
-        
-        .payment-status-icon.processing {
-            color: #3498db;
-            animation: pulse 1.5s infinite;
-        }
-        
-        .payment-status-icon.success {
-            color: #28a745;
-        }
-        
-        .payment-status-icon.error {
-            color: #dc3545;
-        }
-        
-        .payment-status-icon.pending {
-            color: #f39c12;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-        
-        .payment-status-message {
-            font-size: 18px;
-            margin-bottom: 10px;
-        }
-        
-        .payment-status-detail {
-            color: #666;
-            font-size: 14px;
-        }
-        
-        .payment-progress {
-            margin-top: 20px;
-            height: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
             background: #f0f0f0;
-            border-radius: 2px;
-            overflow: hidden;
         }
         
-        .payment-progress-bar {
-            height: 100%;
-            background: #3498db;
-            width: 0%;
-            transition: width 0.3s;
-            animation: progress 30s linear;
+        .terminal-status.online {
+            background: #d4edda;
+            color: #155724;
         }
         
-        @keyframes progress {
-            0% { width: 0%; }
-            100% { width: 100%; }
+        .terminal-status.offline {
+            background: #f8d7da;
+            color: #721c24;
         }
-
+        
         /* Check Out Styles */
         .search-container {
             margin-bottom: 30px;
@@ -686,6 +595,7 @@
             display: flex;
             gap: 15px;
             flex-wrap: wrap;
+            align-items: center;
         }
         
         .search-filter-checkbox {
@@ -719,7 +629,7 @@
         }
         
         .search-results {
-            max-height: 600px;
+            max-height: 400px;
             overflow-y: auto;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -811,91 +721,424 @@
             font-size: 13px;
         }
         
-        .recently-printed {
-            background-color: #f0fff0;
-            border-left: 3px solid #27ae60;
+        /* Shopping Cart Styles */
+        .cart-section {
+            margin-top: 30px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
         }
-
-        /* Terminal Management Section */
-        .terminal-management {
-            margin-bottom: 30px;
+        
+        .cart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .cart-header h3 {
+            margin: 0;
+            color: #000000 !important;
+        }
+        
+        .cart-items {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            background: #fafafa;
+        }
+        
+        .cart-item:last-child {
+            border-bottom: none;
+        }
+        
+        .cart-item-details {
+            flex: 1;
+        }
+        
+        .cart-item-artist {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .cart-item-title {
+            font-size: 13px;
+            color: #666;
+            margin-top: 2px;
+        }
+        
+        .cart-item-meta {
+            font-size: 12px;
+            color: #999;
+            margin-top: 2px;
+        }
+        
+        .cart-item-price {
+            font-weight: bold;
+            color: #27ae60 !important;
+            margin: 0 15px;
+            min-width: 80px;
+            text-align: right;
+        }
+        
+        .cart-item-remove {
+            color: #dc3545;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .cart-item-remove:hover {
+            background: #fee;
+        }
+        
+        .cart-summary {
+            border-top: 2px solid #e0e0e0;
+            padding-top: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 16px;
+        }
+        
+        .summary-row.total {
+            font-weight: bold;
+            font-size: 18px;
+            border-top: 1px solid #ddd;
+            margin-top: 5px;
+            padding-top: 10px;
+            color: #000000 !important;
+        }
+        
+        .cart-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        
+        /* Receipt Modal Styles */
+        .receipt-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1100;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .receipt-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            color: #000000;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .receipt-header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #ccc;
+        }
+        
+        .receipt-store-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .receipt-store-info {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .receipt-transaction-info {
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        
+        .receipt-items {
+            margin-bottom: 20px;
+        }
+        
+        .receipt-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        
+        .receipt-item-desc {
+            flex: 1;
+        }
+        
+        .receipt-item-price {
+            font-weight: bold;
+        }
+        
+        .receipt-summary {
+            border-top: 1px dashed #ccc;
+            padding-top: 10px;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        
+        .receipt-summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+        }
+        
+        .receipt-total {
+            font-weight: bold;
+            font-size: 14px;
+            border-top: 1px solid #ccc;
+            margin-top: 5px;
+            padding-top: 5px;
+        }
+        
+        .receipt-payment {
+            margin-bottom: 20px;
+            padding: 10px 0;
+            border-top: 1px dashed #ccc;
+            border-bottom: 1px dashed #ccc;
+            font-size: 12px;
+        }
+        
+        .receipt-footer {
+            text-align: center;
+            font-size: 11px;
+            color: #666;
+            margin-top: 20px;
+        }
+        
+        .receipt-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        /* Tender Modal Styles */
+        .tender-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1050;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .tender-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+        }
+        
+        .tender-amount {
+            font-size: 36px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+            color: #27ae60;
+        }
+        
+        .tender-input {
+            width: 100%;
+            padding: 15px;
+            font-size: 20px;
+            text-align: center;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        
+        .tender-input:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+        
+        .change-display {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            padding: 15px;
+            background: #f0f8ff;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        
+        .admin-config-section {
+            margin-top: 30px;
             padding: 20px;
             background: #f8f9fa;
             border-radius: 8px;
             border: 1px solid #e0e0e0;
         }
         
-        .terminal-header {
+        .admin-config-section h3 {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        /* Receipts Tab Styles */
+        .receipts-search {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .date-range {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: flex-end;
             margin-bottom: 15px;
         }
         
-        .terminal-header h3 {
-            margin: 0;
-        }
-        
-        .terminal-list {
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            background: white;
-        }
-        
-        .terminal-item {
+        .date-field {
             display: flex;
+            flex-direction: column;
+        }
+        
+        .date-field label {
+            margin-bottom: 5px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .receipts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .receipt-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .receipt-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .receipt-card-header {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            padding: 12px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
             border-bottom: 1px solid #eee;
         }
         
-        .terminal-item:last-child {
-            border-bottom: none;
-        }
-        
-        .terminal-icon {
-            width: 32px;
-            height: 32px;
-            background: #00a982;
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 12px;
-        }
-        
-        .terminal-details {
-            flex: 1;
-        }
-        
-        .terminal-name {
+        .receipt-card-title {
             font-weight: bold;
+            font-size: 16px;
         }
         
-        .terminal-id {
-            font-size: 11px;
-            color: #666;
-            font-family: monospace;
-        }
-        
-        .terminal-status {
+        .receipt-card-date {
             font-size: 12px;
-            padding: 2px 8px;
-            border-radius: 12px;
-            background: #f0f0f0;
+            color: #666;
         }
         
-        .terminal-status.online {
-            background: #d4edda;
-            color: #155724;
+        .receipt-card-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 13px;
         }
         
-        .terminal-status.offline {
-            background: #f8d7da;
-            color: #721c24;
+        .receipt-card-total {
+            font-weight: bold;
+            color: #27ae60;
+            font-size: 18px;
+        }
+        
+        .receipt-card-items {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .receipt-card-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+        
+        .receipt-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .receipt-stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        
+        .receipt-stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .receipt-stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
         }
     </style>
 </head>
@@ -925,6 +1168,12 @@
             </div>
             <div class="tab" onclick="switchTab('check-out')">
                 <i class="fas fa-shopping-cart"></i> Check Out
+            </div>
+            <div class="tab" onclick="switchTab('receipts')">
+                <i class="fas fa-receipt"></i> Receipts
+            </div>
+            <div class="tab" onclick="switchTab('admin-config')">
+                <i class="fas fa-sliders-h"></i> Admin Config
             </div>
         </div>
         
@@ -1099,7 +1348,7 @@
         <div id="check-out-tab" class="tab-content">
             <h2><i class="fas fa-shopping-cart"></i> Check Out</h2>
             
-            <!-- Terminal Management Section -->
+            <!-- Terminal Management Section (Kept for future Square integration) -->
             <div class="terminal-management">
                 <div class="terminal-header">
                     <h3><i class="fas fa-square"></i> Square Terminal Status</h3>
@@ -1157,10 +1406,166 @@
                 </div>
             </div>
             
+            <!-- Shopping Cart Section -->
+            <div id="shopping-cart-section" class="cart-section" style="display: none;">
+                <div class="cart-header">
+                    <h3><i class="fas fa-shopping-cart"></i> Shopping Cart</h3>
+                    <span id="cart-item-count" class="badge" style="background: #3498db; color: white; padding: 5px 10px; border-radius: 20px;">0 items</span>
+                </div>
+                
+                <div id="cart-items" class="cart-items">
+                    <!-- Cart items will be dynamically added here -->
+                </div>
+                
+                <div class="cart-summary">
+                    <div class="summary-row">
+                        <span>Subtotal:</span>
+                        <span id="cart-subtotal">$0.00</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Tax (<span id="tax-rate-display">0</span>%):</span>
+                        <span id="cart-tax">$0.00</span>
+                    </div>
+                    <div class="summary-row total">
+                        <span>Total:</span>
+                        <span id="cart-total">$0.00</span>
+                    </div>
+                </div>
+                
+                <div class="cart-actions">
+                    <button class="btn btn-secondary" onclick="clearCart()">
+                        <i class="fas fa-times"></i> Clear Cart
+                    </button>
+                    <button class="btn btn-cash" onclick="showTenderModal()" id="checkout-cash-btn" disabled>
+                        <i class="fas fa-money-bill-wave"></i> Complete Cash Sale
+                    </button>
+                </div>
+            </div>
+            
             <!-- Check Out Loading Indicator -->
             <div class="loading" id="checkout-loading">
                 <div class="loading-spinner"></div>
                 <p>Searching...</p>
+            </div>
+        </div>
+        
+        <!-- Receipts Tab -->
+        <div id="receipts-tab" class="tab-content">
+            <h2><i class="fas fa-receipt"></i> Receipt History</h2>
+            
+            <!-- Receipt Stats -->
+            <div class="receipt-stats" id="receipt-stats">
+                <div class="receipt-stat-card">
+                    <div class="receipt-stat-number" id="total-receipts">0</div>
+                    <div class="receipt-stat-label">Total Receipts</div>
+                </div>
+                <div class="receipt-stat-card">
+                    <div class="receipt-stat-number" id="total-receipts-sales">$0.00</div>
+                    <div class="receipt-stat-label">Total Sales</div>
+                </div>
+                <div class="receipt-stat-card">
+                    <div class="receipt-stat-number" id="total-receipts-tax">$0.00</div>
+                    <div class="receipt-stat-label">Total Tax Collected</div>
+                </div>
+                <div class="receipt-stat-card">
+                    <div class="receipt-stat-number" id="total-receipts-items">0</div>
+                    <div class="receipt-stat-label">Items Sold</div>
+                </div>
+            </div>
+            
+            <!-- Search/Filter Section -->
+            <div class="receipts-search">
+                <h3><i class="fas fa-search"></i> Search Receipts</h3>
+                <div class="date-range">
+                    <div class="date-field">
+                        <label for="receipt-start-date">From Date:</label>
+                        <input type="date" id="receipt-start-date" class="date-input">
+                    </div>
+                    <div class="date-field">
+                        <label for="receipt-end-date">To Date:</label>
+                        <input type="date" id="receipt-end-date" class="date-input">
+                    </div>
+                    <div class="date-field">
+                        <label for="receipt-search-query">Receipt # or Item:</label>
+                        <input type="text" id="receipt-search-query" class="filter-select" placeholder="Search...">
+                    </div>
+                    <div class="filter-group">
+                        <button class="btn btn-primary" onclick="searchReceipts()">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button class="btn btn-secondary" onclick="resetReceiptSearch()">
+                            <i class="fas fa-undo"></i> Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Receipts Grid -->
+            <div id="receipts-grid" class="receipts-grid">
+                <!-- Receipts will be loaded here -->
+                <div style="text-align: center; padding: 40px; color: #666; grid-column: 1/-1;">
+                    <i class="fas fa-receipt" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
+                    <p>No receipts found</p>
+                </div>
+            </div>
+            
+            <!-- Receipts Loading Indicator -->
+            <div class="loading" id="receipts-loading">
+                <div class="loading-spinner"></div>
+                <p>Loading receipts...</p>
+            </div>
+        </div>
+        
+        <!-- Admin Config Tab -->
+        <div id="admin-config-tab" class="tab-content">
+            <h2><i class="fas fa-sliders-h"></i> Admin Configuration</h2>
+            
+            <div class="admin-config-section">
+                <h3><i class="fas fa-percent"></i> Tax Settings</h3>
+                <div class="config-grid">
+                    <div class="input-group">
+                        <label for="tax-rate">Tax Rate (%):</label>
+                        <input type="number" id="tax-rate" min="0" max="100" step="0.01" value="8.25" class="filter-select" style="width: 200px;">
+                        <small>Sales tax percentage to apply to all cash sales</small>
+                    </div>
+                    <div class="input-group">
+                        <label for="tax-enabled">
+                            <input type="checkbox" id="tax-enabled" checked> Enable Tax Calculation
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="admin-config-section">
+                <h3><i class="fas fa-receipt"></i> Receipt Settings</h3>
+                <div class="config-grid">
+                    <div class="input-group">
+                        <label for="store-name">Store Name:</label>
+                        <input type="text" id="store-name" value="PigStyle Music" class="filter-select" style="width: 100%;">
+                    </div>
+                    <div class="input-group">
+                        <label for="store-address">Store Address:</label>
+                        <input type="text" id="store-address" value="123 Main Street, City, State 12345" class="filter-select" style="width: 100%;">
+                    </div>
+                    <div class="input-group">
+                        <label for="store-phone">Store Phone:</label>
+                        <input type="text" id="store-phone" value="(555) 555-5555" class="filter-select" style="width: 100%;">
+                    </div>
+                    <div class="input-group">
+                        <label for="receipt-footer">Receipt Footer Message:</label>
+                        <textarea id="receipt-footer" rows="3" class="filter-select" style="width: 100%;">Thank you for your business! Returns accepted within 30 days.</textarea>
+                    </div>
+                    <div class="input-group">
+                        <label for="auto-print-receipt">
+                            <input type="checkbox" id="auto-print-receipt" checked> Automatically show receipt after sale
+                        </label>
+                    </div>
+                </div>
+                <div class="action-buttons" style="margin-top: 20px;">
+                    <button class="btn btn-primary" onclick="saveAdminConfig()">
+                        <i class="fas fa-save"></i> Save Configuration
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1260,35 +1665,34 @@
         </div>
     </div>
 
-    <!-- Cash Sale Confirmation Modal -->
-    <div id="cash-sale-modal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-money-bill-wave"></i> Confirm Cash Sale</h3>
-                <button class="modal-close" onclick="closeCashSaleModal()">&times;</button>
+    <!-- Tender Modal (Cash Payment) -->
+    <div id="tender-modal" class="tender-modal">
+        <div class="tender-content">
+            <h3 style="text-align: center; margin-bottom: 20px;"><i class="fas fa-money-bill-wave"></i> Cash Payment</h3>
+            
+            <div style="text-align: center; margin-bottom: 10px;">Total Due:</div>
+            <div class="tender-amount" id="tender-total-due">$0.00</div>
+            
+            <input type="number" id="tender-amount" class="tender-input" placeholder="Enter amount received" min="0" step="0.01" autofocus>
+            
+            <div id="change-display-container" style="display: none;">
+                <div style="text-align: center; margin-bottom: 5px;">Change:</div>
+                <div class="change-display" id="change-amount">$0.00</div>
             </div>
-            <div class="modal-body">
-                <div class="print-summary">
-                    <h4>Sale Summary</h4>
-                    <p>You are about to sell the following record for <strong id="sale-price">$0.00</strong>:</p>
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 15px 0;">
-                        <div style="font-weight: bold; font-size: 16px;" id="sale-artist"></div>
-                        <div style="font-size: 15px; margin-top: 5px;" id="sale-title"></div>
-                        <div style="margin-top: 10px; font-size: 13px; color: #666;" id="sale-details"></div>
-                    </div>
-                    <p><strong>Note:</strong> This will mark the record as <span style="color: #dc3545; font-weight: bold;">SOLD</span> and cannot be undone.</p>
-                </div>
-                <div class="confirmation-check">
-                    <input type="checkbox" id="cash-sale-confirmation-check">
-                    <label for="cash-sale-confirmation-check">I confirm this cash sale</label>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeCashSaleModal()">Cancel</button>
-                <button class="btn btn-success" onclick="confirmCashSale()" id="confirm-cash-sale-btn" disabled>
-                    <i class="fas fa-check-circle"></i> Complete Sale
+            
+            <div class="action-buttons" style="justify-content: center; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="closeTenderModal()">Cancel</button>
+                <button class="btn btn-success" onclick="processCashPayment()" id="complete-payment-btn" disabled>
+                    <i class="fas fa-check"></i> Complete Payment
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div id="receipt-modal" class="receipt-modal">
+        <div class="receipt-content" id="receipt-content">
+            <!-- Receipt will be dynamically generated here -->
         </div>
     </div>
 
@@ -1307,6 +1711,23 @@
         let selectedTerminalId = null; // Currently selected terminal ID
         let activeCheckoutId = null; // Active terminal checkout ID
         let checkoutPollInterval = null; // Interval for polling checkout status
+        
+        // Shopping Cart Variables
+        let checkoutCart = [];
+        
+        // Receipts Storage
+        let savedReceipts = [];
+        
+        // Admin Config Variables
+        let adminConfig = {
+            taxRate: 8.25,
+            taxEnabled: true,
+            storeName: 'PigStyle Music',
+            storeAddress: '123 Main Street, City, State 12345',
+            storePhone: '(555) 555-5555',
+            receiptFooter: 'Thank you for your business! Returns accepted within 30 days.',
+            autoPrintReceipt: true
+        };
         
         // Configuration fetching functions
         async function fetchConfigValues() {
@@ -1352,6 +1773,341 @@
             return configValues[key] !== undefined ? configValues[key] : defaultValue;
         }
         
+        // Load admin config from localStorage
+        function loadAdminConfig() {
+            const savedConfig = localStorage.getItem('pigstyle_admin_config');
+            if (savedConfig) {
+                try {
+                    const parsed = JSON.parse(savedConfig);
+                    adminConfig = { ...adminConfig, ...parsed };
+                } catch (e) {
+                    console.error('Error loading admin config:', e);
+                }
+            }
+            
+            // Update UI with loaded config
+            document.getElementById('tax-rate').value = adminConfig.taxRate;
+            document.getElementById('tax-enabled').checked = adminConfig.taxEnabled;
+            document.getElementById('store-name').value = adminConfig.storeName;
+            document.getElementById('store-address').value = adminConfig.storeAddress;
+            document.getElementById('store-phone').value = adminConfig.storePhone;
+            document.getElementById('receipt-footer').value = adminConfig.receiptFooter;
+            document.getElementById('auto-print-receipt').checked = adminConfig.autoPrintReceipt;
+            
+            document.getElementById('tax-rate-display').textContent = adminConfig.taxRate;
+        }
+        
+        // Save admin config to localStorage
+        function saveAdminConfig() {
+            adminConfig = {
+                taxRate: parseFloat(document.getElementById('tax-rate').value) || 0,
+                taxEnabled: document.getElementById('tax-enabled').checked,
+                storeName: document.getElementById('store-name').value || 'PigStyle Music',
+                storeAddress: document.getElementById('store-address').value || '',
+                storePhone: document.getElementById('store-phone').value || '',
+                receiptFooter: document.getElementById('receipt-footer').value || 'Thank you for your business!',
+                autoPrintReceipt: document.getElementById('auto-print-receipt').checked
+            };
+            
+            localStorage.setItem('pigstyle_admin_config', JSON.stringify(adminConfig));
+            document.getElementById('tax-rate-display').textContent = adminConfig.taxRate;
+            
+            showStatus('Configuration saved successfully!', 'success');
+        }
+        
+        // Load saved receipts from localStorage
+        function loadSavedReceipts() {
+            const saved = localStorage.getItem('pigstyle_receipts');
+            if (saved) {
+                try {
+                    savedReceipts = JSON.parse(saved);
+                    // Convert date strings back to Date objects
+                    savedReceipts.forEach(receipt => {
+                        receipt.date = new Date(receipt.date);
+                    });
+                } catch (e) {
+                    console.error('Error loading receipts:', e);
+                    savedReceipts = [];
+                }
+            }
+            return savedReceipts;
+        }
+        
+        // Save a receipt to localStorage
+        function saveReceipt(transaction) {
+            // Create a copy with date as ISO string for storage
+            const receiptToSave = {
+                ...transaction,
+                date: transaction.date.toISOString()
+            };
+            
+            savedReceipts.unshift(receiptToSave); // Add to beginning (newest first)
+            
+            // Keep only last 1000 receipts to prevent localStorage from getting too full
+            if (savedReceipts.length > 1000) {
+                savedReceipts = savedReceipts.slice(0, 1000);
+            }
+            
+            localStorage.setItem('pigstyle_receipts', JSON.stringify(savedReceipts));
+            
+            // Refresh receipts display if on receipts tab
+            if (document.getElementById('receipts-tab').classList.contains('active')) {
+                renderReceipts(savedReceipts);
+            }
+        }
+        
+        // Render receipts in the receipts tab
+        function renderReceipts(receipts) {
+            const container = document.getElementById('receipts-grid');
+            
+            if (receipts.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #666; grid-column: 1/-1;">
+                        <i class="fas fa-receipt" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
+                        <p>No receipts found</p>
+                    </div>
+                `;
+                
+                // Update stats
+                document.getElementById('total-receipts').textContent = '0';
+                document.getElementById('total-receipts-sales').textContent = '$0.00';
+                document.getElementById('total-receipts-tax').textContent = '$0.00';
+                document.getElementById('total-receipts-items').textContent = '0';
+                return;
+            }
+            
+            let html = '';
+            let totalSales = 0;
+            let totalTax = 0;
+            let totalItems = 0;
+            
+            receipts.forEach(receipt => {
+                const date = new Date(receipt.date);
+                const dateStr = date.toLocaleDateString() + ' ' + 
+                               date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                const itemCount = receipt.items.length;
+                const itemSummary = itemCount === 1 ? 
+                    receipt.items[0].artist + ' - ' + receipt.items[0].title : 
+                    `${itemCount} items`;
+                
+                totalSales += receipt.total || 0;
+                totalTax += receipt.tax || 0;
+                totalItems += itemCount;
+                
+                html += `
+                    <div class="receipt-card" onclick="viewReceipt('${receipt.id}')">
+                        <div class="receipt-card-header">
+                            <span class="receipt-card-title">${receipt.id}</span>
+                            <span class="receipt-card-date">${dateStr}</span>
+                        </div>
+                        <div class="receipt-card-meta">
+                            <span>Items: ${itemCount}</span>
+                            <span class="receipt-card-total">$${(receipt.total || 0).toFixed(2)}</span>
+                        </div>
+                        <div class="receipt-card-items" title="${itemSummary}">
+                            <i class="fas fa-music"></i> ${itemSummary}
+                        </div>
+                        <div class="receipt-card-actions" onclick="event.stopPropagation()">
+                            <button class="btn btn-sm btn-primary" onclick="viewReceipt('${receipt.id}')">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                            <button class="btn btn-sm btn-success" onclick="downloadReceiptPDF('${receipt.id}')">
+                                <i class="fas fa-download"></i> PDF
+                            </button>
+                            <button class="btn btn-sm btn-secondary" onclick="printReceipt('${receipt.id}')">
+                                <i class="fas fa-print"></i> Print
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+            
+            // Update stats
+            document.getElementById('total-receipts').textContent = receipts.length;
+            document.getElementById('total-receipts-sales').textContent = `$${totalSales.toFixed(2)}`;
+            document.getElementById('total-receipts-tax').textContent = `$${totalTax.toFixed(2)}`;
+            document.getElementById('total-receipts-items').textContent = totalItems;
+        }
+        
+        // Search receipts
+        function searchReceipts() {
+            const startDate = document.getElementById('receipt-start-date').value;
+            const endDate = document.getElementById('receipt-end-date').value;
+            const query = document.getElementById('receipt-search-query').value.toLowerCase().trim();
+            
+            let filtered = [...savedReceipts];
+            
+            // Filter by date range
+            if (startDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                filtered = filtered.filter(r => new Date(r.date) >= start);
+            }
+            
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                filtered = filtered.filter(r => new Date(r.date) <= end);
+            }
+            
+            // Filter by search query
+            if (query) {
+                filtered = filtered.filter(r => 
+                    r.id.toLowerCase().includes(query) ||
+                    r.items.some(item => 
+                        (item.artist && item.artist.toLowerCase().includes(query)) ||
+                        (item.title && item.title.toLowerCase().includes(query)) ||
+                        (item.catalog_number && item.catalog_number.toLowerCase().includes(query))
+                    )
+                );
+            }
+            
+            renderReceipts(filtered);
+        }
+        
+        // Reset receipt search
+        function resetReceiptSearch() {
+            document.getElementById('receipt-start-date').value = '';
+            document.getElementById('receipt-end-date').value = '';
+            document.getElementById('receipt-search-query').value = '';
+            renderReceipts(savedReceipts);
+        }
+        
+        // View a specific receipt
+        function viewReceipt(receiptId) {
+            const receipt = savedReceipts.find(r => r.id === receiptId);
+            if (receipt) {
+                // Convert back to Date object if it's a string
+                if (typeof receipt.date === 'string') {
+                    receipt.date = new Date(receipt.date);
+                }
+                showReceipt(receipt);
+            }
+        }
+        
+        // Download receipt as PDF
+        async function downloadReceiptPDF(receiptId) {
+            const receipt = savedReceipts.find(r => r.id === receiptId);
+            if (!receipt) return;
+            
+            // Convert back to Date object if it's a string
+            if (typeof receipt.date === 'string') {
+                receipt.date = new Date(receipt.date);
+            }
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            const dateStr = receipt.date.toLocaleDateString() + ' ' + 
+                           receipt.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            let y = 20;
+            
+            // Store info
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text(receipt.storeName || adminConfig.storeName, 105, y, { align: 'center' });
+            
+            y += 7;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(receipt.storeAddress || adminConfig.storeAddress, 105, y, { align: 'center' });
+            
+            y += 5;
+            doc.text(receipt.storePhone || adminConfig.storePhone, 105, y, { align: 'center' });
+            
+            y += 10;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.text('RECEIPT', 105, y, { align: 'center' });
+            
+            y += 7;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text(`Receipt #: ${receipt.id}`, 20, y);
+            doc.text(`Date: ${dateStr}`, 20, y + 5);
+            
+            y += 15;
+            
+            // Items header
+            doc.setFont('helvetica', 'bold');
+            doc.text('Item', 20, y);
+            doc.text('Price', 180, y, { align: 'right' });
+            doc.line(20, y + 2, 190, y + 2);
+            
+            y += 7;
+            doc.setFont('helvetica', 'normal');
+            
+            // Items
+            receipt.items.forEach((item, index) => {
+                const desc = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
+                const price = `$${(item.store_price || 0).toFixed(2)}`;
+                
+                // Handle long descriptions
+                if (desc.length > 40) {
+                    doc.text(desc.substring(0, 37) + '...', 20, y);
+                } else {
+                    doc.text(desc, 20, y);
+                }
+                doc.text(price, 180, y, { align: 'right' });
+                
+                y += 5;
+                
+                // Add new page if needed
+                if (y > 270) {
+                    doc.addPage();
+                    y = 20;
+                }
+            });
+            
+            y += 5;
+            doc.line(20, y, 190, y);
+            y += 5;
+            
+            // Summary
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Subtotal: $${(receipt.subtotal || 0).toFixed(2)}`, 180, y, { align: 'right' });
+            y += 5;
+            doc.text(`Tax (${receipt.taxRate || adminConfig.taxRate}%): $${(receipt.tax || 0).toFixed(2)}`, 180, y, { align: 'right' });
+            y += 5;
+            doc.setFontSize(11);
+            doc.text(`TOTAL: $${(receipt.total || 0).toFixed(2)}`, 180, y, { align: 'right' });
+            
+            y += 10;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Payment Method: ${receipt.paymentMethod || 'Cash'}`, 20, y);
+            y += 5;
+            doc.text(`Tendered: $${(receipt.tendered || 0).toFixed(2)}`, 20, y);
+            y += 5;
+            doc.text(`Change: $${(receipt.change || 0).toFixed(2)}`, 20, y);
+            
+            y += 10;
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'italic');
+            doc.text(receipt.footer || adminConfig.receiptFooter, 105, y, { align: 'center' });
+            
+            // Save PDF
+            doc.save(`${receipt.id}.pdf`);
+        }
+        
+        // Print receipt
+        function printReceipt(receiptId) {
+            const receipt = savedReceipts.find(r => r.id === receiptId);
+            if (receipt) {
+                if (typeof receipt.date === 'string') {
+                    receipt.date = new Date(receipt.date);
+                }
+                showReceipt(receipt);
+                setTimeout(() => {
+                    window.print();
+                }, 500);
+            }
+        }
+        
         // Helper functions
         function switchTab(tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
@@ -1373,6 +2129,10 @@
                 }
                 // Refresh terminals when switching to check out tab
                 refreshTerminals();
+            } else if (tabName === 'receipts') {
+                // Refresh receipts display
+                loadSavedReceipts();
+                renderReceipts(savedReceipts);
             }
         }
         
@@ -1404,6 +2164,10 @@
         
         function showCheckoutLoading(show) {
             document.getElementById('checkout-loading').style.display = show ? 'block' : 'none';
+        }
+        
+        function showReceiptsLoading(show) {
+            document.getElementById('receipts-loading').style.display = show ? 'block' : 'none';
         }
         
         function truncateText(text, maxLength) {
@@ -2328,8 +3092,7 @@
             let html = '';
             results.forEach(record => {
                 const consignorInfo = consignorCache[record.consignor_id] || { username: 'None', initials: '' };
-                const hasTerminal = availableTerminals.length > 0;
-                const terminalOnline = availableTerminals.some(t => t.status === 'ONLINE');
+                const inCart = checkoutCart.some(item => item.id === record.id);
                 
                 html += `
                     <div class="search-result-item">
@@ -2348,12 +3111,16 @@
                             ${record.status_id === 3 ? 
                                 '<span class="sold-badge"><i class="fas fa-check-circle"></i> Sold</span>' : 
                                 record.status_id === 2 ?
-                                `<button class="btn btn-square" onclick="showTerminalSelection(${JSON.stringify(record).replace(/"/g, '&quot;')})" 
-                                    ${!hasTerminal || !terminalOnline ? 'disabled title="No online terminal available"' : ''}>
+                                (inCart ? 
+                                    `<button class="btn btn-secondary btn-sm" onclick="removeFromCart(${record.id})">
+                                        <i class="fas fa-minus"></i> Remove
+                                    </button>` :
+                                    `<button class="btn btn-cart btn-sm" onclick='addToCart(${JSON.stringify(record).replace(/'/g, "\\'")})'>
+                                        <i class="fas fa-cart-plus"></i> Add to Cart
+                                    </button>`
+                                ) +
+                                ` <button class="btn btn-square btn-sm" onclick='showTerminalSelection(${JSON.stringify(record).replace(/'/g, "\\'")})'>
                                     <i class="fas fa-square"></i> Square
-                                </button>
-                                <button class="btn btn-cash" onclick="showCashSaleConfirmation(${JSON.stringify(record).replace(/"/g, '&quot;')})">
-                                    <i class="fas fa-money-bill-wave"></i> Cash
                                 </button>` :
                                 '<span class="inactive-badge">Not Active</span>'
                             }
@@ -2363,6 +3130,358 @@
             });
             
             container.innerHTML = html;
+            
+            // Show/hide cart section based on cart contents
+            updateCartDisplay();
+        }
+        
+        // Shopping Cart Functions
+        function addToCart(record) {
+            // Check if already in cart
+            if (checkoutCart.some(item => item.id === record.id)) {
+                showCheckoutStatus('Item already in cart', 'info');
+                return;
+            }
+            
+            // Add to cart
+            checkoutCart.push(record);
+            updateCartDisplay();
+            renderSearchResults(currentSearchResults); // Refresh search results to update button states
+            showCheckoutStatus(`Added "${record.title}" to cart`, 'success');
+        }
+        
+        function removeFromCart(recordId) {
+            const recordIndex = checkoutCart.findIndex(item => item.id === recordId);
+            if (recordIndex !== -1) {
+                const removed = checkoutCart.splice(recordIndex, 1)[0];
+                updateCartDisplay();
+                renderSearchResults(currentSearchResults); // Refresh search results to update button states
+                showCheckoutStatus(`Removed "${removed.title}" from cart`, 'info');
+            }
+        }
+        
+        function clearCart() {
+            if (checkoutCart.length === 0) return;
+            
+            if (confirm('Are you sure you want to clear the cart?')) {
+                checkoutCart = [];
+                updateCartDisplay();
+                renderSearchResults(currentSearchResults);
+                showCheckoutStatus('Cart cleared', 'info');
+            }
+        }
+        
+        function updateCartDisplay() {
+            const cartSection = document.getElementById('shopping-cart-section');
+            const cartItems = document.getElementById('cart-items');
+            const cartCount = document.getElementById('cart-item-count');
+            const cartSubtotal = document.getElementById('cart-subtotal');
+            const cartTax = document.getElementById('cart-tax');
+            const cartTotal = document.getElementById('cart-total');
+            const checkoutBtn = document.getElementById('checkout-cash-btn');
+            
+            if (checkoutCart.length === 0) {
+                cartSection.style.display = 'none';
+                checkoutBtn.disabled = true;
+                return;
+            }
+            
+            cartSection.style.display = 'block';
+            cartCount.textContent = `${checkoutCart.length} item${checkoutCart.length !== 1 ? 's' : ''}`;
+            
+            // Calculate totals
+            const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
+            const taxRate = adminConfig.taxEnabled ? (adminConfig.taxRate / 100) : 0;
+            const tax = subtotal * taxRate;
+            const total = subtotal + tax;
+            
+            cartSubtotal.textContent = `$${subtotal.toFixed(2)}`;
+            cartTax.textContent = `$${tax.toFixed(2)}`;
+            cartTotal.textContent = `$${total.toFixed(2)}`;
+            
+            // Enable checkout button if cart has items
+            checkoutBtn.disabled = false;
+            
+            // Render cart items
+            let cartHtml = '';
+            checkoutCart.forEach(item => {
+                cartHtml += `
+                    <div class="cart-item">
+                        <div class="cart-item-details">
+                            <div class="cart-item-artist">${item.artist || 'Unknown Artist'}</div>
+                            <div class="cart-item-title">${item.title || 'Unknown Title'}</div>
+                            <div class="cart-item-meta">${item.catalog_number || 'No catalog'}</div>
+                        </div>
+                        <div class="cart-item-price">$${(item.store_price || 0).toFixed(2)}</div>
+                        <div class="cart-item-remove" onclick="removeFromCart(${item.id})">
+                            <i class="fas fa-times"></i>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            cartItems.innerHTML = cartHtml;
+        }
+        
+        // Tender Modal Functions
+        function showTenderModal() {
+            if (checkoutCart.length === 0) {
+                showCheckoutStatus('Cart is empty', 'error');
+                return;
+            }
+            
+            // Calculate total
+            const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
+            const taxRate = adminConfig.taxEnabled ? (adminConfig.taxRate / 100) : 0;
+            const tax = subtotal * taxRate;
+            const total = subtotal + tax;
+            
+            document.getElementById('tender-total-due').textContent = `$${total.toFixed(2)}`;
+            document.getElementById('tender-amount').value = '';
+            document.getElementById('change-display-container').style.display = 'none';
+            document.getElementById('complete-payment-btn').disabled = true;
+            
+            document.getElementById('tender-modal').style.display = 'flex';
+            document.getElementById('tender-amount').focus();
+            
+            // Add input event listener for change calculation
+            document.getElementById('tender-amount').addEventListener('input', function(e) {
+                const tendered = parseFloat(e.target.value) || 0;
+                const total = parseFloat(document.getElementById('tender-total-due').textContent.replace('$', ''));
+                
+                if (tendered >= total) {
+                    const change = tendered - total;
+                    document.getElementById('change-amount').textContent = `$${change.toFixed(2)}`;
+                    document.getElementById('change-display-container').style.display = 'block';
+                    document.getElementById('complete-payment-btn').disabled = false;
+                } else {
+                    document.getElementById('change-display-container').style.display = 'none';
+                    document.getElementById('complete-payment-btn').disabled = true;
+                }
+            });
+        }
+        
+        function closeTenderModal() {
+            document.getElementById('tender-modal').style.display = 'none';
+        }
+        
+        async function processCashPayment() {
+            const tendered = parseFloat(document.getElementById('tender-amount').value) || 0;
+            const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
+            const taxRate = adminConfig.taxEnabled ? (adminConfig.taxRate / 100) : 0;
+            const tax = subtotal * taxRate;
+            const total = subtotal + tax;
+            
+            if (tendered < total) {
+                showCheckoutStatus('Insufficient payment', 'error');
+                return;
+            }
+            
+            const change = tendered - total;
+            
+            closeTenderModal();
+            showCheckoutLoading(true);
+            
+            try {
+                // Mark all items in cart as sold
+                let successCount = 0;
+                let errorCount = 0;
+                const soldRecords = [];
+                
+                for (const record of checkoutCart) {
+                    try {
+                        const response = await fetch(`${AppConfig.baseUrl}/records/${record.id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                status_id: 3 // Sold status
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.status === 'success') {
+                                successCount++;
+                                soldRecords.push(record);
+                                
+                                // Update local record status
+                                const recordIndex = allRecords.findIndex(r => r.id === record.id);
+                                if (recordIndex !== -1) {
+                                    allRecords[recordIndex].status_id = 3;
+                                }
+                                
+                                // Update in current search results
+                                const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
+                                if (searchIndex !== -1) {
+                                    currentSearchResults[searchIndex].status_id = 3;
+                                }
+                            } else {
+                                errorCount++;
+                            }
+                        } else {
+                            errorCount++;
+                        }
+                    } catch (error) {
+                        console.error(`Error updating record ${record.id}:`, error);
+                        errorCount++;
+                    }
+                }
+                
+                if (successCount > 0) {
+                    // Get cashier name from user data if available
+                    let cashierName = 'Admin';
+                    try {
+                        const userData = localStorage.getItem('user');
+                        if (userData) {
+                            const user = JSON.parse(userData);
+                            cashierName = user.username || 'Admin';
+                        }
+                    } catch (e) {
+                        console.error('Error parsing user data:', e);
+                    }
+                    
+                    // Create transaction object for receipt
+                    const transaction = {
+                        id: `CASH-${Date.now()}`,
+                        date: new Date(),
+                        items: [...soldRecords],
+                        subtotal: subtotal,
+                        tax: tax,
+                        taxRate: adminConfig.taxRate,
+                        total: total,
+                        tendered: tendered,
+                        change: change,
+                        paymentMethod: 'Cash',
+                        cashier: cashierName,
+                        storeName: adminConfig.storeName,
+                        storeAddress: adminConfig.storeAddress,
+                        storePhone: adminConfig.storePhone,
+                        footer: adminConfig.receiptFooter
+                    };
+                    
+                    // Save receipt to localStorage
+                    saveReceipt(transaction);
+                    
+                    // Show receipt
+                    showReceipt(transaction);
+                    
+                    // Clear cart
+                    checkoutCart = [];
+                    updateCartDisplay();
+                    
+                    // Refresh search results
+                    renderSearchResults(currentSearchResults);
+                    
+                    showCheckoutStatus(`Successfully sold ${successCount} items${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
+                } else {
+                    showCheckoutStatus(`Failed to process sale: ${errorCount} errors`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error processing cash payment:', error);
+                showCheckoutStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                showCheckoutLoading(false);
+            }
+        }
+        
+        // Receipt Functions
+        function showReceipt(transaction) {
+            const receiptContent = document.getElementById('receipt-content');
+            
+            const dateStr = transaction.date.toLocaleDateString() + ' ' + 
+                           transaction.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            let itemsHtml = '';
+            transaction.items.forEach(item => {
+                itemsHtml += `
+                    <div class="receipt-item">
+                        <div class="receipt-item-desc">${item.artist || 'Unknown'} - ${item.title || 'Unknown'}</div>
+                        <div class="receipt-item-price">$${(item.store_price || 0).toFixed(2)}</div>
+                    </div>
+                `;
+            });
+            
+            receiptContent.innerHTML = `
+                <div class="receipt-header">
+                    <div class="receipt-store-name">${transaction.storeName || adminConfig.storeName}</div>
+                    <div class="receipt-store-info">${transaction.storeAddress || adminConfig.storeAddress}</div>
+                    <div class="receipt-store-info">${transaction.storePhone || adminConfig.storePhone}</div>
+                </div>
+                
+                <div class="receipt-transaction-info">
+                    <div>Receipt #: ${transaction.id}</div>
+                    <div>Date: ${dateStr}</div>
+                    <div>Cashier: ${transaction.cashier || 'Admin'}</div>
+                </div>
+                
+                <div class="receipt-items">
+                    ${itemsHtml}
+                </div>
+                
+                <div class="receipt-summary">
+                    <div class="receipt-summary-row">
+                        <span>Subtotal:</span>
+                        <span>$${(transaction.subtotal || 0).toFixed(2)}</span>
+                    </div>
+                    <div class="receipt-summary-row">
+                        <span>Tax (${transaction.taxRate || adminConfig.taxRate}%):</span>
+                        <span>$${(transaction.tax || 0).toFixed(2)}</span>
+                    </div>
+                    <div class="receipt-summary-row receipt-total">
+                        <span>TOTAL:</span>
+                        <span>$${(transaction.total || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+                
+                <div class="receipt-payment">
+                    <div class="receipt-summary-row">
+                        <span>Tendered:</span>
+                        <span>$${(transaction.tendered || 0).toFixed(2)}</span>
+                    </div>
+                    <div class="receipt-summary-row">
+                        <span>Change:</span>
+                        <span>$${(transaction.change || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+                
+                <div class="receipt-footer">
+                    ${transaction.footer || adminConfig.receiptFooter}
+                </div>
+                
+                <div class="receipt-actions">
+                    <button class="btn btn-primary btn-sm" onclick="window.print()">
+                        <i class="fas fa-print"></i> Print Receipt
+                    </button>
+                    <button class="btn btn-success btn-sm" onclick="downloadCurrentReceiptPDF()">
+                        <i class="fas fa-download"></i> Save PDF
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="closeReceipt()">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+            `;
+            
+            document.getElementById('receipt-modal').style.display = 'flex';
+            
+            // Auto-print if configured
+            if (adminConfig.autoPrintReceipt) {
+                setTimeout(() => {
+                    window.print();
+                }, 500);
+            }
+        }
+        
+        function closeReceipt() {
+            document.getElementById('receipt-modal').style.display = 'none';
+        }
+        
+        function downloadCurrentReceiptPDF() {
+            // Get the current receipt from the modal
+            const receiptId = document.querySelector('.receipt-transaction-info div:first-child').textContent.replace('Receipt #: ', '');
+            downloadReceiptPDF(receiptId);
         }
         
         function showTerminalSelection(record) {
@@ -2704,94 +3823,6 @@
             activeCheckoutId = null;
         }
         
-        function showCashSaleConfirmation(record) {
-            // Store the record for confirmation
-            window.pendingCashSale = record;
-            
-            // Update modal with record details
-            document.getElementById('sale-price').textContent = `$${(record.store_price || 0).toFixed(2)}`;
-            document.getElementById('sale-artist').textContent = record.artist || 'Unknown Artist';
-            document.getElementById('sale-title').textContent = record.title || 'Unknown Title';
-            document.getElementById('sale-details').innerHTML = `
-                Catalog: ${record.catalog_number || 'N/A'}<br>
-                Barcode: ${record.barcode || 'N/A'}<br>
-                Status: ${getStatusText(record.status_id)}
-            `;
-            
-            // Reset confirmation checkbox
-            document.getElementById('cash-sale-confirmation-check').checked = false;
-            document.getElementById('confirm-cash-sale-btn').disabled = true;
-            
-            // Show modal
-            document.getElementById('cash-sale-modal').style.display = 'flex';
-            
-            // Add event listener for confirmation checkbox
-            document.getElementById('cash-sale-confirmation-check').addEventListener('change', function() {
-                document.getElementById('confirm-cash-sale-btn').disabled = !this.checked;
-            });
-        }
-        
-        function closeCashSaleModal() {
-            document.getElementById('cash-sale-modal').style.display = 'none';
-            window.pendingCashSale = null;
-        }
-        
-        async function confirmCashSale() {
-            if (!window.pendingCashSale) {
-                showCheckoutStatus('No record selected for sale', 'error');
-                closeCashSaleModal();
-                return;
-            }
-            
-            const record = window.pendingCashSale;
-            const recordId = record.id;
-            
-            showCheckoutLoading(true);
-            closeCashSaleModal();
-            
-            try {
-                const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        status_id: 3 // Sold status
-                    })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        // Update local record status
-                        const recordIndex = allRecords.findIndex(r => r.id === recordId);
-                        if (recordIndex !== -1) {
-                            allRecords[recordIndex].status_id = 3;
-                        }
-                        
-                        // Update current search results
-                        const searchIndex = currentSearchResults.findIndex(r => r.id === recordId);
-                        if (searchIndex !== -1) {
-                            currentSearchResults[searchIndex].status_id = 3;
-                            renderSearchResults(currentSearchResults);
-                        }
-                        
-                        showCheckoutStatus(`Record sold successfully!`, 'success');
-                    } else {
-                        showCheckoutStatus('Error completing sale', 'error');
-                    }
-                } else {
-                    showCheckoutStatus('Error completing sale', 'error');
-                }
-            } catch (error) {
-                console.error('Sale error:', error);
-                showCheckoutStatus(`Sale error: ${error.message}`, 'error');
-            } finally {
-                showCheckoutLoading(false);
-                window.pendingCashSale = null;
-            }
-        }
-        
         // Initialize
         document.addEventListener('DOMContentLoaded', async function() {
             const userData = localStorage.getItem('user');
@@ -2814,6 +3845,12 @@
             // Initialize selected records set
             window.selectedRecords = new Set();
             
+            // Load admin config
+            loadAdminConfig();
+            
+            // Load saved receipts
+            loadSavedReceipts();
+            
             // Fetch configuration values first
             await fetchConfigValues();
             
@@ -2834,6 +3871,12 @@
                     searchRecords();
                 }
             });
+            
+            // Set today's date as default for receipt search
+            const today = new Date().toISOString().split('T')[0];
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            document.getElementById('receipt-start-date').value = thirtyDaysAgo;
+            document.getElementById('receipt-end-date').value = today;
         });
     </script>
 </body>
