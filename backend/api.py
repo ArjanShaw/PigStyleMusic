@@ -17,14 +17,29 @@ import json
 import threading
 import uuid
 import stripe
-from functools import wraps  # ADD THIS LINE
+from functools import wraps
 from discogs_handler import DiscogsHandler 
 from handlers.price_advise_handler import PriceAdviseHandler
 
 
+from square import Square
+
+
+
+import hmac
+
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-here-change-this')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
+
+# Square Configuration
+SQUARE_ENVIRONMENT = os.environ.get('SQUARE_ENVIRONMENT', 'production')
+SQUARE_LOCATION_ID = os.environ.get('SQUARE_LOCATION_ID', 'L9Y8X7W6V5U4T3S2')
+SQUARE_TERMINAL_DEVICE_ID = os.environ.get('SQUARE_TERMINAL_DEVICE_ID', '0446')
+SQUARE_WEBHOOK_SIGNATURE_KEY = os.environ.get('SQUARE_WEBHOOK_SIGNATURE_KEY', 'whk_8f7e6d5c4b3a2n1m9k8j7h6g5f4d3s2')
+SQUARE_APPLICATION_ID = os.environ.get('SQUARE_APPLICATION_ID', 'sq0idp-vlHI8o8INiWVxlLT4bLdtw')
+SQUARE_ACCESS_TOKEN = os.environ.get('SQUARE_ACCESS_TOKEN', 'EAAAl2Hsbw_uSS4WRcurZhxrj8lWWFgHwGqsA0YrSOkgMEjL6E31iws2BVQDqtAi')
+
 
 # CORS Configuration - UPDATED to support credentials
 CORS(app, 
@@ -43,25 +58,23 @@ CORS(app,
      expose_headers=["Content-Type", "Authorization"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
 
-
-
 # Database configuration
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "records.db")
 
 # Spotify configuration
-SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID', 'your-client-id-here')
-SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', 'your-client-secret-here')
+SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID', '1a2b3c4d5e6f7g8h9i0j')
+SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', 'k1l2m3n4o5p6q7r8s9t0')
 SPOTIFY_REDIRECT_URI = '/spotify/callback'
 
 # Add these lines with your other configuration variables
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_your_key_here')
-STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_your_key_here')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_4eC39HqLyjWDarjtT1zdp7dc')
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_TYooMQauvdEDq54NiTphI7jx')
 stripe.api_key = STRIPE_SECRET_KEY
-
 
 # Token storage and background job storage
 user_tokens = {}
 background_jobs = {}
+square_payment_sessions = {}  # Store active payment sessions
 
 def setup_logging():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -93,6 +106,604 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+ 
+# ==================== SQUARE TERMINAL CHECKOUT FUNCTIONS ====================
+
+def get_square_client():
+    """Initialize and return Square client with proper authentication"""
+    try:
+        client = Square(
+            access_token=SQUARE_ACCESS_TOKEN,
+            environment=SQUARE_ENVIRONMENT
+        )
+        return client
+    except Exception as e:
+        app.logger.error(f"Failed to initialize Square client: {e}")
+        return None
+ 
+
+def verify_square_webhook(signature, body):
+    """Verify Square webhook signature"""
+    if not SQUARE_WEBHOOK_SIGNATURE_KEY:
+        return False
+    
+    expected_signature = hmac.new(
+        key=SQUARE_WEBHOOK_SIGNATURE_KEY.encode('utf-8'),
+        msg=body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    
+    return hmac.compare_digest(expected_signature, signature)
+
+def create_square_terminal_checkout(amount_cents, record_ids, record_titles, reference_id=None, device_id=None):
+    """Create a Square Terminal checkout request"""
+    client = get_square_client()
+    if not client:
+        return None, "Failed to initialize Square client"
+    
+    idempotency_key = str(uuid.uuid4())
+    
+    try:
+        # If no device_id provided, get available terminals
+        if not device_id:
+            devices_response = client.terminal.devices.list()
+            
+            if devices_response.is_success():
+                devices = devices_response.body.get('devices', [])
+                if devices:
+                    # Use first available device
+                    device_id = devices[0].get('id')
+        
+        if not device_id:
+            return None, "No Square Terminal devices found"
+        
+        # Prepare checkout request
+        checkout_data = {
+            "idempotency_key": idempotency_key,
+            "checkout": {
+                "amount_money": {
+                    "amount": amount_cents,
+                    "currency": "USD"
+                },
+                "device_options": {
+                    "device_id": device_id,
+                    "skip_receipt_screen": False,
+                    "collect_signature": True,
+                    "tip_settings": {
+                        "allow_tipping": False,
+                        "separate_tip_screen": False
+                    }
+                },
+                "reference_id": reference_id or f"pigstyle_{idempotency_key[:8]}",
+                "note": f"PigStyle Music: {', '.join(record_titles[:3])}{'...' if len(record_titles) > 3 else ''}",
+                "payment_type": "CARD_PRESENT",
+                "customer_id": None
+            }
+        }
+        
+        # Create checkout
+        response = client.terminal.checkouts.create(**checkout_data)
+        
+        if response.is_error():
+            app.logger.error(f"Square Terminal checkout error: {response.errors}")
+            return None, response.errors
+        
+        # Store session info
+        checkout = response.body.get('checkout', {})
+        checkout_id = checkout.get('id')
+        
+        if checkout_id:
+            square_payment_sessions[checkout_id] = {
+                'record_ids': record_ids,
+                'amount_cents': amount_cents,
+                'status': 'PENDING',
+                'created_at': datetime.now().isoformat(),
+                'reference_id': checkout_data['checkout']['reference_id'],
+                'device_id': device_id
+            }
+        
+        return response.body, None
+        
+    except Exception as e:
+        app.logger.error(f"Square Terminal checkout exception: {e}")
+        return None, str(e)
+
+def get_terminal_checkout_status(checkout_id):
+    """Get the status of a terminal checkout"""
+    client = get_square_client()
+    if not client:
+        return None, "Failed to initialize Square client"
+    
+    try:
+        response = client.terminal.checkouts.get(checkout_id)
+        
+        if response.is_error():
+            app.logger.error(f"Failed to get checkout status: {response.errors}")
+            return None, response.errors
+        
+        checkout = response.body.get('checkout', {})
+        status = checkout.get('status', 'UNKNOWN')
+        
+        # Update stored session
+        if checkout_id in square_payment_sessions:
+            square_payment_sessions[checkout_id]['status'] = status
+            
+            # If completed, get payment details
+            if status == 'COMPLETED':
+                payment_id = checkout.get('payment_ids', [None])[0]
+                if payment_id:
+                    square_payment_sessions[checkout_id]['payment_id'] = payment_id
+        
+        return checkout, None
+        
+    except Exception as e:
+        app.logger.error(f"Failed to get checkout status: {e}")
+        return None, str(e)
+
+def cancel_terminal_checkout(checkout_id):
+    """Cancel a pending terminal checkout"""
+    client = get_square_client()
+    if not client:
+        return None, "Failed to initialize Square client"
+    
+    try:
+        response = client.terminal.checkouts.cancel(checkout_id)
+        
+        if response.is_error():
+            app.logger.error(f"Failed to cancel checkout: {response.errors}")
+            return None, response.errors
+        
+        if checkout_id in square_payment_sessions:
+            square_payment_sessions[checkout_id]['status'] = 'CANCELED'
+        
+        return response.body, None
+        
+    except Exception as e:
+        app.logger.error(f"Failed to cancel checkout: {e}")
+        return None, str(e)
+
+def get_payment_details(payment_id):
+    """Get payment details by payment ID"""
+    client = get_square_client()
+    if not client:
+        return None, "Failed to initialize Square client"
+    
+    try:
+        response = client.payments.get(payment_id)
+        
+        if response.is_error():
+            app.logger.error(f"Failed to get payment details: {response.errors}")
+            return None, response.errors
+        
+        return response.body.get('payment'), None
+        
+    except Exception as e:
+        app.logger.error(f"Failed to get payment details: {e}")
+        return None, str(e)
+
+def get_terminal_devices():
+    """Get list of available Square Terminal devices"""
+    client = get_square_client()
+    if not client:
+        return None, "Failed to initialize Square client"
+    
+    try:
+        response = client.terminal.devices.list()
+        
+        if response.is_error():
+            app.logger.error(f"Failed to get terminal devices: {response.errors}")
+            return None, response.errors
+        
+        devices = response.body.get('devices', [])
+        
+        # Enhance device info with status
+        enhanced_devices = []
+        for device in devices:
+            device_id = device.get('id')
+            device_status = 'UNKNOWN'
+            
+            # Try to get device status from checkout history
+            try:
+                checkouts_response = client.terminal.checkouts.list(
+                    limit=1,
+                    filter_device_id=device_id
+                )
+                if checkouts_response.is_success():
+                    device_status = 'ONLINE'  # Assume online if we can reach it
+            except:
+                device_status = 'OFFLINE'
+            
+            enhanced_devices.append({
+                'id': device_id,
+                'device_name': device.get('name') or device.get('device_name') or 'Square Terminal',
+                'status': device_status,
+                'device_type': device.get('device_type', 'TERMINAL'),
+                'manufacturer': device.get('manufacturer', 'Square')
+            })
+        
+        return enhanced_devices, None
+        
+    except Exception as e:
+        app.logger.error(f"Failed to get terminal devices: {e}")
+        return None, str(e)
+
+# ==================== SQUARE TERMINAL API ENDPOINTS ====================
+# UPDATED TO MATCH FRONTEND EXPECTATIONS
+
+
+def login_required(f):
+    """Decorator to require login for endpoints"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or not session.get('logged_in'):
+            return jsonify({
+                'status': 'error',
+                'error': 'Authentication required'
+            }), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+def role_required(allowed_roles):
+    """Decorator to require specific role(s) for endpoints"""
+    def decorator(f):
+        @wraps(f)
+        @login_required
+        def decorated_function(*args, **kwargs):
+            if session.get('role') not in allowed_roles:
+                return jsonify({
+                    'status': 'error',
+                    'error': 'Insufficient permissions'
+                }), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+
+@app.route('/api/square/terminals', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def api_get_terminals():
+    """Get list of available Square Terminal devices"""
+    try:
+        devices, error = get_terminal_devices()
+        
+        if error:
+            return jsonify({
+                'status': 'error',
+                'message': error
+            }), 400
+        
+        return jsonify({
+            'status': 'success',
+            'terminals': devices
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error in api_get_terminals: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/square/terminal/checkout', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def api_create_terminal_checkout():
+    """Create a new terminal checkout"""
+    try:
+        data = request.get_json()
+        amount_cents = data.get('amount_cents')
+        record_ids = data.get('record_ids', [])
+        record_titles = data.get('record_titles', [])
+        reference_id = data.get('reference_id')
+        device_id = data.get('device_id')
+        
+        if not amount_cents:
+            return jsonify({
+                'status': 'error',
+                'message': 'Amount is required'
+            }), 400
+            
+        if not record_ids or not record_titles:
+            return jsonify({
+                'status': 'error',
+                'message': 'Record information is required'
+            }), 400
+        
+        result, error = create_square_terminal_checkout(
+            amount_cents, 
+            record_ids, 
+            record_titles, 
+            reference_id,
+            device_id
+        )
+        
+        if error:
+            return jsonify({
+                'status': 'error',
+                'message': error
+            }), 400
+        
+        return jsonify({
+            'status': 'success',
+            'checkout': result.get('checkout', {})
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error in api_create_terminal_checkout: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/square/terminal/checkout/<checkout_id>/status', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def api_get_checkout_status(checkout_id):
+    """Get status of a terminal checkout"""
+    try:
+        checkout, error = get_terminal_checkout_status(checkout_id)
+        
+        if error:
+            return jsonify({
+                'status': 'error',
+                'message': error
+            }), 400
+        
+        return jsonify({
+            'status': 'success',
+            'checkout': checkout
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error in api_get_checkout_status: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/square/terminal/checkout/<checkout_id>/cancel', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def api_cancel_checkout(checkout_id):
+    """Cancel a pending terminal checkout"""
+    try:
+        result, error = cancel_terminal_checkout(checkout_id)
+        
+        if error:
+            return jsonify({
+                'status': 'error',
+                'message': error
+            }), 400
+        
+        return jsonify({
+            'status': 'success',
+            'result': result
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error in api_cancel_checkout: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/square/payment/<payment_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def api_get_payment(payment_id):
+    """Get payment details"""
+    try:
+        payment, error = get_payment_details(payment_id)
+        
+        if error:
+            return jsonify({
+                'status': 'error',
+                'message': error
+            }), 400
+        
+        return jsonify({
+            'status': 'success',
+            'payment': payment
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error in api_get_payment: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/square/webhook', methods=['POST'])
+def square_webhook():
+    """Handle Square webhook events"""
+    try:
+        # Get signature from headers
+        signature = request.headers.get('x-square-hmacsha256-signature', '')
+        
+        # Verify webhook signature
+        if not verify_square_webhook(signature, request.data):
+            app.logger.warning('Invalid webhook signature')
+            return jsonify({'status': 'error', 'message': 'Invalid signature'}), 401
+        
+        # Parse webhook data
+        webhook_data = request.json
+        event_type = webhook_data.get('type')
+        data = webhook_data.get('data', {})
+        
+        app.logger.info(f"Received Square webhook: {event_type}")
+        
+        # Handle different event types
+        if event_type == 'terminal.checkout.updated':
+            checkout = data.get('object', {}).get('checkout', {})
+            checkout_id = checkout.get('id')
+            status = checkout.get('status')
+            
+            if checkout_id in square_payment_sessions:
+                square_payment_sessions[checkout_id]['status'] = status
+                
+                if status == 'COMPLETED':
+                    payment_id = checkout.get('payment_ids', [None])[0]
+                    if payment_id:
+                        square_payment_sessions[checkout_id]['payment_id'] = payment_id
+                        
+                        # Auto-process the sale
+                        record_ids = square_payment_sessions[checkout_id].get('record_ids', [])
+                        if record_ids:
+                            conn = get_db()
+                            cursor = conn.cursor()
+                            today = datetime.now().date().isoformat()
+                            placeholders = ','.join('?' for _ in record_ids)
+                            
+                            cursor.execute(f'''
+                                UPDATE records
+                                SET status_id = 3, date_sold = ?
+                                WHERE id IN ({placeholders})
+                            ''', [today] + record_ids)
+                            
+                            conn.commit()
+                            conn.close()
+                            
+                            app.logger.info(f"Auto-processed {len(record_ids)} records for checkout {checkout_id}")
+        
+        return jsonify({'status': 'success'}), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error in square_webhook: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/square/terminal/session/<checkout_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def api_get_checkout_session(checkout_id):
+    """Get stored checkout session information"""
+    try:
+        if checkout_id in square_payment_sessions:
+            return jsonify({
+                'status': 'success',
+                'session': square_payment_sessions[checkout_id]
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Session not found'
+            }), 404
+            
+    except Exception as e:
+        app.logger.error(f"Error in api_get_checkout_session: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+# ==================== DEPRECATED ENDPOINTS (Keep for backward compatibility) ====================
+
+@app.route('/api/square/terminal-checkout', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_terminal_checkout_endpoint_deprecated():
+    """Deprecated: Use /api/square/terminal/checkout instead"""
+    return api_create_terminal_checkout()
+
+@app.route('/api/square/terminal-checkout/<checkout_id>/status', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_terminal_checkout_status_endpoint_deprecated(checkout_id):
+    """Deprecated: Use /api/square/terminal/checkout/<checkout_id>/status instead"""
+    return api_get_checkout_status(checkout_id)
+
+@app.route('/api/square/terminal-checkout/<checkout_id>/cancel', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def cancel_terminal_checkout_endpoint_deprecated(checkout_id):
+    """Deprecated: Use /api/square/terminal/checkout/<checkout_id>/cancel instead"""
+    return api_cancel_checkout(checkout_id)
+
+@app.route('/api/square/terminal-devices', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_terminal_devices_endpoint_deprecated():
+    """Deprecated: Use /api/square/terminals instead"""
+    return api_get_terminals()
+
+@app.route('/api/square/terminal-checkout/session/<checkout_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_session_deprecated(checkout_id):
+    """Deprecated: Use /api/square/terminal/session/<checkout_id> instead"""
+    return api_get_checkout_session(checkout_id)
+
+# ==================== TEST SQUARE CONNECTION ====================
+
+@app.route('/test-square', methods=['GET'])
+def test_square():
+    """Test Square API connection and list available devices"""
+    result = []
+    
+    if not SQUARE_ACCESS_TOKEN:
+        return jsonify({"error": "SQUARE_ACCESS_TOKEN not found"}), 500
+    
+    result.append(f"✅ Token: {SQUARE_ACCESS_TOKEN[:20]}... ({len(SQUARE_ACCESS_TOKEN)} chars)")
+    
+    try:
+        client = get_square_client()
+        if not client:
+            result.append("❌ Failed to create Square client")
+            return jsonify({"results": result})
+        
+        result.append("✅ Square client created successfully")
+        
+        # Test locations API
+        locations_response = client.locations.list()
+        
+        if locations_response.is_error():
+            result.append(f"❌ Locations API error: {locations_response.errors}")
+        else:
+            locations = locations_response.body.get('locations', [])
+            result.append(f"✅ Found {len(locations)} location(s)")
+            
+            for location in locations:
+                result.append(f"  📍 Location ID: {location.get('id')}")
+                result.append(f"  🏢 Business Name: {location.get('business_name', 'N/A')}")
+        
+        # Test devices API
+        devices_response = client.terminal.devices.list()
+        
+        if devices_response.is_error():
+            result.append(f"❌ Devices API error: {devices_response.errors}")
+        else:
+            devices = devices_response.body.get('devices', [])
+            result.append(f"✅ Found {len(devices)} terminal device(s)")
+            
+            for device in devices:
+                result.append(f"  📱 Device ID: {device.get('id')}")
+                result.append(f"  📱 Device Name: {device.get('name', 'N/A')}")
+                result.append(f"  🔋 Status: {device.get('status', 'UNKNOWN')}")
+        
+        # Test with sandbox
+        result.append(f"🏁 Environment: {SQUARE_ENVIRONMENT.upper()}")
+        result.append(f"🎯 Default Location ID: {SQUARE_LOCATION_ID}")
+        result.append(f"📱 Default Device ID: {SQUARE_TERMINAL_DEVICE_ID}")
+        
+    except Exception as e:
+        result.append(f"❌ Error: {type(e).__name__}: {str(e)}")
+        import traceback
+        result.append(f"Traceback: {traceback.format_exc()}")
+    
+    return jsonify({
+        "status": "success" if "❌" not in "\n".join(result) else "partial",
+        "results": result,
+        "environment": SQUARE_ENVIRONMENT,
+        "location_id": SQUARE_LOCATION_ID,
+        "device_id": SQUARE_TERMINAL_DEVICE_ID
+    })
+
+#===========================================================================
+# ==================== ORIGINAL ENDPOINTS - ALL PRESERVED ====================
 #===========================================================================
 
 @app.route('/api/price-estimate-debug', methods=['POST'])
@@ -449,13 +1060,13 @@ def logout():
     
     # Force expire the session cookie
     response.set_cookie(
-        'session',  # This is Flask's default session cookie name
+        'session',
         '',
         expires=0,
         max_age=0,
         path='/',
-        domain=None,  # Adjust if you're using a specific domain
-        secure=False,  # Set to True if using HTTPS
+        domain=None,
+        secure=False,
         httponly=True,
         samesite='Lax'
     )
@@ -505,33 +1116,6 @@ def check_session():
     })
 
 # ==================== PROTECTED ENDPOINTS ====================
-
-def login_required(f):
-    """Decorator to require login for endpoints"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session or not session.get('logged_in'):
-            return jsonify({
-                'status': 'error',
-                'error': 'Authentication required'
-            }), 401
-        return f(*args, **kwargs)
-    return decorated_function
-
-def role_required(allowed_roles):
-    """Decorator to require specific role(s) for endpoints"""
-    def decorator(f):
-        @wraps(f)
-        @login_required
-        def decorated_function(*args, **kwargs):
-            if session.get('role') not in allowed_roles:
-                return jsonify({
-                    'status': 'error',
-                    'error': 'Insufficient permissions'
-                }), 403
-            return f(*args, **kwargs)
-        return decorated_function
-    return decorator
 
 @app.route('/api/protected/user-info', methods=['GET'])
 @login_required
@@ -664,9 +1248,9 @@ def add_consignor_record():
         data.get('condition', '4'),
         float(data.get('store_price')),
         data.get('youtube_url', ''),
-        session['user_id'],  # Set consignor_id to logged-in user
+        session['user_id'],
         commission_rate,
-        1  # Default status: new
+        1
     ))
 
     record_id = cursor.lastrowid
@@ -682,8 +1266,9 @@ def add_consignor_record():
 
 
 #======================test-square=============================================
-@app.route('/test-square')
-def test_square():
+# This is the original test-square endpoint - PRESERVED
+@app.route('/test-square', methods=['GET'])
+def test_square_original():
     import os
     from square import Square
     from square.environment import SquareEnvironment
@@ -712,7 +1297,7 @@ def test_square():
             result.append(f"✅ SUCCESS! Found {len(locations)} location(s).")
 
             for location in locations:
-                result.append(f"  📍 Location ID: {location.id}")  # Note: uses .id not ['id']
+                result.append(f"  📍 Location ID: {location.id}")
                 result.append(f"  🏢 Business Name: {location.business_name or 'N/A'}")
 
                 # Store the first location ID for future use
@@ -728,9 +1313,9 @@ def test_square():
     return jsonify({"results": result})
 
 
-#============square checkout
+#============square checkout - ORIGINAL PRESERVED
 @app.route('/api/square/terminal-checkout', methods=['POST'])
-def create_terminal_checkout():
+def create_terminal_checkout_original():
     """
     Endpoint for your inventory app to call when checking out vinyl records.
     Expects JSON: {'record_ids': [1, 2, 3], 'total_amount': 29.99, 'record_titles': ['Album1', 'Album2']}
@@ -835,7 +1420,7 @@ def create_terminal_checkout():
 
 
 @app.route('/api/square/cancel-checkout/<checkout_id>', methods=['POST'])
-def cancel_terminal_checkout(checkout_id):
+def cancel_terminal_checkout_original(checkout_id):
     import os
     from square import Square
     from square.environment import SquareEnvironment
@@ -867,7 +1452,7 @@ def cancel_terminal_checkout(checkout_id):
 @app.route('/api/commission-rate', methods=['GET'])
 def get_commission_rate():
     """Calculate current consignment commission rate"""
-    conn = get_db()  # Use the same get_db() function
+    conn = get_db()
     cursor = conn.cursor()
 
     # Fetch config values
@@ -1486,7 +2071,7 @@ def create_record():
         # Extract data with defaults
         consignor_id = data.get('consignor_id')
         commission_rate = data.get('commission_rate', 0.20)
-        status_id = data.get('status_id', 1)  # Default to 'new'
+        status_id = data.get('status_id', 1)
         
         # Insert only the columns that actually exist in the table
         cursor.execute('''
@@ -1584,9 +2169,9 @@ def get_records():
     
     # Add ORDER BY clause
     if random_order:
-        query += ' ORDER BY RANDOM()'  # Truly random each time
+        query += ' ORDER BY RANDOM()'
     else:
-        query += ' ORDER BY r.id DESC'  # Default order
+        query += ' ORDER BY r.id DESC'
     
     # Add LIMIT if specified
     if limit:
@@ -2054,7 +2639,7 @@ def process_checkout_payment():
 
         store_price = float(record['store_price']) 
         consignor_id = record['consignor_id']
-        commission_rate = float(record['commission_rate']) 
+        commission_rate = float(record['commission_rate'])
 
         # Calculate payout
         commission = store_price * commission_rate
@@ -2093,7 +2678,7 @@ def process_checkout_payment():
         'total_payout': total_payout,
         'record_ids': record_ids,
         'user_payouts': user_payouts,
-        'new_status_id': 3  # sold
+        'new_status_id': 3
     })
 
 # ==================== RECORDS UPDATE STATUS ENDPOINT ====================
@@ -2162,10 +2747,10 @@ def get_consignment_records():
             WHERE r.consignor_id = ?
             ORDER BY
                 CASE r.status_id
-                    WHEN 1 THEN 1  -- new
-                    WHEN 2 THEN 2  -- active
-                    WHEN 3 THEN 3  -- sold
-                    WHEN 4 THEN 4  -- removed
+                    WHEN 1 THEN 1
+                    WHEN 2 THEN 2
+                    WHEN 3 THEN 3
+                    WHEN 4 THEN 4
                     ELSE 5
                 END,
                 r.artist, r.title
@@ -2182,10 +2767,10 @@ def get_consignment_records():
             WHERE r.consignor_id IS NOT NULL
             ORDER BY
                 CASE r.status_id
-                    WHEN 1 THEN 1  -- new
-                    WHEN 2 THEN 2  -- active
-                    WHEN 3 THEN 3  -- sold
-                    WHEN 4 THEN 4  -- removed
+                    WHEN 1 THEN 1
+                    WHEN 2 THEN 2
+                    WHEN 3 THEN 3
+                    WHEN 4 THEN 4
                     ELSE 5
                 END,
                 r.consignor_id, r.artist, r.title
@@ -2203,16 +2788,16 @@ def get_consignment_records():
         status_name = record.get('status_name', 'new')
 
         # Determine display status
-        if status_id == 1:  # new
+        if status_id == 1:
             if not barcode or barcode in [None, '', 'None']:
                 record['display_status'] = '🆕 New'
             else:
                 record['display_status'] = '✅ Active'
-        elif status_id == 2:  # active
+        elif status_id == 2:
             record['display_status'] = '✅ Active'
-        elif status_id == 3:  # sold
+        elif status_id == 3:
             record['display_status'] = '💰 Sold'
-        elif status_id == 4:  # removed
+        elif status_id == 4:
             record['display_status'] = '🗑️ Removed'
         else:
             record['display_status'] = '❓ Unknown'
@@ -2618,7 +3203,7 @@ def get_catalog_grouped_records():
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
         AND r.artist != '' AND r.title != ''
         AND r.store_price IS NOT NULL
-        AND r.status_id IN (1, 2)  -- Only new and active records
+        AND r.status_id IN (1, 2)
     ''')
 
     records = cursor.fetchall()
@@ -2916,7 +3501,7 @@ def api_discogs_search():
             }), 503
         
         # Create DiscogsHandler instance
-        from discogs_handler import DiscogsHandler  # Import your existing handler
+        from discogs_handler import DiscogsHandler
         discogs_handler = DiscogsHandler(discogs_token)
         
         # Perform search using your existing handler
@@ -3095,7 +3680,7 @@ def get_dropoff_records():
             LEFT JOIN users u ON r.consignor_id = u.id
             WHERE r.consignor_id = ?
             AND (r.barcode IS NULL OR r.barcode = '' OR r.barcode = 'None')
-            AND r.status_id IN (1, 2)  -- Only new and active
+            AND r.status_id IN (1, 2)
             ORDER BY r.created_at DESC
         ''', (user_id,))
     else:
@@ -3108,7 +3693,7 @@ def get_dropoff_records():
             LEFT JOIN users u ON r.consignor_id = u.id
             WHERE r.consignor_id IS NOT NULL
             AND (r.barcode IS NULL OR r.barcode = '' OR r.barcode = 'None')
-            AND r.status_id IN (1, 2)  -- Only new and active
+            AND r.status_id IN (1, 2)
             ORDER BY r.consignor_id, r.created_at DESC
         ''')
 
@@ -3393,7 +3978,7 @@ def get_genre_statistics():
         SELECT g.genre_name, COUNT(r.id) as record_count
         FROM genres g
         LEFT JOIN records r ON g.id = r.genre_id
-        WHERE r.status_id IN (1, 2)  -- Only new and active records
+        WHERE r.status_id IN (1, 2)
         GROUP BY g.id, g.genre_name
         ORDER BY record_count DESC
     ''')
