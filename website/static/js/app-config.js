@@ -300,14 +300,13 @@ const pigstyleAPI = {
             params: { random: true, limit, has_youtube: hasYouTube }
         });
     },
-    
-    // Get catalog grouped records
     loadCatalogGroupedRecords() {
         console.log('Loading catalog grouped records...');
-        return this.request('records', {
-            params: { grouped: true }
+        return this.request('catalog/grouped-records', {  // Changed from 'records' to 'catalog/grouped-records'
+            // No params needed since the backend endpoint handles it directly
         });
     },
+     
     
     // Get a single record by ID
     getRecord(recordId) {
