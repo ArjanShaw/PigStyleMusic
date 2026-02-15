@@ -12,9 +12,9 @@ def is_admin():
 def index():
     return send_from_directory('HTML', 'index.html')
 
-@app.route('/catalog')
-def catalog():
-    return send_from_directory('HTML', 'catalog.html')
+@app.route('/inventory')
+def inventory():
+    return send_from_directory('HTML', 'inventory.html')
 
 @app.route('/streaming')
 def streaming():
