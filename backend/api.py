@@ -207,104 +207,7 @@ def verify_square_webhook(signature, body):
     ).hexdigest()
     
     return hmac.compare_digest(expected_signature, signature)
-
-def create_square_terminal_checkout(amount_cents, record_ids, record_titles, reference_id=None, device_id=None):
-    """Create a Square Terminal checkout request"""
-    client_result = get_square_client()
-    if isinstance(client_result, tuple):
-        client, error_detail = client_result
-        if not client:
-            # Format error message for response - FIXED SYNTAX
-            token_issues_list = error_detail.get('token_issues', [])
-            token_issues_display = '\n'.join([f"  {i}" for i in token_issues_list]) if token_issues_list else "  None"
-            
-            error_msg = "\n".join([
-                "Failed to initialize Square client:",
-                "",
-                "Token Sources:",
-                *[f"  {s}" for s in error_detail.get('token_sources', [])],
-                "",
-                "Token Issues:",
-                token_issues_display,
-                "",
-                f"Environment: {error_detail.get('environment_being_used', 'unknown')}",
-                f"Token Length: {error_detail.get('token_length', 0)}",
-                f"Token Preview: {error_detail.get('token_preview', 'None')}",
-                "",
-                "To fix this:",
-                "1. Set environment variable: export SQUARE_ACCESS_TOKEN='your_actual_token'",
-                "2. Make sure SQUARE_ENVIRONMENT is set correctly ('sandbox' or 'production')"
-            ])
-            return None, error_msg
-    else:
-        client = client_result
-    
-    idempotency_key = str(uuid.uuid4())
-    
-    try:
-        # If no device_id provided, get available terminals
-        if not device_id:
-            devices_response = client.terminal.devices.list()
-            
-            if devices_response.is_success():
-                devices = devices_response.body.get('devices', [])
-                if devices:
-                    # Use first available device
-                    device_id = devices[0].get('id')
-        
-        if not device_id:
-            return None, "No Square Terminal devices found"
-        
-        # Prepare checkout request
-        checkout_data = {
-            "idempotency_key": idempotency_key,
-            "checkout": {
-                "amount_money": {
-                    "amount": amount_cents,
-                    "currency": "USD"
-                },
-                "device_options": {
-                    "device_id": device_id,
-                    "skip_receipt_screen": False,
-                    "collect_signature": True,
-                    "tip_settings": {
-                        "allow_tipping": False,
-                        "separate_tip_screen": False
-                    }
-                },
-                "reference_id": reference_id or f"pigstyle_{idempotency_key[:8]}",
-                "note": f"PigStyle Music: {', '.join(record_titles[:3])}{'...' if len(record_titles) > 3 else ''}",
-                "payment_type": "CARD_PRESENT",
-                "customer_id": None
-            }
-        }
-        
-        # Create checkout
-        response = client.terminal.checkouts.create(**checkout_data)
-        
-        if response.is_error():
-            app.logger.error(f"Square Terminal checkout error: {response.errors}")
-            return None, response.errors
-        
-        # Store session info
-        checkout = response.body.get('checkout', {})
-        checkout_id = checkout.get('id')
-        
-        if checkout_id:
-            square_payment_sessions[checkout_id] = {
-                'record_ids': record_ids,
-                'amount_cents': amount_cents,
-                'status': 'PENDING',
-                'created_at': datetime.now().isoformat(),
-                'reference_id': checkout_data['checkout']['reference_id'],
-                'device_id': device_id
-            }
-        
-        return response.body, None
-        
-    except Exception as e:
-        app.logger.error(f"Square Terminal checkout exception: {e}")
-        return None, str(e)
+ 
 
 def get_terminal_checkout_status(checkout_id):
     """Get the status of a terminal checkout"""
@@ -384,34 +287,19 @@ def get_payment_details(payment_id):
     except Exception as e:
         app.logger.error(f"Failed to get payment details: {e}")
         return None, str(e)
-
+ 
 def get_terminal_devices():
     """Get list of available Square Terminal devices"""
     client_result = get_square_client()
     if isinstance(client_result, tuple):
         client, error_detail = client_result
         if not client:
-            # Format error message for response - FIXED SYNTAX
-            token_issues_list = error_detail.get('token_issues', [])
-            token_issues_display = '\n'.join([f"  {i}" for i in token_issues_list]) if token_issues_list else "  None"
+            # SUPER SIMPLE error message - no fancy formatting
+            env = error_detail.get('environment_being_used', 'unknown')
+            token_len = error_detail.get('token_length', 0)
+            token_preview = error_detail.get('token_preview', 'None')
             
-            error_msg = "\n".join([
-                "Failed to initialize Square client:",
-                "",
-                "Token Sources:",
-                *[f"  {s}" for s in error_detail.get('token_sources', [])],
-                "",
-                "Token Issues:",
-                token_issues_display,
-                "",
-                f"Environment: {error_detail.get('environment_being_used', 'unknown')}",
-                f"Token Length: {error_detail.get('token_length', 0)}",
-                f"Token Preview: {error_detail.get('token_preview', 'None')}",
-                "",
-                "To fix this:",
-                "1. Set environment variable: export SQUARE_ACCESS_TOKEN='your_actual_token'",
-                "2. Make sure SQUARE_ENVIRONMENT is set correctly ('sandbox' or 'production')"
-            ])
+            error_msg = f"Square connection failed: Environment={env}, Token length={token_len}, Preview={token_preview}"
             return None, error_msg
     else:
         client = client_result
@@ -420,8 +308,7 @@ def get_terminal_devices():
         response = client.terminal.devices.list()
         
         if response.is_error():
-            app.logger.error(f"Failed to get terminal devices: {response.errors}")
-            return None, response.errors
+            return None, f"Square API error: {response.errors}"
         
         devices = response.body.get('devices', [])
         
@@ -438,7 +325,7 @@ def get_terminal_devices():
                     filter_device_id=device_id
                 )
                 if checkouts_response.is_success():
-                    device_status = 'ONLINE'  # Assume online if we can reach it
+                    device_status = 'ONLINE'
             except:
                 device_status = 'OFFLINE'
             
@@ -455,6 +342,90 @@ def get_terminal_devices():
     except Exception as e:
         app.logger.error(f"Failed to get terminal devices: {e}")
         return None, str(e)
+ 
+
+def create_square_terminal_checkout(amount_cents, record_ids, record_titles, reference_id=None, device_id=None):
+    """Create a Square Terminal checkout request"""
+    client_result = get_square_client()
+    if isinstance(client_result, tuple):
+        client, error_detail = client_result
+        if not client:
+            # SUPER SIMPLE error message
+            env = error_detail.get('environment_being_used', 'unknown')
+            token_len = error_detail.get('token_length', 0)
+            token_preview = error_detail.get('token_preview', 'None')
+            
+            error_msg = f"Square connection failed: Environment={env}, Token length={token_len}, Preview={token_preview}"
+            return None, error_msg
+    else:
+        client = client_result
+    
+    idempotency_key = str(uuid.uuid4())
+    
+    try:
+        # If no device_id provided, get available terminals
+        if not device_id:
+            devices_response = client.terminal.devices.list()
+            
+            if devices_response.is_success():
+                devices = devices_response.body.get('devices', [])
+                if devices:
+                    device_id = devices[0].get('id')
+        
+        if not device_id:
+            return None, "No Square Terminal devices found"
+        
+        # Prepare checkout request
+        checkout_data = {
+            "idempotency_key": idempotency_key,
+            "checkout": {
+                "amount_money": {
+                    "amount": amount_cents,
+                    "currency": "USD"
+                },
+                "device_options": {
+                    "device_id": device_id,
+                    "skip_receipt_screen": False,
+                    "collect_signature": True,
+                    "tip_settings": {
+                        "allow_tipping": False,
+                        "separate_tip_screen": False
+                    }
+                },
+                "reference_id": reference_id or f"pigstyle_{idempotency_key[:8]}",
+                "note": f"PigStyle Music: {', '.join(record_titles[:3])}{'...' if len(record_titles) > 3 else ''}",
+                "payment_type": "CARD_PRESENT",
+                "customer_id": None
+            }
+        }
+        
+        # Create checkout
+        response = client.terminal.checkouts.create(**checkout_data)
+        
+        if response.is_error():
+            app.logger.error(f"Square Terminal checkout error: {response.errors}")
+            return None, f"Square API error: {response.errors}"
+        
+        # Store session info
+        checkout = response.body.get('checkout', {})
+        checkout_id = checkout.get('id')
+        
+        if checkout_id:
+            square_payment_sessions[checkout_id] = {
+                'record_ids': record_ids,
+                'amount_cents': amount_cents,
+                'status': 'PENDING',
+                'created_at': datetime.now().isoformat(),
+                'reference_id': checkout_data['checkout']['reference_id'],
+                'device_id': device_id
+            }
+        
+        return response.body, None
+        
+    except Exception as e:
+        app.logger.error(f"Square Terminal checkout exception: {e}")
+        return None, str(e)
+     
 
 # ==================== SQUARE TERMINAL API ENDPOINTS ====================
 
