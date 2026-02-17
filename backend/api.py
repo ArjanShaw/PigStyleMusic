@@ -1617,15 +1617,17 @@ def create_user():
         'message': 'User created successfully',
         'user_id': user_id
     })
-
 @app.route('/users', methods=['GET'])
 def get_users():
     conn = get_db()
     cursor = conn.cursor()
 
+    # Updated SELECT statement with actual columns from your schema
     cursor.execute('''
-        SELECT id, username, email, role, full_name, phone, address, created_at, last_login,
-                       store_credit_balance, payout_requested
+        SELECT id, username, email, role, full_name, phone, address, 
+               created_at, last_login, store_credit_balance,
+               initials, is_active, last_payout_date,
+               failed_attempts, locked_until
         FROM users
         ORDER BY username
     ''')
@@ -1645,9 +1647,12 @@ def get_users():
             'address': user['address'],
             'created_at': user['created_at'],
             'last_login': user['last_login'],
-            'current_master_agreement_id': user['current_master_agreement_id'],
             'store_credit_balance': float(user['store_credit_balance']) if user['store_credit_balance'] is not None else 0.0,
-            'payout_requested': bool(user['payout_requested'])
+            'initials': user['initials'],
+            'is_active': bool(user['is_active']) if user['is_active'] is not None else True,
+            'last_payout_date': user['last_payout_date'],
+            'failed_attempts': user['failed_attempts'],
+            'locked_until': user['locked_until']
         })
 
     return jsonify({
@@ -1764,61 +1769,8 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
         'database': 'connected',
-        'service': 'PigStyle API',
-        'endpoints': [
-            '/vote/<record_id>/<voter_ip>/<vote_type>',
-            '/user-votes/<voter_ip>',
-            '/votes/<record_id>',
-            '/users',
-            '/debug/verify-login/<user_id>',
-            '/users/<user_id>/reset-password',
-            '/users/<user_id>/change-password',
-            '/users/<user_id>/request-payout',
-            '/users/<user_id>/process-payout',
-            '/health',
-            '/barcodes/assign',
-            '/records',
-            '/records/<record_id>',
-            '/search',
-            '/records/barcode/<barcode>',
-            '/config/<config_key>',
-            '/config',
-            '/genres',
-            '/records/by-ids',
-            '/stats',
-            '/stats/user/<user_id>',
-            '/records/user/<user_id>',
-            '/records/no-barcodes',
-            '/spotify/authorize-and-update',
-            '/spotify/callback',
-            '/spotify/job-status/<job_id>',
-            '/spotify/stored-playlists',
-            '/spotify/playlist-tracks/<playlist_id>',
-            '/spotify/get-app-token',
-            '/genres',
-            '/records',
-            '/records/count',
-            '/votes/all',
-            '/votes/statistics',
-            '/user-vote/<record_id>/<voter_hash>',
-            '/discogs-genre-mappings',
-            '/discogs-genre-mappings/<discogs_genre>',
-            '/catalog/grouped-records',
-            '/stats/genres',
-            '/contract-audit-log',
-            '/contract-audit-log/<user_id>',
-            '/master-agreements',
-            '/consignment-batches',
-            '/consignment-batches/<user_id>',
-            '/verify-contract/<contract_hash>',
-            '/debug-db',
-            '/users/<user_id>/unsign-master-agreement',
-            '/checkout/process-payment',
-            '/statuses',
-            '/records/status/<status_id>',
-            '/records/update-status',
-            '/consignment/records'
-        ]
+        'service': 'PigStyle API'
+        
     })
 
 # ==================== STREAMLIT ENDPOINTS ====================
@@ -2300,8 +2252,8 @@ def get_user(user_id):
 
     cursor.execute('''
         SELECT id, username, email, full_name, phone, address,
-               role, created_at, last_login,
-               current_master_agreement_id, store_credit_balance, payout_requested
+               role, created_at, last_login, store_credit_balance,
+                initials, is_active
         FROM users WHERE id = ?
     ''', (user_id,))
 
@@ -2319,11 +2271,13 @@ def get_user(user_id):
             'role': user[6],
             'created_at': user[7],
             'last_login': user[8],
-            'store_credit_balance': float(user[12]) if user[12] is not None else 0.0,
-            'payout_requested': bool(user[13]) if user[13] is not None else False
+            'store_credit_balance': float(user[9]) if user[9] is not None else 0.0,
+            'initials': user[10],
+            'is_active': bool(user[11]) if user[11] is not None else True
         })
     else:
         return jsonify({'error': 'User not found'}), 404
+ 
 
 @app.route('/users/<int:user_id>', methods=['PUT'])
 def update_user(user_id):
