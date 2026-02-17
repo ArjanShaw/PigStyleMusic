@@ -214,7 +214,10 @@ def create_square_terminal_checkout(amount_cents, record_ids, record_titles, ref
     if isinstance(client_result, tuple):
         client, error_detail = client_result
         if not client:
-            # Format error message for response
+            # Format error message for response - FIXED SYNTAX
+            token_issues_list = error_detail.get('token_issues', [])
+            token_issues_display = '\n'.join([f"  {i}" for i in token_issues_list]) if token_issues_list else "  None"
+            
             error_msg = "\n".join([
                 "Failed to initialize Square client:",
                 "",
@@ -222,7 +225,7 @@ def create_square_terminal_checkout(amount_cents, record_ids, record_titles, ref
                 *[f"  {s}" for s in error_detail.get('token_sources', [])],
                 "",
                 "Token Issues:",
-                *[f"  {i}" for i in error_detail.get('token_issues', [])] or ["  None"],
+                token_issues_display,
                 "",
                 f"Environment: {error_detail.get('environment_being_used', 'unknown')}",
                 f"Token Length: {error_detail.get('token_length', 0)}",
@@ -388,7 +391,10 @@ def get_terminal_devices():
     if isinstance(client_result, tuple):
         client, error_detail = client_result
         if not client:
-            # Format error message for response
+            # Format error message for response - FIXED SYNTAX
+            token_issues_list = error_detail.get('token_issues', [])
+            token_issues_display = '\n'.join([f"  {i}" for i in token_issues_list]) if token_issues_list else "  None"
+            
             error_msg = "\n".join([
                 "Failed to initialize Square client:",
                 "",
@@ -396,7 +402,7 @@ def get_terminal_devices():
                 *[f"  {s}" for s in error_detail.get('token_sources', [])],
                 "",
                 "Token Issues:",
-                *[f"  {i}" for i in error_detail.get('token_issues', [])] or ["  None"],
+                token_issues_display,
                 "",
                 f"Environment: {error_detail.get('environment_being_used', 'unknown')}",
                 f"Token Length: {error_detail.get('token_length', 0)}",
