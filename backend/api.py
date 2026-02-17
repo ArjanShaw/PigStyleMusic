@@ -28,13 +28,16 @@ import traceback
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
 
-# Square Configuration
-SQUARE_ENVIRONMENT = os.environ.get('SQUARE_ENVIRONMENT', 'sandbox')  # Default to sandbox for safety
-SQUARE_LOCATION_ID = os.environ.get('SQUARE_LOCATION_ID', 'L9Y8X7W6V5U4T3S2')
-SQUARE_TERMINAL_DEVICE_ID = os.environ.get('SQUARE_TERMINAL_DEVICE_ID', '0446')
-SQUARE_WEBHOOK_SIGNATURE_KEY = os.environ.get('SQUARE_WEBHOOK_SIGNATURE_KEY', 'whk_8f7e6d5c4b3a2n1m9k8j7h6g5f4d3s2')
-SQUARE_APPLICATION_ID = os.environ.get('SQUARE_APPLICATION_ID', 'sq0idp-vlHI8o8INiWVxlLT4bLdtw')
-SQUARE_ACCESS_TOKEN = os.environ.get('SQUARE_ACCESS_TOKEN', 'EAAAl2Hsbw_uSS4WRcurZhxrj8lWWFgHwGqsA0YrSOkgMEjL6E31iws2BVQDqtAi')
+
+# Square Configuration - ALL FROM ENVIRONMENT VARIABLES (no defaults!)
+SQUARE_ENVIRONMENT = os.environ.get('SQUARE_ENVIRONMENT')
+SQUARE_LOCATION_ID = os.environ.get('SQUARE_LOCATION_ID')
+SQUARE_TERMINAL_DEVICE_ID = os.environ.get('SQUARE_TERMINAL_DEVICE_ID', '0446')  # This one can have default
+SQUARE_WEBHOOK_SIGNATURE_KEY = os.environ.get('SQUARE_WEBHOOK_SIGNATURE_KEY')
+SQUARE_APPLICATION_ID = os.environ.get('SQUARE_APPLICATION_ID')
+SQUARE_ACCESS_TOKEN = os.environ.get('SQUARE_ACCESS_TOKEN')
+
+
 
 # CORS Configuration
 CORS(app, 
