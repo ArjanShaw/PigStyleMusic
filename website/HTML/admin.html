@@ -390,7 +390,7 @@
             </div>
         </div>
         
-        <!-- Consignors Tab (NEW) -->
+        <!-- Consignors Tab -->
         <div id="consignors-tab" class="tab-content">
             <h2><i class="fas fa-users"></i> Consignor Management</h2>
             
@@ -465,60 +465,28 @@
             <h2><i class="fas fa-sliders-h"></i> Admin Configuration</h2>
             
             <div class="admin-config-section">
-                <h3><i class="fas fa-percent"></i> Tax Settings</h3>
-                <div class="config-grid">
-                    <div class="input-group">
-                        <label for="tax-rate">Tax Rate (%):</label>
-                        <input type="number" id="tax-rate" min="0" max="100" step="0.01" value="8.25" class="filter-select" style="width: 200px;">
-                        <small>Sales tax percentage to apply to all cash sales</small>
-                    </div>
-                    <div class="input-group">
-                        <label for="tax-enabled">
-                            <input type="checkbox" id="tax-enabled" checked> Enable Tax Calculation
-                        </label>
-                    </div>
+                <h3><i class="fas fa-database"></i> Configuration Values</h3>
+                <p>All configuration values are stored in the database. Changes made here will be saved immediately.</p>
+                
+                <div class="records-table-container">
+                    <table class="records-table" id="config-table">
+                        <thead>
+                            <tr>
+                                <th>Configuration Key</th>
+                                <th>Value</th>
+                                <th>Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="config-body">
+                            <!-- Config values will be loaded here -->
+                        </tbody>
+                    </table>
                 </div>
-            </div>
-            
-            <div class="admin-config-section">
-                <h3><i class="fas fa-percent"></i> Commission Settings</h3>
-                <div class="config-grid">
-                    <div class="input-group">
-                        <label for="commission-rate">Commission Rate (%):</label>
-                        <input type="number" id="commission-rate" min="0" max="100" step="0.1" value="10" class="filter-select" style="width: 200px;">
-                        <small>Percentage that goes to the store (admin). The rest goes to consignor.</small>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="admin-config-section">
-                <h3><i class="fas fa-receipt"></i> Receipt Settings</h3>
-                <div class="config-grid">
-                    <div class="input-group">
-                        <label for="store-name">Store Name:</label>
-                        <input type="text" id="store-name" value="PigStyle Music" class="filter-select" style="width: 100%;">
-                    </div>
-                    <div class="input-group">
-                        <label for="store-address">Store Address:</label>
-                        <input type="text" id="store-address" value="123 Main Street, City, State 12345" class="filter-select" style="width: 100%;">
-                    </div>
-                    <div class="input-group">
-                        <label for="store-phone">Store Phone:</label>
-                        <input type="text" id="store-phone" value="(555) 555-5555" class="filter-select" style="width: 100%;">
-                    </div>
-                    <div class="input-group">
-                        <label for="receipt-footer">Receipt Footer Message:</label>
-                        <textarea id="receipt-footer" rows="3" class="filter-select" style="width: 100%;">Thank you for your business! Returns accepted within 30 days.</textarea>
-                    </div>
-                    <div class="input-group">
-                        <label for="auto-print-receipt">
-                            <input type="checkbox" id="auto-print-receipt" checked> Automatically show receipt after sale
-                        </label>
-                    </div>
-                </div>
+                
                 <div class="action-buttons" style="margin-top: 20px;">
-                    <button class="btn btn-primary" onclick="saveAdminConfig()">
-                        <i class="fas fa-save"></i> Save Configuration
+                    <button class="btn btn-primary" onclick="loadConfigFromDatabase()">
+                        <i class="fas fa-sync-alt"></i> Refresh Config
                     </button>
                 </div>
             </div>
@@ -659,7 +627,7 @@
         let currentPage = 1;
         let pageSize = 100;
         let totalPages = 1;
-        let configValues = {};
+        let dbConfigValues = {};
         let recentlyPrintedIds = new Set(); // Track recently printed records
         let currentSearchResults = []; // Store current search results for check out tab
         let availableTerminals = []; // Store available Square terminals
@@ -673,119 +641,168 @@
         // Receipts Storage
         let savedReceipts = [];
         
-        // Admin Config Variables
-        let adminConfig = {
-            taxRate: 8.25,
-            taxEnabled: true,
-            commissionRate: 10,
-            storeName: 'PigStyle Music',
-            storeAddress: '123 Main Street, City, State 12345',
-            storePhone: '(555) 555-5555',
-            receiptFooter: 'Thank you for your business! Returns accepted within 30 days.',
-            autoPrintReceipt: true
-        };
-        
         // Consignors list with owed amounts
         let consignorsList = [];
         let consignorOwedAmounts = {}; // Track owed amounts per consignor
-        
-        // Configuration fetching functions
-        async function fetchConfigValues() {
+
+        // Fetch all config values from database
+        async function fetchAllConfigValues() {
+            const response = await fetch(`${AppConfig.baseUrl}/config`);
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                dbConfigValues = data.configs || {};
+                return dbConfigValues;
+            } else {
+                throw new Error('Failed to fetch configuration from database');
+            }
+        }
+
+        // Get a specific config value
+        function getConfigValue(key) {
+            if (!dbConfigValues[key]) {
+                throw new Error(`Configuration key '${key}' not found in database`);
+            }
+            const value = dbConfigValues[key].value;
+            
+            // Convert string to appropriate type
+            if (value === 'true') return true;
+            if (value === 'false') return false;
+            if (!isNaN(value) && value !== '') return parseFloat(value);
+            return value;
+        }
+
+        // Update a config value in database
+        async function updateConfigValue(key, newValue) {
+            const response = await fetch(`${AppConfig.baseUrl}/config/${key}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    config_value: String(newValue)
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Update local cache
+                if (!dbConfigValues[key]) {
+                    dbConfigValues[key] = {
+                        value: String(newValue),
+                        description: ''
+                    };
+                } else {
+                    dbConfigValues[key].value = String(newValue);
+                }
+                return true;
+            } else {
+                throw new Error(`Failed to update configuration key '${key}'`);
+            }
+        }
+
+        // Load config table in admin config tab
+        async function loadConfigTable() {
+            await fetchAllConfigValues();
+            
+            const tbody = document.getElementById('config-body');
+            let html = '';
+            
+            // Sort keys alphabetically
+            const sortedKeys = Object.keys(dbConfigValues).sort();
+            
+            for (const key of sortedKeys) {
+                const config = dbConfigValues[key];
+                const value = config.value;
+                const description = config.description || '';
+                
+                html += `
+                    <tr id="config-row-${key.replace(/\./g, '-')}">
+                        <td><code>${key}</code></td>
+                        <td>
+                            <input type="text" class="config-value-input" data-key="${key}" value="${value}" style="width: 100%; padding: 5px;">
+                        </td>
+                        <td>${description}</td>
+                        <td>
+                            <button class="btn btn-sm btn-success" onclick="saveConfigValue('${key}')">
+                                <i class="fas fa-save"></i> Save
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }
+            
+            tbody.innerHTML = html;
+            
+            // Update UI elements that depend on config values
+            updateUIFromConfig();
+        }
+
+        // Save a specific config value
+        async function saveConfigValue(key) {
+            const input = document.querySelector(`.config-value-input[data-key="${key}"]`);
+            const newValue = input.value.trim();
+            
+            const button = input.closest('tr').querySelector('button');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Saving...';
+            button.disabled = true;
+            
             try {
-                const response = await fetch(`${AppConfig.baseUrl}/config`);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        configValues = data.config || {};
-                        console.log('Loaded config values:', configValues);
-                        return configValues;
-                    }
-                }
-                // Return default values if API fails
-                return getDefaultConfig();
+                await updateConfigValue(key, newValue);
+                
+                button.innerHTML = '<i class="fas fa-check"></i> Saved!';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 2000);
+                
+                // Update UI elements that depend on this config
+                updateUIFromConfig();
+                
             } catch (error) {
-                console.error('Error fetching config:', error);
-                return getDefaultConfig();
+                button.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 2000);
+                throw error; // Rethrow to show the error
             }
         }
-        
-        function getDefaultConfig() {
+
+        // Update UI elements that depend on config values
+        function updateUIFromConfig() {
+            try {
+                // Update tax rate display
+                const taxRate = getConfigValue('TAX_RATE');
+                document.getElementById('tax-rate-display').textContent = taxRate;
+                
+                // Update commission display
+                const commissionRate = getConfigValue('COMMISSION_RATE');
+                document.getElementById('commission-rate-display').textContent = commissionRate;
+                document.getElementById('admin-commission-display').textContent = commissionRate;
+                document.getElementById('consignor-commission-display').textContent = 100 - commissionRate;
+                
+            } catch (error) {
+                console.error('Error updating UI from config:', error);
+                // Re-throw to ensure errors are visible
+                throw error;
+            }
+        }
+
+        // Get admin config values for backward compatibility
+        function getAdminConfig() {
             return {
-                LABEL_WIDTH_MM: 45.0,
-                LABEL_HEIGHT_MM: 16.8,
-                LEFT_MARGIN_MM: 6.5,
-                GUTTER_SPACING_MM: 6.5,
-                TOP_MARGIN_MM: 14.0,
-                FONT_SIZE: 7,
-                PRICE_FONT_SIZE: 10,
-                PRICE_Y_POS: 2.0,
-                TEXT_FONT_SIZE: 6,
-                BARCODE_Y_POS: 2.0,
-                BARCODE_HEIGHT: 6.0,
-                PRINT_BORDERS: false
+                taxRate: getConfigValue('TAX_RATE'),
+                taxEnabled: getConfigValue('TAX_ENABLED'),
+                commissionRate: getConfigValue('COMMISSION_RATE'),
+                storeName: getConfigValue('STORE_NAME'),
+                storeAddress: getConfigValue('STORE_ADDRESS'),
+                storePhone: getConfigValue('STORE_PHONE'),
+                receiptFooter: getConfigValue('RECEIPT_FOOTER'),
+                autoPrintReceipt: getConfigValue('AUTO_PRINT_RECEIPT')
             };
-        }
-        
-        async function getConfigValue(key, defaultValue) {
-            if (Object.keys(configValues).length === 0) {
-                await fetchConfigValues();
-            }
-            return configValues[key] !== undefined ? configValues[key] : defaultValue;
-        }
-        
-        // Load admin config from localStorage
-        function loadAdminConfig() {
-            const savedConfig = localStorage.getItem('pigstyle_admin_config');
-            if (savedConfig) {
-                try {
-                    const parsed = JSON.parse(savedConfig);
-                    adminConfig = { ...adminConfig, ...parsed };
-                } catch (e) {
-                    console.error('Error loading admin config:', e);
-                }
-            }
-            
-            // Update UI with loaded config
-            document.getElementById('tax-rate').value = adminConfig.taxRate;
-            document.getElementById('tax-enabled').checked = adminConfig.taxEnabled;
-            document.getElementById('commission-rate').value = adminConfig.commissionRate || 10;
-            document.getElementById('store-name').value = adminConfig.storeName;
-            document.getElementById('store-address').value = adminConfig.storeAddress;
-            document.getElementById('store-phone').value = adminConfig.storePhone;
-            document.getElementById('receipt-footer').value = adminConfig.receiptFooter;
-            document.getElementById('auto-print-receipt').checked = adminConfig.autoPrintReceipt;
-            
-            document.getElementById('tax-rate-display').textContent = adminConfig.taxRate;
-            
-            // Update commission displays
-            updateCommissionDisplay();
-        }
-        
-        function updateCommissionDisplay() {
-            const rate = adminConfig.commissionRate || 10;
-            document.getElementById('commission-rate-display').textContent = rate;
-            document.getElementById('admin-commission-display').textContent = rate;
-            document.getElementById('consignor-commission-display').textContent = 100 - rate;
-        }
-        
-        // Save admin config to localStorage
-        function saveAdminConfig() {
-            adminConfig = {
-                taxRate: parseFloat(document.getElementById('tax-rate').value) || 0,
-                taxEnabled: document.getElementById('tax-enabled').checked,
-                commissionRate: parseFloat(document.getElementById('commission-rate').value) || 10,
-                storeName: document.getElementById('store-name').value || 'PigStyle Music',
-                storeAddress: document.getElementById('store-address').value || '',
-                storePhone: document.getElementById('store-phone').value || '',
-                receiptFooter: document.getElementById('receipt-footer').value || 'Thank you for your business!',
-                autoPrintReceipt: document.getElementById('auto-print-receipt').checked
-            };
-            
-            localStorage.setItem('pigstyle_admin_config', JSON.stringify(adminConfig));
-            document.getElementById('tax-rate-display').textContent = adminConfig.taxRate;
-            updateCommissionDisplay();
-            
-            showStatus('Configuration saved successfully!', 'success');
         }
         
         // Load saved receipts from localStorage
@@ -982,15 +999,15 @@
             // Store info
             doc.setFontSize(16);
             doc.setFont('helvetica', 'bold');
-            doc.text(receipt.storeName || adminConfig.storeName, 105, y, { align: 'center' });
+            doc.text(receipt.storeName || getConfigValue('STORE_NAME'), 105, y, { align: 'center' });
             
             y += 7;
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
-            doc.text(receipt.storeAddress || adminConfig.storeAddress, 105, y, { align: 'center' });
+            doc.text(receipt.storeAddress || getConfigValue('STORE_ADDRESS'), 105, y, { align: 'center' });
             
             y += 5;
-            doc.text(receipt.storePhone || adminConfig.storePhone, 105, y, { align: 'center' });
+            doc.text(receipt.storePhone || getConfigValue('STORE_PHONE'), 105, y, { align: 'center' });
             
             y += 10;
             doc.setFontSize(10);
@@ -1044,7 +1061,7 @@
             doc.setFont('helvetica', 'bold');
             doc.text(`Subtotal: $${(receipt.subtotal || 0).toFixed(2)}`, 180, y, { align: 'right' });
             y += 5;
-            doc.text(`Tax (${receipt.taxRate || adminConfig.taxRate}%): $${(receipt.tax || 0).toFixed(2)}`, 180, y, { align: 'right' });
+            doc.text(`Tax (${receipt.taxRate || getConfigValue('TAX_RATE')}%): $${(receipt.tax || 0).toFixed(2)}`, 180, y, { align: 'right' });
             y += 5;
             doc.setFontSize(11);
             doc.text(`TOTAL: $${(receipt.total || 0).toFixed(2)}`, 180, y, { align: 'right' });
@@ -1061,7 +1078,7 @@
             y += 10;
             doc.setFontSize(9);
             doc.setFont('helvetica', 'italic');
-            doc.text(receipt.footer || adminConfig.receiptFooter, 105, y, { align: 'center' });
+            doc.text(receipt.footer || getConfigValue('RECEIPT_FOOTER'), 105, y, { align: 'center' });
             
             // Save PDF
             doc.save(`${receipt.id}.pdf`);
@@ -1089,8 +1106,12 @@
             document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
             document.getElementById(`${tabName}-tab`).classList.add('active');
             
+            // If switching to admin config tab, load the config table
+            if (tabName === 'admin-config') {
+                loadConfigTable();
+            }
             // If switching to check out tab and no search has been performed yet, show empty state
-            if (tabName === 'check-out') {
+            else if (tabName === 'check-out') {
                 const searchResults = document.getElementById('search-results');
                 if (currentSearchResults.length === 0) {
                     searchResults.innerHTML = `
@@ -1227,89 +1248,79 @@
         }
         
         async function loadUsers() {
-            try {
-                const url = `${AppConfig.baseUrl}/users`;
-                const response = await fetch(url);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        const users = data.users || [];
-                        const userSelect = $('#user-select');
-                        userSelect.empty();
-                        userSelect.append('<option value="all">All Users</option>');
-                        
-                        users.forEach(user => {
-                            userSelect.append(`<option value="${user.id}">${user.username} (ID: ${user.id})</option>`);
-                        });
-                        
-                        users.forEach(user => {
-                            consignorCache[user.id] = {
-                                username: user.username || `User ${user.id}`,
-                                initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
-                            };
-                        });
-                    }
-                }
-            } catch (error) {
-                showStatus('Error loading users', 'error');
+            const url = `${AppConfig.baseUrl}/users`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                const users = data.users || [];
+                const userSelect = $('#user-select');
+                userSelect.empty();
+                userSelect.append('<option value="all">All Users</option>');
+                
+                users.forEach(user => {
+                    userSelect.append(`<option value="${user.id}">${user.username} (ID: ${user.id})</option>`);
+                });
+                
+                users.forEach(user => {
+                    consignorCache[user.id] = {
+                        username: user.username || `User ${user.id}`,
+                        initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
+                    };
+                });
             }
         }
         
         async function loadRecords() {
             showLoading(true);
             
-            try {
-                const userSelect = document.getElementById('user-select');
-                const selectedUserId = userSelect.value === 'all' ? null : userSelect.value;
-                
-                let url;
-                if (selectedUserId) {
-                    url = `${AppConfig.baseUrl}/records/user/${selectedUserId}`;
-                } else {
-                    url = `${AppConfig.baseUrl}/records`;
-                }
-                
-                const response = await fetch(url);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        allRecords = data.records || [];
-                        
-                        // Sort by created_at descending (newest first)
-                        allRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                        
-                        // Update counts
-                        document.getElementById('total-records').textContent = allRecords.length;
-                        const inactiveCount = allRecords.filter(r => r.status_id === 1).length;
-                        const activeCount = allRecords.filter(r => r.status_id === 2).length;
-                        const soldCount = allRecords.filter(r => r.status_id === 3).length;
-                        
-                        document.getElementById('inactive-records').textContent = inactiveCount;
-                        document.getElementById('active-records').textContent = activeCount;
-                        document.getElementById('sold-records').textContent = soldCount;
-                        
-                        // Update batch size
-                        const batchSizeInput = document.getElementById('batch-size');
-                        batchSizeInput.max = inactiveCount;
-                        batchSizeInput.value = Math.min(parseInt(batchSizeInput.value) || 10, inactiveCount);
-                        
-                        // Pre-fetch consignor data
-                        const consignorIds = new Set();
-                        allRecords.forEach(r => { if (r.consignor_id) consignorIds.add(r.consignor_id); });
-                        const fetchPromises = Array.from(consignorIds).map(id => getConsignorInfo(id));
-                        await Promise.all(fetchPromises);
-                        
-                        // Apply current filter
-                        filterRecords();
-                        
-                        showStatus(`Loaded ${allRecords.length} records (${inactiveCount} inactive, ${activeCount} active, ${soldCount} sold)`, 'success');
-                    }
-                }
-            } catch (error) {
-                showStatus('Error loading records', 'error');
-            } finally {
-                showLoading(false);
+            const userSelect = document.getElementById('user-select');
+            const selectedUserId = userSelect.value === 'all' ? null : userSelect.value;
+            
+            let url;
+            if (selectedUserId) {
+                url = `${AppConfig.baseUrl}/records/user/${selectedUserId}`;
+            } else {
+                url = `${AppConfig.baseUrl}/records`;
             }
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                allRecords = data.records || [];
+                
+                // Sort by created_at descending (newest first)
+                allRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                
+                // Update counts
+                document.getElementById('total-records').textContent = allRecords.length;
+                const inactiveCount = allRecords.filter(r => r.status_id === 1).length;
+                const activeCount = allRecords.filter(r => r.status_id === 2).length;
+                const soldCount = allRecords.filter(r => r.status_id === 3).length;
+                
+                document.getElementById('inactive-records').textContent = inactiveCount;
+                document.getElementById('active-records').textContent = activeCount;
+                document.getElementById('sold-records').textContent = soldCount;
+                
+                // Update batch size
+                const batchSizeInput = document.getElementById('batch-size');
+                batchSizeInput.max = inactiveCount;
+                batchSizeInput.value = Math.min(parseInt(batchSizeInput.value) || 10, inactiveCount);
+                
+                // Pre-fetch consignor data
+                const consignorIds = new Set();
+                allRecords.forEach(r => { if (r.consignor_id) consignorIds.add(r.consignor_id); });
+                const fetchPromises = Array.from(consignorIds).map(id => getConsignorInfo(id));
+                await Promise.all(fetchPromises);
+                
+                // Apply current filter
+                filterRecords();
+                
+                showStatus(`Loaded ${allRecords.length} records (${inactiveCount} inactive, ${activeCount} active, ${soldCount} sold)`, 'success');
+            }
+            
+            showLoading(false);
         }
         
         function filterRecords() {
@@ -1611,42 +1622,36 @@
                 return;
             }
             
-            try {
-                // Fetch configuration values
-                await fetchConfigValues();
-                
-                // Generate PDF
-                const pdfBlob = await generatePDF(selectedRecords);
-                
-                // Download PDF
-                const url = URL.createObjectURL(pdfBlob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `price_tags_${new Date().toISOString().slice(0, 10)}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                
-                // Add to recently printed set
-                selectedRecords.forEach(record => {
-                    recentlyPrintedIds.add(record.id.toString());
-                });
-                
-                // Clear selection after successful print
-                window.selectedRecords.clear();
-                
-                showStatus(`PDF generated for ${selectedRecords.length} records. Now mark them as Active.`, 'success');
-                
-                // Refresh the display to show "Printed" indicator
-                renderCurrentPage();
-                
-            } catch (error) {
-                console.error('Error generating PDF:', error);
-                showStatus(`Error generating PDF: ${error.message}`, 'error');
-            } finally {
-                showLoading(false);
-            }
+            // Fetch configuration values - this will throw if fails
+            await fetchAllConfigValues();
+            
+            // Generate PDF
+            const pdfBlob = await generatePDF(selectedRecords);
+            
+            // Download PDF
+            const url = URL.createObjectURL(pdfBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `price_tags_${new Date().toISOString().slice(0, 10)}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            // Add to recently printed set
+            selectedRecords.forEach(record => {
+                recentlyPrintedIds.add(record.id.toString());
+            });
+            
+            // Clear selection after successful print
+            window.selectedRecords.clear();
+            
+            showStatus(`PDF generated for ${selectedRecords.length} records. Now mark them as Active.`, 'success');
+            
+            // Refresh the display to show "Printed" indicator
+            renderCurrentPage();
+            
+            showLoading(false);
         }
         
         function showMarkActiveConfirmation() {
@@ -1695,99 +1700,90 @@
             closeMarkActiveConfirmation();
             showLoading(true);
             
-            try {
-                // Filter for inactive records only
-                const inactiveRecordIds = selectedIds.filter(id => {
-                    const record = allRecords.find(r => r.id.toString() === id);
-                    return record && record.status_id === 1;
-                });
-                
-                if (inactiveRecordIds.length === 0) {
-                    showStatus('No inactive records to mark as active', 'info');
-                    showLoading(false);
-                    return;
-                }
-                
-                // Update each record's status
-                let successCount = 0;
-                let errorCount = 0;
-                
-                for (const recordId of inactiveRecordIds) {
-                    try {
-                        const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
-                            method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                status_id: 2 // Active status
-                            })
-                        });
-                        
-                        if (response.ok) {
-                            const data = await response.json();
-                            if (data.status === 'success') {
-                                successCount++;
-                                
-                                // Update local record status
-                                const recordIndex = allRecords.findIndex(r => r.id.toString() === recordId);
-                                if (recordIndex !== -1) {
-                                    allRecords[recordIndex].status_id = 2;
-                                }
-                            } else {
-                                errorCount++;
+            // Filter for inactive records only
+            const inactiveRecordIds = selectedIds.filter(id => {
+                const record = allRecords.find(r => r.id.toString() === id);
+                return record && record.status_id === 1;
+            });
+            
+            if (inactiveRecordIds.length === 0) {
+                showStatus('No inactive records to mark as active', 'info');
+                showLoading(false);
+                return;
+            }
+            
+            // Update each record's status
+            let successCount = 0;
+            let errorCount = 0;
+            
+            for (const recordId of inactiveRecordIds) {
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            status_id: 2 // Active status
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'success') {
+                            successCount++;
+                            
+                            // Update local record status
+                            const recordIndex = allRecords.findIndex(r => r.id.toString() === recordId);
+                            if (recordIndex !== -1) {
+                                allRecords[recordIndex].status_id = 2;
                             }
                         } else {
                             errorCount++;
                         }
-                    } catch (error) {
-                        console.error(`Error updating record ${recordId}:`, error);
+                    } else {
                         errorCount++;
                     }
+                } catch (error) {
+                    console.error(`Error updating record ${recordId}:`, error);
+                    errorCount++;
                 }
-                
-                // Clear selection
-                window.selectedRecords.clear();
-                
-                // Clear recently printed indicators for these records
-                inactiveRecordIds.forEach(id => {
-                    recentlyPrintedIds.delete(id);
-                });
-                
-                // Refresh data
-                await loadRecords();
-                
-                if (successCount > 0) {
-                    showStatus(`Successfully marked ${successCount} records as Active${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
-                } else {
-                    showStatus(`Failed to mark records as Active: ${errorCount} errors`, 'error');
-                }
-                
-            } catch (error) {
-                console.error('Error marking records as active:', error);
-                showStatus(`Error: ${error.message}`, 'error');
-            } finally {
-                showLoading(false);
             }
+            
+            // Clear selection
+            window.selectedRecords.clear();
+            
+            // Clear recently printed indicators for these records
+            inactiveRecordIds.forEach(id => {
+                recentlyPrintedIds.delete(id);
+            });
+            
+            // Refresh data
+            await loadRecords();
+            
+            if (successCount > 0) {
+                showStatus(`Successfully marked ${successCount} records as Active${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
+            } else {
+                showStatus(`Failed to mark records as Active: ${errorCount} errors`, 'error');
+            }
+            
+            showLoading(false);
         }
         
         async function generatePDF(records) {
             return new Promise(async (resolve) => {
                 const { jsPDF } = window.jspdf;
                 
-                // Load configuration values
-                const config = await fetchConfigValues();
-                
-                // Extract configuration values with defaults
-                const labelWidthMM = config.LABEL_WIDTH_MM || 45.0;
-                const labelHeightMM = config.LABEL_HEIGHT_MM || 16.8;
-                const leftMarginMM = config.LEFT_MARGIN_MM || 6.5;
-                const gutterSpacingMM = config.GUTTER_SPACING_MM || 6.5;
-                const topMarginMM = config.TOP_MARGIN_MM || 14.0;
-                const priceFontSize = config.PRICE_FONT_SIZE || 10;
-                const textFontSize = config.TEXT_FONT_SIZE || 6;
-                const barcodeHeightMM = config.BARCODE_HEIGHT || 6.0;
-                const printBorders = config.PRINT_BORDERS === 'true' || config.PRINT_BORDERS === true;
+                // Get configuration values - these will throw if missing
+                const labelWidthMM = getConfigValue('LABEL_WIDTH_MM');
+                const labelHeightMM = getConfigValue('LABEL_HEIGHT_MM');
+                const leftMarginMM = getConfigValue('LEFT_MARGIN_MM');
+                const gutterSpacingMM = getConfigValue('GUTTER_SPACING_MM');
+                const topMarginMM = getConfigValue('TOP_MARGIN_MM');
+                const priceFontSize = getConfigValue('PRICE_FONT_SIZE');
+                const textFontSize = getConfigValue('TEXT_FONT_SIZE');
+                const barcodeHeightMM = getConfigValue('BARCODE_HEIGHT');
+                const printBorders = getConfigValue('PRINT_BORDERS');
                 
                 // Convert mm to points for jsPDF (1 mm = 2.83465 points)
                 const mmToPt = 2.83465;
@@ -1923,37 +1919,29 @@
             const terminalList = document.getElementById('terminal-list');
             terminalList.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="loading-spinner" style="width: 30px; height: 30px;"></div><p>Loading terminals...</p></div>';
             
-            try {
-                const response = await fetch(`${AppConfig.baseUrl}/api/square/terminals`, {
-                    credentials: 'include'  // Important: include cookies/session
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Terminal fetch error:', response.status, errorText);
-                    terminalList.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">
-                        <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 10px;"></i>
-                        <p>Error ${response.status}: ${response.statusText}</p>
-                        <p style="font-size: 12px;">${errorText.substring(0, 100)}</p>
-                    </div>`;
-                    return;
-                }
-                
-                const data = await response.json();
-                if (data.status === 'success') {
-                    availableTerminals = data.terminals || [];
-                    renderTerminalList(availableTerminals);
-                } else {
-                    terminalList.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">
-                        <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 10px;"></i>
-                        <p>Error: ${data.message || 'Unknown error'}</p>
-                    </div>`;
-                }
-            } catch (error) {
-                console.error('Error refreshing terminals:', error);
+            const response = await fetch(`${AppConfig.baseUrl}/api/square/terminals`, {
+                credentials: 'include'  // Important: include cookies/session
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Terminal fetch error:', response.status, errorText);
                 terminalList.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">
                     <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 10px;"></i>
-                    <p>Error: ${error.message}</p>
+                    <p>Error ${response.status}: ${response.statusText}</p>
+                    <p style="font-size: 12px;">${errorText.substring(0, 100)}</p>
+                </div>`;
+                return;
+            }
+            
+            const data = await response.json();
+            if (data.status === 'success') {
+                availableTerminals = data.terminals || [];
+                renderTerminalList(availableTerminals);
+            } else {
+                terminalList.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">
+                    <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 10px;"></i>
+                    <p>Error: ${data.message || 'Unknown error'}</p>
                 </div>`;
             }
         }
@@ -2015,38 +2003,32 @@
             
             showCheckoutLoading(true);
             
-            try {
-                let url = `${AppConfig.baseUrl}/records/search?q=${encodeURIComponent(query)}`;
+            let url = `${AppConfig.baseUrl}/records/search?q=${encodeURIComponent(query)}`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                let results = data.records || [];
                 
-                const response = await fetch(url);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        let results = data.records || [];
-                        
-                        // Apply filters
-                        if (activeOnly) {
-                            results = results.filter(r => r.status_id === 2); // Active only
-                        }
-                        
-                        if (barcodeOnly) {
-                            results = results.filter(r => r.barcode && r.barcode.toLowerCase().includes(query.toLowerCase()));
-                        }
-                        
-                        currentSearchResults = results;
-                        renderSearchResults(results);
-                        
-                        showCheckoutStatus(`Found ${results.length} records`, 'success');
-                    }
-                } else {
-                    showCheckoutStatus('Error searching records', 'error');
+                // Apply filters
+                if (activeOnly) {
+                    results = results.filter(r => r.status_id === 2); // Active only
                 }
-            } catch (error) {
-                console.error('Search error:', error);
-                showCheckoutStatus(`Search error: ${error.message}`, 'error');
-            } finally {
-                showCheckoutLoading(false);
+                
+                if (barcodeOnly) {
+                    results = results.filter(r => r.barcode && r.barcode.toLowerCase().includes(query.toLowerCase()));
+                }
+                
+                currentSearchResults = results;
+                renderSearchResults(results);
+                
+                showCheckoutStatus(`Found ${results.length} records`, 'success');
+            } else {
+                showCheckoutStatus('Error searching records', 'error');
             }
+            
+            showCheckoutLoading(false);
         }
         
         function renderSearchResults(results) {
@@ -2166,7 +2148,7 @@
             
             // Calculate totals
             const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-            const taxRate = adminConfig.taxEnabled ? (adminConfig.taxRate / 100) : 0;
+            const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
             const tax = subtotal * taxRate;
             const total = subtotal + tax;
             
@@ -2207,7 +2189,7 @@
             
             // Calculate total
             const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-            const taxRate = adminConfig.taxEnabled ? (adminConfig.taxRate / 100) : 0;
+            const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
             const tax = subtotal * taxRate;
             const total = subtotal + tax;
             
@@ -2243,7 +2225,7 @@
         async function processCashPayment() {
             const tendered = parseFloat(document.getElementById('tender-amount').value) || 0;
             const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-            const taxRate = adminConfig.taxEnabled ? (adminConfig.taxRate / 100) : 0;
+            const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
             const tax = subtotal * taxRate;
             const total = subtotal + tax;
             
@@ -2257,134 +2239,128 @@
             closeTenderModal();
             showCheckoutLoading(true);
             
-            try {
-                // Mark all items in cart as sold and track consignor payments
-                let successCount = 0;
-                let errorCount = 0;
-                const soldRecords = [];
-                const consignorPayments = {}; // Track payments per consignor
-                
-                for (const record of checkoutCart) {
-                    try {
-                        const response = await fetch(`${AppConfig.baseUrl}/records/${record.id}`, {
-                            method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                status_id: 3 // Sold status
-                            })
-                        });
-                        
-                        if (response.ok) {
-                            const data = await response.json();
-                            if (data.status === 'success') {
-                                successCount++;
-                                soldRecords.push(record);
+            // Mark all items in cart as sold and track consignor payments
+            let successCount = 0;
+            let errorCount = 0;
+            const soldRecords = [];
+            const consignorPayments = {}; // Track payments per consignor
+            
+            for (const record of checkoutCart) {
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/records/${record.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            status_id: 3 // Sold status
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'success') {
+                            successCount++;
+                            soldRecords.push(record);
+                            
+                            // Calculate consignor payment (if record has consignor)
+                            if (record.consignor_id) {
+                                const commissionRate = getConfigValue('COMMISSION_RATE') / 100;
+                                const consignorShare = record.store_price * (1 - commissionRate);
                                 
-                                // Calculate consignor payment (if record has consignor)
-                                if (record.consignor_id) {
-                                    const commissionRate = (adminConfig.commissionRate || 10) / 100;
-                                    const consignorShare = record.store_price * (1 - commissionRate);
-                                    
-                                    if (!consignorPayments[record.consignor_id]) {
-                                        consignorPayments[record.consignor_id] = 0;
-                                    }
-                                    consignorPayments[record.consignor_id] += consignorShare;
+                                if (!consignorPayments[record.consignor_id]) {
+                                    consignorPayments[record.consignor_id] = 0;
                                 }
-                                
-                                // Update local record status
-                                const recordIndex = allRecords.findIndex(r => r.id === record.id);
-                                if (recordIndex !== -1) {
-                                    allRecords[recordIndex].status_id = 3;
-                                }
-                                
-                                // Update in current search results
-                                const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
-                                if (searchIndex !== -1) {
-                                    currentSearchResults[searchIndex].status_id = 3;
-                                }
-                            } else {
-                                errorCount++;
+                                consignorPayments[record.consignor_id] += consignorShare;
+                            }
+                            
+                            // Update local record status
+                            const recordIndex = allRecords.findIndex(r => r.id === record.id);
+                            if (recordIndex !== -1) {
+                                allRecords[recordIndex].status_id = 3;
+                            }
+                            
+                            // Update in current search results
+                            const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
+                            if (searchIndex !== -1) {
+                                currentSearchResults[searchIndex].status_id = 3;
                             }
                         } else {
                             errorCount++;
                         }
-                    } catch (error) {
-                        console.error(`Error updating record ${record.id}:`, error);
+                    } else {
                         errorCount++;
                     }
+                } catch (error) {
+                    console.error(`Error updating record ${record.id}:`, error);
+                    errorCount++;
                 }
-                
-                // Add consignor payments to localStorage
-                if (Object.keys(consignorPayments).length > 0) {
-                    let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
-                    for (const [consignorId, amount] of Object.entries(consignorPayments)) {
-                        storedOwed[consignorId] = (storedOwed[consignorId] || 0) + amount;
-                    }
-                    localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
-                    
-                    // Update consignorOwedAmounts global
-                    consignorOwedAmounts = storedOwed;
-                }
-                
-                if (successCount > 0) {
-                    // Get cashier name from user data if available
-                    let cashierName = 'Admin';
-                    try {
-                        const userData = localStorage.getItem('user');
-                        if (userData) {
-                            const user = JSON.parse(userData);
-                            cashierName = user.username || 'Admin';
-                        }
-                    } catch (e) {
-                        console.error('Error parsing user data:', e);
-                    }
-                    
-                    // Create transaction object for receipt
-                    const transaction = {
-                        id: `CASH-${Date.now()}`,
-                        date: new Date(),
-                        items: [...soldRecords],
-                        subtotal: subtotal,
-                        tax: tax,
-                        taxRate: adminConfig.taxRate,
-                        total: total,
-                        tendered: tendered,
-                        change: change,
-                        paymentMethod: 'Cash',
-                        cashier: cashierName,
-                        storeName: adminConfig.storeName,
-                        storeAddress: adminConfig.storeAddress,
-                        storePhone: adminConfig.storePhone,
-                        footer: adminConfig.receiptFooter,
-                        consignorPayments: consignorPayments // Store payment breakdown
-                    };
-                    
-                    // Save receipt to localStorage
-                    saveReceipt(transaction);
-                    
-                    // Show receipt
-                    showReceipt(transaction);
-                    
-                    // Clear cart
-                    checkoutCart = [];
-                    updateCartDisplay();
-                    
-                    // Refresh search results
-                    renderSearchResults(currentSearchResults);
-                    
-                    showCheckoutStatus(`Successfully sold ${successCount} items${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
-                } else {
-                    showCheckoutStatus(`Failed to process sale: ${errorCount} errors`, 'error');
-                }
-                
-            } catch (error) {
-                console.error('Error processing cash payment:', error);
-                showCheckoutStatus(`Error: ${error.message}`, 'error');
-            } finally {
-                showCheckoutLoading(false);
             }
+            
+            // Add consignor payments to localStorage
+            if (Object.keys(consignorPayments).length > 0) {
+                let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
+                for (const [consignorId, amount] of Object.entries(consignorPayments)) {
+                    storedOwed[consignorId] = (storedOwed[consignorId] || 0) + amount;
+                }
+                localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
+                
+                // Update consignorOwedAmounts global
+                consignorOwedAmounts = storedOwed;
+            }
+            
+            if (successCount > 0) {
+                // Get cashier name from user data if available
+                let cashierName = 'Admin';
+                try {
+                    const userData = localStorage.getItem('user');
+                    if (userData) {
+                        const user = JSON.parse(userData);
+                        cashierName = user.username || 'Admin';
+                    }
+                } catch (e) {
+                    console.error('Error parsing user data:', e);
+                }
+                
+                // Create transaction object for receipt
+                const transaction = {
+                    id: `CASH-${Date.now()}`,
+                    date: new Date(),
+                    items: [...soldRecords],
+                    subtotal: subtotal,
+                    tax: tax,
+                    taxRate: getConfigValue('TAX_RATE'),
+                    total: total,
+                    tendered: tendered,
+                    change: change,
+                    paymentMethod: 'Cash',
+                    cashier: cashierName,
+                    storeName: getConfigValue('STORE_NAME'),
+                    storeAddress: getConfigValue('STORE_ADDRESS'),
+                    storePhone: getConfigValue('STORE_PHONE'),
+                    footer: getConfigValue('RECEIPT_FOOTER'),
+                    consignorPayments: consignorPayments // Store payment breakdown
+                };
+                
+                // Save receipt to localStorage
+                saveReceipt(transaction);
+                
+                // Show receipt
+                showReceipt(transaction);
+                
+                // Clear cart
+                checkoutCart = [];
+                updateCartDisplay();
+                
+                // Refresh search results
+                renderSearchResults(currentSearchResults);
+                
+                showCheckoutStatus(`Successfully sold ${successCount} items${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
+            } else {
+                showCheckoutStatus(`Failed to process sale: ${errorCount} errors`, 'error');
+            }
+            
+            showCheckoutLoading(false);
         }
         
         // Receipt Functions
@@ -2406,9 +2382,9 @@
             
             receiptContent.innerHTML = `
                 <div class="receipt-header">
-                    <div class="receipt-store-name">${transaction.storeName || adminConfig.storeName}</div>
-                    <div class="receipt-store-info">${transaction.storeAddress || adminConfig.storeAddress}</div>
-                    <div class="receipt-store-info">${transaction.storePhone || adminConfig.storePhone}</div>
+                    <div class="receipt-store-name">${transaction.storeName || getConfigValue('STORE_NAME')}</div>
+                    <div class="receipt-store-info">${transaction.storeAddress || getConfigValue('STORE_ADDRESS')}</div>
+                    <div class="receipt-store-info">${transaction.storePhone || getConfigValue('STORE_PHONE')}</div>
                 </div>
                 
                 <div class="receipt-transaction-info">
@@ -2427,7 +2403,7 @@
                         <span>$${(transaction.subtotal || 0).toFixed(2)}</span>
                     </div>
                     <div class="receipt-summary-row">
-                        <span>Tax (${transaction.taxRate || adminConfig.taxRate}%):</span>
+                        <span>Tax (${transaction.taxRate || getConfigValue('TAX_RATE')}%):</span>
                         <span>$${(transaction.tax || 0).toFixed(2)}</span>
                     </div>
                     <div class="receipt-summary-row receipt-total">
@@ -2448,7 +2424,7 @@
                 </div>
                 
                 <div class="receipt-footer">
-                    ${transaction.footer || adminConfig.receiptFooter}
+                    ${transaction.footer || getConfigValue('RECEIPT_FOOTER')}
                 </div>
                 
                 <div class="receipt-actions">
@@ -2467,7 +2443,7 @@
             document.getElementById('receipt-modal').style.display = 'flex';
             
             // Auto-print if configured
-            if (adminConfig.autoPrintReceipt) {
+            if (getConfigValue('AUTO_PRINT_RECEIPT')) {
                 setTimeout(() => {
                     window.print();
                 }, 500);
@@ -2578,70 +2554,53 @@
             `;
             document.getElementById('terminal-checkout-modal').style.display = 'flex';
             
-            try {
-                // Create terminal checkout
-                const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        amount_cents: amountCents,
-                        record_ids: recordIds,
-                        record_titles: recordTitles,
-                        device_id: selectedTerminalId
-                    })
-                });
+            // Create terminal checkout
+            const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    amount_cents: amountCents,
+                    record_ids: recordIds,
+                    record_titles: recordTitles,
+                    device_id: selectedTerminalId
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                const checkout = data.checkout;
+                activeCheckoutId = checkout.id;
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    const checkout = data.checkout;
-                    activeCheckoutId = checkout.id;
-                    
-                    // Update modal to show waiting for payment
-                    modalBody.innerHTML = `
-                        <div class="payment-status">
-                            <div class="payment-status-icon processing">
-                                <i class="fas fa-credit-card fa-pulse"></i>
-                            </div>
-                            <div class="payment-status-message">Waiting for payment on terminal</div>
-                            <div class="payment-status-detail">Amount: $${(amountCents / 100).toFixed(2)}</div>
-                            <div class="payment-status-detail">Please present card to the terminal</div>
-                            <div class="payment-progress">
-                                <div class="payment-progress-bar" style="animation: progress 30s linear;"></div>
-                            </div>
-                            <button class="btn btn-warning" onclick="cancelTerminalCheckout()" style="margin-top: 20px;">
-                                <i class="fas fa-times"></i> Cancel Payment
-                            </button>
-                        </div>
-                    `;
-                    
-                    // Start polling for status
-                    startCheckoutPolling(checkout.id, record);
-                    
-                } else {
-                    throw new Error(data.message || 'Failed to create checkout');
-                }
-                
-            } catch (error) {
-                console.error('Error creating terminal checkout:', error);
+                // Update modal to show waiting for payment
                 modalBody.innerHTML = `
                     <div class="payment-status">
-                        <div class="payment-status-icon error">
-                            <i class="fas fa-exclamation-circle"></i>
+                        <div class="payment-status-icon processing">
+                            <i class="fas fa-credit-card fa-pulse"></i>
                         </div>
-                        <div class="payment-status-message">Checkout Failed</div>
-                        <div class="payment-status-detail">${error.message}</div>
-                        <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                            <i class="fas fa-times"></i> Close
+                        <div class="payment-status-message">Waiting for payment on terminal</div>
+                        <div class="payment-status-detail">Amount: $${(amountCents / 100).toFixed(2)}</div>
+                        <div class="payment-status-detail">Please present card to the terminal</div>
+                        <div class="payment-progress">
+                            <div class="payment-progress-bar" style="animation: progress 30s linear;"></div>
+                        </div>
+                        <button class="btn btn-warning" onclick="cancelTerminalCheckout()" style="margin-top: 20px;">
+                            <i class="fas fa-times"></i> Cancel Payment
                         </button>
                     </div>
                 `;
+                
+                // Start polling for status
+                startCheckoutPolling(checkout.id, record);
+                
+            } else {
+                throw new Error(data.message || 'Failed to create checkout');
             }
         }
         
@@ -2657,94 +2616,89 @@
             checkoutPollInterval = setInterval(async () => {
                 pollCount++;
                 
-                try {
-                    const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout/${checkoutId}/status`);
+                const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout/${checkoutId}/status`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const checkout = data.checkout;
+                    const checkoutStatus = checkout.status;
                     
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data.status === 'success') {
-                        const checkout = data.checkout;
-                        const checkoutStatus = checkout.status;
+                    // Update based on status
+                    if (checkoutStatus === 'COMPLETED') {
+                        // Payment successful
+                        clearInterval(checkoutPollInterval);
                         
-                        // Update based on status
-                        if (checkoutStatus === 'COMPLETED') {
-                            // Payment successful
-                            clearInterval(checkoutPollInterval);
-                            
-                            // Mark record as sold
-                            await markRecordAsSold(record.id);
-                            
-                            const modalBody = document.getElementById('terminal-checkout-body');
-                            modalBody.innerHTML = `
-                                <div class="payment-status">
-                                    <div class="payment-status-icon success">
-                                        <i class="fas fa-check-circle"></i>
-                                    </div>
-                                    <div class="payment-status-message">Payment Successful!</div>
-                                    <div class="payment-status-detail">Amount: $${(record.store_price).toFixed(2)}</div>
-                                    <div class="payment-status-detail">Thank you for your purchase</div>
-                                    <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                                        <i class="fas fa-check"></i> Done
-                                    </button>
+                        // Mark record as sold
+                        await markRecordAsSold(record.id);
+                        
+                        const modalBody = document.getElementById('terminal-checkout-body');
+                        modalBody.innerHTML = `
+                            <div class="payment-status">
+                                <div class="payment-status-icon success">
+                                    <i class="fas fa-check-circle"></i>
                                 </div>
-                            `;
-                            
-                            // Refresh search results
-                            const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
-                            if (searchIndex !== -1) {
-                                currentSearchResults[searchIndex].status_id = 3;
-                                renderSearchResults(currentSearchResults);
-                            }
-                            
-                            showCheckoutStatus('Payment completed successfully!', 'success');
-                            
-                        } else if (checkoutStatus === 'CANCELED' || checkoutStatus === 'FAILED') {
-                            // Payment failed or cancelled
-                            clearInterval(checkoutPollInterval);
-                            
-                            const modalBody = document.getElementById('terminal-checkout-body');
-                            modalBody.innerHTML = `
-                                <div class="payment-status">
-                                    <div class="payment-status-icon error">
-                                        <i class="fas fa-times-circle"></i>
-                                    </div>
-                                    <div class="payment-status-message">Payment ${checkoutStatus}</div>
-                                    <div class="payment-status-detail">The transaction was ${checkoutStatus.toLowerCase()}</div>
-                                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                                        <i class="fas fa-times"></i> Close
-                                    </button>
-                                </div>
-                            `;
-                            
-                            showCheckoutStatus(`Payment ${checkoutStatus.toLowerCase()}`, 'error');
+                                <div class="payment-status-message">Payment Successful!</div>
+                                <div class="payment-status-detail">Amount: $${(record.store_price).toFixed(2)}</div>
+                                <div class="payment-status-detail">Thank you for your purchase</div>
+                                <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                    <i class="fas fa-check"></i> Done
+                                </button>
+                            </div>
+                        `;
+                        
+                        // Refresh search results
+                        const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
+                        if (searchIndex !== -1) {
+                            currentSearchResults[searchIndex].status_id = 3;
+                            renderSearchResults(currentSearchResults);
                         }
                         
-                        // Stop polling after max attempts
-                        if (pollCount >= maxPolls) {
-                            clearInterval(checkoutPollInterval);
-                            
-                            const modalBody = document.getElementById('terminal-checkout-body');
-                            modalBody.innerHTML = `
-                                <div class="payment-status">
-                                    <div class="payment-status-icon error">
-                                        <i class="fas fa-clock"></i>
-                                    </div>
-                                    <div class="payment-status-message">Checkout Timed Out</div>
-                                    <div class="payment-status-detail">The terminal did not respond in time</div>
-                                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                                        <i class="fas fa-times"></i> Close
-                                    </button>
+                        showCheckoutStatus('Payment completed successfully!', 'success');
+                        
+                    } else if (checkoutStatus === 'CANCELED' || checkoutStatus === 'FAILED') {
+                        // Payment failed or cancelled
+                        clearInterval(checkoutPollInterval);
+                        
+                        const modalBody = document.getElementById('terminal-checkout-body');
+                        modalBody.innerHTML = `
+                            <div class="payment-status">
+                                <div class="payment-status-icon error">
+                                    <i class="fas fa-times-circle"></i>
                                 </div>
-                            `;
-                        }
+                                <div class="payment-status-message">Payment ${checkoutStatus}</div>
+                                <div class="payment-status-detail">The transaction was ${checkoutStatus.toLowerCase()}</div>
+                                <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                    <i class="fas fa-times"></i> Close
+                                </button>
+                            </div>
+                        `;
+                        
+                        showCheckoutStatus(`Payment ${checkoutStatus.toLowerCase()}`, 'error');
                     }
                     
-                } catch (error) {
-                    console.error('Error polling checkout status:', error);
+                    // Stop polling after max attempts
+                    if (pollCount >= maxPolls) {
+                        clearInterval(checkoutPollInterval);
+                        
+                        const modalBody = document.getElementById('terminal-checkout-body');
+                        modalBody.innerHTML = `
+                            <div class="payment-status">
+                                <div class="payment-status-icon error">
+                                    <i class="fas fa-clock"></i>
+                                </div>
+                                <div class="payment-status-message">Checkout Timed Out</div>
+                                <div class="payment-status-detail">The terminal did not respond in time</div>
+                                <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                    <i class="fas fa-times"></i> Close
+                                </button>
+                            </div>
+                        `;
+                    }
                 }
                 
             }, 5000); // Poll every 5 seconds
@@ -2753,64 +2707,56 @@
         async function cancelTerminalCheckout() {
             if (!activeCheckoutId) return;
             
-            try {
-                const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout/${activeCheckoutId}/cancel`, {
-                    method: 'POST'
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        showCheckoutStatus('Checkout cancelled', 'info');
-                        
-                        const modalBody = document.getElementById('terminal-checkout-body');
-                        modalBody.innerHTML = `
-                            <div class="payment-status">
-                                <div class="payment-status-icon error">
-                                    <i class="fas fa-ban"></i>
-                                </div>
-                                <div class="payment-status-message">Checkout Cancelled</div>
-                                <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                                    <i class="fas fa-times"></i> Close
-                                </button>
+            const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout/${activeCheckoutId}/cancel`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showCheckoutStatus('Checkout cancelled', 'info');
+                    
+                    const modalBody = document.getElementById('terminal-checkout-body');
+                    modalBody.innerHTML = `
+                        <div class="payment-status">
+                            <div class="payment-status-icon error">
+                                <i class="fas fa-ban"></i>
                             </div>
-                        `;
-                    }
+                            <div class="payment-status-message">Checkout Cancelled</div>
+                            <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                    `;
                 }
-            } catch (error) {
-                console.error('Error cancelling checkout:', error);
-            } finally {
-                if (checkoutPollInterval) {
-                    clearInterval(checkoutPollInterval);
-                }
-                activeCheckoutId = null;
             }
+            
+            if (checkoutPollInterval) {
+                clearInterval(checkoutPollInterval);
+            }
+            activeCheckoutId = null;
         }
         
         async function markRecordAsSold(recordId) {
-            try {
-                const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        status_id: 3 // Sold status
-                    })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        // Update local record status
-                        const recordIndex = allRecords.findIndex(r => r.id === recordId);
-                        if (recordIndex !== -1) {
-                            allRecords[recordIndex].status_id = 3;
-                        }
+            const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    status_id: 3 // Sold status
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'success') {
+                    // Update local record status
+                    const recordIndex = allRecords.findIndex(r => r.id === recordId);
+                    if (recordIndex !== -1) {
+                        allRecords[recordIndex].status_id = 3;
                     }
                 }
-            } catch (error) {
-                console.error('Error marking record as sold:', error);
             }
         }
         
@@ -2828,50 +2774,43 @@
             const tbody = document.getElementById('consignors-body');
             const loading = document.getElementById('consignors-loading');
             loading.style.display = 'block';
-            try {
-                const url = `${AppConfig.baseUrl}/users`;
-                const response = await fetch(url);
-                if (response.ok) {
-                    const data = await response.json();
-                    let users = data.users || [];
-                    
-                    // Get owed amounts from localStorage
-                    let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
-                    consignorOwedAmounts = storedOwed;
-                    
-                    // Get total admin commission from all sales
-                    let totalAdminCommission = 0;
-                    savedReceipts.forEach(receipt => {
-                        if (receipt.consignorPayments) {
-                            // Admin commission is the difference between sale price and consignor payment
-                            receipt.items.forEach(item => {
-                                if (item.consignor_id) {
-                                    const commissionRate = (adminConfig.commissionRate || 10) / 100;
-                                    totalAdminCommission += item.store_price * commissionRate;
-                                }
-                            });
+            
+            const url = `${AppConfig.baseUrl}/users`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            let users = data.users || [];
+            
+            // Get owed amounts from localStorage
+            let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
+            consignorOwedAmounts = storedOwed;
+            
+            // Get total admin commission from all sales
+            let totalAdminCommission = 0;
+            savedReceipts.forEach(receipt => {
+                if (receipt.consignorPayments) {
+                    // Admin commission is the difference between sale price and consignor payment
+                    receipt.items.forEach(item => {
+                        if (item.consignor_id) {
+                            const commissionRate = getConfigValue('COMMISSION_RATE') / 100;
+                            totalAdminCommission += item.store_price * commissionRate;
                         }
                     });
-                    
-                    consignorsList = users.map(u => ({
-                        id: u.id,
-                        username: u.username || 'Unknown',
-                        initials: u.initials || (u.username ? u.username.substring(0,2).toUpperCase() : '??'),
-                        owed: storedOwed[u.id] || 0,
-                        recordsSold: allRecords.filter(r => r.consignor_id == u.id && r.status_id === 3).length
-                    }));
-                    
-                    renderConsignors(consignorsList);
-                    updateConsignorStats(totalAdminCommission);
-                } else {
-                    tbody.innerHTML = `<tr><td colspan="6" style="color:red;">Error loading users</td></tr>`;
                 }
-            } catch (e) {
-                console.error('loadConsignors error', e);
-                tbody.innerHTML = `<tr><td colspan="6" style="color:red;">${e.message}</td></tr>`;
-            } finally {
-                loading.style.display = 'none';
-            }
+            });
+            
+            consignorsList = users.map(u => ({
+                id: u.id,
+                username: u.username || 'Unknown',
+                initials: u.initials || (u.username ? u.username.substring(0,2).toUpperCase() : '??'),
+                owed: storedOwed[u.id] || 0,
+                recordsSold: allRecords.filter(r => r.consignor_id == u.id && r.status_id === 3).length
+            }));
+            
+            renderConsignors(consignorsList);
+            updateConsignorStats(totalAdminCommission);
+            
+            loading.style.display = 'none';
         }
         
         function renderConsignors(consignors) {
@@ -2952,7 +2891,7 @@
                 if (receipt.consignorPayments) {
                     receipt.items.forEach(item => {
                         if (item.consignor_id) {
-                            const commissionRate = (adminConfig.commissionRate || 10) / 100;
+                            const commissionRate = getConfigValue('COMMISSION_RATE') / 100;
                             totalAdminCommission += item.store_price * commissionRate;
                         }
                     });
@@ -2976,24 +2915,19 @@
             
             const loading = document.getElementById('consignors-loading');
             loading.style.display = 'block';
-            try {
-                // Since we're using mock/localStorage for users, we'll simulate deletion
-                // In a real app, you'd call the API
-                consignorsList = consignorsList.filter(c => c.id != userId);
-                renderConsignors(consignorsList);
-                
-                // Remove from owed amounts if present
-                let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
-                delete storedOwed[userId];
-                localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
-                
-                updateConsignorStats(0);
-                showStatus('Consignor deleted', 'success');
-            } catch (e) {
-                alert('Error: ' + e.message);
-            } finally {
-                loading.style.display = 'none';
-            }
+            
+            consignorsList = consignorsList.filter(c => c.id != userId);
+            renderConsignors(consignorsList);
+            
+            // Remove from owed amounts if present
+            let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
+            delete storedOwed[userId];
+            localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
+            
+            updateConsignorStats(0);
+            showStatus('Consignor deleted', 'success');
+            
+            loading.style.display = 'none';
         }
         
         // Initialize
@@ -3018,14 +2952,11 @@
             // Initialize selected records set
             window.selectedRecords = new Set();
             
-            // Load admin config
-            loadAdminConfig();
-            
             // Load saved receipts
             loadSavedReceipts();
             
-            // Fetch configuration values first
-            await fetchConfigValues();
+            // Fetch configuration values - this will throw if fails
+            await fetchAllConfigValues();
             
             // Initialize UI components
             $('#user-select').select2({
