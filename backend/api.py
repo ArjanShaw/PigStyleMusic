@@ -193,17 +193,45 @@ def get_terminal_devices():
 def create_square_terminal_checkout(amount_cents, record_ids, record_titles, reference_id=None, device_id=None):
     """Create a Square Terminal checkout using direct API call"""
     
-    # First, get devices if no device_id provided
+    # ADD THIS DEBUG LINE
+    print(f"\n🔍 DEBUG - Received device_id: '{device_id}'")
+    
+    access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+    environment = os.environ.get('SQUARE_ENVIRONMENT', 'production')
+    
+    if not access_token:
+        return None, "SQUARE_ACCESS_TOKEN not set"
+    
+    base_url = 'https://connect.squareup.com' if environment == 'production' else 'https://connect.squareupsandbox.com'
+    
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json',
+        'Square-Version': '2026-01-22'
+    }
+    
+    # If no device_id provided, get from API
     if not device_id:
-        devices, error = get_terminal_devices()
-        if error or not devices:
-            return None, "No Square Terminal devices found"
-        device_id = devices[0].get('id')
-        app.logger.info(f"Using device: {device_id}")
+        devices_response = requests.get(f'{base_url}/v2/devices', headers=headers)
+        if devices_response.status_code == 200:
+            devices = devices_response.json().get('devices', [])
+            if devices:
+                full_device_id = devices[0].get('id')
+                # Strip the "device:" prefix if present
+                if full_device_id and full_device_id.startswith('device:'):
+                    device_id = full_device_id.replace('device:', '')
+                else:
+                    device_id = full_device_id
+                print(f"🔍 DEBUG - Got device from API: '{full_device_id}' → '{device_id}'")
+    
+    # ADD DEBUG FOR FINAL DEVICE ID
+    print(f"🔍 DEBUG - Final device_id being used: '{device_id}'")
+    
+    if not device_id:
+        return None, "No Square Terminal devices found"
     
     idempotency_key = str(uuid.uuid4())
     
-    # Prepare checkout data for /v2/terminal/checkouts
     checkout_data = {
         "idempotency_key": idempotency_key,
         "checkout": {
@@ -212,44 +240,30 @@ def create_square_terminal_checkout(amount_cents, record_ids, record_titles, ref
                 "currency": "USD"
             },
             "device_options": {
-                "device_id": device_id,
-                "skip_receipt_screen": False,
-                "collect_signature": True,
-                "tip_settings": {
-                    "allow_tipping": False,
-                    "separate_tip_screen": False
-                }
+                "device_id": device_id  # This should be WITHOUT prefix
             },
             "reference_id": reference_id or f"pigstyle_{idempotency_key[:8]}",
-            "note": f"PigStyle Music: {', '.join(record_titles[:3])}{'...' if len(record_titles) > 3 else ''}",
-            "payment_type": "CARD_PRESENT"
+            "note": f"PigStyle Music: {', '.join(record_titles[:3])}{'...' if len(record_titles) > 3 else ''}"
         }
     }
     
-    # Make the API call to create terminal checkout
-    app.logger.info(f"Creating terminal checkout for amount: {amount_cents} cents")
-    result, error = square_api_request('/v2/terminal/checkouts', method='POST', data=checkout_data)
+    # ADD DEBUG FOR FINAL PAYLOAD
+    print(f"🔍 DEBUG - Sending device_id in payload: '{checkout_data['checkout']['device_options']['device_id']}'")
     
-    if error:
-        app.logger.error(f"Failed to create terminal checkout: {error}")
-        return None, error
+    response = requests.post(
+        f'{base_url}/v2/terminals/checkouts',
+        headers=headers,
+        json=checkout_data
+    )
     
-    # Store session info
-    checkout = result.get('checkout', {})
-    checkout_id = checkout.get('id')
+    if response.status_code != 200:
+        error_text = response.text
+        return None, f"Square API error ({response.status_code}): {error_text}"
     
-    if checkout_id:
-        square_payment_sessions[checkout_id] = {
-            'record_ids': record_ids,
-            'amount_cents': amount_cents,
-            'status': 'PENDING',
-            'created_at': datetime.now().isoformat(),
-            'reference_id': checkout_data['checkout']['reference_id'],
-            'device_id': device_id
-        }
-        app.logger.info(f"Stored checkout session: {checkout_id}")
-    
+    result = response.json()
     return result, None
+ 
+
 
 def get_terminal_checkout_status(checkout_id):
     """Get the status of a terminal checkout"""
@@ -332,17 +346,55 @@ def role_required(allowed_roles):
 def api_get_terminals():
     """Get list of available Square Terminal devices"""
     try:
-        devices, error = get_terminal_devices()
+        headers = {
+            'Authorization': f'Bearer {os.environ.get("SQUARE_ACCESS_TOKEN")}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
         
-        if error:
-            return jsonify({
-                'status': 'error',
-                'message': error
-            }), 400
+        response = requests.get('https://connect.squareup.com/v2/devices', headers=headers)
+        data = response.json()
+        
+        if response.status_code != 200:
+            return jsonify({'status': 'error', 'message': str(data)}), 400
+        
+        devices = data.get('devices', [])
+        
+        # Format devices for frontend
+        enhanced_devices = []
+        for device in devices:
+            device_id = device.get('id')
+            
+            # Get status - Square returns {"category": "AVAILABLE"}
+            status_obj = device.get('status', {})
+            raw_status = status_obj.get('category', 'UNKNOWN')
+            
+            # Map to frontend expected values
+            if raw_status == 'AVAILABLE':
+                display_status = 'ONLINE'
+            elif raw_status == 'OFFLINE':
+                display_status = 'OFFLINE'
+            else:
+                display_status = 'UNKNOWN'
+            
+            # Get device name
+            attributes = device.get('attributes', {})
+            device_name = attributes.get('name', 'Square Terminal')
+            
+            enhanced_devices.append({
+                'id': device_id,
+                'device_name': device_name,
+                'status': display_status,  # Now 'ONLINE' instead of {'category': 'AVAILABLE'}
+                'raw_status': raw_status,  # Include for debugging
+                'device_type': attributes.get('type', 'TERMINAL'),
+                'manufacturer': attributes.get('manufacturer', 'Square')
+            })
+        
+        app.logger.info(f"Sending {len(enhanced_devices)} devices with status: {enhanced_devices[0]['status'] if enhanced_devices else 'none'}")
         
         return jsonify({
             'status': 'success',
-            'terminals': devices
+            'terminals': enhanced_devices
         }), 200
         
     except Exception as e:
@@ -351,7 +403,8 @@ def api_get_terminals():
             'status': 'error',
             'message': str(e)
         }), 500
-
+    
+     
 @app.route('/api/square/terminal/checkout', methods=['POST'])
 @login_required
 @role_required(['admin'])
