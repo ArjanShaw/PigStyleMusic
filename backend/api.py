@@ -2515,6 +2515,93 @@ def assign_barcodes():
     return jsonify({'status': 'success', 'barcode_mapping': barcode_mapping})
 
 # ==================== CHECKOUT PAYMENT ENDPOINT ====================
+@app.route('/api/square/generate-device-code', methods=['POST'])
+def generate_square_device_code():
+    """Generate a device code for Terminal API mode - NO AUTH REQUIRED FOR TESTING"""
+    try:
+        # Get location_id from request or use env
+        data = request.get_json() or {}
+        location_id = data.get('location_id') or os.environ.get('SQUARE_LOCATION_ID')
+        
+        if not location_id:
+            return jsonify({
+                'status': 'error',
+                'message': 'Location ID is required. Set SQUARE_LOCATION_ID in .env or provide in request body'
+            }), 400
+        
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            return jsonify({
+                'status': 'error',
+                'message': 'SQUARE_ACCESS_TOKEN not set in environment'
+            }), 400
+        
+        # Generate unique idempotency key
+        idempotency_key = str(uuid.uuid4())
+        
+        # Prepare request to Square API
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        # CRITICAL: product_type MUST be "TERMINAL_API" for API mode
+        code_data = {
+            "idempotency_key": idempotency_key,
+            "device_code": {
+                "product_type": "TERMINAL_API",
+                "location_id": location_id,
+                "name": data.get('name', 'PigStyle Terminal')
+            }
+        }
+        
+        # Make the API call to Square
+        response = requests.post(
+            'https://connect.squareup.com/v2/devices/codes',
+            headers=headers,
+            json=code_data
+        )
+        
+        if response.status_code != 200:
+            app.logger.error(f"Square API error: {response.text}")
+            return jsonify({
+                'status': 'error',
+                'message': f"Square API error: {response.text[:200]}"
+            }), response.status_code
+        
+        result = response.json()
+        device_code = result.get('device_code', {})
+        
+        # Format the response for easy display
+        return jsonify({
+            'status': 'success',
+            'device_code': {
+                'code': device_code.get('code'),
+                'id': device_code.get('id'),
+                'expires_at': device_code.get('expires_at'),
+                'location_id': device_code.get('location_id'),
+                'name': device_code.get('name'),
+                'product_type': device_code.get('product_type'),
+                'status': device_code.get('status')
+            },
+            'message': f"Code generated successfully. Enter '{device_code.get('code')}' on your terminal.",
+            'expires_in': '5 minutes',
+            'instructions': [
+                "1. On your Square Terminal, make sure you're at the 'Sign In' screen",
+                "2. Enter the 6-character code shown above",
+                "3. The terminal will switch to Terminal API mode (black screen with 'Powered by Square')",
+                "4. The code expires in 5 minutes - enter it quickly!"
+            ]
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error generating device code: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 
 @app.route('/checkout/process-payment', methods=['POST'])
 def process_checkout_payment():
