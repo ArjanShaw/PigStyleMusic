@@ -117,7 +117,7 @@
                 <!-- Batch Size Input -->
                 <div class="input-group">
                     <label for="batch-size"><i class="fas fa-sort-numeric-down"></i> Number of tags to print:</label>
-                    <input type="number" id="batch-size" min="1" value="10">
+                    <input type="number" id="batch-size" min="1" value="10" onchange="selectRecentInactiveRecords()">
                     <small>Most recent inactive records will be selected (sorted by creation date descending)</small>
                 </div>
                 
@@ -199,8 +199,8 @@
                     <button class="btn btn-warning" onclick="showMarkActiveConfirmation()" id="mark-active-btn" disabled>
                         <i class="fas fa-check-circle"></i> Mark as Active
                     </button>
-                    <button class="btn btn-secondary" onclick="selectInactiveRecords()" id="select-inactive-btn">
-                        <i class="fas fa-check-square"></i> Select Inactive Records
+                    <button class="btn btn-secondary" onclick="selectRecentInactiveRecords()" id="select-inactive-btn">
+                        <i class="fas fa-check-square"></i> Select Recent Inactive
                     </button>
                     <button class="btn btn-secondary" onclick="selectAllOnPage()">
                         <i class="fas fa-check-double"></i> Select All on Page
@@ -522,12 +522,13 @@
         <div id="admin-config-tab" class="tab-content">
             <h2><i class="fas fa-sliders-h"></i> Admin Configuration</h2>
             
+            <!-- Print Settings Section -->
             <div class="admin-config-section">
-                <h3><i class="fas fa-database"></i> Configuration Values</h3>
-                <p>All configuration values are stored in the database. Changes made here will be saved immediately.</p>
+                <h3><i class="fas fa-print"></i> Print Settings</h3>
+                <p>Configuration values related to price tag printing.</p>
                 
                 <div class="records-table-container">
-                    <table class="records-table" id="config-table">
+                    <table class="records-table" id="print-config-table">
                         <thead>
                             <tr>
                                 <th>Configuration Key</th>
@@ -536,22 +537,70 @@
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="config-body">
-                            <!-- Config values will be loaded here -->
+                        <tbody id="print-config-body">
+                            <!-- Print config values will be loaded here -->
                         </tbody>
                     </table>
                 </div>
+            </div>
+            
+            <!-- General Settings Section -->
+            <div class="admin-config-section" style="margin-top: 30px;">
+                <h3><i class="fas fa-cog"></i> General Settings</h3>
+                <p>Other system configuration values.</p>
                 
-                <div class="action-buttons" style="margin-top: 20px;">
-                    <button class="btn btn-primary" onclick="loadConfigTable()">
-                        <i class="fas fa-sync-alt"></i> Refresh Config
-                    </button>
+                <div class="records-table-container">
+                    <table class="records-table" id="general-config-table">
+                        <thead>
+                            <tr>
+                                <th>Configuration Key</th>
+                                <th>Value</th>
+                                <th>Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="general-config-body">
+                            <!-- General config values will be loaded here -->
+                        </tbody>
+                    </table>
                 </div>
+            </div>
+            
+            <!-- Add New Config Section -->
+            <div class="admin-config-section" style="margin-top: 30px;">
+                <h3><i class="fas fa-plus-circle"></i> Add New Configuration</h3>
+                
+                <div class="add-config-form">
+                    <div class="filter-group">
+                        <label for="new-config-key">Key:</label>
+                        <input type="text" id="new-config-key" class="config-value-input" placeholder="e.g., NEW_SETTING">
+                    </div>
+                    <div class="filter-group">
+                        <label for="new-config-value">Value:</label>
+                        <input type="text" id="new-config-value" class="config-value-input" placeholder="Enter value">
+                    </div>
+                    <div class="filter-group">
+                        <label for="new-config-description">Description:</label>
+                        <input type="text" id="new-config-description" class="config-value-input" placeholder="What does this setting do?">
+                    </div>
+                    <div class="filter-group">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-success" onclick="addNewConfig()">
+                            <i class="fas fa-plus"></i> Add Configuration
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="action-buttons" style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="loadConfigTables()">
+                    <i class="fas fa-sync-alt"></i> Refresh Config
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- Print Confirmation Modal -->
+    <!-- Print Confirmation Modal (simplified) -->
     <div id="print-confirmation-modal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
@@ -567,14 +616,10 @@
                     </ul>
                     <p>After printing successfully, you should mark these records as <strong>Active</strong> using the "Mark as Active" button.</p>
                 </div>
-                <div class="confirmation-check">
-                    <input type="checkbox" id="print-confirmation-check">
-                    <label for="print-confirmation-check">I have confirmed the print settings and am ready to print</label>
-                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closePrintConfirmation()">Cancel</button>
-                <button class="btn btn-success" onclick="confirmPrint()" id="confirm-print-btn" disabled>
+                <button class="btn btn-success" onclick="confirmPrint()" id="confirm-print-btn">
                     <i class="fas fa-print"></i> Print Now
                 </button>
             </div>
@@ -760,12 +805,83 @@
             }
         }
 
-        // Load config table in admin config tab
-        async function loadConfigTable() {
+        // Delete a config value
+        async function deleteConfigValue(key) {
+            if (!confirm(`Are you sure you want to delete '${key}'? This action cannot be undone.`)) {
+                return false;
+            }
+            
+            const response = await fetch(`${AppConfig.baseUrl}/config/${key}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Remove from local cache
+                delete dbConfigValues[key];
+                return true;
+            } else {
+                throw new Error(`Failed to delete configuration key '${key}'`);
+            }
+        }
+
+        // Add a new config value
+        async function addConfigValue(key, value, description) {
+            const response = await fetch(`${AppConfig.baseUrl}/config`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    config_key: key,
+                    config_value: String(value),
+                    description: description
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Update local cache
+                dbConfigValues[key] = {
+                    value: String(value),
+                    description: description || ''
+                };
+                return true;
+            } else {
+                throw new Error(`Failed to add configuration key '${key}'`);
+            }
+        }
+
+        // Load both config tables
+        async function loadConfigTables() {
             await fetchAllConfigValues();
             
-            const tbody = document.getElementById('config-body');
-            let html = '';
+            // Print settings keys - updated with new position parameters
+            const printKeys = [
+                'LABEL_WIDTH_MM',
+                'LABEL_HEIGHT_MM',
+                'LEFT_MARGIN_MM',
+                'GUTTER_SPACING_MM',
+                'TOP_MARGIN_MM',
+                'PRICE_FONT_SIZE',
+                'TEXT_FONT_SIZE',
+                'BARCODE_HEIGHT',
+                'PRINT_BORDERS',
+                'PRICE_Y_POS',
+                'BARCODE_Y_POS',
+                'INFO_Y_POS'
+            ];
+            
+            const printConfigBody = document.getElementById('print-config-body');
+            const generalConfigBody = document.getElementById('general-config-body');
+            
+            let printHtml = '';
+            let generalHtml = '';
             
             // Sort keys alphabetically
             const sortedKeys = Object.keys(dbConfigValues).sort();
@@ -775,7 +891,7 @@
                 const value = config.value;
                 const description = config.description || '';
                 
-                html += `
+                const rowHtml = `
                     <tr id="config-row-${key.replace(/\./g, '-')}">
                         <td><code>${key}</code></td>
                         <td>
@@ -786,15 +902,78 @@
                             <button class="btn btn-sm btn-success" onclick="saveConfigValue('${key}')">
                                 <i class="fas fa-save"></i> Save
                             </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteConfigValue('${key}')">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
                         </td>
                     </tr>
                 `;
+                
+                if (printKeys.includes(key)) {
+                    printHtml += rowHtml;
+                } else {
+                    generalHtml += rowHtml;
+                }
             }
             
-            tbody.innerHTML = html;
+            printConfigBody.innerHTML = printHtml || '<tr><td colspan="4" style="text-align:center; padding:20px;">No print settings found</td></tr>';
+            generalConfigBody.innerHTML = generalHtml || '<tr><td colspan="4" style="text-align:center; padding:20px;">No general settings found</td></tr>';
             
             // Update UI elements that depend on config values
             updateUIFromConfig();
+        }
+
+        // Add new configuration
+        async function addNewConfig() {
+            const key = document.getElementById('new-config-key').value.trim();
+            const value = document.getElementById('new-config-value').value.trim();
+            const description = document.getElementById('new-config-description').value.trim();
+            
+            if (!key || !value) {
+                alert('Key and Value are required');
+                return;
+            }
+            
+            if (dbConfigValues[key]) {
+                alert(`Configuration key '${key}' already exists`);
+                return;
+            }
+            
+            const button = event.target;
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Adding...';
+            button.disabled = true;
+            
+            try {
+                await addConfigValue(key, value, description);
+                
+                // Clear inputs
+                document.getElementById('new-config-key').value = '';
+                document.getElementById('new-config-value').value = '';
+                document.getElementById('new-config-description').value = '';
+                
+                // Refresh tables
+                await loadConfigTables();
+                
+                button.innerHTML = '<i class="fas fa-check"></i> Added!';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 2000);
+                
+            } catch (error) {
+                button.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 2000);
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // Load config table (backward compatibility)
+        async function loadConfigTable() {
+            await loadConfigTables();
         }
 
         // Save a specific config value
@@ -802,7 +981,7 @@
             const input = document.querySelector(`.config-value-input[data-key="${key}"]`);
             const newValue = input.value.trim();
             
-            const button = input.closest('tr').querySelector('button');
+            const button = input.closest('tr').querySelector('button.btn-success');
             const originalText = button.innerHTML;
             button.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Saving...';
             button.disabled = true;
@@ -1263,9 +1442,9 @@
             document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
             document.getElementById(`${tabName}-tab`).classList.add('active');
             
-            // If switching to admin config tab, load the config table
+            // If switching to admin config tab, load the config tables
             if (tabName === 'admin-config') {
-                loadConfigTable();
+                loadConfigTables();
             }
             // If switching to check out tab and no search has been performed yet, show empty state
             else if (tabName === 'check-out') {
@@ -1678,29 +1857,30 @@
             updateButtonStates();
         }
         
-        function selectInactiveRecords() {
-            // Get all inactive records from the current page
-            const startIndex = (currentPage - 1) * pageSize;
-            const endIndex = Math.min(startIndex + pageSize, filteredRecords.length);
-            const pageRecords = filteredRecords.slice(startIndex, endIndex);
+        // Select the most recent X inactive records across ALL pages
+        function selectRecentInactiveRecords() {
+            const batchSize = parseInt(document.getElementById('batch-size').value) || 10;
             
-            let selectedCount = 0;
+            // Clear current selection
+            window.selectedRecords.clear();
             
-            pageRecords.forEach((record) => {
-                if (record.status_id === 1) { // Inactive
-                    const recordId = record.id.toString();
-                    window.selectedRecords.add(recordId);
-                    selectedCount++;
-                }
+            // Get all inactive records (already sorted by created_at descending)
+            const inactiveRecords = allRecords
+                .filter(r => r.status_id === 1) // Inactive only
+                .slice(0, batchSize); // Take only the most recent batchSize records
+            
+            // Add them to selection
+            inactiveRecords.forEach(record => {
+                window.selectedRecords.add(record.id.toString());
             });
             
-            // Re-render to update checkboxes
+            // Refresh the display to show updated checkboxes
             renderCurrentPage();
             
-            if (selectedCount > 0) {
-                showStatus(`Selected ${selectedCount} inactive records on this page`, 'success');
+            if (inactiveRecords.length > 0) {
+                showStatus(`Selected ${inactiveRecords.length} most recent inactive records`, 'success');
             } else {
-                showStatus('No inactive records on this page', 'info');
+                showStatus('No inactive records available to select', 'info');
             }
         }
         
@@ -1751,17 +1931,8 @@
                 <li>Sold records: ${soldRecords.length} (won't be printed)</li>
             `;
             
-            // Reset confirmation checkbox
-            document.getElementById('print-confirmation-check').checked = false;
-            document.getElementById('confirm-print-btn').disabled = true;
-            
             // Show modal
             document.getElementById('print-confirmation-modal').style.display = 'flex';
-            
-            // Add event listener for confirmation checkbox
-            document.getElementById('print-confirmation-check').addEventListener('change', function() {
-                document.getElementById('confirm-print-btn').disabled = !this.checked;
-            });
         }
         
         function closePrintConfirmation() {
@@ -1770,15 +1941,13 @@
         
         async function confirmPrint() {
             const selectedIds = Array.from(window.selectedRecords);
-            const batchSize = parseInt(document.getElementById('batch-size').value) || 10;
             
             closePrintConfirmation();
             showLoading(true);
             
-            // Get selected inactive records (already sorted by date)
+            // Get selected inactive records (all selected inactive records)
             const selectedRecords = allRecords
-                .filter(r => selectedIds.includes(r.id.toString()) && r.status_id === 1)
-                .slice(0, batchSize);
+                .filter(r => selectedIds.includes(r.id.toString()) && r.status_id === 1);
                 
             if (selectedRecords.length === 0) {
                 showStatus('No inactive records selected', 'error');
@@ -1786,7 +1955,7 @@
                 return;
             }
             
-            // Fetch configuration values - this will throw if fails
+            // Fetch configuration values
             await fetchAllConfigValues();
             
             // Generate PDF
@@ -1938,7 +2107,7 @@
             return new Promise(async (resolve) => {
                 const { jsPDF } = window.jspdf;
                 
-                // Get configuration values - these will throw if missing
+                // Get configuration values
                 const labelWidthMM = getConfigValue('LABEL_WIDTH_MM');
                 const labelHeightMM = getConfigValue('LABEL_HEIGHT_MM');
                 const leftMarginMM = getConfigValue('LEFT_MARGIN_MM');
@@ -1948,6 +2117,11 @@
                 const textFontSize = getConfigValue('TEXT_FONT_SIZE');
                 const barcodeHeightMM = getConfigValue('BARCODE_HEIGHT');
                 const printBorders = getConfigValue('PRINT_BORDERS');
+                
+                // Position configuration values (in mm from top)
+                const priceYPos = getConfigValue('PRICE_Y_POS');
+                const barcodeYPos = getConfigValue('BARCODE_Y_POS');
+                const infoYPos = getConfigValue('INFO_Y_POS');
                 
                 // Convert mm to points for jsPDF (1 mm = 2.83465 points)
                 const mmToPt = 2.83465;
@@ -2011,7 +2185,7 @@
                     const consignorId = record.consignor_id;
                     const consignorInitials = consignorCache[consignorId] || '';
                     
-                    // Draw price
+                    // Draw price at configured Y position
                     const price = record.store_price || 0;
                     const priceText = `$${price.toFixed(2)}`;
                     doc.setFontSize(priceFontSize);
@@ -2019,11 +2193,11 @@
                     
                     const priceWidth = doc.getTextWidth(priceText);
                     const priceX = x + (labelWidthPt - priceWidth) / 2;
-                    const priceY = y + labelHeightPt - (4 * mmToPt); // Position from top
+                    const priceY = y + (priceYPos * mmToPt);
                     
                     doc.text(priceText, priceX, priceY);
                     
-                    // Draw artist, genre, and consignor initials
+                    // Draw artist, genre, and consignor initials at configured Y position
                     const artist = record.artist || 'Unknown';
                     const genre = record.genre_name || record.genre || 'Unknown';
                     
@@ -2046,11 +2220,11 @@
                     
                     const infoWidth = doc.getTextWidth(infoText);
                     const infoX = x + (labelWidthPt - infoWidth) / 2;
-                    const infoY = priceY - (3 * mmToPt);
+                    const infoY = y + (infoYPos * mmToPt);
                     
                     doc.text(infoText, infoX, infoY);
                     
-                    // Draw barcode if available
+                    // Draw barcode if available at configured Y position
                     const barcodeNum = record.barcode;
                     if (barcodeNum) {
                         const canvas = document.createElement('canvas');
@@ -2064,7 +2238,7 @@
                         
                         const barcodeData = canvas.toDataURL('image/png');
                         const barcodeX = x + (labelWidthPt - (25 * mmToPt)) / 2;
-                        const barcodeY = y + (2 * mmToPt);
+                        const barcodeY = y + (barcodeYPos * mmToPt);
                         
                         doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, 25 * mmToPt, barcodeHeightPt);
                     }
