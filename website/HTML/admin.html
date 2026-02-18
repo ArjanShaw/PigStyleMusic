@@ -34,9 +34,6 @@
         <h1><i class="fas fa-cogs"></i> Admin Panel</h1>
         
         <div class="tab-container">
-            <div class="tab active" onclick="switchTab('price-tags')">
-                <i class="fas fa-tags"></i> Print Price Tags
-            </div>
             <div class="tab" onclick="switchTab('check-out')">
                 <i class="fas fa-shopping-cart"></i> Check Out
             </div>
@@ -46,8 +43,14 @@
             <div class="tab" onclick="switchTab('consignors')">
                 <i class="fas fa-users"></i> Consignors
             </div>
+            <div class="tab" onclick="switchTab('artists')">
+                <i class="fas fa-music"></i> Artists
+            </div>
             <div class="tab" onclick="switchTab('admin-config')">
                 <i class="fas fa-sliders-h"></i> Admin Config
+            </div>
+            <div class="tab active" onclick="switchTab('price-tags')">
+                <i class="fas fa-tags"></i> Print Price Tags
             </div>
         </div>
         
@@ -463,6 +466,58 @@
             </div>
         </div>
         
+        <!-- Artists Tab -->
+        <div id="artists-tab" class="tab-content">
+            <h2><i class="fas fa-music"></i> Artists by Genre</h2>
+            
+            <!-- Genre Filter -->
+            <div class="filter-controls" style="margin-bottom: 20px;">
+                <div class="filter-group">
+                    <label for="genre-filter"><i class="fas fa-filter"></i> Filter by Genre:</label>
+                    <select id="genre-filter" class="filter-select" onchange="filterArtistsByGenre()" style="width: 250px;">
+                        <option value="all">All Genres</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <button class="btn btn-secondary" onclick="loadArtists()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+                <div class="filter-group" style="margin-left: auto;">
+                    <span class="pagination-info">
+                        Total Artists: <strong id="total-artists-count">0</strong>
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Artists Table -->
+            <div class="records-table-container">
+                <table class="records-table" id="artists-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Artist Name</th>
+                            <th>Genre</th>
+                            <th>Record Count</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="artists-body">
+                        <tr><td colspan="5" style="text-align:center; padding:40px;">
+                            <i class="fas fa-music" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
+                            Loading artists...
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Artists Loading Indicator -->
+            <div class="loading" id="artists-loading" style="display:none;">
+                <div class="loading-spinner"></div>
+                <p>Loading artists...</p>
+            </div>
+        </div>
+        
         <!-- Admin Config Tab -->
         <div id="admin-config-tab" class="tab-content">
             <h2><i class="fas fa-sliders-h"></i> Admin Configuration</h2>
@@ -643,6 +698,10 @@
         // Consignors list with owed amounts
         let consignorsList = [];
         let consignorOwedAmounts = {}; // Track owed amounts per consignor
+        
+        // Artists list
+        let artistsList = [];
+        let genresList = [];
 
         // Fetch all config values from database
         async function fetchAllConfigValues() {
@@ -1228,6 +1287,9 @@
             } else if (tabName === 'consignors') {
                 // Load consignors when switching to that tab
                 loadConsignors();
+            } else if (tabName === 'artists') {
+                // Load artists when switching to that tab
+                loadArtists();
             }
         }
         
@@ -1263,6 +1325,10 @@
         
         function showReceiptsLoading(show) {
             document.getElementById('receipts-loading').style.display = show ? 'block' : 'none';
+        }
+        
+        function showArtistsLoading(show) {
+            document.getElementById('artists-loading').style.display = show ? 'block' : 'none';
         }
         
         function truncateText(text, maxLength) {
@@ -3061,8 +3127,6 @@
                 showCheckoutStatus(`Failed to cancel: ${error.message}`, 'error');
             }
         }
-
- 
         
         async function markRecordAsSold(recordId) {
             const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
@@ -3246,6 +3310,200 @@
             showStatus('Consignor deleted', 'success');
             
             loading.style.display = 'none';
+        }
+        
+        // ========== ARTISTS FUNCTIONS ==========
+        async function loadArtists() {
+            showArtistsLoading(true);
+            
+            try {
+                // Fetch all records to get artist and genre information
+                const recordsUrl = `${AppConfig.baseUrl}/records`;
+                const recordsResponse = await fetch(recordsUrl);
+                const recordsData = await recordsResponse.json();
+                
+                if (recordsData.status === 'success') {
+                    const records = recordsData.records || [];
+                    
+                    // Build artist list with genres and counts
+                    const artistMap = new Map();
+                    
+                    records.forEach(record => {
+                        if (!record.artist) return; // Skip records without artist
+                        
+                        const artistName = record.artist.trim();
+                        const genreName = record.genre_name || record.genre || 'Unknown';
+                        
+                        if (!artistMap.has(artistName)) {
+                            artistMap.set(artistName, {
+                                name: artistName,
+                                genres: new Set(),
+                                recordCount: 0,
+                                genreList: [] // Will store the main genre (most common)
+                            });
+                        }
+                        
+                        const artistData = artistMap.get(artistName);
+                        artistData.genres.add(genreName);
+                        artistData.recordCount++;
+                    });
+                    
+                    // Convert to array and determine primary genre (most common)
+                    artistsList = [];
+                    
+                    // First, collect all genre frequencies per artist
+                    const genreFreq = new Map();
+                    records.forEach(record => {
+                        if (!record.artist) return;
+                        const artistName = record.artist.trim();
+                        const genreName = record.genre_name || record.genre || 'Unknown';
+                        
+                        if (!genreFreq.has(artistName)) {
+                            genreFreq.set(artistName, new Map());
+                        }
+                        const artistGenres = genreFreq.get(artistName);
+                        artistGenres.set(genreName, (artistGenres.get(genreName) || 0) + 1);
+                    });
+                    
+                    // Determine primary genre for each artist
+                    for (const [artistName, genres] of genreFreq.entries()) {
+                        let primaryGenre = 'Unknown';
+                        let maxCount = 0;
+                        
+                        for (const [genre, count] of genres.entries()) {
+                            if (count > maxCount) {
+                                maxCount = count;
+                                primaryGenre = genre;
+                            }
+                        }
+                        
+                        const artistData = artistMap.get(artistName);
+                        if (artistData) {
+                            artistData.primaryGenre = primaryGenre;
+                            artistData.genreList = Array.from(artistData.genres).sort();
+                            artistsList.push({
+                                name: artistName,
+                                primaryGenre: primaryGenre,
+                                allGenres: artistData.genreList,
+                                recordCount: artistData.recordCount
+                            });
+                        }
+                    }
+                    
+                    // Sort artists alphabetically
+                    artistsList.sort((a, b) => a.name.localeCompare(b.name));
+                    
+                    // Populate genre filter dropdown
+                    populateGenreFilter();
+                    
+                    // Render artists
+                    renderArtists(artistsList);
+                    
+                    document.getElementById('total-artists-count').textContent = artistsList.length;
+                }
+            } catch (error) {
+                console.error('Error loading artists:', error);
+                const tbody = document.getElementById('artists-body');
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">
+                    <i class="fas fa-exclamation-circle" style="font-size: 48px; margin-bottom: 20px; display: block;"></i>
+                    Error loading artists: ${error.message}
+                </td></tr>`;
+            }
+            
+            showArtistsLoading(false);
+        }
+        
+        function populateGenreFilter() {
+            // Collect all unique genres
+            const allGenres = new Set();
+            artistsList.forEach(artist => {
+                artist.allGenres.forEach(genre => allGenres.add(genre));
+            });
+            
+            const genreFilter = document.getElementById('genre-filter');
+            const currentValue = genreFilter.value;
+            
+            // Sort genres alphabetically
+            const sortedGenres = Array.from(allGenres).sort();
+            
+            // Clear existing options except "All Genres"
+            genreFilter.innerHTML = '<option value="all">All Genres</option>';
+            
+            // Add genre options
+            sortedGenres.forEach(genre => {
+                const option = document.createElement('option');
+                option.value = genre;
+                option.textContent = genre;
+                genreFilter.appendChild(option);
+            });
+            
+            // Restore previous selection if it still exists
+            if (currentValue !== 'all' && sortedGenres.includes(currentValue)) {
+                genreFilter.value = currentValue;
+            }
+        }
+        
+        function filterArtistsByGenre() {
+            const selectedGenre = document.getElementById('genre-filter').value;
+            
+            if (selectedGenre === 'all') {
+                renderArtists(artistsList);
+            } else {
+                const filtered = artistsList.filter(artist => 
+                    artist.allGenres.includes(selectedGenre)
+                );
+                renderArtists(filtered);
+            }
+        }
+        
+        function renderArtists(artists) {
+            const tbody = document.getElementById('artists-body');
+            
+            if (artists.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px;">
+                    <i class="fas fa-music" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
+                    No artists found
+                </td></tr>`;
+                return;
+            }
+            
+            let html = '';
+            artists.forEach((artist, index) => {
+                // Show primary genre and indicate if there are multiple
+                const genreDisplay = artist.allGenres.length > 1 
+                    ? `${artist.primaryGenre} <span style="color: #666; font-size: 0.9em;">(+${artist.allGenres.length - 1} more)</span>`
+                    : artist.primaryGenre;
+                
+                html += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td><strong>${escapeHtml(artist.name)}</strong></td>
+                        <td>${genreDisplay}</td>
+                        <td style="text-align: center;">${artist.recordCount}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="searchArtistRecords('${escapeHtml(artist.name)}')">
+                                <i class="fas fa-search"></i> View Records
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
+        }
+        
+        function searchArtistRecords(artistName) {
+            // Switch to check out tab and search for this artist's records
+            switchTab('check-out');
+            
+            const searchInput = document.getElementById('search-query');
+            searchInput.value = artistName;
+            
+            // Uncheck barcode-only filter
+            document.getElementById('filter-barcode').checked = false;
+            
+            // Perform search
+            searchRecords();
         }
         
         // Initialize
