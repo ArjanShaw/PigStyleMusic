@@ -399,7 +399,7 @@
             
             <!-- Commission Rate Display -->
             <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                <p><strong>Commission Rate:</strong> <span id="commission-rate-display">10</span>% (Admin gets <span id="admin-commission-display">10</span>% of sale, Consignor gets <span id="consignor-commission-display">90</span>%)</p>
+                <p><strong>Commission Rate:</strong> <span id="commission-rate-display">Per Record</span>% (Admin gets <span id="admin-commission-display">Per Record</span>% of sale, Consignor gets <span id="consignor-commission-display">Per Record</span>%)</p>
             </div>
             
             <!-- Summary Cards -->
@@ -488,7 +488,7 @@
                 </div>
                 
                 <div class="action-buttons" style="margin-top: 20px;">
-                    <button class="btn btn-primary" onclick="loadConfigFromDatabase()">
+                    <button class="btn btn-primary" onclick="loadConfigTable()">
                         <i class="fas fa-sync-alt"></i> Refresh Config
                     </button>
                 </div>
@@ -598,6 +598,23 @@
     <div id="receipt-modal" class="receipt-modal">
         <div class="receipt-content" id="receipt-content">
             <!-- Receipt will be dynamically generated here -->
+        </div>
+    </div>
+
+    <!-- Terminal Selection Modal (hidden by default) -->
+    <div id="terminal-selection-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Select Terminal</h3>
+                <button class="modal-close" onclick="closeTerminalSelectionModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="terminal-selection-list">
+                <!-- Terminal list will be populated here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeTerminalSelectionModal()">Cancel</button>
+                <button class="btn btn-primary" id="confirm-terminal-btn" disabled>Confirm</button>
+            </div>
         </div>
     </div>
 
@@ -800,11 +817,11 @@
                 taxRate: taxRate,
                 taxEnabled: taxEnabled,
                 commissionRate: commissionRate,
-                storeName: getConfigValue('STORE_NAME') || 'PigStyle Music',
-                storeAddress: getConfigValue('STORE_ADDRESS') || '',
-                storePhone: getConfigValue('STORE_PHONE') || '',
-                receiptFooter: getConfigValue('RECEIPT_FOOTER') || 'Thank you for your purchase!',
-                autoPrintReceipt: getConfigValue('AUTO_PRINT_RECEIPT') || false
+                storeName: (dbConfigValues['STORE_NAME'] && dbConfigValues['STORE_NAME'].value) || 'PigStyle Music',
+                storeAddress: (dbConfigValues['STORE_ADDRESS'] && dbConfigValues['STORE_ADDRESS'].value) || '',
+                storePhone: (dbConfigValues['STORE_PHONE'] && dbConfigValues['STORE_PHONE'].value) || '',
+                receiptFooter: (dbConfigValues['RECEIPT_FOOTER'] && dbConfigValues['RECEIPT_FOOTER'].value) || 'Thank you for your purchase!',
+                autoPrintReceipt: (dbConfigValues['AUTO_PRINT_RECEIPT'] && dbConfigValues['AUTO_PRINT_RECEIPT'].value) || false
             };
         }
         
@@ -1002,15 +1019,15 @@
             // Store info
             doc.setFontSize(16);
             doc.setFont('helvetica', 'bold');
-            doc.text(receipt.storeName || getConfigValue('STORE_NAME'), 105, y, { align: 'center' });
+            doc.text(receipt.storeName || (dbConfigValues['STORE_NAME'] && dbConfigValues['STORE_NAME'].value) || 'PigStyle Music', 105, y, { align: 'center' });
             
             y += 7;
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
-            doc.text(receipt.storeAddress || getConfigValue('STORE_ADDRESS'), 105, y, { align: 'center' });
+            doc.text(receipt.storeAddress || (dbConfigValues['STORE_ADDRESS'] && dbConfigValues['STORE_ADDRESS'].value) || '', 105, y, { align: 'center' });
             
             y += 5;
-            doc.text(receipt.storePhone || getConfigValue('STORE_PHONE'), 105, y, { align: 'center' });
+            doc.text(receipt.storePhone || (dbConfigValues['STORE_PHONE'] && dbConfigValues['STORE_PHONE'].value) || '', 105, y, { align: 'center' });
             
             y += 10;
             doc.setFontSize(10);
@@ -1064,7 +1081,7 @@
             doc.setFont('helvetica', 'bold');
             doc.text(`Subtotal: $${(receipt.subtotal || 0).toFixed(2)}`, 180, y, { align: 'right' });
             y += 5;
-            doc.text(`Tax (${receipt.taxRate || getConfigValue('TAX_RATE')}%): $${(receipt.tax || 0).toFixed(2)}`, 180, y, { align: 'right' });
+            doc.text(`Tax (${receipt.taxRate || (dbConfigValues['TAX_RATE'] && dbConfigValues['TAX_RATE'].value) || 0}%): $${(receipt.tax || 0).toFixed(2)}`, 180, y, { align: 'right' });
             y += 5;
             doc.setFontSize(11);
             doc.text(`TOTAL: $${(receipt.total || 0).toFixed(2)}`, 180, y, { align: 'right' });
@@ -1081,7 +1098,7 @@
             y += 10;
             doc.setFontSize(9);
             doc.setFont('helvetica', 'italic');
-            doc.text(receipt.footer || getConfigValue('RECEIPT_FOOTER'), 105, y, { align: 'center' });
+            doc.text(receipt.footer || (dbConfigValues['RECEIPT_FOOTER'] && dbConfigValues['RECEIPT_FOOTER'].value) || 'Thank you for your purchase!', 105, y, { align: 'center' });
             
             // Save PDF
             doc.save(`${receipt.id}.pdf`);
@@ -1099,6 +1116,76 @@
                     window.print();
                 }, 500);
             }
+        }
+        
+        // Show receipt in modal
+        function showReceipt(transaction) {
+            const receiptContent = document.getElementById('receipt-content');
+            const dateStr = transaction.date.toLocaleDateString() + ' ' + 
+                           transaction.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            let itemsHtml = '';
+            transaction.items.forEach(item => {
+                itemsHtml += `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <div>${item.artist || 'Unknown'} - ${item.title || 'Unknown'}</div>
+                        <div>$${(item.store_price || 0).toFixed(2)}</div>
+                    </div>
+                `;
+            });
+            
+            receiptContent.innerHTML = `
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h2>${transaction.storeName || (dbConfigValues['STORE_NAME'] && dbConfigValues['STORE_NAME'].value) || 'PigStyle Music'}</h2>
+                    <p>${transaction.storeAddress || (dbConfigValues['STORE_ADDRESS'] && dbConfigValues['STORE_ADDRESS'].value) || ''}</p>
+                    <p>${transaction.storePhone || (dbConfigValues['STORE_PHONE'] && dbConfigValues['STORE_PHONE'].value) || ''}</p>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span><strong>Receipt #:</strong> ${transaction.id}</span>
+                        <span><strong>Date:</strong> ${dateStr}</span>
+                    </div>
+                    <div><strong>Cashier:</strong> ${transaction.cashier || 'Admin'}</div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h3>Items</h3>
+                    ${itemsHtml}
+                </div>
+                
+                <div style="border-top: 1px solid #ccc; padding-top: 10px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>Subtotal:</span>
+                        <span>$${(transaction.subtotal || 0).toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>Tax (${transaction.taxRate || (dbConfigValues['TAX_RATE'] && dbConfigValues['TAX_RATE'].value) || 0}%):</span>
+                        <span>$${(transaction.tax || 0).toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 18px; margin-top: 10px;">
+                        <span>TOTAL:</span>
+                        <span>$${(transaction.total || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <div><strong>Payment Method:</strong> ${transaction.paymentMethod || 'Cash'}</div>
+                    ${transaction.tendered ? `<div><strong>Tendered:</strong> $${transaction.tendered.toFixed(2)}</div>` : ''}
+                    ${transaction.change ? `<div><strong>Change:</strong> $${transaction.change.toFixed(2)}</div>` : ''}
+                </div>
+                
+                <div style="text-align: center; margin-top: 30px; font-style: italic;">
+                    ${transaction.footer || (dbConfigValues['RECEIPT_FOOTER'] && dbConfigValues['RECEIPT_FOOTER'].value) || 'Thank you for your purchase!'}
+                </div>
+            `;
+            
+            document.getElementById('receipt-modal').style.display = 'flex';
+        }
+        
+        // Close receipt modal
+        function closeReceiptModal() {
+            document.getElementById('receipt-modal').style.display = 'none';
         }
         
         // Helper functions
@@ -2074,13 +2161,13 @@
                 html += `
                     <div class="search-result-item">
                         <div class="result-details">
-                            <div class="result-artist">${record.artist || 'Unknown Artist'}</div>
-                            <div class="result-title">${record.title || 'Unknown Title'}</div>
+                            <div class="result-artist">${escapeHtml(record.artist) || 'Unknown Artist'}</div>
+                            <div class="result-title">${escapeHtml(record.title) || 'Unknown Title'}</div>
                             <div class="result-meta">
-                                <span class="result-catalog">${record.catalog_number || 'No catalog'}</span>
-                                ${record.barcode ? `<span class="result-barcode"><i class="fas fa-barcode"></i> ${record.barcode}</span>` : ''}
+                                <span class="result-catalog">${escapeHtml(record.catalog_number) || 'No catalog'}</span>
+                                ${record.barcode ? `<span class="result-barcode"><i class="fas fa-barcode"></i> ${escapeHtml(record.barcode)}</span>` : ''}
                                 <span>Status: ${getStatusText(record.status_id)}</span>
-                                ${record.consignor_id ? `<span><i class="fas fa-user"></i> ${consignorInfo.username}</span>` : ''}
+                                ${record.consignor_id ? `<span><i class="fas fa-user"></i> ${escapeHtml(consignorInfo.username)}</span>` : ''}
                             </div>
                         </div>
                         <div class="result-price">$${(record.store_price || 0).toFixed(2)}</div>
@@ -2092,7 +2179,7 @@
                                     `<button class="btn btn-secondary btn-sm" onclick="removeFromCart(${record.id})">
                                         <i class="fas fa-minus"></i> Remove
                                     </button>` :
-                                    `<button class="btn btn-cart btn-sm" onclick='addToCart(${JSON.stringify(record).replace(/'/g, "\\'")})'>
+                                    `<button class="btn btn-cart btn-sm" onclick="addToCartFromData(${record.id})">
                                         <i class="fas fa-cart-plus"></i> Add to Cart
                                     </button>`
                                 ) :
@@ -2107,6 +2194,25 @@
             
             // Show/hide cart section based on cart contents
             updateCartDisplay();
+        }
+        
+        // Helper function to escape HTML special characters
+        function escapeHtml(text) {
+            if (!text) return text;
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Store record data for safe access
+        const recordDataMap = new Map();
+        
+        function addToCartFromData(recordId) {
+            const record = currentSearchResults.find(r => r.id === recordId) || 
+                          allRecords.find(r => r.id === recordId);
+            if (record) {
+                addToCart(record);
+            }
         }
         
         // Shopping Cart Functions
@@ -2185,7 +2291,12 @@
             
             console.log('Calculated subtotal:', subtotal);
             
-            const taxRate = getConfigValue('TAX_ENABLED') ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
+            let taxRate = 0;
+            try {
+                taxRate = getConfigValue('TAX_ENABLED') ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
+            } catch (e) {
+                console.log('Tax config not found, using 0');
+            }
             console.log('Tax rate:', taxRate);
             
             const tax = subtotal * taxRate;
@@ -2204,9 +2315,9 @@
                 cartHtml += `
                     <div class="cart-item">
                         <div class="cart-item-details">
-                            <div class="cart-item-artist">${item.artist || 'Unknown Artist'}</div>
-                            <div class="cart-item-title">${item.title || 'Unknown Title'}</div>
-                            <div class="cart-item-meta">${item.catalog_number || 'No catalog'}</div>
+                            <div class="cart-item-artist">${escapeHtml(item.artist) || 'Unknown Artist'}</div>
+                            <div class="cart-item-title">${escapeHtml(item.title) || 'Unknown Title'}</div>
+                            <div class="cart-item-meta">${escapeHtml(item.catalog_number) || 'No catalog'}</div>
                         </div>
                         <div class="cart-item-price">$${price.toFixed(2)}</div>
                         <div class="cart-item-remove" onclick="removeFromCart(${item.id})">
@@ -2350,7 +2461,12 @@
                 }
                 
                 const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-                const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+                let taxRate = 0;
+                try {
+                    taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+                } catch (e) {
+                    console.log('Tax config not found, using 0');
+                }
                 const tax = subtotal * taxRate;
                 
                 const transaction = {
@@ -2359,16 +2475,16 @@
                     items: [...soldRecords],
                     subtotal: subtotal,
                     tax: tax,
-                    taxRate: getConfigValue('TAX_RATE'),
+                    taxRate: taxRate * 100,
                     total: total,
                     tendered: tendered,
                     change: change,
                     paymentMethod: 'Cash',
                     cashier: cashierName,
-                    storeName: getConfigValue('STORE_NAME'),
-                    storeAddress: getConfigValue('STORE_ADDRESS'),
-                    storePhone: getConfigValue('STORE_PHONE'),
-                    footer: getConfigValue('RECEIPT_FOOTER'),
+                    storeName: dbConfigValues['STORE_NAME'] ? dbConfigValues['STORE_NAME'].value : 'PigStyle Music',
+                    storeAddress: dbConfigValues['STORE_ADDRESS'] ? dbConfigValues['STORE_ADDRESS'].value : '',
+                    storePhone: dbConfigValues['STORE_PHONE'] ? dbConfigValues['STORE_PHONE'].value : '',
+                    footer: dbConfigValues['RECEIPT_FOOTER'] ? dbConfigValues['RECEIPT_FOOTER'].value : 'Thank you for your purchase!',
                     consignorPayments: consignorPayments
                 };
                 
@@ -2479,6 +2595,10 @@
                     confirmBtn.disabled = false;
                 });
             });
+        }
+        
+        function closeTerminalSelectionModal() {
+            document.getElementById('terminal-selection-modal').style.display = 'none';
         }
         
         function selectTerminalForCartCheckout(terminalId) {
@@ -2769,7 +2889,12 @@
                 
                 const total = parseFloat(document.getElementById('cart-total').textContent.replace('$', ''));
                 const subtotal = cartItems.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-                const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+                let taxRate = 0;
+                try {
+                    taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+                } catch (e) {
+                    console.log('Tax config not found, using 0');
+                }
                 const tax = subtotal * taxRate;
                 
                 const transaction = {
@@ -2778,14 +2903,14 @@
                     items: [...soldRecords],
                     subtotal: subtotal,
                     tax: tax,
-                    taxRate: getConfigValue('TAX_RATE'),
+                    taxRate: taxRate * 100,
                     total: total,
                     paymentMethod: 'Square Terminal',
                     cashier: cashierName,
-                    storeName: getConfigValue('STORE_NAME'),
-                    storeAddress: getConfigValue('STORE_ADDRESS'),
-                    storePhone: getConfigValue('STORE_PHONE'),
-                    footer: getConfigValue('RECEIPT_FOOTER'),
+                    storeName: dbConfigValues['STORE_NAME'] ? dbConfigValues['STORE_NAME'].value : 'PigStyle Music',
+                    storeAddress: dbConfigValues['STORE_ADDRESS'] ? dbConfigValues['STORE_ADDRESS'].value : '',
+                    storePhone: dbConfigValues['STORE_PHONE'] ? dbConfigValues['STORE_PHONE'].value : '',
+                    footer: dbConfigValues['RECEIPT_FOOTER'] ? dbConfigValues['RECEIPT_FOOTER'].value : 'Thank you for your purchase!',
                     consignorPayments: consignorPayments
                 };
                 
@@ -2939,12 +3064,12 @@
             consignors.forEach(c => {
                 html += `<tr>
                     <td>${c.id}</td>
-                    <td>${c.username}</td>
-                    <td>${c.initials}</td>
+                    <td>${escapeHtml(c.username)}</td>
+                    <td>${escapeHtml(c.initials)}</td>
                     <td>$${c.owed.toFixed(2)}</td>
                     <td>${c.recordsSold}</td>
                     <td>
-                        <button class="btn btn-sm btn-success" onclick="showPaymentModal('${c.id}', '${c.username}', ${c.owed})">
+                        <button class="btn btn-sm btn-success" onclick="showPaymentModal('${c.id}', '${escapeHtml(c.username)}', ${c.owed})">
                             <i class="fas fa-dollar-sign"></i> Clear
                         </button>
                         <button class="btn btn-sm btn-danger" onclick="deleteConsignor('${c.id}')">
