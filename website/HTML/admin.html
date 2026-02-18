@@ -1128,7 +1128,7 @@
             transaction.items.forEach(item => {
                 itemsHtml += `
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                        <div>${item.artist || 'Unknown'} - ${item.title || 'Unknown'}</div>
+                        <div>${escapeHtml(item.artist) || 'Unknown'} - ${escapeHtml(item.title) || 'Unknown'}</div>
                         <div>$${(item.store_price || 0).toFixed(2)}</div>
                     </div>
                 `;
@@ -1136,17 +1136,17 @@
             
             receiptContent.innerHTML = `
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <h2>${transaction.storeName || (dbConfigValues['STORE_NAME'] && dbConfigValues['STORE_NAME'].value) || 'PigStyle Music'}</h2>
-                    <p>${transaction.storeAddress || (dbConfigValues['STORE_ADDRESS'] && dbConfigValues['STORE_ADDRESS'].value) || ''}</p>
-                    <p>${transaction.storePhone || (dbConfigValues['STORE_PHONE'] && dbConfigValues['STORE_PHONE'].value) || ''}</p>
+                    <h2>${escapeHtml(transaction.storeName) || (dbConfigValues['STORE_NAME'] && dbConfigValues['STORE_NAME'].value) || 'PigStyle Music'}</h2>
+                    <p>${escapeHtml(transaction.storeAddress) || (dbConfigValues['STORE_ADDRESS'] && dbConfigValues['STORE_ADDRESS'].value) || ''}</p>
+                    <p>${escapeHtml(transaction.storePhone) || (dbConfigValues['STORE_PHONE'] && dbConfigValues['STORE_PHONE'].value) || ''}</p>
                 </div>
                 
                 <div style="margin-bottom: 20px;">
                     <div style="display: flex; justify-content: space-between;">
-                        <span><strong>Receipt #:</strong> ${transaction.id}</span>
+                        <span><strong>Receipt #:</strong> ${escapeHtml(transaction.id)}</span>
                         <span><strong>Date:</strong> ${dateStr}</span>
                     </div>
-                    <div><strong>Cashier:</strong> ${transaction.cashier || 'Admin'}</div>
+                    <div><strong>Cashier:</strong> ${escapeHtml(transaction.cashier) || 'Admin'}</div>
                 </div>
                 
                 <div style="margin-bottom: 20px;">
@@ -1170,13 +1170,13 @@
                 </div>
                 
                 <div style="margin-top: 20px;">
-                    <div><strong>Payment Method:</strong> ${transaction.paymentMethod || 'Cash'}</div>
+                    <div><strong>Payment Method:</strong> ${escapeHtml(transaction.paymentMethod) || 'Cash'}</div>
                     ${transaction.tendered ? `<div><strong>Tendered:</strong> $${transaction.tendered.toFixed(2)}</div>` : ''}
                     ${transaction.change ? `<div><strong>Change:</strong> $${transaction.change.toFixed(2)}</div>` : ''}
                 </div>
                 
                 <div style="text-align: center; margin-top: 30px; font-style: italic;">
-                    ${transaction.footer || (dbConfigValues['RECEIPT_FOOTER'] && dbConfigValues['RECEIPT_FOOTER'].value) || 'Thank you for your purchase!'}
+                    ${escapeHtml(transaction.footer) || (dbConfigValues['RECEIPT_FOOTER'] && dbConfigValues['RECEIPT_FOOTER'].value) || 'Thank you for your purchase!'}
                 </div>
             `;
             
@@ -1186,6 +1186,14 @@
         // Close receipt modal
         function closeReceiptModal() {
             document.getElementById('receipt-modal').style.display = 'none';
+        }
+        
+        // Helper function to escape HTML special characters
+        function escapeHtml(text) {
+            if (!text) return text;
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
         
         // Helper functions
@@ -1510,15 +1518,15 @@
                     <td><input type="checkbox" class="record-checkbox" data-id="${record.id}" ${window.selectedRecords && window.selectedRecords.has(record.id.toString()) ? 'checked' : ''}></td>
                     <td>${globalIndex + 1}</td>
                     <td><strong>${formatDate(record.created_at)}</strong></td>
-                    <td>${truncateText(record.artist || 'Unknown', 25)}</td>
-                    <td>${truncateText(record.title || 'Unknown', 30)}</td>
+                    <td>${truncateText(escapeHtml(record.artist) || 'Unknown', 25)}</td>
+                    <td>${truncateText(escapeHtml(record.title) || 'Unknown', 30)}</td>
                     <td>$${(record.store_price || 0).toFixed(2)}</td>
-                    <td>${truncateText(record.catalog_number || 'N/A', 15)}</td>
-                    <td>${truncateText(record.genre_name || record.genre || 'Unknown', 20)}</td>
+                    <td>${truncateText(escapeHtml(record.catalog_number) || 'N/A', 15)}</td>
+                    <td>${truncateText(escapeHtml(record.genre_name || record.genre) || 'Unknown', 20)}</td>
                     <td>${record.barcode || 'N/A'}</td>
                     <td>
                         ${record.consignor_id ? 
-                            `<span class="consignor-badge" title="${consignorInfo.username}">${consignorInfo.initials || consignorInfo.username.substring(0, 2)}</span>` : 
+                            `<span class="consignor-badge" title="${escapeHtml(consignorInfo.username)}">${escapeHtml(consignorInfo.initials) || escapeHtml(consignorInfo.username.substring(0, 2))}</span>` : 
                             '<span style="color: #999;">None</span>'}
                     </td>
                     <td>
@@ -2069,8 +2077,8 @@
                             <i class="fas fa-square"></i>
                         </div>
                         <div class="terminal-details">
-                            <div class="terminal-name">${terminal.device_name || 'Square Terminal'}</div>
-                            <div class="terminal-id">ID: ${displayId}</div>
+                            <div class="terminal-name">${escapeHtml(terminal.device_name) || 'Square Terminal'}</div>
+                            <div class="terminal-id">ID: ${escapeHtml(displayId)}</div>
                         </div>
                         <div class="terminal-status ${isOnline ? 'online' : 'offline'}">
                             ${isOnline ? 'Online' : 'Offline'}
@@ -2194,14 +2202,6 @@
             
             // Show/hide cart section based on cart contents
             updateCartDisplay();
-        }
-        
-        // Helper function to escape HTML special characters
-        function escapeHtml(text) {
-            if (!text) return text;
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
         }
         
         // Store record data for safe access
@@ -2567,7 +2567,7 @@
                     <div class="terminal-device" onclick="selectTerminalForCartCheckout('${terminalId}')">
                         <input type="radio" name="terminal-cart" value="${terminalId}">
                         <div class="terminal-device-info">
-                            <div class="terminal-device-name">${terminal.device_name || 'Square Terminal'}</div>
+                            <div class="terminal-device-name">${escapeHtml(terminal.device_name) || 'Square Terminal'}</div>
                             <div class="terminal-device-status online">Online</div>
                         </div>
                     </div>
@@ -2671,7 +2671,9 @@
                 
                 if (data.status === 'success') {
                     const checkout = data.checkout;
+                    // Store the FULL checkout ID from Square (includes the termapia: prefix)
                     activeCheckoutId = checkout.id;
+                    console.log('Stored full checkout ID:', activeCheckoutId);
                     
                     modalBody.innerHTML = `
                         <div class="payment-status">
@@ -2720,92 +2722,99 @@
                 clearInterval(checkoutPollInterval);
             }
             
+            // Use the full checkout ID with prefix
+            const fullCheckoutId = checkoutId;
+            console.log('Polling with full checkout ID:', fullCheckoutId);
+            
             let pollCount = 0;
             const maxPolls = 60;
             
             checkoutPollInterval = setInterval(async () => {
                 pollCount++;
                 
-                const response = await fetch(`${AppConfig.baseUrl}/api/square/terminal/checkout/${checkoutId}/status`, {
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                });
-                
-                if (!response.ok) {
-                    console.error(`Status check failed: ${response.status}`);
-                    return;
-                }
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    const checkout = data.checkout;
-                    const checkoutStatus = checkout.status;
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/api/square/terminal/checkout/${encodeURIComponent(fullCheckoutId)}/status`, {
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
                     
-                    if (checkoutStatus === 'COMPLETED') {
-                        clearInterval(checkoutPollInterval);
+                    if (!response.ok) {
+                        console.error(`Status check failed: ${response.status}`);
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        const checkout = data.checkout;
+                        const checkoutStatus = checkout.status;
                         
-                        // Mark all records as sold
-                        await processSquarePaymentSuccess(cartItems);
-                        
-                        const modalBody = document.getElementById('terminal-checkout-body');
-                        modalBody.innerHTML = `
-                            <div class="payment-status">
-                                <div class="payment-status-icon success">
-                                    <i class="fas fa-check-circle"></i>
+                        if (checkoutStatus === 'COMPLETED') {
+                            clearInterval(checkoutPollInterval);
+                            
+                            // Mark all records as sold
+                            await processSquarePaymentSuccess(cartItems);
+                            
+                            const modalBody = document.getElementById('terminal-checkout-body');
+                            modalBody.innerHTML = `
+                                <div class="payment-status">
+                                    <div class="payment-status-icon success">
+                                        <i class="fas fa-check-circle"></i>
+                                    </div>
+                                    <div class="payment-status-message">Payment Successful!</div>
+                                    <div class="payment-status-detail">Amount: $${(checkout.amount_money.amount / 100).toFixed(2)}</div>
+                                    <div class="payment-status-detail">Thank you for your purchase</div>
+                                    <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                        <i class="fas fa-check"></i> Done
+                                    </button>
                                 </div>
-                                <div class="payment-status-message">Payment Successful!</div>
-                                <div class="payment-status-detail">Amount: $${checkout.amount_money.amount / 100}</div>
-                                <div class="payment-status-detail">Thank you for your purchase</div>
-                                <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                                    <i class="fas fa-check"></i> Done
-                                </button>
-                            </div>
-                        `;
-                        
-                        showCheckoutStatus('Payment completed successfully!', 'success');
-                        
-                    } else if (checkoutStatus === 'CANCELED' || checkoutStatus === 'FAILED') {
+                            `;
+                            
+                            showCheckoutStatus('Payment completed successfully!', 'success');
+                            
+                        } else if (checkoutStatus === 'CANCELED' || checkoutStatus === 'FAILED') {
+                            clearInterval(checkoutPollInterval);
+                            
+                            const modalBody = document.getElementById('terminal-checkout-body');
+                            modalBody.innerHTML = `
+                                <div class="payment-status">
+                                    <div class="payment-status-icon error">
+                                        <i class="fas fa-times-circle"></i>
+                                    </div>
+                                    <div class="payment-status-message">Payment ${checkoutStatus}</div>
+                                    <div class="payment-status-detail">The transaction was ${checkoutStatus.toLowerCase()}</div>
+                                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                        <i class="fas fa-times"></i> Close
+                                    </button>
+                                </div>
+                            `;
+                            
+                            showCheckoutStatus(`Payment ${checkoutStatus.toLowerCase()}`, 'error');
+                        }
+                    }
+                    
+                    if (pollCount >= maxPolls) {
                         clearInterval(checkoutPollInterval);
                         
                         const modalBody = document.getElementById('terminal-checkout-body');
                         modalBody.innerHTML = `
                             <div class="payment-status">
                                 <div class="payment-status-icon error">
-                                    <i class="fas fa-times-circle"></i>
+                                    <i class="fas fa-clock"></i>
                                 </div>
-                                <div class="payment-status-message">Payment ${checkoutStatus}</div>
-                                <div class="payment-status-detail">The transaction was ${checkoutStatus.toLowerCase()}</div>
+                                <div class="payment-status-message">Checkout Timed Out</div>
+                                <div class="payment-status-detail">The terminal did not respond in time</div>
                                 <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
                                     <i class="fas fa-times"></i> Close
                                 </button>
                             </div>
                         `;
-                        
-                        showCheckoutStatus(`Payment ${checkoutStatus.toLowerCase()}`, 'error');
                     }
+                } catch (error) {
+                    console.error('Polling error:', error);
                 }
-                
-                if (pollCount >= maxPolls) {
-                    clearInterval(checkoutPollInterval);
-                    
-                    const modalBody = document.getElementById('terminal-checkout-body');
-                    modalBody.innerHTML = `
-                        <div class="payment-status">
-                            <div class="payment-status-icon error">
-                                <i class="fas fa-clock"></i>
-                            </div>
-                            <div class="payment-status-message">Checkout Timed Out</div>
-                            <div class="payment-status-detail">The terminal did not respond in time</div>
-                            <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                                <i class="fas fa-times"></i> Close
-                            </button>
-                        </div>
-                    `;
-                }
-                
             }, 5000);
         }
         
@@ -2946,41 +2955,114 @@
         }
         
         async function cancelTerminalCheckout() {
-            if (!activeCheckoutId) return;
+            if (!activeCheckoutId) {
+                showCheckoutStatus('No active checkout to cancel', 'info');
+                return;
+            }
             
-            const response = await fetch(`${AppConfig.baseUrl}/api/square/terminal/checkout/${activeCheckoutId}/cancel`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
+            // Show loading state in modal
+            const modalBody = document.getElementById('terminal-checkout-body');
+            modalBody.innerHTML = `
+                <div class="payment-status">
+                    <div class="payment-status-icon processing">
+                        <i class="fas fa-spinner fa-pulse"></i>
+                    </div>
+                    <div class="payment-status-message">Cancelling checkout...</div>
+                </div>
+            `;
+            
+            try {
+                console.log('Original checkout ID:', activeCheckoutId);
+                
+                // Square checkout IDs MUST have the termapia: prefix
+                // Always add it since we know it's required
+                const checkoutIdToUse = `termapia:${activeCheckoutId}`;
+                console.log('Using checkout ID with prefix:', checkoutIdToUse);
+                
+                // URL encode the ID to handle the colon
+                const encodedId = encodeURIComponent(checkoutIdToUse);
+                const url = `${AppConfig.baseUrl}/api/square/terminal/checkout/${encodedId}/cancel`;
+                console.log('Sending cancel request to:', url);
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                console.log('Cancel response status:', response.status);
+                
+                const responseText = await response.text();
+                console.log('Cancel response body:', responseText);
+                
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (e) {
+                    data = { message: responseText };
                 }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.status === 'success') {
-                    showCheckoutStatus('Checkout cancelled', 'info');
-                    
-                    const modalBody = document.getElementById('terminal-checkout-body');
-                    modalBody.innerHTML = `
-                        <div class="payment-status">
-                            <div class="payment-status-icon error">
-                                <i class="fas fa-ban"></i>
+                
+                if (response.ok) {
+                    if (data.status === 'success') {
+                        showCheckoutStatus('Checkout cancelled successfully', 'success');
+                        
+                        modalBody.innerHTML = `
+                            <div class="payment-status">
+                                <div class="payment-status-icon success">
+                                    <i class="fas fa-check-circle"></i>
+                                </div>
+                                <div class="payment-status-message">Checkout Cancelled Successfully</div>
+                                <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                    <i class="fas fa-times"></i> Close
+                                </button>
                             </div>
-                            <div class="payment-status-message">Checkout Cancelled</div>
-                            <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                                <i class="fas fa-times"></i> Close
-                            </button>
-                        </div>
-                    `;
+                        `;
+                        
+                        if (checkoutPollInterval) {
+                            clearInterval(checkoutPollInterval);
+                            checkoutPollInterval = null;
+                        }
+                        activeCheckoutId = null;
+                    } else {
+                        throw new Error(data.message || 'Failed to cancel checkout');
+                    }
+                } else {
+                    let errorMessage = `Error ${response.status}: ${response.statusText}`;
+                    if (data.message) {
+                        errorMessage = data.message;
+                    }
+                    throw new Error(errorMessage);
                 }
+            } catch (error) {
+                console.error('Cancel checkout error:', error);
+                
+                modalBody.innerHTML = `
+                    <div class="payment-status">
+                        <div class="payment-status-icon error">
+                            <i class="fas fa-times-circle"></i>
+                        </div>
+                        <div class="payment-status-message">Failed to Cancel Checkout</div>
+                        <div class="payment-status-detail">${error.message}</div>
+                        <div class="payment-status-detail" style="font-size: 12px; margin-top: 10px;">
+                            Checkout ID: ${escapeHtml(activeCheckoutId)}
+                        </div>
+                        <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                        <button class="btn btn-secondary" onclick="cancelTerminalCheckout()" style="margin-top: 10px;">
+                            <i class="fas fa-redo"></i> Retry
+                        </button>
+                    </div>
+                `;
+                
+                showCheckoutStatus(`Failed to cancel: ${error.message}`, 'error');
             }
-            
-            if (checkoutPollInterval) {
-                clearInterval(checkoutPollInterval);
-            }
-            activeCheckoutId = null;
         }
+
+ 
         
         async function markRecordAsSold(recordId) {
             const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
