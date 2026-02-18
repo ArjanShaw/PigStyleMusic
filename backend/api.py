@@ -462,7 +462,7 @@ def api_create_terminal_checkout():
 def api_get_checkout_status(checkout_id):
     """Get status of a terminal checkout"""
     try:
-        checkout, error = get_terminal_checkout_status(checkout_id)
+        result, error = get_terminal_checkout_status(checkout_id)
         
         if error:
             return jsonify({
@@ -472,7 +472,7 @@ def api_get_checkout_status(checkout_id):
         
         return jsonify({
             'status': 'success',
-            'checkout': checkout
+            'checkout': result
         }), 200
         
     except Exception as e:
@@ -481,6 +481,8 @@ def api_get_checkout_status(checkout_id):
             'status': 'error',
             'message': str(e)
         }), 500
+    
+     
 
 @app.route('/api/square/terminal/checkout/<checkout_id>/cancel', methods=['POST'])
 @login_required

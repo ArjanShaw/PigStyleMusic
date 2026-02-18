@@ -222,7 +222,7 @@
         <div id="check-out-tab" class="tab-content">
             <h2><i class="fas fa-shopping-cart"></i> Check Out</h2>
             
-            <!-- Terminal Management Section (Kept for future Square integration) -->
+            <!-- Terminal Management Section -->
             <div class="terminal-management">
                 <div class="terminal-header">
                     <h3><i class="fas fa-square"></i> Square Terminal Status</h3>
@@ -310,8 +310,11 @@
                     <button class="btn btn-secondary" onclick="clearCart()">
                         <i class="fas fa-times"></i> Clear Cart
                     </button>
-                    <button class="btn btn-cash" onclick="showTenderModal()" id="checkout-cash-btn" disabled>
-                        <i class="fas fa-money-bill-wave"></i> Complete Cash Sale
+                    <button class="btn btn-cash" onclick="showTenderModal()" id="checkout-cash-btn">
+                        <i class="fas fa-money-bill-wave"></i> Cash
+                    </button>
+                    <button class="btn btn-square" onclick="processSquarePayment()" id="checkout-square-btn">
+                        <i class="fas fa-square"></i> Square
                     </button>
                 </div>
             </div>
@@ -567,27 +570,6 @@
         </div>
     </div>
 
-    <!-- Terminal Selection Modal -->
-    <div id="terminal-selection-modal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-square"></i> Select Terminal</h3>
-                <button class="modal-close" onclick="closeTerminalSelectionModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="terminal-selection-list" class="terminal-device-selector">
-                    <!-- Terminal selection will be populated here -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeTerminalSelectionModal()">Cancel</button>
-                <button class="btn btn-success" onclick="initiateTerminalCheckout()" id="confirm-terminal-btn" disabled>
-                    <i class="fas fa-check-circle"></i> Start Checkout
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Tender Modal (Cash Payment) -->
     <div id="tender-modal" class="tender-modal">
         <div class="tender-content">
@@ -778,30 +760,51 @@
                 const taxRate = getConfigValue('TAX_RATE');
                 document.getElementById('tax-rate-display').textContent = taxRate;
                 
-                // Update commission display
-                const commissionRate = getConfigValue('COMMISSION_RATE');
-                document.getElementById('commission-rate-display').textContent = commissionRate;
-                document.getElementById('admin-commission-display').textContent = commissionRate;
-                document.getElementById('consignor-commission-display').textContent = 100 - commissionRate;
+                // Update commission display - this is now per-record, so we'll just show a static message
+                // to avoid errors when COMMISSION_RATE doesn't exist
+                document.getElementById('commission-rate-display').textContent = 'Per Record';
+                document.getElementById('admin-commission-display').textContent = 'Per Record';
+                document.getElementById('consignor-commission-display').textContent = 'Per Record';
                 
             } catch (error) {
                 console.error('Error updating UI from config:', error);
-                // Re-throw to ensure errors are visible
-                throw error;
+                // Don't re-throw the error - just log it
             }
         }
 
         // Get admin config values for backward compatibility
         function getAdminConfig() {
+            let taxRate = 0;
+            let taxEnabled = false;
+            let commissionRate = 10; // Default fallback
+            
+            try {
+                taxRate = getConfigValue('TAX_RATE');
+            } catch (e) {
+                console.log('TAX_RATE not found, using default');
+            }
+            
+            try {
+                taxEnabled = getConfigValue('TAX_ENABLED');
+            } catch (e) {
+                console.log('TAX_ENABLED not found, using default false');
+            }
+            
+            try {
+                commissionRate = getConfigValue('COMMISSION_RATE');
+            } catch (e) {
+                console.log('COMMISSION_RATE not found, using default 10');
+            }
+            
             return {
-                taxRate: getConfigValue('TAX_RATE'),
-                taxEnabled: getConfigValue('TAX_ENABLED'),
-                commissionRate: getConfigValue('COMMISSION_RATE'),
-                storeName: getConfigValue('STORE_NAME'),
-                storeAddress: getConfigValue('STORE_ADDRESS'),
-                storePhone: getConfigValue('STORE_PHONE'),
-                receiptFooter: getConfigValue('RECEIPT_FOOTER'),
-                autoPrintReceipt: getConfigValue('AUTO_PRINT_RECEIPT')
+                taxRate: taxRate,
+                taxEnabled: taxEnabled,
+                commissionRate: commissionRate,
+                storeName: getConfigValue('STORE_NAME') || 'PigStyle Music',
+                storeAddress: getConfigValue('STORE_ADDRESS') || '',
+                storePhone: getConfigValue('STORE_PHONE') || '',
+                receiptFooter: getConfigValue('RECEIPT_FOOTER') || 'Thank you for your purchase!',
+                autoPrintReceipt: getConfigValue('AUTO_PRINT_RECEIPT') || false
             };
         }
         
@@ -1920,7 +1923,7 @@
             terminalList.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="loading-spinner" style="width: 30px; height: 30px;"></div><p>Loading terminals...</p></div>';
             
             const response = await fetch(`${AppConfig.baseUrl}/api/square/terminals`, {
-                credentials: 'include'  // Important: include cookies/session
+                credentials: 'include'
             });
             
             if (!response.ok) {
@@ -1962,7 +1965,6 @@
             
             let html = '';
             terminals.forEach(terminal => {
-                // Extract just the serial number for display/storage
                 let displayId = terminal.id;
                 let storeId = terminal.id;
                 
@@ -1972,7 +1974,7 @@
                 }
                 
                 const isOnline = terminal.status === 'ONLINE';
-                const isSelected = selectedTerminalId === storeId;  // Compare with stripped version
+                const isSelected = selectedTerminalId === storeId;
                 
                 html += `
                     <div class="terminal-item ${isSelected ? 'selected' : ''}" onclick="selectTerminal('${storeId}')">
@@ -1991,6 +1993,15 @@
             });
             
             terminalList.innerHTML = html;
+            
+            // Auto-select if there's only one terminal
+            if (terminals.length === 1) {
+                let singleTerminalId = terminals[0].id;
+                if (singleTerminalId && singleTerminalId.startsWith('device:')) {
+                    singleTerminalId = singleTerminalId.replace('device:', '');
+                }
+                selectedTerminalId = singleTerminalId;
+            }
         }
         
         function selectTerminal(terminalId) {
@@ -2084,10 +2095,7 @@
                                     `<button class="btn btn-cart btn-sm" onclick='addToCart(${JSON.stringify(record).replace(/'/g, "\\'")})'>
                                         <i class="fas fa-cart-plus"></i> Add to Cart
                                     </button>`
-                                ) +
-                                ` <button class="btn btn-square btn-sm" onclick='showTerminalSelection(${JSON.stringify(record).replace(/'/g, "\\'")})'>
-                                    <i class="fas fa-square"></i> Square
-                                </button>` :
+                                ) :
                                 '<span class="inactive-badge">Not Active</span>'
                             }
                         </div>
@@ -2103,6 +2111,11 @@
         
         // Shopping Cart Functions
         function addToCart(record) {
+            console.log('=== ADD TO CART CALLED ===');
+            console.log('Record being added:', JSON.stringify(record, null, 2));
+            console.log('Record price:', record.store_price);
+            console.log('Record price type:', typeof record.store_price);
+            
             // Check if already in cart
             if (checkoutCart.some(item => item.id === record.id)) {
                 showCheckoutStatus('Item already in cart', 'info');
@@ -2111,8 +2124,11 @@
             
             // Add to cart
             checkoutCart.push(record);
+            console.log('Cart after add:', JSON.stringify(checkoutCart, null, 2));
+            console.log('Cart length:', checkoutCart.length);
+            
             updateCartDisplay();
-            renderSearchResults(currentSearchResults); // Refresh search results to update button states
+            renderSearchResults(currentSearchResults);
             showCheckoutStatus(`Added "${record.title}" to cart`, 'success');
         }
         
@@ -2121,7 +2137,7 @@
             if (recordIndex !== -1) {
                 const removed = checkoutCart.splice(recordIndex, 1)[0];
                 updateCartDisplay();
-                renderSearchResults(currentSearchResults); // Refresh search results to update button states
+                renderSearchResults(currentSearchResults);
                 showCheckoutStatus(`Removed "${removed.title}" from cart`, 'info');
             }
         }
@@ -2138,39 +2154,53 @@
         }
         
         function updateCartDisplay() {
+            console.log('=== UPDATE CART DISPLAY CALLED ===');
+            console.log('Current cart:', JSON.stringify(checkoutCart, null, 2));
+            console.log('Cart length:', checkoutCart.length);
+            
             const cartSection = document.getElementById('shopping-cart-section');
             const cartItems = document.getElementById('cart-items');
             const cartCount = document.getElementById('cart-item-count');
             const cartSubtotal = document.getElementById('cart-subtotal');
             const cartTax = document.getElementById('cart-tax');
             const cartTotal = document.getElementById('cart-total');
-            const checkoutBtn = document.getElementById('checkout-cash-btn');
             
             if (checkoutCart.length === 0) {
+                console.log('Cart is empty, hiding section');
                 cartSection.style.display = 'none';
-                checkoutBtn.disabled = true;
                 return;
             }
             
+            console.log('Showing cart section');
             cartSection.style.display = 'block';
             cartCount.textContent = `${checkoutCart.length} item${checkoutCart.length !== 1 ? 's' : ''}`;
             
-            // Calculate totals
-            const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-            const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+            // Calculate totals with detailed logging
+            let subtotal = 0;
+            checkoutCart.forEach((item, index) => {
+                const price = parseFloat(item.store_price);
+                console.log(`Item ${index}: ${item.artist} - ${item.title}, price: ${price}, original: ${item.store_price}`);
+                subtotal += price;
+            });
+            
+            console.log('Calculated subtotal:', subtotal);
+            
+            const taxRate = getConfigValue('TAX_ENABLED') ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
+            console.log('Tax rate:', taxRate);
+            
             const tax = subtotal * taxRate;
             const total = subtotal + tax;
+            
+            console.log('Tax:', tax, 'Total:', total);
             
             cartSubtotal.textContent = `$${subtotal.toFixed(2)}`;
             cartTax.textContent = `$${tax.toFixed(2)}`;
             cartTotal.textContent = `$${total.toFixed(2)}`;
             
-            // Enable checkout button if cart has items
-            checkoutBtn.disabled = false;
-            
             // Render cart items
             let cartHtml = '';
             checkoutCart.forEach(item => {
+                const price = parseFloat(item.store_price) || 0;
                 cartHtml += `
                     <div class="cart-item">
                         <div class="cart-item-details">
@@ -2178,7 +2208,7 @@
                             <div class="cart-item-title">${item.title || 'Unknown Title'}</div>
                             <div class="cart-item-meta">${item.catalog_number || 'No catalog'}</div>
                         </div>
-                        <div class="cart-item-price">$${(item.store_price || 0).toFixed(2)}</div>
+                        <div class="cart-item-price">$${price.toFixed(2)}</div>
                         <div class="cart-item-remove" onclick="removeFromCart(${item.id})">
                             <i class="fas fa-times"></i>
                         </div>
@@ -2186,21 +2216,20 @@
                 `;
             });
             
+            console.log('Setting cart items HTML');
             cartItems.innerHTML = cartHtml;
         }
         
-        // Tender Modal Functions
+        // ============= PAYMENT FUNCTIONS =============
+        
+        // Cash Payment
         function showTenderModal() {
             if (checkoutCart.length === 0) {
                 showCheckoutStatus('Cart is empty', 'error');
                 return;
             }
             
-            // Calculate total
-            const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-            const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
-            const tax = subtotal * taxRate;
-            const total = subtotal + tax;
+            const total = parseFloat(document.getElementById('cart-total').textContent.replace('$', ''));
             
             document.getElementById('tender-total-due').textContent = `$${total.toFixed(2)}`;
             document.getElementById('tender-amount').value = '';
@@ -2210,7 +2239,6 @@
             document.getElementById('tender-modal').style.display = 'flex';
             document.getElementById('tender-amount').focus();
             
-            // Add input event listener for change calculation
             document.getElementById('tender-amount').addEventListener('input', function(e) {
                 const tendered = parseFloat(e.target.value) || 0;
                 const total = parseFloat(document.getElementById('tender-total-due').textContent.replace('$', ''));
@@ -2233,10 +2261,7 @@
         
         async function processCashPayment() {
             const tendered = parseFloat(document.getElementById('tender-amount').value) || 0;
-            const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-            const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
-            const tax = subtotal * taxRate;
-            const total = subtotal + tax;
+            const total = parseFloat(document.getElementById('cart-total').textContent.replace('$', ''));
             
             if (tendered < total) {
                 showCheckoutStatus('Insufficient payment', 'error');
@@ -2252,7 +2277,7 @@
             let successCount = 0;
             let errorCount = 0;
             const soldRecords = [];
-            const consignorPayments = {}; // Track payments per consignor
+            const consignorPayments = {};
             
             for (const record of checkoutCart) {
                 try {
@@ -2272,10 +2297,9 @@
                             successCount++;
                             soldRecords.push(record);
                             
-                            // Calculate consignor payment (if record has consignor)
                             if (record.consignor_id) {
-                                const commissionRate = getConfigValue('COMMISSION_RATE') / 100;
-                                const consignorShare = record.store_price * (1 - commissionRate);
+                                const commissionRate = record.commission_rate || 10;
+                                const consignorShare = record.store_price * (1 - (commissionRate / 100));
                                 
                                 if (!consignorPayments[record.consignor_id]) {
                                     consignorPayments[record.consignor_id] = 0;
@@ -2283,13 +2307,11 @@
                                 consignorPayments[record.consignor_id] += consignorShare;
                             }
                             
-                            // Update local record status
                             const recordIndex = allRecords.findIndex(r => r.id === record.id);
                             if (recordIndex !== -1) {
                                 allRecords[recordIndex].status_id = 3;
                             }
                             
-                            // Update in current search results
                             const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
                             if (searchIndex !== -1) {
                                 currentSearchResults[searchIndex].status_id = 3;
@@ -2306,20 +2328,16 @@
                 }
             }
             
-            // Add consignor payments to localStorage
             if (Object.keys(consignorPayments).length > 0) {
                 let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
                 for (const [consignorId, amount] of Object.entries(consignorPayments)) {
                     storedOwed[consignorId] = (storedOwed[consignorId] || 0) + amount;
                 }
                 localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
-                
-                // Update consignorOwedAmounts global
                 consignorOwedAmounts = storedOwed;
             }
             
             if (successCount > 0) {
-                // Get cashier name from user data if available
                 let cashierName = 'Admin';
                 try {
                     const userData = localStorage.getItem('user');
@@ -2331,7 +2349,10 @@
                     console.error('Error parsing user data:', e);
                 }
                 
-                // Create transaction object for receipt
+                const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
+                const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+                const tax = subtotal * taxRate;
+                
                 const transaction = {
                     id: `CASH-${Date.now()}`,
                     date: new Date(),
@@ -2348,20 +2369,14 @@
                     storeAddress: getConfigValue('STORE_ADDRESS'),
                     storePhone: getConfigValue('STORE_PHONE'),
                     footer: getConfigValue('RECEIPT_FOOTER'),
-                    consignorPayments: consignorPayments // Store payment breakdown
+                    consignorPayments: consignorPayments
                 };
                 
-                // Save receipt to localStorage
                 saveReceipt(transaction);
-                
-                // Show receipt
                 showReceipt(transaction);
                 
-                // Clear cart
                 checkoutCart = [];
                 updateCartDisplay();
-                
-                // Refresh search results
                 renderSearchResults(currentSearchResults);
                 
                 showCheckoutStatus(`Successfully sold ${successCount} items${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
@@ -2372,106 +2387,16 @@
             showCheckoutLoading(false);
         }
         
-        // Receipt Functions
-        function showReceipt(transaction) {
-            const receiptContent = document.getElementById('receipt-content');
-            
-            const dateStr = transaction.date.toLocaleDateString() + ' ' + 
-                           transaction.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            
-            let itemsHtml = '';
-            transaction.items.forEach(item => {
-                itemsHtml += `
-                    <div class="receipt-item">
-                        <div class="receipt-item-desc">${item.artist || 'Unknown'} - ${item.title || 'Unknown'}</div>
-                        <div class="receipt-item-price">$${(item.store_price || 0).toFixed(2)}</div>
-                    </div>
-                `;
-            });
-            
-            receiptContent.innerHTML = `
-                <div class="receipt-header">
-                    <div class="receipt-store-name">${transaction.storeName || getConfigValue('STORE_NAME')}</div>
-                    <div class="receipt-store-info">${transaction.storeAddress || getConfigValue('STORE_ADDRESS')}</div>
-                    <div class="receipt-store-info">${transaction.storePhone || getConfigValue('STORE_PHONE')}</div>
-                </div>
-                
-                <div class="receipt-transaction-info">
-                    <div>Receipt #: ${transaction.id}</div>
-                    <div>Date: ${dateStr}</div>
-                    <div>Cashier: ${transaction.cashier || 'Admin'}</div>
-                </div>
-                
-                <div class="receipt-items">
-                    ${itemsHtml}
-                </div>
-                
-                <div class="receipt-summary">
-                    <div class="receipt-summary-row">
-                        <span>Subtotal:</span>
-                        <span>$${(transaction.subtotal || 0).toFixed(2)}</span>
-                    </div>
-                    <div class="receipt-summary-row">
-                        <span>Tax (${transaction.taxRate || getConfigValue('TAX_RATE')}%):</span>
-                        <span>$${(transaction.tax || 0).toFixed(2)}</span>
-                    </div>
-                    <div class="receipt-summary-row receipt-total">
-                        <span>TOTAL:</span>
-                        <span>$${(transaction.total || 0).toFixed(2)}</span>
-                    </div>
-                </div>
-                
-                <div class="receipt-payment">
-                    <div class="receipt-summary-row">
-                        <span>Tendered:</span>
-                        <span>$${(transaction.tendered || 0).toFixed(2)}</span>
-                    </div>
-                    <div class="receipt-summary-row">
-                        <span>Change:</span>
-                        <span>$${(transaction.change || 0).toFixed(2)}</span>
-                    </div>
-                </div>
-                
-                <div class="receipt-footer">
-                    ${transaction.footer || getConfigValue('RECEIPT_FOOTER')}
-                </div>
-                
-                <div class="receipt-actions">
-                    <button class="btn btn-primary btn-sm" onclick="window.print()">
-                        <i class="fas fa-print"></i> Print Receipt
-                    </button>
-                    <button class="btn btn-success btn-sm" onclick="downloadCurrentReceiptPDF()">
-                        <i class="fas fa-download"></i> Save PDF
-                    </button>
-                    <button class="btn btn-secondary btn-sm" onclick="closeReceipt()">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                </div>
-            `;
-            
-            document.getElementById('receipt-modal').style.display = 'flex';
-            
-            // Auto-print if configured
-            if (getConfigValue('AUTO_PRINT_RECEIPT')) {
-                setTimeout(() => {
-                    window.print();
-                }, 500);
+        // Square Payment
+        async function processSquarePayment() {
+            if (checkoutCart.length === 0) {
+                showCheckoutStatus('Cart is empty', 'error');
+                return;
             }
-        }
-        
-        function closeReceipt() {
-            document.getElementById('receipt-modal').style.display = 'none';
-        }
-        
-        function downloadCurrentReceiptPDF() {
-            // Get the current receipt from the modal
-            const receiptId = document.querySelector('.receipt-transaction-info div:first-child').textContent.replace('Receipt #: ', '');
-            downloadReceiptPDF(receiptId);
-        }
-        
-        function showTerminalSelection(record) {
+            
+            // Check if we have terminals
             if (availableTerminals.length === 0) {
-                showCheckoutStatus('No Square Terminals available. Please check terminal status.', 'error');
+                showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
                 return;
             }
             
@@ -2482,22 +2407,49 @@
                 return;
             }
             
-            window.pendingTerminalSale = record;
+            // Determine which terminal to use
+            let terminalIdToUse = selectedTerminalId;
             
-            // Render terminal selection
+            // If no terminal selected but we have online terminals
+            if (!terminalIdToUse && onlineTerminals.length > 0) {
+                // If only one online terminal, use it
+                if (onlineTerminals.length === 1) {
+                    let singleId = onlineTerminals[0].id;
+                    if (singleId && singleId.startsWith('device:')) {
+                        singleId = singleId.replace('device:', '');
+                    }
+                    terminalIdToUse = singleId;
+                    selectedTerminalId = terminalIdToUse;
+                } else {
+                    // Multiple terminals - show selection modal
+                    showTerminalSelectionForCart();
+                    return;
+                }
+            }
+            
+            // If we have a terminal ID to use, proceed with checkout
+            if (terminalIdToUse) {
+                initiateCartTerminalCheckout(terminalIdToUse);
+            } else {
+                showCheckoutStatus('Please select a terminal first', 'error');
+            }
+        }
+        
+        function showTerminalSelectionForCart() {
+            const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+            
             const selectionList = document.getElementById('terminal-selection-list');
-            let html = '<h4>Select Terminal</h4>';
+            let html = '<h4>Select Terminal for Cart Payment</h4>';
             
             onlineTerminals.forEach(terminal => {
-                // Strip prefix for display/storage
                 let terminalId = terminal.id;
                 if (terminalId && terminalId.startsWith('device:')) {
                     terminalId = terminalId.replace('device:', '');
                 }
                 
                 html += `
-                    <div class="terminal-device" onclick="selectTerminalForCheckout('${terminalId}')">
-                        <input type="radio" name="terminal" value="${terminalId}" ${selectedTerminalId === terminalId ? 'checked' : ''}>
+                    <div class="terminal-device" onclick="selectTerminalForCartCheckout('${terminalId}')">
+                        <input type="radio" name="terminal-cart" value="${terminalId}">
                         <div class="terminal-device-info">
                             <div class="terminal-device-name">${terminal.device_name || 'Square Terminal'}</div>
                             <div class="terminal-device-status online">Online</div>
@@ -2507,55 +2459,40 @@
             });
             
             selectionList.innerHTML = html;
-            
-            // Enable confirm button if a terminal is already selected
-            if (selectedTerminalId && onlineTerminals.some(t => {
-                let tid = t.id;
-                if (tid && tid.startsWith('device:')) {
-                    tid = tid.replace('device:', '');
-                }
-                return tid === selectedTerminalId;
-            })) {
-                document.getElementById('confirm-terminal-btn').disabled = false;
-            } else {
-                document.getElementById('confirm-terminal-btn').disabled = true;
-            }
-            
             document.getElementById('terminal-selection-modal').style.display = 'flex';
+            
+            // Override the confirm button for cart checkout
+            const confirmBtn = document.getElementById('confirm-terminal-btn');
+            confirmBtn.onclick = function() {
+                const selectedRadio = document.querySelector('input[name="terminal-cart"]:checked');
+                if (selectedRadio) {
+                    const terminalId = selectedRadio.value;
+                    closeTerminalSelectionModal();
+                    initiateCartTerminalCheckout(terminalId);
+                }
+            };
+            confirmBtn.disabled = true;
+            
+            // Add change handler for radio buttons
+            document.querySelectorAll('input[name="terminal-cart"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    confirmBtn.disabled = false;
+                });
+            });
         }
         
-        function selectTerminalForCheckout(terminalId) {
-            selectedTerminalId = terminalId;
-            
-            // Update radio buttons
-            document.querySelectorAll('input[name="terminal"]').forEach(radio => {
+        function selectTerminalForCartCheckout(terminalId) {
+            document.querySelectorAll('input[name="terminal-cart"]').forEach(radio => {
                 radio.checked = radio.value === terminalId;
             });
-            
             document.getElementById('confirm-terminal-btn').disabled = false;
         }
         
-        function closeTerminalSelectionModal() {
-            document.getElementById('terminal-selection-modal').style.display = 'none';
-            window.pendingTerminalSale = null;
-        }
-        
-        async function initiateTerminalCheckout() {
-            if (!window.pendingTerminalSale) {
-                showCheckoutStatus('No record selected for checkout', 'error');
-                closeTerminalSelectionModal();
-                return;
-            }
-            
-            if (!selectedTerminalId) {
-                showCheckoutStatus('Please select a terminal', 'error');
-                return;
-            }
-            
-            const record = window.pendingTerminalSale;
-            const amountCents = Math.round(record.store_price * 100);
-            const recordIds = [record.id];
-            const recordTitles = [record.title];
+        async function initiateCartTerminalCheckout(terminalId) {
+            const total = parseFloat(document.getElementById('cart-total').textContent.replace('$', ''));
+            const amountCents = Math.round(total * 100);
+            const recordIds = checkoutCart.map(item => item.id);
+            const recordTitles = checkoutCart.map(item => item.title);
             
             closeTerminalSelectionModal();
             
@@ -2567,6 +2504,7 @@
                         <i class="fas fa-spinner fa-pulse"></i>
                     </div>
                     <div class="payment-status-message">Creating Terminal Checkout...</div>
+                    <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
                     <div class="payment-status-detail">Please wait while we prepare the terminal</div>
                     <div class="payment-progress">
                         <div class="payment-progress-bar" style="animation: progress 30s linear;"></div>
@@ -2576,12 +2514,11 @@
             document.getElementById('terminal-checkout-modal').style.display = 'flex';
             
             try {
-                // Create terminal checkout
                 const requestBody = {
                     amount_cents: amountCents,
                     record_ids: recordIds,
                     record_titles: recordTitles,
-                    device_id: selectedTerminalId
+                    device_id: terminalId
                 };
                 
                 console.log('Sending checkout request:', requestBody);
@@ -2595,7 +2532,6 @@
                     body: JSON.stringify(requestBody)
                 });
                 
-                // Try to get the error response body
                 const responseText = await response.text();
                 console.log('Response status:', response.status);
                 console.log('Response body:', responseText);
@@ -2606,7 +2542,6 @@
                         const errorData = JSON.parse(responseText);
                         errorMessage = errorData.message || errorData.error || errorMessage;
                     } catch (e) {
-                        // If not JSON, use the text
                         if (responseText) errorMessage = responseText;
                     }
                     throw new Error(errorMessage);
@@ -2618,14 +2553,13 @@
                     const checkout = data.checkout;
                     activeCheckoutId = checkout.id;
                     
-                    // Update modal to show waiting for payment
                     modalBody.innerHTML = `
                         <div class="payment-status">
                             <div class="payment-status-icon processing">
                                 <i class="fas fa-credit-card fa-pulse"></i>
                             </div>
                             <div class="payment-status-message">Waiting for payment on terminal</div>
-                            <div class="payment-status-detail">Amount: $${(amountCents / 100).toFixed(2)}</div>
+                            <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
                             <div class="payment-status-detail">Please present card to the terminal</div>
                             <div class="payment-progress">
                                 <div class="payment-progress-bar" style="animation: progress 30s linear;"></div>
@@ -2636,8 +2570,7 @@
                         </div>
                     `;
                     
-                    // Start polling for status
-                    startCheckoutPolling(checkout.id, record);
+                    startCartCheckoutPolling(checkout.id, checkoutCart);
                     
                 } else {
                     throw new Error(data.message || 'Failed to create checkout');
@@ -2662,14 +2595,13 @@
             }
         }
         
-        function startCheckoutPolling(checkoutId, record) {
-            // Clear any existing interval
+        function startCartCheckoutPolling(checkoutId, cartItems) {
             if (checkoutPollInterval) {
                 clearInterval(checkoutPollInterval);
             }
             
             let pollCount = 0;
-            const maxPolls = 60; // Poll for 5 minutes (5 seconds * 60)
+            const maxPolls = 60;
             
             checkoutPollInterval = setInterval(async () => {
                 pollCount++;
@@ -2692,13 +2624,11 @@
                     const checkout = data.checkout;
                     const checkoutStatus = checkout.status;
                     
-                    // Update based on status
                     if (checkoutStatus === 'COMPLETED') {
-                        // Payment successful
                         clearInterval(checkoutPollInterval);
                         
-                        // Mark record as sold
-                        await markRecordAsSold(record.id);
+                        // Mark all records as sold
+                        await processSquarePaymentSuccess(cartItems);
                         
                         const modalBody = document.getElementById('terminal-checkout-body');
                         modalBody.innerHTML = `
@@ -2707,7 +2637,7 @@
                                     <i class="fas fa-check-circle"></i>
                                 </div>
                                 <div class="payment-status-message">Payment Successful!</div>
-                                <div class="payment-status-detail">Amount: $${(record.store_price).toFixed(2)}</div>
+                                <div class="payment-status-detail">Amount: $${checkout.amount_money.amount / 100}</div>
                                 <div class="payment-status-detail">Thank you for your purchase</div>
                                 <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
                                     <i class="fas fa-check"></i> Done
@@ -2715,17 +2645,9 @@
                             </div>
                         `;
                         
-                        // Refresh search results
-                        const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
-                        if (searchIndex !== -1) {
-                            currentSearchResults[searchIndex].status_id = 3;
-                            renderSearchResults(currentSearchResults);
-                        }
-                        
                         showCheckoutStatus('Payment completed successfully!', 'success');
                         
                     } else if (checkoutStatus === 'CANCELED' || checkoutStatus === 'FAILED') {
-                        // Payment failed or cancelled
                         clearInterval(checkoutPollInterval);
                         
                         const modalBody = document.getElementById('terminal-checkout-body');
@@ -2744,28 +2666,158 @@
                         
                         showCheckoutStatus(`Payment ${checkoutStatus.toLowerCase()}`, 'error');
                     }
-                    
-                    // Stop polling after max attempts
-                    if (pollCount >= maxPolls) {
-                        clearInterval(checkoutPollInterval);
-                        
-                        const modalBody = document.getElementById('terminal-checkout-body');
-                        modalBody.innerHTML = `
-                            <div class="payment-status">
-                                <div class="payment-status-icon error">
-                                    <i class="fas fa-clock"></i>
-                                </div>
-                                <div class="payment-status-message">Checkout Timed Out</div>
-                                <div class="payment-status-detail">The terminal did not respond in time</div>
-                                <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                                    <i class="fas fa-times"></i> Close
-                                </button>
-                            </div>
-                        `;
-                    }
                 }
                 
-            }, 5000); // Poll every 5 seconds
+                if (pollCount >= maxPolls) {
+                    clearInterval(checkoutPollInterval);
+                    
+                    const modalBody = document.getElementById('terminal-checkout-body');
+                    modalBody.innerHTML = `
+                        <div class="payment-status">
+                            <div class="payment-status-icon error">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="payment-status-message">Checkout Timed Out</div>
+                            <div class="payment-status-detail">The terminal did not respond in time</div>
+                            <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                    `;
+                }
+                
+            }, 5000);
+        }
+        
+        async function processSquarePaymentSuccess(cartItems) {
+            showCheckoutLoading(true);
+            
+            let successCount = 0;
+            let errorCount = 0;
+            const soldRecords = [];
+            const consignorPayments = {};
+            
+            for (const record of cartItems) {
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/records/${record.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            status_id: 3
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'success') {
+                            successCount++;
+                            soldRecords.push(record);
+                            
+                            if (record.consignor_id) {
+                                const commissionRate = record.commission_rate || 10;
+                                const consignorShare = record.store_price * (1 - (commissionRate / 100));
+                                
+                                if (!consignorPayments[record.consignor_id]) {
+                                    consignorPayments[record.consignor_id] = 0;
+                                }
+                                consignorPayments[record.consignor_id] += consignorShare;
+                            }
+                            
+                            const recordIndex = allRecords.findIndex(r => r.id === record.id);
+                            if (recordIndex !== -1) {
+                                allRecords[recordIndex].status_id = 3;
+                            }
+                            
+                            const searchIndex = currentSearchResults.findIndex(r => r.id === record.id);
+                            if (searchIndex !== -1) {
+                                currentSearchResults[searchIndex].status_id = 3;
+                            }
+                        } else {
+                            errorCount++;
+                        }
+                    } else {
+                        errorCount++;
+                    }
+                } catch (error) {
+                    console.error(`Error updating record ${record.id}:`, error);
+                    errorCount++;
+                }
+            }
+            
+            if (Object.keys(consignorPayments).length > 0) {
+                let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
+                for (const [consignorId, amount] of Object.entries(consignorPayments)) {
+                    storedOwed[consignorId] = (storedOwed[consignorId] || 0) + amount;
+                }
+                localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
+                consignorOwedAmounts = storedOwed;
+            }
+            
+            if (successCount > 0) {
+                let cashierName = 'Admin';
+                try {
+                    const userData = localStorage.getItem('user');
+                    if (userData) {
+                        const user = JSON.parse(userData);
+                        cashierName = user.username || 'Admin';
+                    }
+                } catch (e) {
+                    console.error('Error parsing user data:', e);
+                }
+                
+                const total = parseFloat(document.getElementById('cart-total').textContent.replace('$', ''));
+                const subtotal = cartItems.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
+                const taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+                const tax = subtotal * taxRate;
+                
+                const transaction = {
+                    id: `SQUARE-${Date.now()}`,
+                    date: new Date(),
+                    items: [...soldRecords],
+                    subtotal: subtotal,
+                    tax: tax,
+                    taxRate: getConfigValue('TAX_RATE'),
+                    total: total,
+                    paymentMethod: 'Square Terminal',
+                    cashier: cashierName,
+                    storeName: getConfigValue('STORE_NAME'),
+                    storeAddress: getConfigValue('STORE_ADDRESS'),
+                    storePhone: getConfigValue('STORE_PHONE'),
+                    footer: getConfigValue('RECEIPT_FOOTER'),
+                    consignorPayments: consignorPayments
+                };
+                
+                saveReceipt(transaction);
+                
+                checkoutCart = [];
+                updateCartDisplay();
+                renderSearchResults(currentSearchResults);
+                
+                showCheckoutStatus(`Successfully sold ${successCount} items${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
+            } else {
+                showCheckoutStatus(`Failed to process sale: ${errorCount} errors`, 'error');
+            }
+            
+            showCheckoutLoading(false);
+        }
+        
+        // Terminal Checkout Functions (kept for backward compatibility)
+        function showTerminalSelection(record) {
+            // This function is kept for backward compatibility
+            // New flow uses processSquarePayment instead
+            showCheckoutStatus('Please use the Square button in the cart for multi-item checkout', 'info');
+        }
+        
+        async function initiateTerminalCheckout() {
+            // This function is kept for backward compatibility
+            showCheckoutStatus('Please use the Square button in the cart for multi-item checkout', 'info');
+        }
+        
+        function startCheckoutPolling(checkoutId, record) {
+            // This function is kept for backward compatibility
+            // New flow uses startCartCheckoutPolling instead
         }
         
         async function cancelTerminalCheckout() {
@@ -2812,14 +2864,13 @@
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    status_id: 3 // Sold status
+                    status_id: 3
                 })
             });
             
             if (response.ok) {
                 const data = await response.json();
                 if (data.status === 'success') {
-                    // Update local record status
                     const recordIndex = allRecords.findIndex(r => r.id === recordId);
                     if (recordIndex !== -1) {
                         allRecords[recordIndex].status_id = 3;
@@ -2849,19 +2900,16 @@
             
             let users = data.users || [];
             
-            // Get owed amounts from localStorage
             let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
             consignorOwedAmounts = storedOwed;
             
-            // Get total admin commission from all sales
             let totalAdminCommission = 0;
             savedReceipts.forEach(receipt => {
                 if (receipt.consignorPayments) {
-                    // Admin commission is the difference between sale price and consignor payment
                     receipt.items.forEach(item => {
                         if (item.consignor_id) {
-                            const commissionRate = getConfigValue('COMMISSION_RATE') / 100;
-                            totalAdminCommission += item.store_price * commissionRate;
+                            const commissionRate = item.commission_rate || 10;
+                            totalAdminCommission += item.store_price * (commissionRate / 100);
                         }
                     });
                 }
@@ -2939,12 +2987,10 @@
         async function processPayment() {
             if (!currentPaymentUserId) return;
             
-            // Update localStorage to clear the owed amount
             let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
             delete storedOwed[currentPaymentUserId];
             localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
             
-            // Update local data
             consignorOwedAmounts = storedOwed;
             const consignor = consignorsList.find(c => c.id == currentPaymentUserId);
             if (consignor) {
@@ -2953,14 +2999,13 @@
             
             renderConsignors(consignorsList);
             
-            // Recalculate admin commission total
             let totalAdminCommission = 0;
             savedReceipts.forEach(receipt => {
                 if (receipt.consignorPayments) {
                     receipt.items.forEach(item => {
                         if (item.consignor_id) {
-                            const commissionRate = getConfigValue('COMMISSION_RATE') / 100;
-                            totalAdminCommission += item.store_price * commissionRate;
+                            const commissionRate = item.commission_rate || 10;
+                            totalAdminCommission += item.store_price * (commissionRate / 100);
                         }
                     });
                 }
@@ -2974,7 +3019,6 @@
         async function deleteConsignor(userId) {
             if (!confirm('Are you sure you want to delete this consignor? This action cannot be undone.')) return;
             
-            // Check if consignor has any records
             const hasRecords = allRecords.some(r => r.consignor_id == userId);
             if (hasRecords) {
                 alert('Cannot delete consignor with existing records. Please reassign or delete records first.');
@@ -2987,7 +3031,6 @@
             consignorsList = consignorsList.filter(c => c.id != userId);
             renderConsignors(consignorsList);
             
-            // Remove from owed amounts if present
             let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
             delete storedOwed[userId];
             localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
@@ -3017,34 +3060,27 @@
                 return;
             }
             
-            // Initialize selected records set
             window.selectedRecords = new Set();
             
-            // Load saved receipts
             loadSavedReceipts();
             
-            // Fetch configuration values - this will throw if fails
             await fetchAllConfigValues();
             
-            // Initialize UI components
             $('#user-select').select2({
                 placeholder: "Select a user...",
                 allowClear: true
             }).on('change', loadRecords);
             
-            // Load data
             loadUsers();
             loadRecords();
-            refreshTerminals(); // Load terminals on startup
+            refreshTerminals();
             
-            // Set up search on enter key
             document.getElementById('search-query').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     searchRecords();
                 }
             });
             
-            // Set today's date as default for receipt search
             const today = new Date().toISOString().split('T')[0];
             const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
             document.getElementById('receipt-start-date').value = thirtyDaysAgo;
