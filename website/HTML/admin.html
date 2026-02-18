@@ -2201,23 +2201,37 @@
                     const artist = record.artist || 'Unknown';
                     const genre = record.genre_name || record.genre || 'Unknown';
                     
-                    let infoText = genre;
+                    // Calculate available width for the info text
+                    // Reserve space for consignor initials (including parentheses and spaces)
+                    const initialsText = consignorInitials ? ` | (${consignorInitials})` : '';
+                    const maxInfoWidth = labelWidthPt - 10; // Leave 5pt padding on each side
+                    
+                    // Build the base text without initials for truncation calculation
+                    let baseText = genre;
                     if (artist !== 'Unknown') {
-                        infoText += ` | ${artist}`;
-                    }
-                    if (consignorInitials) {
-                        infoText += ` | (${consignorInitials})`;
+                        baseText += ` | ${artist}`;
                     }
                     
-                    // Truncate if too long
-                    const maxLength = 35;
-                    if (infoText.length > maxLength) {
-                        infoText = infoText.substring(0, maxLength - 1) + '…';
-                    }
-                    
+                    // Calculate width of initials to reserve
                     doc.setFontSize(textFontSize);
                     doc.setFont('helvetica', 'normal');
+                    const initialsWidth = initialsText ? doc.getTextWidth(initialsText) : 0;
+                    const availableWidthForBase = maxInfoWidth - initialsWidth;
                     
+                    // Truncate base text if needed to make room for initials
+                    let displayBaseText = baseText;
+                    if (doc.getTextWidth(baseText) > availableWidthForBase) {
+                        // Truncate base text to fit
+                        while (doc.getTextWidth(displayBaseText + '…') > availableWidthForBase && displayBaseText.length > 0) {
+                            displayBaseText = displayBaseText.slice(0, -1);
+                        }
+                        displayBaseText += '…';
+                    }
+                    
+                    // Combine with initials
+                    let infoText = displayBaseText + initialsText;
+                    
+                    // Center the combined text
                     const infoWidth = doc.getTextWidth(infoText);
                     const infoX = x + (labelWidthPt - infoWidth) / 2;
                     const infoY = y + (infoYPos * mmToPt);
