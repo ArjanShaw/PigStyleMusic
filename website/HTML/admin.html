@@ -1945,7 +1945,7 @@
                 </div>`;
             }
         }
-        
+
         function renderTerminalList(terminals) {
             const terminalList = document.getElementById('terminal-list');
             
@@ -1962,17 +1962,26 @@
             
             let html = '';
             terminals.forEach(terminal => {
+                // Extract just the serial number for display/storage
+                let displayId = terminal.id;
+                let storeId = terminal.id;
+                
+                // If the ID has the "device:" prefix, strip it for storage
+                if (storeId && storeId.startsWith('device:')) {
+                    storeId = storeId.replace('device:', '');
+                }
+                
                 const isOnline = terminal.status === 'ONLINE';
-                const isSelected = selectedTerminalId === terminal.id;
+                const isSelected = selectedTerminalId === storeId;  // Compare with stripped version
                 
                 html += `
-                    <div class="terminal-item ${isSelected ? 'selected' : ''}" onclick="selectTerminal('${terminal.id}')">
+                    <div class="terminal-item ${isSelected ? 'selected' : ''}" onclick="selectTerminal('${storeId}')">
                         <div class="terminal-icon">
                             <i class="fas fa-square"></i>
                         </div>
                         <div class="terminal-details">
                             <div class="terminal-name">${terminal.device_name || 'Square Terminal'}</div>
-                            <div class="terminal-id">ID: ${terminal.id}</div>
+                            <div class="terminal-id">ID: ${displayId}</div>
                         </div>
                         <div class="terminal-status ${isOnline ? 'online' : 'offline'}">
                             ${isOnline ? 'Online' : 'Offline'}
@@ -2480,9 +2489,15 @@
             let html = '<h4>Select Terminal</h4>';
             
             onlineTerminals.forEach(terminal => {
+                // Strip prefix for display/storage
+                let terminalId = terminal.id;
+                if (terminalId && terminalId.startsWith('device:')) {
+                    terminalId = terminalId.replace('device:', '');
+                }
+                
                 html += `
-                    <div class="terminal-device" onclick="selectTerminalForCheckout('${terminal.id}')">
-                        <input type="radio" name="terminal" value="${terminal.id}" ${selectedTerminalId === terminal.id ? 'checked' : ''}>
+                    <div class="terminal-device" onclick="selectTerminalForCheckout('${terminalId}')">
+                        <input type="radio" name="terminal" value="${terminalId}" ${selectedTerminalId === terminalId ? 'checked' : ''}>
                         <div class="terminal-device-info">
                             <div class="terminal-device-name">${terminal.device_name || 'Square Terminal'}</div>
                             <div class="terminal-device-status online">Online</div>
@@ -2494,7 +2509,13 @@
             selectionList.innerHTML = html;
             
             // Enable confirm button if a terminal is already selected
-            if (selectedTerminalId && onlineTerminals.some(t => t.id === selectedTerminalId)) {
+            if (selectedTerminalId && onlineTerminals.some(t => {
+                let tid = t.id;
+                if (tid && tid.startsWith('device:')) {
+                    tid = tid.replace('device:', '');
+                }
+                return tid === selectedTerminalId;
+            })) {
                 document.getElementById('confirm-terminal-btn').disabled = false;
             } else {
                 document.getElementById('confirm-terminal-btn').disabled = true;
@@ -2554,53 +2575,90 @@
             `;
             document.getElementById('terminal-checkout-modal').style.display = 'flex';
             
-            // Create terminal checkout
-            const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
+            try {
+                // Create terminal checkout
+                const requestBody = {
                     amount_cents: amountCents,
                     record_ids: recordIds,
                     record_titles: recordTitles,
                     device_id: selectedTerminalId
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                const checkout = data.checkout;
-                activeCheckoutId = checkout.id;
+                };
                 
-                // Update modal to show waiting for payment
+                console.log('Sending checkout request:', requestBody);
+                
+                const response = await fetch(`${AppConfig.baseUrl}/api/square/terminal/checkout`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(requestBody)
+                });
+                
+                // Try to get the error response body
+                const responseText = await response.text();
+                console.log('Response status:', response.status);
+                console.log('Response body:', responseText);
+                
+                if (!response.ok) {
+                    let errorMessage = `HTTP error! status: ${response.status}`;
+                    try {
+                        const errorData = JSON.parse(responseText);
+                        errorMessage = errorData.message || errorData.error || errorMessage;
+                    } catch (e) {
+                        // If not JSON, use the text
+                        if (responseText) errorMessage = responseText;
+                    }
+                    throw new Error(errorMessage);
+                }
+                
+                const data = JSON.parse(responseText);
+                
+                if (data.status === 'success') {
+                    const checkout = data.checkout;
+                    activeCheckoutId = checkout.id;
+                    
+                    // Update modal to show waiting for payment
+                    modalBody.innerHTML = `
+                        <div class="payment-status">
+                            <div class="payment-status-icon processing">
+                                <i class="fas fa-credit-card fa-pulse"></i>
+                            </div>
+                            <div class="payment-status-message">Waiting for payment on terminal</div>
+                            <div class="payment-status-detail">Amount: $${(amountCents / 100).toFixed(2)}</div>
+                            <div class="payment-status-detail">Please present card to the terminal</div>
+                            <div class="payment-progress">
+                                <div class="payment-progress-bar" style="animation: progress 30s linear;"></div>
+                            </div>
+                            <button class="btn btn-warning" onclick="cancelTerminalCheckout()" style="margin-top: 20px;">
+                                <i class="fas fa-times"></i> Cancel Payment
+                            </button>
+                        </div>
+                    `;
+                    
+                    // Start polling for status
+                    startCheckoutPolling(checkout.id, record);
+                    
+                } else {
+                    throw new Error(data.message || 'Failed to create checkout');
+                }
+            } catch (error) {
+                console.error('Checkout error:', error);
+                
                 modalBody.innerHTML = `
                     <div class="payment-status">
-                        <div class="payment-status-icon processing">
-                            <i class="fas fa-credit-card fa-pulse"></i>
+                        <div class="payment-status-icon error">
+                            <i class="fas fa-times-circle"></i>
                         </div>
-                        <div class="payment-status-message">Waiting for payment on terminal</div>
-                        <div class="payment-status-detail">Amount: $${(amountCents / 100).toFixed(2)}</div>
-                        <div class="payment-status-detail">Please present card to the terminal</div>
-                        <div class="payment-progress">
-                            <div class="payment-progress-bar" style="animation: progress 30s linear;"></div>
-                        </div>
-                        <button class="btn btn-warning" onclick="cancelTerminalCheckout()" style="margin-top: 20px;">
-                            <i class="fas fa-times"></i> Cancel Payment
+                        <div class="payment-status-message">Checkout Failed</div>
+                        <div class="payment-status-detail">${error.message}</div>
+                        <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                            <i class="fas fa-times"></i> Close
                         </button>
                     </div>
                 `;
                 
-                // Start polling for status
-                startCheckoutPolling(checkout.id, record);
-                
-            } else {
-                throw new Error(data.message || 'Failed to create checkout');
+                showCheckoutStatus(`Checkout failed: ${error.message}`, 'error');
             }
         }
         
@@ -2616,10 +2674,16 @@
             checkoutPollInterval = setInterval(async () => {
                 pollCount++;
                 
-                const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout/${checkoutId}/status`);
+                const response = await fetch(`${AppConfig.baseUrl}/api/square/terminal/checkout/${checkoutId}/status`, {
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    console.error(`Status check failed: ${response.status}`);
+                    return;
                 }
                 
                 const data = await response.json();
@@ -2707,8 +2771,12 @@
         async function cancelTerminalCheckout() {
             if (!activeCheckoutId) return;
             
-            const response = await fetch(`${AppConfig.baseUrl}/square/terminal/checkout/${activeCheckoutId}/cancel`, {
-                method: 'POST'
+            const response = await fetch(`${AppConfig.baseUrl}/api/square/terminal/checkout/${activeCheckoutId}/cancel`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
             });
             
             if (response.ok) {
