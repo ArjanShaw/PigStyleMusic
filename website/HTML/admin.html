@@ -1366,6 +1366,115 @@
         let currentDeleteAccessoryId = null;
         let selectedAccessories = new Set();
 
+         
+        // Function to send text directly to your thermal printer
+        async function printToThermalPrinter(text) {
+            try {
+                // Use AppConfig to get the base URL
+                const baseUrl = window.AppConfig ? AppConfig.baseUrl : 'http://localhost:5000';
+                const url = `${baseUrl}/print-receipt`;
+                
+                console.log('Sending print job to:', url);
+                console.log('Text length:', text.length);
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include', // Include cookies if needed
+                    body: JSON.stringify({
+                        printer: '/dev/usb/lp2',  // Your printer path
+                        data: text
+                    })
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Print failed:', errorText);
+                } else {
+                    const result = await response.json();
+                    console.log('Print job sent successfully:', result);
+                }
+            } catch (error) {
+                console.error('Error printing:', error);
+            }
+        }
+
+        // Function to format receipt for thermal printer
+        function formatReceiptForPrinter(transaction) {
+            const storeName = transaction.storeName || 'PigStyle Music';
+            const storeAddress = transaction.storeAddress || '';
+            const storePhone = transaction.storePhone || '';
+            const dateStr = transaction.date.toLocaleString();
+            
+            let receipt = [];
+            
+            // Header - Initialize printer and center align
+            receipt.push('\x1B\x40'); // Initialize printer
+            receipt.push('\x1B\x61\x01'); // Center align
+            receipt.push(storeName + '\n');
+            if (storeAddress) receipt.push(storeAddress + '\n');
+            if (storePhone) receipt.push(storePhone + '\n');
+            receipt.push(''.padEnd(32, '-') + '\n');
+            
+            // Receipt info - Left align
+            receipt.push('\x1B\x61\x00'); // Left align
+            receipt.push(`Receipt #: ${transaction.id}\n`);
+            receipt.push(`Date: ${dateStr}\n`);
+            receipt.push(`Cashier: ${transaction.cashier || 'Admin'}\n`);
+            receipt.push(''.padEnd(32, '-') + '\n');
+            
+            // Items header - Bold on
+            receipt.push('\x1B\x45\x01'); // Bold on
+            receipt.push('Item'.padEnd(24) + 'Price\n');
+            receipt.push('\x1B\x45\x00'); // Bold off
+            receipt.push(''.padEnd(32, '-') + '\n');
+            
+            // Items
+            transaction.items.forEach(item => {
+                let line;
+                if (item.type === 'accessory') {
+                    const desc = (item.description || '').substring(0, 18);
+                    line = `[ACC] ${desc}`.padEnd(24) + `$${item.store_price.toFixed(2)}`.padStart(8) + '\n';
+                } else {
+                    const title = (item.title || '').substring(0, 22);
+                    line = `${title}`.padEnd(24) + `$${item.store_price.toFixed(2)}`.padStart(8) + '\n';
+                }
+                receipt.push(line);
+            });
+            
+            receipt.push(''.padEnd(32, '-') + '\n');
+            
+            // Totals - Bold on
+            receipt.push('\x1B\x45\x01'); // Bold on
+            receipt.push(`Subtotal:`.padEnd(24) + `$${transaction.subtotal.toFixed(2)}`.padStart(8) + '\n');
+            receipt.push(`Tax (${transaction.taxRate || 0}%):`.padEnd(24) + `$${transaction.tax.toFixed(2)}`.padStart(8) + '\n');
+            receipt.push(`TOTAL:`.padEnd(24) + `$${transaction.total.toFixed(2)}`.padStart(8) + '\n');
+            receipt.push('\x1B\x45\x00'); // Bold off
+            
+            // Payment info
+            receipt.push(''.padEnd(32, '-') + '\n');
+            receipt.push(`Payment: ${transaction.paymentMethod || 'Cash'}\n`);
+            if (transaction.tendered) {
+                receipt.push(`Tendered:`.padEnd(24) + `$${transaction.tendered.toFixed(2)}`.padStart(8) + '\n');
+                receipt.push(`Change:`.padEnd(24) + `$${transaction.change.toFixed(2)}`.padStart(8) + '\n');
+            }
+            
+            // Footer - Center align
+            receipt.push(''.padEnd(32, '-') + '\n');
+            receipt.push('\x1B\x61\x01'); // Center align
+            receipt.push(transaction.footer || 'Thank you for your purchase!\n');
+            receipt.push('\n\n\n'); // Feed paper for tear-off
+            
+            // Cut paper (if supported)
+            receipt.push('\x1B\x69'); // Cut paper command for many thermal printers
+            
+            return receipt.join('');
+        }
+
         // Fetch all config values from database
         async function fetchAllConfigValues() {
             const response = await fetch(`${AppConfig.baseUrl}/config`);
@@ -3671,6 +3780,10 @@
                 
                 saveReceipt(transaction);
                 
+                // Print receipt to thermal printer
+                const receiptText = formatReceiptForPrinter(transaction);
+                printToThermalPrinter(receiptText);
+                
                 checkoutCart = [];
                 updateCartDisplay();
                 searchRecordsAndAccessories();
@@ -3991,7 +4104,11 @@
                 };
                 
                 saveReceipt(transaction);
-                showReceipt(transaction);
+                // showReceipt(transaction);
+                
+                // Print receipt to thermal printer
+                const receiptText = formatReceiptForPrinter(transaction);
+                printToThermalPrinter(receiptText);
                 
                 checkoutCart = [];
                 updateCartDisplay();

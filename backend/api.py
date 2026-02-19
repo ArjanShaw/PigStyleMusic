@@ -22,6 +22,8 @@ from discogs_handler import DiscogsHandler
 from handlers.price_advise_handler import PriceAdviseHandler
 import hmac
 import traceback
+import os
+import subprocess
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
@@ -395,6 +397,130 @@ def get_accessories():
     return jsonify({
         'status': 'success',
         'accessories': [dict(acc) for acc in accessories]
+    })
+
+@app.route('/print-receipt', methods=['POST'])
+def print_receipt():
+    """
+    Send receipt data to thermal printer
+    Expected JSON: {
+        "printer": "/dev/usb/lp2",  # printer device path
+        "data": "formatted receipt text with ESC/POS commands"
+    }
+    """
+    data = request.get_json()
+    
+    if not data or 'printer' not in data or 'data' not in data:
+        return jsonify({'status': 'error', 'message': 'Missing printer or data'}), 400
+    
+    printer_path = data['printer']
+    receipt_data = data['data']
+    
+    # Validate printer path (security - prevent path traversal)
+    if not printer_path.startswith('/dev/usb/lp'):
+        return jsonify({'status': 'error', 'message': 'Invalid printer path'}), 400
+    
+    try:
+        # Method 1: Direct write to device file (most reliable for Linux)
+        with open(printer_path, 'wb') as printer:
+            printer.write(receipt_data.encode('utf-8'))
+            printer.flush()
+        
+        # Alternative Method 2: Using lp command if direct write doesn't work
+        # Uncomment if needed:
+        # process = subprocess.run(['lp', '-d', os.path.basename(printer_path)], 
+        #                          input=receipt_data, 
+        #                          capture_output=True, 
+        #                          text=True)
+        
+        return jsonify({
+            'status': 'success', 
+            'message': 'Receipt sent to printer',
+            'printer': printer_path
+        })
+        
+    except PermissionError:
+        # Try to fix permissions if needed
+        try:
+            # Make printer writable for the web server user
+            subprocess.run(['sudo', 'chmod', '666', printer_path], check=False)
+            
+            # Try writing again
+            with open(printer_path, 'wb') as printer:
+                printer.write(receipt_data.encode('utf-8'))
+                printer.flush()
+                
+            return jsonify({
+                'status': 'success', 
+                'message': 'Receipt sent to printer (permission fixed)',
+                'printer': printer_path
+            })
+        except Exception as e:
+            return jsonify({
+                'status': 'error', 
+                'message': f'Permission denied and could not fix: {str(e)}'
+            }), 500
+            
+    except FileNotFoundError:
+        return jsonify({
+            'status': 'error', 
+            'message': f'Printer not found at {printer_path}'
+        }), 404
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error', 
+            'message': f'Print error: {str(e)}'
+        }), 500
+
+
+# Optional: Add endpoint to test printer
+@app.route('/print-test', methods=['POST'])
+def print_test():
+    """Send a simple test page to the printer"""
+    test_data = {
+        'printer': '/dev/usb/lp2',
+        'data': '\x1B\x40' +  # Initialize
+                '\x1B\x61\x01' +  # Center
+                'PigStyle Music\n' +
+                'Test Page\n' +
+                ''.padEnd(32, '=') + '\n' +
+                '\x1B\x61\x00' +  # Left
+                'Date: ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '\n' +
+                'Printer: VCP-8370\n' +
+                'Status: Working!\n\n\n\n'
+    }
+    
+    return print_receipt.__wrapped__(test_data)  # Call the actual function
+
+
+# Optional: Add endpoint to list available printers
+@app.route('/printers', methods=['GET'])
+def list_printers():
+    """List all USB printers connected to the system"""
+    import glob
+    
+    printers = glob.glob('/dev/usb/lp*')
+    
+    result = []
+    for printer in printers:
+        try:
+            # Try to get printer info (if possible)
+            result.append({
+                'path': printer,
+                'available': os.path.exists(printer),
+                'writable': os.access(printer, os.W_OK)
+            })
+        except:
+            result.append({
+                'path': printer,
+                'available': True,
+                'writable': False
+            })
+    
+    return jsonify({
+        'status': 'success',
+        'printers': result
     })
 
 # Get single accessory
