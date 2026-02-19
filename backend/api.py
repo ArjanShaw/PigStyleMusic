@@ -340,6 +340,293 @@ def role_required(allowed_roles):
         return decorated_function
     return decorator
 
+@app.route('/artist-genre', methods=['GET'])
+def get_all_artist_genres():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT ag.artist, ag.genre_id, g.genre_name
+        FROM artist_genre ag
+        LEFT JOIN genres g ON ag.genre_id = g.id
+        ORDER BY ag.artist ASC
+    ''')
+
+    artists = cursor.fetchall()
+    conn.close()
+
+    return jsonify([dict(artist) for artist in artists])
+
+@app.route('/artist-genre/<artist_name>', methods=['GET'])
+def get_artist_genre(artist_name):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT ag.artist, ag.genre_id, g.genre_name
+        FROM artist_genre ag
+        LEFT JOIN genres g ON ag.genre_id = g.id
+        WHERE ag.artist = ?
+    ''', (artist_name,))
+
+    artist = cursor.fetchone()
+    conn.close()
+
+    if not artist:
+        return jsonify({'status': 'error', 'error': 'Artist not found'}), 404
+
+    return jsonify(dict(artist))
+
+# Get all accessories
+@app.route('/accessories', methods=['GET'])
+def get_accessories():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT id, description, bar_code, store_price, count, created_at, updated_at
+        FROM accessories
+        ORDER BY created_at DESC
+    ''')
+    
+    accessories = cursor.fetchall()
+    conn.close()
+    
+    return jsonify({
+        'status': 'success',
+        'accessories': [dict(acc) for acc in accessories]
+    })
+
+# Get single accessory
+@app.route('/accessories/<int:accessory_id>', methods=['GET'])
+def get_accessory(accessory_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT id, description, bar_code, store_price, count, created_at, updated_at
+        FROM accessories
+        WHERE id = ?
+    ''', (accessory_id,))
+    
+    accessory = cursor.fetchone()
+    conn.close()
+    
+    if accessory:
+        return jsonify({
+            'status': 'success',
+            'accessory': dict(accessory)
+        })
+    else:
+        return jsonify({
+            'status': 'error',
+            'message': 'Accessory not found'
+        }), 404
+
+# Add new accessory
+@app.route('/accessories', methods=['POST'])
+def add_accessory():
+    data = request.json
+    
+    # Validate required fields
+    if not data.get('description') or not data.get('store_price'):
+        return jsonify({
+            'status': 'error',
+            'message': 'Description and store_price are required'
+        }), 400
+    
+    # Generate barcode (you can customize this logic)
+    import random
+    import string
+    
+    # Generate a unique barcode (e.g., ACC + timestamp + random numbers)
+    timestamp = str(int(time.time()))[-6:]
+    random_digits = ''.join(random.choices(string.digits, k=4))
+    barcode = f"ACC{timestamp}{random_digits}"
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            INSERT INTO accessories (description, bar_code, store_price, count)
+            VALUES (?, ?, ?, ?)
+        ''', (
+            data['description'],
+            barcode,
+            float(data['store_price']),
+            data.get('count', 0)
+        ))
+        
+        conn.commit()
+        accessory_id = cursor.lastrowid
+        
+        cursor.execute('SELECT * FROM accessories WHERE id = ?', (accessory_id,))
+        new_accessory = cursor.fetchone()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Accessory added successfully',
+            'accessory': dict(new_accessory)
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+    finally:
+        conn.close()
+
+# Update accessory
+@app.route('/accessories/<int:accessory_id>', methods=['PUT'])
+def update_accessory(accessory_id):
+    data = request.json
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Check if accessory exists
+    cursor.execute('SELECT id FROM accessories WHERE id = ?', (accessory_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({
+            'status': 'error',
+            'message': 'Accessory not found'
+        }), 404
+    
+    # Build update query dynamically based on provided fields
+    updates = []
+    values = []
+    
+    if 'description' in data:
+        updates.append('description = ?')
+        values.append(data['description'])
+    
+    if 'store_price' in data:
+        updates.append('store_price = ?')
+        values.append(float(data['store_price']))
+    
+    if 'count' in data:
+        updates.append('count = ?')
+        values.append(data['count'])
+    
+    if not updates:
+        conn.close()
+        return jsonify({
+            'status': 'error',
+            'message': 'No fields to update'
+        }), 400
+    
+    values.append(accessory_id)
+    
+    try:
+        cursor.execute(f'''
+            UPDATE accessories 
+            SET {', '.join(updates)}
+            WHERE id = ?
+        ''', values)
+        
+        conn.commit()
+        
+        cursor.execute('SELECT * FROM accessories WHERE id = ?', (accessory_id,))
+        updated_accessory = cursor.fetchone()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Accessory updated successfully',
+            'accessory': dict(updated_accessory)
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+    finally:
+        conn.close()
+
+# Delete accessory
+@app.route('/accessories/<int:accessory_id>', methods=['DELETE'])
+def delete_accessory(accessory_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('DELETE FROM accessories WHERE id = ?', (accessory_id,))
+        conn.commit()
+        
+        if cursor.rowcount > 0:
+            return jsonify({
+                'status': 'success',
+                'message': 'Accessory deleted successfully'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Accessory not found'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+    finally:
+        conn.close()
+
+# Generate new barcode for accessory
+@app.route('/accessories/<int:accessory_id>/generate-barcode', methods=['POST'])
+def generate_new_barcode(accessory_id):
+    import random
+    import string
+    
+    # Generate a new unique barcode
+    timestamp = str(int(time.time()))[-6:]
+    random_digits = ''.join(random.choices(string.digits, k=4))
+    new_barcode = f"ACC{timestamp}{random_digits}"
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            UPDATE accessories 
+            SET bar_code = ?
+            WHERE id = ?
+        ''', (new_barcode, accessory_id))
+        
+        conn.commit()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Barcode regenerated successfully',
+            'bar_code': new_barcode
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+    finally:
+        conn.close()
+
+@app.route('/artist-genre/genre/<int:genre_id>', methods=['GET'])
+def get_artists_by_genre(genre_id):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT ag.artist, ag.genre_id, g.genre_name
+        FROM artist_genre ag
+        LEFT JOIN genres g ON ag.genre_id = g.id
+        WHERE ag.genre_id = ?
+        ORDER BY ag.artist ASC
+    ''', (genre_id,))
+
+    artists = cursor.fetchall()
+    conn.close()
+
+    return jsonify([dict(artist) for artist in artists])
+
+
 @app.route('/api/square/terminals', methods=['GET'])
 @login_required
 @role_required(['admin'])
