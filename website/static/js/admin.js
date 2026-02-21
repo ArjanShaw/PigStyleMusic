@@ -1541,6 +1541,9 @@ function formatReceiptForPrinter(transaction) {
         if (item.type === 'accessory') {
             const desc = (item.description || '').substring(0, 18);
             line = `[ACC] ${desc}`.padEnd(24) + `$${item.store_price.toFixed(2)}`.padStart(8) + '\n';
+        } else if (item.type === 'custom') {
+            const desc = (item.note || 'Custom Item').substring(0, 18);
+            line = `[CUSTOM] ${desc}`.padEnd(24) + `$${item.store_price.toFixed(2)}`.padStart(8) + '\n';
         } else {
             const title = (item.title || '').substring(0, 22);
             line = `${title}`.padEnd(24) + `$${item.store_price.toFixed(2)}`.padStart(8) + '\n';
@@ -1938,7 +1941,9 @@ function renderReceipts(receipts) {
         
         const itemCount = receipt.items.length;
         const itemSummary = itemCount === 1 ? 
-            (receipt.items[0].type === 'accessory' ? receipt.items[0].description : receipt.items[0].artist + ' - ' + receipt.items[0].title) : 
+            (receipt.items[0].type === 'accessory' ? receipt.items[0].description : 
+             receipt.items[0].type === 'custom' ? receipt.items[0].note :
+             receipt.items[0].artist + ' - ' + receipt.items[0].title) : 
             `${itemCount} items`;
         
         totalSales += receipt.total || 0;
@@ -2008,7 +2013,8 @@ function searchReceipts() {
                 (item.artist && item.artist.toLowerCase().includes(query)) ||
                 (item.title && item.title.toLowerCase().includes(query)) ||
                 (item.catalog_number && item.catalog_number.toLowerCase().includes(query)) ||
-                (item.description && item.description.toLowerCase().includes(query))
+                (item.description && item.description.toLowerCase().includes(query)) ||
+                (item.note && item.note.toLowerCase().includes(query))
             )
         );
     }
@@ -2089,6 +2095,8 @@ async function downloadReceiptPDF(receiptId) {
         let desc;
         if (item.type === 'accessory') {
             desc = `[ACCESSORY] ${item.description || 'Unknown'}`;
+        } else if (item.type === 'custom') {
+            desc = `[CUSTOM] ${item.note || 'Custom Item'}`;
         } else {
             desc = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
         }
@@ -2164,6 +2172,13 @@ function showReceipt(transaction) {
             itemsHtml += `
                 <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                     <div><span class="accessory-badge" style="background: #9b59b6; color: white; padding: 2px 6px; border-radius: 4px; margin-right: 5px;">ACC</span> ${escapeHtml(item.description) || 'Unknown Accessory'}</div>
+                    <div>$${(item.store_price || 0).toFixed(2)}</div>
+                </div>
+            `;
+        } else if (item.type === 'custom') {
+            itemsHtml += `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <div><span class="accessory-badge" style="background: #ffd700; color: #333; padding: 2px 6px; border-radius: 4px; margin-right: 5px;">CUSTOM</span> ${escapeHtml(item.note) || 'Custom Item'}</div>
                     <div>$${(item.store_price || 0).toFixed(2)}</div>
                 </div>
             `;
@@ -3147,6 +3162,67 @@ function selectTerminal(terminalId) {
 
 // ============= CHECK OUT FUNCTIONS =============
 
+// ========== CUSTOM ITEM FUNCTIONS ==========
+
+/**
+ * Add a custom item to the shopping cart
+ * This allows adding any item with a price and note, no inventory tracking
+ */
+function addCustomItemToCart() {
+    const note = document.getElementById('custom-note').value.trim();
+    const price = parseFloat(document.getElementById('custom-price').value);
+    
+    // Validate inputs
+    if (!note) {
+        showCheckoutStatus('Please enter a description for the custom item', 'error');
+        document.getElementById('custom-note').focus();
+        return;
+    }
+    
+    if (isNaN(price) || price <= 0) {
+        showCheckoutStatus('Please enter a valid price greater than 0', 'error');
+        document.getElementById('custom-price').focus();
+        return;
+    }
+    
+    // Create custom item object
+    const customItem = {
+        id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        type: 'custom',
+        note: note,
+        description: note, // For display consistency
+        store_price: price,
+        custom_note: note,
+        timestamp: Date.now()
+    };
+    
+    // Add to cart
+    checkoutCart.push(customItem);
+    
+    // Clear input fields
+    document.getElementById('custom-note').value = '';
+    document.getElementById('custom-price').value = '';
+    
+    // Update UI
+    updateCartDisplay();
+    showCheckoutStatus(`Added custom item: "${note.substring(0, 30)}${note.length > 30 ? '...' : ''}" - $${price.toFixed(2)}`, 'success');
+    
+    // Optional: Keep search results visible but don't refresh search
+    // This prevents losing search results when adding custom items
+}
+
+/**
+ * Remove a custom item from the cart
+ */
+function removeCustomItemFromCart(itemId) {
+    const index = checkoutCart.findIndex(item => item.type === 'custom' && item.id === itemId);
+    if (index !== -1) {
+        const removed = checkoutCart.splice(index, 1)[0];
+        updateCartDisplay();
+        showCheckoutStatus(`Removed custom item: "${removed.note}"`, 'info');
+    }
+}
+
 async function searchRecordsAndAccessories() {
     const query = document.getElementById('search-query').value.trim();
     if (!query) {
@@ -3524,6 +3600,24 @@ function updateCartDisplay() {
                     </div>
                 </div>
             `;
+        } else if (item.type === 'custom') {
+            cartHtml += `
+                <div class="cart-item" style="border-left: 4px solid #ffd700; background: linear-gradient(135deg, #fff9e6 0%, #fff 100%);">
+                    <div class="cart-item-details">
+                        <div class="cart-item-artist">
+                            <span class="accessory-badge" style="background: #ffd700; color: #333;">CUSTOM</span>
+                            ${escapeHtml(item.note) || 'Custom Item'}
+                        </div>
+                        <div class="cart-item-meta">
+                            <i class="fas fa-pencil-alt"></i> Manual entry
+                        </div>
+                    </div>
+                    <div class="cart-item-price">$${(item.store_price || 0).toFixed(2)}</div>
+                    <div class="cart-item-remove" onclick="removeCustomItemFromCart('${item.id}')">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>
+            `;
         } else {
             const price = parseFloat(item.store_price) || 0;
             cartHtml += `
@@ -3642,10 +3736,12 @@ async function initiateCartTerminalCheckout() {
     const total = parseFloat(document.getElementById('cart-total').textContent.replace('$', ''));
     const amountCents = Math.round(total * 100);
     const recordIds = pendingCartCheckout.items.map(item => 
-        item.type === 'accessory' ? `acc_${item.original_id}` : item.id
+        item.type === 'accessory' ? `acc_${item.original_id}` : 
+        item.type === 'custom' ? `custom_${item.id}` : item.id
     );
     const recordTitles = pendingCartCheckout.items.map(item => 
-        item.type === 'accessory' ? item.description : item.title
+        item.type === 'accessory' ? item.description : 
+        item.type === 'custom' ? item.note : item.title
     );
     
     closeTerminalSelectionModal();
@@ -3818,6 +3914,14 @@ async function processSquarePaymentSuccess() {
                 console.error(`Error updating accessory ${item.original_id}:`, error);
                 errorCount++;
             }
+        } else if (item.type === 'custom') {
+            // Custom items don't need inventory updates
+            successCount++;
+            soldItems.push({
+                ...item,
+                description: item.note || 'Custom Item',
+                store_price: item.store_price
+            });
         } else {
             try {
                 const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
@@ -4138,6 +4242,14 @@ async function processCashPayment() {
                 console.error(`Error updating accessory ${item.original_id}:`, error);
                 errorCount++;
             }
+        } else if (item.type === 'custom') {
+            // Custom items don't need inventory updates
+            successCount++;
+            soldItems.push({
+                ...item,
+                description: item.note || 'Custom Item',
+                store_price: item.store_price
+            });
         } else {
             try {
                 const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
@@ -4273,7 +4385,7 @@ async function loadConsignors() {
     savedReceipts.forEach(receipt => {
         if (receipt.consignorPayments) {
             receipt.items.forEach(item => {
-                if (item.consignor_id && item.type !== 'accessory') {
+                if (item.consignor_id && item.type !== 'accessory' && item.type !== 'custom') {
                     const commissionRate = item.commission_rate || 10;
                     totalAdminCommission += item.store_price * (commissionRate / 100);
                 }
@@ -4369,7 +4481,7 @@ async function processPayment() {
     savedReceipts.forEach(receipt => {
         if (receipt.consignorPayments) {
             receipt.items.forEach(item => {
-                if (item.consignor_id && item.type !== 'accessory') {
+                if (item.consignor_id && item.type !== 'accessory' && item.type !== 'custom') {
                     const commissionRate = item.commission_rate || 10;
                     totalAdminCommission += item.store_price * (commissionRate / 100);
                 }
@@ -4946,8 +5058,8 @@ function showGenreEditModal(artist, currentGenre, genreId) {
         window.allGenres.forEach(genre => {
             const option = document.createElement('option');
             option.value = genre.id;
-            option.textContent = genre.name;
-            if (genre.name === currentGenre) {
+            option.textContent = genre.genre_name;
+            if (genre.genre_name === currentGenre) {
                 option.selected = true;
             }
             genreSelect.appendChild(option);
