@@ -1058,6 +1058,46 @@ body::before {
     flex-wrap: wrap;
 }
 
+/* === DISCOUNT SECTION === */
+.discount-section {
+    margin: 15px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.discount-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.discount-input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
+}
+
+.discount-type-select {
+    width: 100px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    font-size: 14px;
+}
+
+/* === REFUND SECTION === */
+.refund-section {
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    border-radius: 4px;
+}
+
 /* === MODAL STYLES === */
 .modal-overlay {
     display: none;

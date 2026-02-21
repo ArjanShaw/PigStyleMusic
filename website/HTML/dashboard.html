@@ -39,13 +39,13 @@
             align-items: center;
             margin-top: 20px;
             padding: 15px 0;
-            border-top: 1px solid #333;
+            border-top: 1px solid #ddd;
             flex-wrap: wrap;
             gap: 15px;
         }
 
         .pagination-info {
-            color: #aaa;
+            color: #666;
             font-size: 14px;
         }
 
@@ -57,9 +57,9 @@
         }
 
         .pagination-btn {
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: #fff;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            color: #333;
             padding: 8px 12px;
             border-radius: 4px;
             cursor: pointer;
@@ -72,8 +72,8 @@
         }
 
         .pagination-btn:hover:not(:disabled) {
-            background: #3a3a3a;
-            border-color: #666;
+            background: #e9ecef;
+            border-color: #ccc;
         }
 
         .pagination-btn.active {
@@ -88,7 +88,7 @@
         }
 
         .pagination-ellipsis {
-            color: #aaa;
+            color: #666;
             padding: 0 5px;
         }
 
@@ -96,14 +96,14 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            color: #aaa;
+            color: #666;
             font-size: 14px;
         }
 
         .pagination-size-selector select {
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: #fff;
+            background: white;
+            border: 1px solid #ddd;
+            color: #333;
             padding: 6px 8px;
             border-radius: 4px;
             cursor: pointer;
@@ -111,7 +111,7 @@
         }
 
         .pagination-size-selector select:hover {
-            background: #3a3a3a;
+            background: #f8f9fa;
         }
 
         .pagination-size-selector select:focus {
@@ -137,6 +137,8 @@
             flex-direction: column;
             gap: 30px;
             padding: 20px;
+            background: white;
+            color: #333;
         }
 
         .stats-row {
@@ -147,8 +149,8 @@
         }
 
         .stat-card {
-            background: #1a1a1a;
-            border: 1px solid #333;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
             text-align: center;
@@ -162,13 +164,69 @@
         }
 
         .stat-label {
-            color: #aaa;
+            color: #666;
             font-size: 14px;
         }
 
+        .filters-section {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .filters-row {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filter-group label {
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .filter-group select {
+            background: white;
+            border: 1px solid #ddd;
+            color: #333;
+            padding: 8px 12px;
+            border-radius: 4px;
+            min-width: 180px;
+            cursor: pointer;
+        }
+
+        .status-filters {
+            display: flex;
+            gap: 15px;
+        }
+
+        .status-filter-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .status-filter-checkbox input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
         .search-section {
-            background: #1a1a1a;
-            border: 1px solid #333;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
@@ -179,14 +237,14 @@
             gap: 30px;
             margin-bottom: 20px;
             padding-bottom: 20px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #ddd;
         }
 
         .radio-option {
             display: flex;
             align-items: center;
             gap: 8px;
-            color: #fff;
+            color: #333;
             cursor: pointer;
         }
 
@@ -207,13 +265,13 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            color: #fff;
+            color: #333;
         }
 
         .search-field-select select {
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: #fff;
+            background: white;
+            border: 1px solid #ddd;
+            color: #333;
             padding: 8px 12px;
             border-radius: 4px;
             cursor: pointer;
@@ -230,10 +288,10 @@
         .search-input {
             flex: 1;
             padding: 10px 15px;
-            border: 1px solid #444;
+            border: 1px solid #ddd;
             border-radius: 4px;
-            background: #2a2a2a;
-            color: #fff;
+            background: white;
+            color: #333;
             font-size: 14px;
         }
 
@@ -300,31 +358,10 @@
             font-size: 12px;
         }
 
-        .consignor-filter {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 8px;
-            color: #fff;
-        }
-
-        .consignor-filter select {
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: #fff;
-            padding: 8px 12px;
-            border-radius: 4px;
-            min-width: 200px;
-        }
-
         .inventory-table-container {
             overflow-x: auto;
-            background: #1a1a1a;
-            border: 1px solid #333;
+            background: white;
+            border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
@@ -338,20 +375,20 @@
         .inventory-table th {
             text-align: left;
             padding: 12px;
-            background: #2a2a2a;
-            color: #fff;
+            background: #f8f9fa;
+            color: #333;
             font-weight: 600;
-            border-bottom: 2px solid #444;
+            border-bottom: 2px solid #ddd;
         }
 
         .inventory-table td {
             padding: 12px;
-            border-bottom: 1px solid #333;
-            color: #ddd;
+            border-bottom: 1px solid #eee;
+            color: #333;
         }
 
         .inventory-table tr:hover {
-            background: #2a2a2a;
+            background: #f8f9fa;
         }
 
         .record-image-small {
@@ -359,7 +396,7 @@
             height: 50px;
             object-fit: cover;
             border-radius: 4px;
-            background: #333;
+            background: #f8f9fa;
         }
 
         .table-actions {
@@ -400,15 +437,15 @@
         .barcode-value {
             font-family: monospace;
             font-size: 12px;
-            background: #2a2a2a;
+            background: #f8f9fa;
             padding: 3px 6px;
             border-radius: 3px;
-            color: #fff;
+            color: #333;
         }
 
         .results-container {
-            background: #1a1a1a;
-            border: 1px solid #333;
+            background: white;
+            border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
             margin-top: 20px;
@@ -417,7 +454,7 @@
         .loading {
             text-align: center;
             padding: 40px;
-            color: #aaa;
+            color: #666;
         }
 
         .loading i {
@@ -429,18 +466,18 @@
         .no-records {
             text-align: center;
             padding: 40px;
-            color: #aaa;
+            color: #666;
         }
 
         .no-records i {
             font-size: 48px;
             margin-bottom: 15px;
-            color: #666;
+            color: #999;
         }
 
         .record-card {
-            background: #2a2a2a;
-            border: 1px solid #444;
+            background: white;
+            border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
@@ -457,7 +494,7 @@
             height: 100px;
             object-fit: cover;
             border-radius: 4px;
-            background: #333;
+            background: #f8f9fa;
         }
 
         .record-info {
@@ -467,12 +504,12 @@
         .record-title {
             font-size: 18px;
             font-weight: bold;
-            color: #fff;
+            color: #333;
             margin-bottom: 10px;
         }
 
         .record-details {
-            color: #aaa;
+            color: #666;
             font-size: 14px;
         }
 
@@ -481,7 +518,7 @@
         }
 
         .genre-prediction {
-            background: #333;
+            background: #f8f9fa;
             border-left: 4px solid #007bff;
             padding: 15px;
             margin-bottom: 20px;
@@ -494,12 +531,12 @@
 
         .genre-prediction.prediction-available {
             border-left-color: #28a745;
-            background: #1e3a2a;
+            background: #f0f9f0;
         }
 
         .genre-prediction.prediction-success {
             border-left-color: #ffc107;
-            background: #332d1a;
+            background: #fff9e6;
         }
 
         .prediction-icon {
@@ -509,12 +546,12 @@
 
         .prediction-text {
             flex: 1;
-            color: #fff;
+            color: #333;
         }
 
         .prediction-hint {
             font-size: 12px;
-            color: #aaa;
+            color: #666;
             margin-top: 5px;
         }
 
@@ -549,7 +586,7 @@
         .form-label {
             display: block;
             margin-bottom: 5px;
-            color: #fff;
+            color: #333;
             font-size: 14px;
             font-weight: 600;
         }
@@ -557,10 +594,10 @@
         .form-control {
             width: 100%;
             padding: 10px;
-            border: 1px solid #444;
+            border: 1px solid #ddd;
             border-radius: 4px;
-            background: #333;
-            color: #fff;
+            background: white;
+            color: #333;
             font-size: 14px;
         }
 
@@ -571,7 +608,7 @@
 
         .form-control.predicted-genre {
             border-color: #28a745;
-            background: #1e3a2a;
+            background: #f0f9f0;
         }
 
         .price-input {
@@ -584,13 +621,13 @@
         }
 
         .estimation-hint {
-            background: #333;
+            background: #f8f9fa;
             border-left: 4px solid #28a745;
             padding: 10px;
             margin-top: 10px;
             border-radius: 4px;
             font-size: 13px;
-            color: #fff;
+            color: #333;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -598,16 +635,17 @@
         }
 
         .price-hint {
-            color: #aaa;
+            color: #666;
             margin-top: 5px;
+            font-size: 12px;
         }
 
         .barcode-info {
-            background: #333;
+            background: #f8f9fa;
             padding: 10px;
             border-radius: 4px;
             margin-bottom: 20px;
-            color: #aaa;
+            color: #666;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -618,18 +656,18 @@
         }
 
         .calculation-toggle {
-            background: #333;
+            background: #f8f9fa;
             padding: 10px;
             border-radius: 4px;
             cursor: pointer;
             display: flex;
             align-items: center;
             gap: 10px;
-            color: #fff;
+            color: #333;
         }
 
         .calculation-toggle:hover {
-            background: #3a3a3a;
+            background: #e9ecef;
         }
 
         .calculation-toggle.expanded i {
@@ -639,8 +677,8 @@
         .calculation-details {
             display: none;
             padding: 15px;
-            background: #2a2a2a;
-            border: 1px solid #444;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
             border-radius: 4px;
             margin-top: 10px;
         }
@@ -651,13 +689,13 @@
 
         .calculation-content {
             font-size: 14px;
-            color: #ddd;
+            color: #333;
         }
 
         .calculation-step {
             padding: 8px;
             margin: 5px 0;
-            background: #333;
+            background: white;
             border-radius: 4px;
             border-left: 3px solid #007bff;
         }
@@ -672,20 +710,20 @@
 
         .price-source-badge.estimated {
             background: #ffc107;
-            color: #000;
+            color: #333;
         }
 
         .price-source-badge.calculated {
             background: #28a745;
-            color: #fff;
+            color: white;
         }
 
         .rounding-info {
-            background: #333;
+            background: #f8f9fa;
             border-left: 4px solid #007bff;
             padding: 15px;
             border-radius: 4px;
-            color: #fff;
+            color: #333;
         }
 
         .ebay-summary {
@@ -700,7 +738,7 @@
         .ebay-summary-table {
             width: 100%;
             border-collapse: collapse;
-            background: #333;
+            background: white;
             border-radius: 4px;
         }
 
@@ -708,17 +746,17 @@
         .ebay-summary-table td {
             padding: 10px;
             text-align: left;
-            border: 1px solid #444;
+            border: 1px solid #ddd;
         }
 
         .ebay-summary-table th {
-            background: #2a2a2a;
-            color: #fff;
+            background: #f8f9fa;
+            color: #333;
             font-weight: 600;
         }
 
         .ebay-summary-table td {
-            color: #ddd;
+            color: #333;
         }
 
         .ebay-listings {
@@ -733,7 +771,7 @@
         }
 
         .table-header h4 {
-            color: #fff;
+            color: #333;
             margin: 0;
         }
 
@@ -753,27 +791,27 @@
         .ebay-listings-table {
             width: 100%;
             border-collapse: collapse;
-            background: #333;
+            background: white;
             border-radius: 4px;
         }
 
         .ebay-listings-table th {
-            background: #2a2a2a;
-            color: #fff;
+            background: #f8f9fa;
+            color: #333;
             font-weight: 600;
             padding: 12px;
             text-align: left;
-            border: 1px solid #444;
+            border: 1px solid #ddd;
         }
 
         .ebay-listings-table td {
             padding: 12px;
-            border: 1px solid #444;
-            color: #ddd;
+            border: 1px solid #ddd;
+            color: #333;
         }
 
         .ebay-listings-table tr.matches-condition {
-            background: #1e3a2a;
+            background: #f0f9f0;
         }
 
         .ebay-price {
@@ -787,7 +825,7 @@
 
         .ebay-total {
             font-weight: bold;
-            color: #fff;
+            color: #333;
         }
 
         .condition-match-badge {
@@ -800,7 +838,7 @@
         }
 
         .ebay-condition {
-            color: #ddd;
+            color: #333;
         }
 
         .ebay-title {
@@ -808,7 +846,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            color: #ddd;
+            color: #333;
         }
 
         .ebay-link {
@@ -824,24 +862,25 @@
             display: none;
             text-align: center;
             padding: 60px 20px;
+            background: white;
         }
 
         .login-prompt {
             max-width: 500px;
             margin: 0 auto;
             padding: 40px;
-            background: #1a1a1a;
-            border: 1px solid #333;
+            background: white;
+            border: 1px solid #ddd;
             border-radius: 8px;
         }
 
         .login-prompt h1 {
-            color: #fff;
+            color: #333;
             margin-bottom: 20px;
         }
 
         .login-prompt p {
-            color: #aaa;
+            color: #666;
             margin-bottom: 30px;
         }
 
@@ -908,6 +947,38 @@
             </div>
         </div>
 
+        <!-- Filters Section -->
+        <div class="filters-section" id="filters-section">
+            <div class="filters-row">
+                <!-- Consignor Filter (Admin Only) -->
+                <div id="consignor-filter-container" class="filter-group" style="display: none;">
+                    <label for="consignor-filter"><i class="fas fa-user"></i> Consignor:</label>
+                    <select id="consignor-filter">
+                        <option value="all">All Consignors</option>
+                    </select>
+                </div>
+                
+                <!-- Status Filters -->
+                <div class="filter-group">
+                    <label><i class="fas fa-filter"></i> Status:</label>
+                    <div class="status-filters">
+                        <label class="status-filter-checkbox">
+                            <input type="checkbox" value="new" checked> New
+                        </label>
+                        <label class="status-filter-checkbox">
+                            <input type="checkbox" value="active" checked> Active
+                        </label>
+                        <label class="status-filter-checkbox">
+                            <input type="checkbox" value="sold" checked> Sold
+                        </label>
+                        <label class="status-filter-checkbox">
+                            <input type="checkbox" value="removed" checked> Removed
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Search Section -->
         <div class="search-section">
             <div class="radio-group">
@@ -947,15 +1018,6 @@
                     </div>
                 </form>
             </div>
-        </div>
-
-        <!-- Consignor Filter (Admin Only) -->
-        <div id="consignor-filter-container" class="consignor-filter" style="display: none;">
-            <i class="fas fa-filter"></i>
-            <label for="consignor-filter">Filter Inventory by Consignor:</label>
-            <select id="consignor-filter">
-                <option value="all">All Consignors</option>
-            </select>
         </div>
 
         <!-- Inventory Table -->
@@ -1444,6 +1506,7 @@
                 this.genres = [];
                 this.conditions = [];
                 this.statuses = ['new', 'active', 'sold', 'removed'];
+                this.selectedStatuses = ['new', 'active', 'sold', 'removed'];
                 this.genrePredictor = new GenrePredictor();
                 this.barcodeGenerator = new BarcodeGenerator();
                 this.commissionRate = 0.20;
@@ -1541,7 +1604,44 @@
                     });
                 }
 
+                // Status filter checkboxes
+                document.querySelectorAll('.status-filter-checkbox input').forEach(checkbox => {
+                    checkbox.addEventListener('change', (e) => {
+                        const status = e.target.value;
+                        if (e.target.checked) {
+                            this.selectedStatuses.push(status);
+                        } else {
+                            this.selectedStatuses = this.selectedStatuses.filter(s => s !== status);
+                        }
+                        this.filterInventoryByStatus();
+                    });
+                });
+
                 this.updateSearchPlaceholder();
+            }
+
+            filterInventoryByStatus() {
+                if (this.selectedStatuses.length === 0) {
+                    // If no statuses selected, show empty
+                    document.getElementById('inventory-table-body').innerHTML = '';
+                    document.getElementById('inventory-empty').style.display = 'block';
+                    document.getElementById('inventory-pagination').style.display = 'none';
+                    return;
+                }
+
+                const filteredRecords = this.allInventoryRecords.filter(record => {
+                    const status = (record.status_name || 'active').toLowerCase();
+                    return this.selectedStatuses.includes(status);
+                });
+
+                if (filteredRecords.length === 0) {
+                    document.getElementById('inventory-table-body').innerHTML = '';
+                    document.getElementById('inventory-empty').style.display = 'block';
+                    document.getElementById('inventory-pagination').style.display = 'none';
+                } else {
+                    const pageItems = this.inventoryPagination.setItems(filteredRecords);
+                    this.renderInventoryPage(pageItems);
+                }
             }
 
             updateSearchPlaceholder() {
@@ -1609,6 +1709,9 @@
                         console.error('LOAD_CONSIGNORS: Error loading consignors:', error);
                         document.getElementById('consignor-filter-container').style.display = 'none';
                     }
+                } else {
+                    // Hide consignor filter for non-admin users
+                    document.getElementById('consignor-filter-container').style.display = 'none';
                 }
             }
 
@@ -1655,15 +1758,10 @@
                         return;
                     }
                     
-                    // Set records in pagination and render first page
-                    const pageItems = this.inventoryPagination.setItems(this.allInventoryRecords);
-                    this.renderInventoryPage(pageItems);
+                    // Apply status filter
+                    this.filterInventoryByStatus();
                     
-                    // Log first few records to verify sort order
-                    console.log('INVENTORY: Loaded', this.allInventoryRecords.length, 'records sorted by created_at DESC');
-                    if (this.allInventoryRecords.length > 0) {
-                        console.log('Most recent record:', this.allInventoryRecords[0].artist, this.allInventoryRecords[0].title, 'Created:', this.allInventoryRecords[0].created_at);
-                    }
+                    console.log('INVENTORY: Loaded', this.allInventoryRecords.length, 'records');
                 } catch (error) {
                     console.error('LOAD_INVENTORY: Error loading inventory:', error);
                     loadingDiv.style.display = 'none';
@@ -1705,9 +1803,9 @@
                         <td>
                             ${record.image_url ? 
                                 `<img src="${record.image_url}" alt="${record.artist}" class="record-image-small" 
-                                      onerror="this.src='https://via.placeholder.com/60x60/333/666?text=No+Image'">` : 
-                                `<div class="record-image-small" style="background: #333; display: flex; align-items: center; justify-content: center;">
-                                    <i class="fas fa-record-vinyl" style="font-size: 24px; color: #666;"></i>
+                                      onerror="this.src='https://via.placeholder.com/60x60/eee/ccc?text=No+Image'">` : 
+                                `<div class="record-image-small" style="background: #f8f9fa; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-record-vinyl" style="font-size: 24px; color: #999;"></i>
                                 </div>`
                             }
                         </td>
@@ -1850,8 +1948,6 @@
                 console.log('PERFORM_SEARCH: Starting search for:', searchTerm);
                 console.log('PERFORM_SEARCH: Search type:', this.currentSearchType);
                 console.log('PERFORM_SEARCH: Search field:', this.currentSearchField);
-                console.log('PERFORM_SEARCH: Current genres:', this.genres);
-                console.log('PERFORM_SEARCH: Current conditions:', this.conditions);
 
                 if (this.currentSearchType === 'add') {
                     this.currentResults = await this.searchDiscogs(searchTerm);
@@ -1864,84 +1960,56 @@
             }
 
             async searchDiscogs(searchTerm) {
-                const response = await APIUtils.get('/api/discogs/search', { q: searchTerm });
-                
-                if (response.status === 'success' && response.results) {
-                    const enhancedResults = await Promise.all(
-                        response.results.map(async (record) => {
-                            if (record.genre) {
-                                const prediction = await this.genrePredictor.predictGenre(record.genre);
-                                if (prediction) {
-                                    record.predicted_genre = prediction;
-                                    console.log(`GENRE_PREDICTION: "${record.genre}" -> ${prediction.local_genre_name}`);
-                                }
-                            }
-                            return record;
-                        })
-                    );
+                try {
+                    const response = await APIUtils.get('/api/discogs/search', { q: searchTerm });
                     
-                    return enhancedResults;
+                    if (response.status === 'success' && response.results) {
+                        const enhancedResults = await Promise.all(
+                            response.results.map(async (record) => {
+                                if (record.genre) {
+                                    const prediction = await this.genrePredictor.predictGenre(record.genre);
+                                    if (prediction) {
+                                        record.predicted_genre = prediction;
+                                        console.log(`GENRE_PREDICTION: "${record.genre}" -> ${prediction.local_genre_name}`);
+                                    }
+                                }
+                                return record;
+                            })
+                        );
+                        
+                        return enhancedResults;
+                    }
+                    
+                    return [];
+                } catch (error) {
+                    console.error('SEARCH_DISCOGS: Error searching Discogs:', error);
+                    this.showMessage('Error searching Discogs. Please try again.', 'error');
+                    return [];
                 }
-                
-                return this.getSampleResults(searchTerm);
             }
 
             async searchDatabase(searchTerm) {
-                const user = window.Auth.getUser();
-                let params = { 
-                    q: searchTerm,
-                    search_field: this.currentSearchField
-                };
-                
-                if (user.role === 'consignor') {
-                    params.user_id = user.id;
-                }
-                
-                const response = await APIUtils.get('/search', params);
-                
-                if (response.status === 'success' && response.records) {
-                    return response.records;
-                }
-                return [];
-            }
-
-            getSampleResults(searchTerm) {
-                const searchLower = searchTerm.toLowerCase();
-                
-                if (searchLower.includes('nirvana')) {
-                    return [
-                        {
-                            id: 'discogs_1',
-                            artist: 'Nirvana',
-                            title: 'Nevermind',
-                            year: '1991',
-                            genre: 'Rock, Grunge',
-                            format: 'Vinyl, LP, Album',
-                            country: 'US',
-                            image_url: 'https://img.discogs.com/GHS-24425.jpg',
-                            catalog_number: 'GHS 24425',
-                            discogs_id: '123456',
-                            barcode: ['GHS 24425', '075992442517'],
-                            predicted_genre: { local_genre_id: 1, local_genre_name: 'Rock' }
-                        }
-                    ];
-                } else {
-                    return [
-                        {
-                            id: 'discogs_4',
-                            artist: 'Sample Artist',
-                            title: `Sample Album for "${searchTerm}"`,
-                            year: '2023',
-                            genre: 'Rock',
-                            format: 'Vinyl, LP',
-                            country: 'US',
-                            image_url: '',
-                            catalog_number: 'SMP001',
-                            discogs_id: '999999',
-                            barcode: ['123456789012'],
-                            predicted_genre: null
-                        }
-                    ];
+                try {
+                    const user = window.Auth.getUser();
+                    let params = { 
+                        q: searchTerm,
+                        search_field: this.currentSearchField
+                    };
+                    
+                    if (user.role === 'consignor') {
+                        params.user_id = user.id;
+                    }
+                    
+                    const response = await APIUtils.get('/records/search', params);
+                    
+                    if (response.status === 'success' && response.records) {
+                        return response.records;
+                    }
+                    return [];
+                } catch (error) {
+                    console.error('SEARCH_DATABASE: Error searching database:', error);
+                    this.showMessage('Error searching database. Please try again.', 'error');
+                    return [];
                 }
             }
 
@@ -1977,8 +2045,8 @@
                 };
                 
                 return `
-                    <h3 style="color: #fff; margin-bottom: 20px;">Search Results (${resultsCount})</h3>
-                    <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #333; border-radius: 4px; border-left: 4px solid #007bff; color: #fff;">
+                    <h3 style="color: #333; margin-bottom: 20px;">Search Results (${resultsCount})</h3>
+                    <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff; color: #333;">
                         <i class="fas fa-info-circle"></i>
                         <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
                         <div style="margin-top: 5px;">
@@ -2015,10 +2083,10 @@
                                 <div class="record-header">
                                     ${record.image_url ? `
                                         <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image" 
-                                             onerror="this.src='https://via.placeholder.com/100x100/333/666?text=No+Image'">
+                                             onerror="this.src='https://via.placeholder.com/100x100/eee/ccc?text=No+Image'">
                                     ` : `
-                                        <div class="record-image" style="background: #333; display: flex; align-items: center; justify-content: center;">
-                                            <i class="fas fa-record-vinyl" style="font-size: 40px; color: #666;"></i>
+                                        <div class="record-image" style="background: #f8f9fa; display: flex; align-items: center; justify-content: center;">
+                                            <i class="fas fa-record-vinyl" style="font-size: 40px; color: #999;"></i>
                                         </div>
                                     `}
                                     <div class="record-info">
@@ -2112,7 +2180,7 @@
                                         <button class="btn btn-primary add-record-btn">
                                             <i class="fas fa-plus"></i> Add to Inventory
                                         </button>
-                                        <div class="form-hint" style="font-size: 12px; color: #aaa; margin-top: 5px;">
+                                        <div class="form-hint" style="font-size: 12px; color: #666; margin-top: 5px;">
                                             * Required fields
                                         </div>
                                     </div>
@@ -2168,8 +2236,8 @@
                 };
                 
                 return `
-                    <h3 style="color: #fff; margin-bottom: 20px;">Database Results (${filteredResults.length})</h3>
-                    <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #333; border-radius: 4px; border-left: 4px solid #007bff; color: #fff;">
+                    <h3 style="color: #333; margin-bottom: 20px;">Database Results (${filteredResults.length})</h3>
+                    <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff; color: #333;">
                         <i class="fas fa-info-circle"></i>
                         <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
                         <div style="margin-top: 5px;">
@@ -2187,10 +2255,10 @@
                                 <div class="record-header">
                                     ${record.image_url ? `
                                         <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image"
-                                             onerror="this.src='https://via.placeholder.com/100x100/333/666?text=No+Image'">
+                                             onerror="this.src='https://via.placeholder.com/100x100/eee/ccc?text=No+Image'">
                                     ` : `
-                                        <div class="record-image" style="background: #333; display: flex; align-items: center; justify-content: center;">
-                                            <i class="fas fa-record-vinyl" style="font-size: 40px; color: #666;"></i>
+                                        <div class="record-image" style="background: #f8f9fa; display: flex; align-items: center; justify-content: center;">
+                                            <i class="fas fa-record-vinyl" style="font-size: 40px; color: #999;"></i>
                                         </div>
                                     `}
                                     <div class="record-info">
@@ -2397,7 +2465,7 @@
                             hint.innerHTML = `
                                 <i class="fas fa-lightbulb"></i>
                                 <strong>Advised Price:</strong> $${finalPrice.toFixed(2)} (Your entry: $${parseFloat(originalValue).toFixed(2)})
-                                <div style="font-size: 11px; color: #aaa; margin-top: 2px;">
+                                <div style="font-size: 11px; color: #666; margin-top: 2px;">
                                     Based on ${priceSource} data • Already rounded to store price
                                 </div>
                                 <button class="btn btn-small btn-secondary" style="margin-left: auto;" 
@@ -2409,7 +2477,7 @@
                             hint.innerHTML = `
                                 <i class="fas fa-bolt"></i>
                                 <strong>Advised Price:</strong> $${finalPrice.toFixed(2)}
-                                <div style="font-size: 11px; color: #aaa; margin-top: 2px;">
+                                <div style="font-size: 11px; color: #666; margin-top: 2px;">
                                     Based on ${priceSource} data • Already rounded to store price
                                 </div>
                                 <button class="btn btn-small btn-secondary" style="margin-left: auto;" 
@@ -2458,7 +2526,7 @@
                         <div style="margin-top: 5px;">
                             <div>• <strong>Final Price:</strong> $${finalPrice.toFixed(2)} (already rounded)</div>
                             <div>• <strong>Minimum Price:</strong> $${this.minimumPrice.toFixed(2)} ${finalPrice === this.minimumPrice ? '✓ Minimum applied' : '✓ Met minimum'}</div>
-                            <div style="font-size: 11px; color: #aaa; margin-top: 3px;">
+                            <div style="font-size: 11px; color: #666; margin-top: 3px;">
                                 Price has been automatically rounded according to store pricing rules
                             </div>
                         </div>
@@ -2853,8 +2921,7 @@
                             document.getElementById('inventory-pagination').style.display = 'none';
                         } else {
                             // Update pagination with new records
-                            const pageItems = this.inventoryPagination.setItems(this.allInventoryRecords);
-                            this.renderInventoryPage(pageItems);
+                            this.filterInventoryByStatus();
                         }
                         
                         await this.loadStats();
