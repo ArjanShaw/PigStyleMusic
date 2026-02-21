@@ -2685,25 +2685,26 @@ function updateSelectionUI() {
     updateButtonStates();
 }
 
+// ============= UPDATED FUNCTION TO SELECT RECENT RECORDS (ANY STATUS) =============
 function selectRecentInactiveRecords() {
     const batchSize = parseInt(document.getElementById('batch-size').value) || 10;
     
     window.selectedRecords.clear();
     
-    const inactiveRecords = allRecords
-        .filter(r => r.status_id === 1)
+    // Select from all records, not just inactive ones
+    const recentRecords = allRecords
         .slice(0, batchSize);
     
-    inactiveRecords.forEach(record => {
+    recentRecords.forEach(record => {
         window.selectedRecords.add(record.id.toString());
     });
     
     renderCurrentPage();
     
-    if (inactiveRecords.length > 0) {
-        showStatus(`Selected ${inactiveRecords.length} most recent inactive records`, 'success');
+    if (recentRecords.length > 0) {
+        showStatus(`Selected ${recentRecords.length} most recent records`, 'success');
     } else {
-        showStatus('No inactive records available to select', 'info');
+        showStatus('No records available to select', 'info');
     }
 }
 
@@ -2737,18 +2738,15 @@ function showPrintConfirmation() {
     }
     
     const selectedRecords = allRecords.filter(r => selectedIds.includes(r.id.toString()));
-    const inactiveRecords = selectedRecords.filter(r => r.status_id === 1);
-    const activeRecords = selectedRecords.filter(r => r.status_id === 2);
-    const soldRecords = selectedRecords.filter(r => r.status_id === 3);
+    // Removed filtering that separated by status - just show total count
+    // All records can now be printed regardless of status
     
     document.getElementById('print-count').textContent = selectedRecords.length;
     
     const summaryList = document.getElementById('print-summary-list');
     summaryList.innerHTML = `
         <li>Total selected: ${selectedRecords.length} records</li>
-        <li>Inactive records: ${inactiveRecords.length} (will be printed)</li>
-        <li>Active records: ${activeRecords.length} (already active)</li>
-        <li>Sold records: ${soldRecords.length} (won't be printed)</li>
+        <li>These records will have price tags generated</li>
     `;
     
     document.getElementById('print-confirmation-modal').style.display = 'flex';
@@ -2758,17 +2756,20 @@ function closePrintConfirmation() {
     document.getElementById('print-confirmation-modal').style.display = 'none';
 }
 
+// ============= UPDATED FUNCTION TO ALLOW PRINTING ANY RECORDS =============
 async function confirmPrint() {
     const selectedIds = Array.from(window.selectedRecords);
     
     closePrintConfirmation();
     showLoading(true);
     
+    // Removed filter that only allowed inactive records
     const selectedRecords = allRecords
-        .filter(r => selectedIds.includes(r.id.toString()) && r.status_id === 1);
+        .filter(r => selectedIds.includes(r.id.toString()));
+        // Removed: && r.status_id === 1
         
     if (selectedRecords.length === 0) {
-        showStatus('No inactive records selected', 'error');
+        showStatus('No records selected', 'error');
         showLoading(false);
         return;
     }
@@ -2786,13 +2787,14 @@ async function confirmPrint() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
+    // Track printed records (optional)
     selectedRecords.forEach(record => {
         recentlyPrintedIds.add(record.id.toString());
     });
     
     window.selectedRecords.clear();
     
-    showStatus(`PDF generated for ${selectedRecords.length} records. Now mark them as Active.`, 'success');
+    showStatus(`PDF generated for ${selectedRecords.length} records.`, 'success');
     
     renderCurrentPage();
     
