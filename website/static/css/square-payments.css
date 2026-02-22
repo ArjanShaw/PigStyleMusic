@@ -1,0 +1,77 @@
+/* Square Payment Form Styles */
+
+/* Card form container */
+#square-payment-form {
+    margin-top: 20px;
+}
+
+/* Square's default card form styling */
+.sq-card-wrapper {
+    margin-bottom: 15px;
+}
+
+/* Square input styling */
+.sq-input {
+    border: 1px solid #ddd !important;
+    border-radius: 4px !important;
+    padding: 12px !important;
+    font-size: 14px !important;
+    transition: border-color 0.2s !important;
+}
+
+.sq-input--focus {
+    border-color: #28a745 !important;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.25) !important;
+}
+
+.sq-input--error {
+    border-color: #dc3545 !important;
+}
+
+/* Pay button styling */
+.square-pay-button {
+    width: 100%;
+    padding: 12px;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.square-pay-button:hover {
+    background: #218838;
+}
+
+.square-pay-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Payment status messages */
+.payment-success {
+    color: #28a745;
+    padding: 10px;
+    background: #d4edda;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.payment-error {
+    color: #dc3545;
+    padding: 10px;
+    background: #f8d7da;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.payment-processing {
+    color: #007bff;
+    padding: 10px;
+    background: #cce5ff;
+    border-radius: 4px;
+    margin-top: 10px;
+}

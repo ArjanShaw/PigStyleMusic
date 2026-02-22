@@ -2126,6 +2126,623 @@ def create_record():
     finally:
         conn.close()
 
+@app.route('/config/square', methods=['GET'])
+def get_square_config():
+    """Get Square configuration for frontend - ALWAYS PRODUCTION"""
+    try:
+        # Force production environment
+        application_id = os.environ.get('SQUARE_APPLICATION_ID')
+        location_id = os.environ.get('SQUARE_LOCATION_ID')
+        
+        # Verify we have production credentials (not sandbox)
+        if not application_id or not location_id:
+            return jsonify({
+                'status': 'error',
+                'error': 'Square production configuration not found'
+            }), 404
+            
+        # Ensure we're not using sandbox IDs
+        if application_id.startswith('sandbox-'):
+            return jsonify({
+                'status': 'error',
+                'error': 'Sandbox application ID detected. Please use production credentials.'
+            }), 400
+        
+        return jsonify({
+            'status': 'success',
+            'application_id': application_id,
+            'location_id': location_id,
+            'environment': 'production'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting Square config: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/square/online-payment', methods=['POST'])
+def process_online_payment():
+    """Process online payment with Square - ALWAYS PRODUCTION"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['token', 'amount', 'record_id', 'record_title', 'shipping_address']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Missing required field: {field}'
+                }), 400
+        
+        token = data['token']
+        amount = float(data['amount'])
+        record_id = data['record_id']
+        record_title = data['record_title']
+        shipping_address = data['shipping_address']
+        
+        # Get record details first to verify it's available
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name
+            FROM records r
+            LEFT JOIN genres g ON r.genre_id = g.id
+            WHERE r.id = ?
+        ''', (record_id,))
+        
+        record = cursor.fetchone()
+        if not record:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Record not found'
+            }), 404
+        
+        if record['status_id'] != 1 and record['status_id'] != 2:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Record is no longer available'
+            }), 400
+        
+        # Get shipping cost from config
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'SHIPPING_COST'")
+        shipping_result = cursor.fetchone()
+        shipping_cost = float(shipping_result['config_value']) if shipping_result else 5.00
+        
+        # Get tax rate from config (reusing existing TAX_RATE)
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'TAX_RATE'")
+        tax_result = cursor.fetchone()
+        tax_rate = float(tax_result['config_value']) if tax_result else 0.00
+        
+        # Calculate tax
+        # Assuming tax is applied to the record price + shipping
+        taxable_amount = amount  # amount already includes everything
+        tax_amount = round(taxable_amount * tax_rate, 2)
+        
+        # Calculate record price (total - shipping - tax)
+        record_price = amount - shipping_cost - tax_amount
+        
+        # Get Square access token
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Square access token not configured'
+            }), 500
+        
+        # Get location ID
+        location_id = os.environ.get('SQUARE_LOCATION_ID')
+        if not location_id:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Square location ID not configured'
+            }), 500
+        
+        # ALWAYS use production URL
+        base_url = 'https://connect.squareup.com'
+        
+        # Create idempotency key
+        idempotency_key = str(uuid.uuid4())
+        
+        # Prepare payment request
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        payment_data = {
+            "idempotency_key": idempotency_key,
+            "source_id": token,
+            "amount_money": {
+                "amount": int(round(amount * 100)),  # Convert to cents
+                "currency": "USD"
+            },
+            "location_id": location_id,
+            "note": f"PigStyle Records: {record_title}",
+            "reference_id": f"record_{record_id}_{int(time.time())}"
+        }
+        
+        app.logger.info(f"Processing PRODUCTION payment for record {record_id}, amount ${amount}")
+        
+        # Make API call to Square
+        response = requests.post(
+            f'{base_url}/v2/payments',
+            headers=headers,
+            json=payment_data
+        )
+        
+        if response.status_code != 200:
+            error_text = response.text[:500]
+            app.logger.error(f"Square payment API error: {error_text}")
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f"Payment failed: {error_text}"
+            }), response.status_code
+        
+        result = response.json()
+        
+        # Check for errors
+        if 'errors' in result:
+            errors = result['errors']
+            error_messages = [e.get('detail', 'Unknown error') for e in errors]
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': ', '.join(error_messages)
+            }), 400
+        
+        payment = result.get('payment', {})
+        payment_id = payment.get('id')
+        
+        # Generate order number
+        order_number = f"ORD-{int(time.time())}-{record_id}"
+        
+        # Insert into orders table
+        cursor.execute('''
+            INSERT INTO orders (
+                order_number, record_id, record_title, record_artist,
+                record_condition, record_price, shipping_cost, total_amount,
+                customer_name, customer_email, shipping_address_line1,
+                shipping_address_line2, shipping_city, shipping_state,
+                shipping_zip, shipping_country, square_payment_id,
+                payment_status, order_status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (
+            order_number,
+            record_id,
+            record['title'],
+            record['artist'],
+            record['condition'],
+            record_price,
+            shipping_cost,
+            amount,
+            shipping_address.get('name', ''),
+            shipping_address.get('email', ''),
+            shipping_address.get('address_line1', ''),
+            shipping_address.get('address_line2', ''),
+            shipping_address.get('city', ''),
+            shipping_address.get('state', ''),
+            shipping_address.get('zip', ''),
+            shipping_address.get('country', 'USA'),
+            payment_id,
+            'paid',
+            'pending'
+        ))
+        
+        # Update record status to sold with date_sold
+        today = datetime.now().date().isoformat()
+        cursor.execute('''
+            UPDATE records
+            SET status_id = 3, date_sold = ?
+            WHERE id = ?
+        ''', (today, record_id))
+        
+        # Save receipt with tax field (reusing TAX_RATE value)
+        receipt_id = f"REC-{int(time.time())}-{record_id}"
+        transaction_data = {
+            'order_number': order_number,
+            'record_id': record_id,
+            'record_title': record['title'],
+            'record_artist': record['artist'],
+            'amount': amount,
+            'record_price': record_price,
+            'shipping_cost': shipping_cost,
+            'tax_rate': tax_rate,  # Store the rate used
+            'tax_amount': tax_amount,  # Store the calculated tax
+            'shipping_address': shipping_address,
+            'square_payment_id': payment_id,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        cursor.execute('''
+            INSERT INTO receipts 
+            (receipt_id, square_payment_id, transaction_data, total, tax, payment_method, cashier)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            receipt_id,
+            payment_id,
+            json.dumps(transaction_data),
+            amount,
+            tax_amount,  # Use the calculated tax amount
+            'Credit Card',
+            'Online Customer'
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"PRODUCTION Order {order_number} created for record {record_id}")
+        app.logger.info(f"Payment details - Total: ${amount}, Tax: ${tax_amount} (rate: {tax_rate*100}%), Shipping: ${shipping_cost}, Record: ${record_price}")
+        
+        return jsonify({
+            'status': 'success',
+            'payment_id': payment_id,
+            'receipt_id': receipt_id,
+            'order_number': order_number,
+            'amount': amount,
+            'tax_rate': tax_rate,
+            'tax_amount': tax_amount,
+            'shipping': shipping_cost,
+            'record_price': record_price,
+            'message': 'Payment processed successfully'
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error processing online payment: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/orders/pending', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_pending_orders():
+    """Get all orders that need shipping"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM orders 
+            WHERE order_status IN ('pending', 'processing')
+            ORDER BY created_at DESC
+        ''')
+        
+        orders = cursor.fetchall()
+        conn.close()
+        
+        orders_list = [dict(order) for order in orders]
+        
+        return jsonify({
+            'status': 'success',
+            'count': len(orders_list),
+            'orders': orders_list
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting pending orders: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/orders/all', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_all_orders():
+    """Get all orders with optional filters"""
+    try:
+        status = request.args.get('status')
+        days = request.args.get('days', type=int)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM orders WHERE 1=1"
+        params = []
+        
+        if status:
+            query += " AND order_status = ?"
+            params.append(status)
+        
+        if days:
+            query += " AND created_at >= datetime('now', ?)"
+            params.append(f'-{days} days')
+        
+        query += " ORDER BY created_at DESC"
+        
+        cursor.execute(query, params)
+        orders = cursor.fetchall()
+        conn.close()
+        
+        orders_list = [dict(order) for order in orders]
+        
+        return jsonify({
+            'status': 'success',
+            'count': len(orders_list),
+            'orders': orders_list
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting orders: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/orders/<order_number>/mark-shipped', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_order_shipped(order_number):
+    """Mark an order as shipped with tracking info"""
+    try:
+        data = request.get_json()
+        tracking_number = data.get('tracking_number')
+        carrier = data.get('carrier', 'USPS')
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE orders 
+            SET order_status = 'shipped',
+                shipped_date = CURRENT_TIMESTAMP,
+                tracking_number = ?,
+                carrier = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE order_number = ?
+        ''', (tracking_number, carrier, order_number))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Order not found'
+            }), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Order {order_number} marked as shipped'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error marking order shipped: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/orders/stats', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_order_stats():
+    """Get order statistics"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get counts by status
+        cursor.execute('''
+            SELECT order_status, COUNT(*) as count 
+            FROM orders 
+            GROUP BY order_status
+        ''')
+        status_counts = cursor.fetchall()
+        
+        # Get total revenue
+        cursor.execute('''
+            SELECT SUM(total_amount) as total_revenue 
+            FROM orders 
+            WHERE order_status != 'cancelled'
+        ''')
+        total_revenue = cursor.fetchone()['total_revenue'] or 0
+        
+        # Get today's shipped orders
+        cursor.execute('''
+            SELECT COUNT(*) as shipped_today 
+            FROM orders 
+            WHERE order_status = 'shipped' 
+            AND DATE(shipped_date) = DATE('now')
+        ''')
+        shipped_today = cursor.fetchone()['shipped_today'] or 0
+        
+        # Get pending count
+        cursor.execute('''
+            SELECT COUNT(*) as pending_orders 
+            FROM orders 
+            WHERE order_status = 'pending'
+        ''')
+        pending_orders = cursor.fetchone()['pending_orders'] or 0
+        
+        conn.close()
+        
+        stats = {
+            'total_revenue': float(total_revenue),
+            'shipped_today': shipped_today,
+            'pending_orders': pending_orders,
+            'by_status': {row['order_status']: row['count'] for row in status_counts}
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'stats': stats
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting order stats: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+ 
+
+# Add to api.py - Add SHIPPING_COST to app_config if not exists
+@app.route('/config/init-shipping', methods=['POST'])
+def init_shipping_config():
+    """Initialize shipping cost in app_config"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if SHIPPING_COST exists
+        cursor.execute('''
+            SELECT config_key FROM app_config WHERE config_key = 'SHIPPING_COST'
+        ''')
+        
+        if not cursor.fetchone():
+            cursor.execute('''
+                INSERT INTO app_config (config_key, config_value, description)
+                VALUES (?, ?, ?)
+            ''', ('SHIPPING_COST', '5.00', 'Flat rate shipping cost for online orders'))
+            conn.commit()
+            message = 'Shipping cost initialized to $5.00'
+        else:
+            message = 'Shipping cost already exists'
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': message
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error initializing shipping config: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/catalog/grouped-by-release', methods=['GET'])
+def get_catalog_grouped_by_release():
+    """Group records by unique release (artist + title) and show all condition copies"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get all active records (status 1 or 2) with their condition and price
+    cursor.execute('''
+        SELECT 
+            r.id,
+            r.artist,
+            r.title,
+            r.genre_id,
+            g.genre_name,
+            r.image_url,
+            r.catalog_number,
+            r.condition,
+            r.store_price,
+            r.barcode,
+            r.consignor_id,
+            r.status_id,
+            r.created_at,
+            u.username as consignor_name
+        FROM records r
+        LEFT JOIN genres g ON r.genre_id = g.id
+        LEFT JOIN users u ON r.consignor_id = u.id
+        WHERE r.status_id IN (1, 2)  -- Active and Available
+        AND r.artist IS NOT NULL AND r.title IS NOT NULL
+        AND r.artist != '' AND r.title != ''
+        ORDER BY r.artist, r.title, 
+                 CASE r.condition
+                     WHEN 'Mint (M)' THEN 1
+                     WHEN 'Near Mint (NM or M-)' THEN 2
+                     WHEN 'Very Good Plus (VG+)' THEN 3
+                     WHEN 'Very Good (VG)' THEN 4
+                     WHEN 'Good Plus (G+)' THEN 5
+                     WHEN 'Good (G)' THEN 6
+                     WHEN 'Fair (F)' THEN 7
+                     WHEN 'Poor (P)' THEN 8
+                     ELSE 9
+                 END,
+                 r.store_price DESC
+    ''')
+    
+    records = cursor.fetchall()
+    conn.close()
+    
+    # Group by artist + title (case-insensitive, trimmed)
+    groups = {}
+    condition_order = {
+        'Mint (M)': 1,
+        'Near Mint (NM or M-)': 2,
+        'Very Good Plus (VG+)': 3,
+        'Very Good (VG)': 4,
+        'Good Plus (G+)': 5,
+        'Good (G)': 6,
+        'Fair (F)': 7,
+        'Poor (P)': 8
+    }
+    
+    for record in records:
+        # Create unique key from artist and title
+        artist = record['artist'].strip()
+        title = record['title'].strip()
+        key = f"{artist.lower()}|{title.lower()}"
+        
+        if key not in groups:
+            # This is the first copy we've seen of this release
+            groups[key] = {
+                'artist': artist,
+                'title': title,
+                'genre_id': record['genre_id'],
+                'genre_name': record['genre_name'],
+                'image_url': record['image_url'],
+                'catalog_number': record['catalog_number'],
+                'total_copies': 0,
+                'price_range': {'min': float('inf'), 'max': 0},
+                'copies': []
+            }
+        
+        # Add this copy to the group
+        copy_data = {
+            'id': record['id'],
+            'condition': record['condition'],
+            'condition_rank': condition_order.get(record['condition'], 99),
+            'store_price': float(record['store_price']) if record['store_price'] else 0,
+            'barcode': record['barcode'],
+            'consignor_id': record['consignor_id'],
+            'consignor_name': record['consignor_name'],
+            'status_id': record['status_id']
+        }
+        
+        groups[key]['copies'].append(copy_data)
+        groups[key]['total_copies'] += 1
+        
+        # Update price range
+        price = copy_data['store_price']
+        if price > 0:
+            groups[key]['price_range']['min'] = min(groups[key]['price_range']['min'], price)
+            groups[key]['price_range']['max'] = max(groups[key]['price_range']['max'], price)
+    
+    # Clean up price ranges for groups with no prices
+    for key in groups:
+        if groups[key]['price_range']['min'] == float('inf'):
+            groups[key]['price_range'] = {'min': 0, 'max': 0}
+    
+    # Convert to list and sort by artist
+    groups_list = list(groups.values())
+    groups_list.sort(key=lambda x: (x['artist'].lower(), x['title'].lower()))
+    
+    return jsonify({
+        'status': 'success',
+        'total_unique_releases': len(groups_list),
+        'total_copies': sum(g['total_copies'] for g in groups_list),
+        'groups': groups_list
+    })
+
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()

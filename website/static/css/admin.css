@@ -2728,3 +2728,56 @@ select.form-control option {
     font-style: italic;
     color: #666;
 }
+
+/* Shipping tab styles */
+.row-pending {
+    background-color: #fff3cd;
+}
+
+.status-badge-warning {
+    background-color: #ffc107;
+    color: #856404;
+}
+
+.status-badge-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.status-badge-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-action {
+    background: none;
+    border: none;
+    color: #007bff;
+    cursor: pointer;
+    padding: 5px;
+    margin: 0 2px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.btn-action:hover {
+    background: #f8f9fa;
+    color: #0056b3;
+}
+
+.shipping-stats .stat-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.shipping-stats .stat-card h3 {
+    color: rgba(255,255,255,0.9);
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+.shipping-stats .stat-card .stat-number {
+    font-size: 32px;
+    font-weight: bold;
+    color: white;
+}

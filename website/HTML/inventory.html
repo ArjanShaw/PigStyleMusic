@@ -16,7 +16,9 @@
     </script>
     
     <link rel="stylesheet" href="/static/css/catalog.css">
+    <link rel="stylesheet" href="/static/css/square-payments.css">
     <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/square-payments.js"></script>
     
     <style>
         /* Additional styles for copy count and price range */
@@ -73,11 +75,35 @@
             opacity: 1;
         }
         
-        /* Tooltip for additional copies */
         .more-copies {
             font-size: 11px;
             color: #999;
             margin-left: 4px;
+        }
+
+        /* Buy Now button */
+        .buy-now-btn {
+            display: block;
+            width: 100%;
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+
+        .buy-now-btn:hover {
+            background: #218838;
+        }
+
+        .buy-now-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
         }
 
         /* Popup/Modal styles */
@@ -198,8 +224,7 @@
             <a href="/inventory" style="color: white; text-decoration: none;">Inventory</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
             <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
-            <div id="auth-section">
-            </div>
+            <div id="auth-section"></div>
         </div>
     </nav>
 
@@ -261,11 +286,27 @@
     <script>
         // Store all releases globally
         let allReleases = [];
+        let shippingCost = 5.00; // Default, will be updated from API
+
+        // Load shipping cost from config
+        async function loadShippingCost() {
+            try {
+                const response = await fetch(`${AppConfig.baseUrl}/config/SHIPPING_COST`);
+                const data = await response.json();
+                if (data.status === 'success' && data.config_value) {
+                    shippingCost = parseFloat(data.config_value);
+                }
+            } catch (error) {
+                console.error('Error loading shipping cost:', error);
+            }
+        }
 
         // Load data from new grouped API endpoint
         async function loadCatalogData() {
             try {
                 console.log('Loading grouped catalog data from API...');
+                await loadShippingCost();
+                
                 const response = await fetch(`${AppConfig.baseUrl}/catalog/grouped-by-release`);
                 const data = await response.json();
                 
@@ -361,7 +402,8 @@
                     store_price: parseFloat(record.store_price) || 0,
                     barcode: record.barcode,
                     catalog_number: record.catalog_number,
-                    youtube_url: record.youtube_url
+                    youtube_url: record.youtube_url,
+                    status_id: record.status_id
                 };
                 
                 groups[key].copies.push(copy);
@@ -422,7 +464,7 @@
             card.setAttribute('data-artist', (release.artist || '').toLowerCase());
             card.setAttribute('data-title', (release.title || '').toLowerCase());
             
-            // Get the best image (first copy with image, or default)
+            // Get the best image
             const imageUrl = release.image_url || '/static/images/default-record.jpg';
             
             // Get genre
@@ -512,17 +554,10 @@
                             🎵 Watch Video
                         </a>
                     ` : ''}
+                    
+                    <button class="buy-now-btn" onclick="openBuyModal(event, ${JSON.stringify(release).replace(/"/g, '&quot;')})">Buy Now</button>
                 </div>
             `;
-            
-            // Add click handler to show all copies popup
-            card.addEventListener('click', function(e) {
-                // Don't trigger if clicking on YouTube link
-                if (e.target.closest('.youtube-link')) return;
-                
-                // Show popup with all copies
-                showCopiesPopup(release);
-            });
             
             return card;
         }
@@ -550,13 +585,152 @@
             return '';
         }
 
-        // Show popup with all copies (all text black)
-        function showCopiesPopup(release) {
+        // Open buy modal for a specific copy
+        function openBuyModal(event, release, copyId = null) {
+            event.stopPropagation();
+            
+            // If copyId not specified, show copy selection first
+            if (!copyId && release.copies.length > 1) {
+                showCopiesPopup(release, true); // Pass true to indicate buy mode
+                return;
+            }
+            
+            // Get the selected copy
+            const copy = copyId ? 
+                release.copies.find(c => c.id === copyId) : 
+                release.copies[0];
+            
+            if (!copy) return;
+            
             // Create modal overlay
             const modal = document.createElement('div');
             modal.className = 'copies-modal-overlay';
             
-            // Sort copies by condition (best first)
+            // Calculate total
+            const total = copy.store_price + shippingCost;
+            
+            modal.innerHTML = `
+                <div class="copies-modal" style="width: 450px;">
+                    <div class="copies-modal-header">
+                        <h3>Complete Purchase</h3>
+                        <button class="copies-modal-close">&times;</button>
+                    </div>
+                    <div class="copies-list">
+                        <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                            <h4 style="margin: 0 0 10px 0; color: #333;">${pigstyleAPI.escapeHtml(release.artist)} - ${pigstyleAPI.escapeHtml(release.title)}</h4>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span style="color: #666;">Condition:</span>
+                                <span class="condition-indicator ${getConditionClass(copy.condition)}">${copy.condition}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #666;">Price:</span>
+                                <span style="font-weight: 600;">$${copy.store_price.toFixed(2)}</span>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="margin: 0 0 15px 0; color: #333;">Shipping Address</h4>
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <input type="text" id="shippingName" placeholder="Full Name" style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                                <input type="text" id="shippingAddress" placeholder="Street Address" style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                                    <input type="text" id="shippingCity" placeholder="City" style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <input type="text" id="shippingState" placeholder="State" style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <input type="text" id="shippingZip" placeholder="ZIP" style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <span>Subtotal:</span>
+                                <span>$${copy.store_price.toFixed(2)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <span>Shipping:</span>
+                                <span>$${shippingCost.toFixed(2)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-weight: 600; font-size: 16px; border-top: 1px solid #ddd; padding-top: 10px;">
+                                <span>Total:</span>
+                                <span>$${total.toFixed(2)}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Square payment form will be inserted here -->
+                        <div id="square-payment-form"></div>
+                        <div id="payment-status"></div>
+                    </div>
+                </div>
+            `;
+            
+            // Add click handler to close button
+            const closeBtn = modal.querySelector('.copies-modal-close');
+            closeBtn.addEventListener('click', () => {
+                modal.remove();
+            });
+            
+            // Add click outside to close
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            document.body.appendChild(modal);
+            
+            // Initialize Square payment form
+            if (window.SquarePayments) {
+                window.SquarePayments.initializePaymentForm({
+                    amount: total,
+                    recordId: copy.id,
+                    recordTitle: `${release.artist} - ${release.title}`,
+                    shippingAddress: {
+                        name: document.getElementById('shippingName'),
+                        addressLine1: document.getElementById('shippingAddress'),
+                        city: document.getElementById('shippingCity'),
+                        state: document.getElementById('shippingState'),
+                        zip: document.getElementById('shippingZip')
+                    },
+                    onSuccess: (result) => {
+                        // Payment successful
+                        modal.innerHTML = `
+                            <div class="copies-modal" style="width: 400px; text-align: center;">
+                                <div class="copies-modal-header">
+                                    <h3>Payment Successful!</h3>
+                                    <button class="copies-modal-close">&times;</button>
+                                </div>
+                                <div class="copies-list" style="text-align: center; padding: 30px;">
+                                    <i class="fas fa-check-circle" style="font-size: 48px; color: #28a745; margin-bottom: 20px;"></i>
+                                    <p style="margin-bottom: 10px;">Thank you for your purchase!</p>
+                                    <p style="color: #666; font-size: 14px;">Receipt has been sent to your email.</p>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Refresh catalog after 2 seconds
+                        setTimeout(() => {
+                            modal.remove();
+                            loadCatalogData(); // Reload to update sold status
+                        }, 2000);
+                    },
+                    onError: (error) => {
+                        document.getElementById('payment-status').innerHTML = 
+                            `<div style="color: #dc3545; padding: 10px; background: #f8d7da; border-radius: 4px;">Error: ${error}</div>`;
+                    }
+                });
+            } else {
+                document.getElementById('payment-status').innerHTML = 
+                    '<div style="color: #dc3545; padding: 10px; background: #f8d7da; border-radius: 4px;">Payment system not loaded. Please refresh.</div>';
+            }
+        }
+
+        // Show popup with all copies
+        function showCopiesPopup(release, buyMode = false) {
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.className = 'copies-modal-overlay';
+            
+            // Sort copies by condition
             const conditionOrder = {
                 'Mint (M)': 1,
                 'Near Mint (NM or M-)': 2,
@@ -572,7 +746,7 @@
                 const orderA = conditionOrder[a.condition] || 99;
                 const orderB = conditionOrder[b.condition] || 99;
                 if (orderA !== orderB) return orderA - orderB;
-                return b.store_price - a.store_price; // Higher price first for same condition
+                return b.store_price - a.store_price;
             });
             
             // Create modal content
@@ -586,7 +760,7 @@
                         ${sortedCopies.map(copy => {
                             const conditionClass = getConditionClass(copy.condition);
                             return `
-                                <div class="copy-item">
+                                <div class="copy-item" style="cursor: pointer;" onclick="openBuyModal(event, ${JSON.stringify(release).replace(/"/g, '&quot;')}, ${copy.id})">
                                     <span class="copy-condition">
                                         <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
                                     </span>
@@ -688,7 +862,7 @@
             
             const sortedArtists = Array.from(artists).sort();
             
-            // Clear existing options (keeping "All Artists")
+            // Clear existing options
             while (artistFilter.options.length > 1) {
                 artistFilter.remove(1);
             }
@@ -736,7 +910,7 @@
                 
                 // Get condition indicators from card
                 const conditionSpans = card.querySelectorAll('.condition-indicator');
-                const cardConditions = Array.from(conditionSpans).map(span => span.textContent.trim().replace(/ \(\d+\)$/, '')); // Remove count for filtering
+                const cardConditions = Array.from(conditionSpans).map(span => span.textContent.trim().replace(/ \(\d+\)$/, ''));
                 
                 // Get price range from card
                 const priceRangeText = card.querySelector('.price-range')?.textContent || '';
@@ -756,23 +930,12 @@
                     }
                 }
                 
-                // Check search term match
-                const searchMatch = !searchTerm || 
-                    artist.includes(searchTerm) || 
-                    title.includes(searchTerm);
-                
-                // Check artist filter match
-                const artistMatch = !selectedArtist || 
-                    artist === selectedArtist.toLowerCase();
-                
-                // Check condition filter match
-                const conditionMatch = !selectedCondition || 
-                    cardConditions.some(c => c.includes(selectedCondition));
-                
-                // Check price range overlap
+                // Check filters
+                const searchMatch = !searchTerm || artist.includes(searchTerm) || title.includes(searchTerm);
+                const artistMatch = !selectedArtist || artist === selectedArtist.toLowerCase();
+                const conditionMatch = !selectedCondition || cardConditions.some(c => c.includes(selectedCondition));
                 const priceMatch = !(cardMaxPrice < minPriceValue || cardMinPrice > maxPriceValue);
                 
-                // Show card if it matches all active filters
                 const shouldShow = searchMatch && artistMatch && conditionMatch && priceMatch;
                 
                 card.style.display = shouldShow ? 'block' : 'none';
@@ -792,6 +955,10 @@
                 existingNoResults.remove();
             }
         }
+
+        // Make functions globally available
+        window.openBuyModal = openBuyModal;
+        window.handleYouTubeClick = handleYouTubeClick;
 
         // Load the catalog data when page loads
         document.addEventListener('DOMContentLoaded', function() {
