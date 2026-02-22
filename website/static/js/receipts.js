@@ -1,57 +1,83 @@
 // ============================================================================
-// receipts.js - Receipts Tab Functionality with Refunds
+// receipts.js - Receipts Tab Functionality with Database Storage
 // ============================================================================
 
-console.log('✅ receipts.js loaded successfully!');
+console.log('✅ receipts.js loaded successfully');
 
-// Global variables - renamed to avoid conflict with checkout.js
+// Global variables
 let currentReceiptForRefund = null;
 let selectedRefundItems = new Set();
-let refundAvailableTerminals = []; // Renamed from availableTerminals
+let refundAvailableTerminals = [];
 
-// Load saved receipts from localStorage
-function loadSavedReceipts() {
-    console.log('Loading saved receipts...');
-    const saved = localStorage.getItem('pigstyle_receipts');
-    if (saved) {
-        try {
-            window.savedReceipts = JSON.parse(saved);
-            window.savedReceipts.forEach(receipt => {
-                receipt.date = new Date(receipt.date);
-                // Ensure items array exists
-                if (!receipt.items) receipt.items = [];
-            });
-            console.log(`Loaded ${window.savedReceipts.length} receipts`);
-        } catch (e) {
-            console.error('Error loading receipts:', e);
-            window.savedReceipts = [];
-        }
-    } else {
-        console.log('No receipts found');
-        window.savedReceipts = [];
+// Load saved receipts from database only
+async function loadSavedReceipts() {
+    console.log('Loading receipts from database...');
+    
+    const response = await fetch(`${AppConfig.baseUrl}/api/receipts`, {
+        credentials: 'include'
+    });
+    
+    if (!response.ok) {
+        throw new Error(`Failed to load receipts: ${response.status} ${response.statusText}`);
     }
+    
+    const data = await response.json();
+    
+    if (data.status !== 'success') {
+        throw new Error(data.error || 'Failed to load receipts');
+    }
+    
+    // Convert database receipts to the format expected by the UI
+    const dbReceipts = data.receipts.map(r => {
+        // Parse the stored transaction data
+        const transaction = r.transaction_data;
+        // Ensure date is a Date object
+        transaction.date = new Date(transaction.date || r.created_at);
+        return transaction;
+    });
+    
+    window.savedReceipts = dbReceipts;
+    console.log(`Loaded ${dbReceipts.length} receipts from database`);
     return window.savedReceipts;
 }
 
-// Save a receipt to localStorage
-function saveReceipt(transaction) {
+// Save a receipt to database only
+async function saveReceipt(transaction) {
     console.log('Saving receipt:', transaction.id);
+    
+    // Prepare the receipt for saving
     const receiptToSave = {
         ...transaction,
         date: transaction.date.toISOString()
     };
     
+    // Save to database only
+    const response = await fetch(`${AppConfig.baseUrl}/api/receipts`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(receiptToSave)
+    });
+    
+    if (!response.ok) {
+        throw new Error(`Failed to save receipt: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.status !== 'success') {
+        throw new Error(data.error || 'Failed to save receipt');
+    }
+    
+    console.log('✅ Receipt saved to database:', data.receipt_id);
+    
+    // Update local array
     if (!window.savedReceipts) window.savedReceipts = [];
     window.savedReceipts.unshift(receiptToSave);
     
-    if (window.savedReceipts.length > 1000) {
-        window.savedReceipts = window.savedReceipts.slice(0, 1000);
-    }
-    
-    localStorage.setItem('pigstyle_receipts', JSON.stringify(window.savedReceipts));
-    console.log('Receipt saved. Total receipts:', window.savedReceipts.length);
-    
-    // Always refresh the receipts tab if it's active
+    // Update UI if receipts tab is active
     if (document.getElementById('receipts-tab')?.classList.contains('active')) {
         renderReceipts(window.savedReceipts);
     }
@@ -61,8 +87,7 @@ function saveReceipt(transaction) {
 function renderReceipts(receipts) {
     const container = document.getElementById('receipts-grid');
     if (!container) {
-        console.error('Receipts grid container not found');
-        return;
+        throw new Error('Receipts grid container not found');
     }
     
     console.log('Rendering', receipts.length, 'receipts');
@@ -166,16 +191,22 @@ function updateReceiptStats(receipts) {
     const totalTaxEl = document.getElementById('total-receipts-tax');
     const totalItemsEl = document.getElementById('total-receipts-items');
     
-    if (totalReceiptsEl) totalReceiptsEl.textContent = receipts.length;
-    if (totalSalesEl) totalSalesEl.textContent = `$${totalSales.toFixed(2)}`;
-    if (totalTaxEl) totalTaxEl.textContent = `$${totalTax.toFixed(2)}`;
-    if (totalItemsEl) totalItemsEl.textContent = totalItems;
+    if (!totalReceiptsEl || !totalSalesEl || !totalTaxEl || !totalItemsEl) {
+        throw new Error('Receipt stats elements not found');
+    }
+    
+    totalReceiptsEl.textContent = receipts.length;
+    totalSalesEl.textContent = `$${totalSales.toFixed(2)}`;
+    totalTaxEl.textContent = `$${totalTax.toFixed(2)}`;
+    totalItemsEl.textContent = totalItems;
 }
 
 // View receipt details in modal
 function viewReceiptDetails(receiptId) {
     const receipt = window.savedReceipts.find(r => r.id === receiptId);
-    if (!receipt) return;
+    if (!receipt) {
+        throw new Error(`Receipt ${receiptId} not found`);
+    }
     
     if (typeof receipt.date === 'string') {
         receipt.date = new Date(receipt.date);
@@ -188,7 +219,9 @@ function viewReceiptDetails(receiptId) {
 function showReceiptModal(transaction) {
     const modal = document.getElementById('receipt-modal');
     const content = document.getElementById('receipt-content');
-    if (!modal || !content) return;
+    if (!modal || !content) {
+        throw new Error('Receipt modal elements not found');
+    }
     
     const dateStr = transaction.date.toLocaleDateString() + ' ' + 
                    transaction.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -279,49 +312,43 @@ function showReceiptModal(transaction) {
 
 // Close receipt modal
 function closeReceiptModal() {
-    document.getElementById('receipt-modal').style.display = 'none';
+    const modal = document.getElementById('receipt-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 // Search receipts with item-level search
-function searchReceipts() {
+async function searchReceipts() {
     const startDate = document.getElementById('receipt-start-date').value;
     const endDate = document.getElementById('receipt-end-date').value;
     const query = document.getElementById('receipt-search-query').value.toLowerCase().trim();
     
-    let filtered = [...(window.savedReceipts || [])];
+    // Build query string
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (query) params.append('search', query);
     
-    // Filter by date
-    if (startDate) {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        filtered = filtered.filter(r => new Date(r.date) >= start);
+    const response = await fetch(`${AppConfig.baseUrl}/api/receipts?${params.toString()}`, {
+        credentials: 'include'
+    });
+    
+    if (!response.ok) {
+        throw new Error(`Failed to search receipts: ${response.status}`);
     }
     
-    if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        filtered = filtered.filter(r => new Date(r.date) <= end);
+    const data = await response.json();
+    if (data.status !== 'success') {
+        throw new Error(data.error || 'Failed to search receipts');
     }
     
-    // Filter by search query (searches receipt ID and all item fields)
-    if (query) {
-        filtered = filtered.filter(receipt => {
-            // Search receipt ID
-            if (receipt.id.toLowerCase().includes(query)) return true;
-            
-            // Search through all items
-            return receipt.items.some(item => {
-                if (item.artist && item.artist.toLowerCase().includes(query)) return true;
-                if (item.title && item.title.toLowerCase().includes(query)) return true;
-                if (item.catalog_number && item.catalog_number.toLowerCase().includes(query)) return true;
-                if (item.description && item.description.toLowerCase().includes(query)) return true;
-                if (item.note && item.note.toLowerCase().includes(query)) return true;
-                return false;
-            });
-        });
-    }
+    // Convert to UI format
+    const receipts = data.receipts.map(r => {
+        const transaction = r.transaction_data;
+        transaction.date = new Date(transaction.date || r.created_at);
+        return transaction;
+    });
     
-    renderReceipts(filtered);
+    renderReceipts(receipts);
 }
 
 // Reset receipt search
@@ -329,15 +356,14 @@ function resetReceiptSearch() {
     document.getElementById('receipt-start-date').value = '';
     document.getElementById('receipt-end-date').value = '';
     document.getElementById('receipt-search-query').value = '';
-    renderReceipts(window.savedReceipts || []);
+    loadSavedReceipts().then(renderReceipts);
 }
 
 // Show refund modal for a receipt
 function showRefundModal(receiptId) {
     const receipt = window.savedReceipts.find(r => r.id === receiptId);
     if (!receipt) {
-        alert('Receipt not found');
-        return;
+        throw new Error(`Receipt ${receiptId} not found`);
     }
     
     currentReceiptForRefund = receipt;
@@ -350,10 +376,19 @@ function showRefundModal(receiptId) {
     const modal = document.getElementById('refund-modal');
     const itemsContainer = document.getElementById('refund-items-container');
     const receiptInfo = document.getElementById('refund-receipt-info');
+    const refundAmount = document.getElementById('refund-amount');
+    const refundReason = document.getElementById('refund-reason');
+    const refundError = document.getElementById('refund-error');
+    const processBtn = document.getElementById('process-refund-btn');
+    const terminalSelect = document.getElementById('refund-terminal-select');
     
-    if (!modal || !itemsContainer || !receiptInfo) {
-        console.error('Refund modal elements not found');
-        return;
+    // Check if modal exists
+    if (!modal) {
+        throw new Error('Refund modal not found in DOM');
+    }
+    
+    if (!itemsContainer || !receiptInfo || !refundAmount || !refundReason || !processBtn) {
+        throw new Error('Required refund modal elements not found');
     }
     
     // Show receipt info
@@ -363,6 +398,7 @@ function showRefundModal(receiptId) {
         <div><strong>Date:</strong> ${dateStr}</div>
         <div><strong>Original Total:</strong> $${(receipt.total || 0).toFixed(2)}</div>
         <div><strong>Payment Method:</strong> ${escapeHtml(receipt.paymentMethod || 'Unknown')}</div>
+        ${receipt.square_payment_id ? `<div><strong>Square Payment ID:</strong> ${escapeHtml(receipt.square_payment_id)}</div>` : ''}
     `;
     
     // Show items with checkboxes
@@ -395,35 +431,36 @@ function showRefundModal(receiptId) {
         cb.addEventListener('change', updateRefundTotal);
     });
     
-    // Reset refund amount and reason
-    const refundAmount = document.getElementById('refund-amount');
-    const refundReason = document.getElementById('refund-reason');
-    const refundError = document.getElementById('refund-error');
-    const processBtn = document.getElementById('process-refund-btn');
-    
-    if (refundAmount) refundAmount.value = '0.00';
-    if (refundReason) refundReason.value = 'Customer request';
+    // Reset form
+    refundAmount.value = '0.00';
+    refundReason.value = 'Customer request';
     if (refundError) refundError.style.display = 'none';
-    if (processBtn) processBtn.disabled = true;
+    processBtn.disabled = true;
     
     // Show modal
     modal.style.display = 'flex';
+    
+    // Refresh terminals
+    if (terminalSelect) {
+        refreshTerminalsForRefund();
+    }
 }
 
 // Update refund total based on selected items
 function updateRefundTotal() {
     const checkboxes = document.querySelectorAll('.refund-item-checkbox:checked');
-    let total = 0;
+    const refundAmount = document.getElementById('refund-amount');
+    const processBtn = document.getElementById('process-refund-btn');
     
+    if (!refundAmount || !processBtn) return;
+    
+    let total = 0;
     checkboxes.forEach(cb => {
         total += parseFloat(cb.dataset.itemPrice) || 0;
     });
     
-    const refundAmount = document.getElementById('refund-amount');
-    const processBtn = document.getElementById('process-refund-btn');
-    
-    if (refundAmount) refundAmount.value = total.toFixed(2);
-    if (processBtn) processBtn.disabled = checkboxes.length === 0;
+    refundAmount.value = total.toFixed(2);
+    processBtn.disabled = checkboxes.length === 0;
 }
 
 // Refresh terminals for refund
@@ -433,22 +470,21 @@ async function refreshTerminalsForRefund() {
     
     terminalSelect.innerHTML = '<option value="">Loading terminals...</option>';
     
-    try {
-        const response = await fetch(`${AppConfig.baseUrl}/api/square/terminals`, {
-            credentials: 'include'
-        });
-        
-        if (!response.ok) throw new Error('Failed to fetch terminals');
-        
-        const data = await response.json();
-        if (data.status === 'success') {
-            refundAvailableTerminals = data.terminals || [];
-            renderTerminalSelect(terminalSelect, refundAvailableTerminals);
-        }
-    } catch (error) {
-        console.error('Error fetching terminals:', error);
-        terminalSelect.innerHTML = '<option value="">No terminals available</option>';
+    const response = await fetch(`${AppConfig.baseUrl}/api/square/terminals`, {
+        credentials: 'include'
+    });
+    
+    if (!response.ok) {
+        throw new Error(`Failed to fetch terminals: ${response.status}`);
     }
+    
+    const data = await response.json();
+    if (data.status !== 'success') {
+        throw new Error(data.error || 'Failed to fetch terminals');
+    }
+    
+    refundAvailableTerminals = data.terminals || [];
+    renderTerminalSelect(terminalSelect, refundAvailableTerminals);
 }
 
 // Render terminal select dropdown
@@ -483,20 +519,22 @@ function closeRefundModal() {
 // Process refund
 async function processRefund() {
     if (!currentReceiptForRefund) {
-        showCheckoutStatus('No receipt selected for refund', 'error');
-        return;
+        throw new Error('No receipt selected for refund');
     }
     
     // Get selected items
     const selectedCheckboxes = document.querySelectorAll('.refund-item-checkbox:checked');
     if (selectedCheckboxes.length === 0) {
-        showCheckoutStatus('Please select items to refund', 'error');
-        return;
+        throw new Error('Please select items to refund');
     }
     
-    const refundAmount = parseFloat(document.getElementById('refund-amount').value);
-    const refundReason = document.getElementById('refund-reason').value;
-    const terminalId = document.getElementById('refund-terminal-select').value;
+    const refundAmount = parseFloat(document.getElementById('refund-amount')?.value);
+    if (isNaN(refundAmount) || refundAmount <= 0) {
+        throw new Error('Invalid refund amount');
+    }
+    
+    const refundReason = document.getElementById('refund-reason')?.value || 'Customer request';
+    const terminalId = document.getElementById('refund-terminal-select')?.value;
     const paymentMethod = currentReceiptForRefund.paymentMethod;
     
     // Get selected items data
@@ -516,61 +554,75 @@ async function processRefund() {
         }
     });
     
-    // Validate refund amount
-    if (isNaN(refundAmount) || refundAmount <= 0) {
-        showCheckoutStatus('Please enter a valid refund amount', 'error');
-        return;
+    const processBtn = document.getElementById('process-refund-btn');
+    if (processBtn) {
+        processBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing...';
+        processBtn.disabled = true;
     }
     
-    // Process based on payment method
-    const processBtn = document.getElementById('process-refund-btn');
-    const originalText = processBtn.innerHTML;
-    processBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing...';
-    processBtn.disabled = true;
-    
     try {
+        // Prepare refund request
+        const refundRequest = {
+            amount: refundAmount,
+            reason: refundReason,
+            payment_method: paymentMethod,
+            items: selectedItems.map(item => ({
+                id: item.id,
+                type: item.type,
+                price: item.store_price
+            }))
+        };
+        
+        // For Square payments, include payment_id if we have it
         if (paymentMethod === 'Square Terminal' || paymentMethod === 'Square') {
-            // Square refund
-            if (!terminalId) {
-                showCheckoutStatus('Please select a Square terminal', 'error');
-                processBtn.innerHTML = originalText;
-                processBtn.disabled = false;
-                return;
+            if (!currentReceiptForRefund.square_payment_id) {
+                throw new Error('No Square payment ID found for this receipt. Cannot process refund through Square.');
+            }
+            
+            refundRequest.payment_id = currentReceiptForRefund.square_payment_id;
+            
+            // Add terminal ID if selected
+            if (terminalId) {
+                refundRequest.device_id = terminalId;
             }
             
             // Call Square refund API
+            console.log('Calling Square refund API with:', refundRequest);
+            
             const response = await fetch(`${AppConfig.baseUrl}/api/square/refund`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    payment_id: currentReceiptForRefund.id,
-                    amount: refundAmount,
-                    reason: refundReason,
-                    device_id: terminalId,
-                    items: selectedItems.map(item => ({
-                        id: item.id,
-                        type: item.type,
-                        price: item.store_price
-                    }))
-                })
+                body: JSON.stringify(refundRequest)
             });
             
+            const responseData = await response.json();
+            
             if (!response.ok) {
-                const error = await response.text();
-                throw new Error(error);
+                throw new Error(responseData.error || `HTTP error ${response.status}`);
             }
             
-            const data = await response.json();
-            if (data.status !== 'success') {
-                throw new Error(data.message || 'Refund failed');
+            if (responseData.status !== 'success') {
+                throw new Error(responseData.message || 'Refund failed');
             }
+            
+            console.log('Square refund successful:', responseData);
         }
         
-        // Update the receipt in localStorage
+        // Update the receipt in database
         if (remainingItems.length === 0) {
-            // All items refunded - remove the receipt
+            // All items refunded - delete the receipt from database
+            const deleteResponse = await fetch(`${AppConfig.baseUrl}/api/receipts/${currentReceiptForRefund.id}`, {
+                method: 'DELETE',
+                credentials: 'include'
+            });
+            
+            if (!deleteResponse.ok) {
+                throw new Error(`Failed to delete receipt: ${deleteResponse.status}`);
+            }
+            
+            // Remove from local array
             const index = window.savedReceipts.findIndex(r => r.id === currentReceiptForRefund.id);
             if (index !== -1) {
                 window.savedReceipts.splice(index, 1);
@@ -578,51 +630,56 @@ async function processRefund() {
         } else {
             // Partial refund - update the receipt
             const receipt = window.savedReceipts.find(r => r.id === currentReceiptForRefund.id);
-            if (receipt) {
-                receipt.items = remainingItems;
-                
-                // Recalculate totals
-                const subtotal = remainingItems.reduce((sum, item) => sum + (item.store_price || 0), 0);
-                const discount = receipt.discount || 0;
-                const discountedSubtotal = subtotal - discount;
-                const taxRate = (receipt.taxRate || 0) / 100;
-                const tax = discountedSubtotal * taxRate;
-                const total = discountedSubtotal + tax;
-                
-                receipt.subtotal = discountedSubtotal;
-                receipt.tax = tax;
-                receipt.total = total;
+            if (!receipt) {
+                throw new Error('Receipt not found in local array');
             }
+            
+            receipt.items = remainingItems;
+            
+            // Recalculate totals
+            const subtotal = remainingItems.reduce((sum, item) => sum + (item.store_price || 0), 0);
+            const discount = receipt.discount || 0;
+            const discountedSubtotal = subtotal - discount;
+            const taxRate = (receipt.taxRate || 0) / 100;
+            const tax = discountedSubtotal * taxRate;
+            const total = discountedSubtotal + tax;
+            
+            receipt.subtotal = discountedSubtotal;
+            receipt.tax = tax;
+            receipt.total = total;
+            
+            // Save updated receipt to database
+            await saveReceipt(receipt);
         }
-        
-        // Save updated receipts
-        localStorage.setItem('pigstyle_receipts', JSON.stringify(window.savedReceipts));
         
         // Refresh display
         renderReceipts(window.savedReceipts);
         
-        showCheckoutStatus(`Refund of $${refundAmount.toFixed(2)} processed successfully`, 'success');
+        alert(`✅ Refund of $${refundAmount.toFixed(2)} processed successfully`);
         closeRefundModal();
         
     } catch (error) {
         console.error('Refund error:', error);
-        showCheckoutStatus(`Refund failed: ${error.message}`, 'error');
+        alert(`❌ Refund failed: ${error.message}`);
     } finally {
-        processBtn.innerHTML = originalText;
-        processBtn.disabled = false;
+        if (processBtn) {
+            processBtn.innerHTML = '<i class="fas fa-undo"></i> Process Refund';
+            processBtn.disabled = false;
+        }
     }
 }
 
-// Download receipt as PDF (placeholder)
+// Download receipt as PDF (placeholder - implement later)
 function downloadReceiptPDF(receiptId) {
-    console.log('Download PDF for receipt:', receiptId);
     alert('PDF download functionality coming soon!');
 }
 
 // Print receipt
 function printReceipt(receiptId) {
     const receipt = window.savedReceipts.find(r => r.id === receiptId);
-    if (!receipt) return;
+    if (!receipt) {
+        throw new Error(`Receipt ${receiptId} not found`);
+    }
     
     if (typeof receipt.date === 'string') {
         receipt.date = new Date(receipt.date);
@@ -634,25 +691,31 @@ function printReceipt(receiptId) {
     }, 500);
 }
 
-// Print to thermal printer (placeholder)
+// Print to thermal printer (placeholder - implement later)
 function printToThermalPrinter(text) {
-    console.log('Thermal print:', text?.substring(0, 100));
+    console.log('Thermal print would happen here:', text?.substring(0, 100));
+    // Implement actual thermal printing here
 }
 
-// Format receipt for printer (placeholder)
+// Format receipt for printer (placeholder - implement later)
 function formatReceiptForPrinter(transaction) {
     return JSON.stringify(transaction, null, 2);
 }
 
 // Initialize when tab is activated
-document.addEventListener('tabChanged', function(e) {
+document.addEventListener('tabChanged', async function(e) {
     if (e.detail.tabName === 'receipts') {
-        loadSavedReceipts();
-        renderReceipts(window.savedReceipts);
+        try {
+            await loadSavedReceipts();
+            renderReceipts(window.savedReceipts);
+        } catch (error) {
+            console.error('Failed to load receipts:', error);
+            alert(`Error loading receipts: ${error.message}`);
+        }
     }
 });
 
-// Explicitly attach all functions to window object
+// Make functions globally available
 window.loadSavedReceipts = loadSavedReceipts;
 window.saveReceipt = saveReceipt;
 window.renderReceipts = renderReceipts;
@@ -668,11 +731,4 @@ window.printReceipt = printReceipt;
 window.printToThermalPrinter = printToThermalPrinter;
 window.formatReceiptForPrinter = formatReceiptForPrinter;
 
-// Log confirmation
-console.log('✅ Receipt functions attached to window:', {
-    saveReceipt: typeof window.saveReceipt === 'function',
-    resetReceiptSearch: typeof window.resetReceiptSearch === 'function',
-    printToThermalPrinter: typeof window.printToThermalPrinter === 'function',
-    formatReceiptForPrinter: typeof window.formatReceiptForPrinter === 'function',
-    showRefundModal: typeof window.showRefundModal === 'function'
-});
+console.log('✅ Receipt functions attached to window');

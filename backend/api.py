@@ -120,10 +120,10 @@ def square_api_request(endpoint, method='GET', data=None):
     headers = {
         'Authorization': f'Bearer {access_token}',
         'Content-Type': 'application/json',
-        'Square-Version': '2026-01-22'  # Use current Square API version
+        'Square-Version': '2026-01-22'
     }
     
-    url = f"{base_url}{endpoint}"
+    url = f"{base_url}{endpoint}"  # endpoint should already include the full path
     
     try:
         app.logger.info(f"Square API request: {method} {url}")
@@ -140,7 +140,7 @@ def square_api_request(endpoint, method='GET', data=None):
         app.logger.info(f"Square API response status: {response.status_code}")
         
         if response.status_code >= 400:
-            error_text = response.text[:200]  # Limit error text
+            error_text = response.text[:200]
             app.logger.error(f"Square API error ({response.status_code}): {error_text}")
             return None, f"Square API error ({response.status_code}): {error_text}"
         
@@ -152,6 +152,7 @@ def square_api_request(endpoint, method='GET', data=None):
     except Exception as e:
         app.logger.error(f"Square API request exception: {e}")
         return None, str(e)
+ 
 
 def verify_square_webhook(signature, body):
     """Verify Square webhook signature"""
@@ -266,10 +267,10 @@ def create_square_terminal_checkout(amount_cents, record_ids, record_titles, ref
     return result, None
  
 
-
 def get_terminal_checkout_status(checkout_id):
     """Get the status of a terminal checkout"""
-    result, error = square_api_request(f'/v2/terminal/checkouts/{checkout_id}')
+    # IMPORTANT: Do NOT add any prefix - use the ID as-is
+    result, error = square_api_request(f'/v2/terminals/checkouts/{checkout_id}', method='GET')
     
     if error:
         app.logger.error(f"Failed to get checkout status: {error}")
@@ -292,7 +293,8 @@ def get_terminal_checkout_status(checkout_id):
 
 def cancel_terminal_checkout(checkout_id):
     """Cancel a pending terminal checkout"""
-    result, error = square_api_request(f'/v2/terminal/checkouts/{checkout_id}/cancel', method='POST')
+    # IMPORTANT: Do NOT add any prefix - use the ID as-is
+    result, error = square_api_request(f'/v2/terminals/checkouts/{checkout_id}/cancel', method='POST')
     
     if error:
         app.logger.error(f"Failed to cancel checkout: {error}")
@@ -981,6 +983,7 @@ def square_webhook():
                     payment_id = checkout.get('payment_ids', [None])[0]
                     if payment_id:
                         square_payment_sessions[checkout_id]['payment_id'] = payment_id
+                        app.logger.info(f"Stored payment_id {payment_id} for checkout {checkout_id}")
                         
                         # Auto-process the sale
                         record_ids = square_payment_sessions[checkout_id].get('record_ids', [])
@@ -1009,6 +1012,325 @@ def square_webhook():
             'status': 'error',
             'message': str(e)
         }), 500
+
+
+# ==================== RECEIPTS ENDPOINTS ====================
+
+@app.route('/api/receipts', methods=['GET'])
+def get_receipts():
+    """Get all receipts from database"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get query parameters for filtering
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        payment_method = request.args.get('payment_method')
+        search = request.args.get('search')
+        
+        query = "SELECT * FROM receipts WHERE 1=1"
+        params = []
+        
+        if start_date:
+            query += " AND DATE(created_at) >= DATE(?)"
+            params.append(start_date)
+        
+        if end_date:
+            query += " AND DATE(created_at) <= DATE(?)"
+            params.append(end_date)
+        
+        if payment_method:
+            query += " AND payment_method = ?"
+            params.append(payment_method)
+        
+        if search:
+            query += " AND (receipt_id LIKE ? OR transaction_data LIKE ?)"
+            search_term = f"%{search}%"
+            params.extend([search_term, search_term])
+        
+        query += " ORDER BY created_at DESC"
+        
+        cursor.execute(query, params)
+        receipts = cursor.fetchall()
+        conn.close()
+        
+        receipts_list = []
+        for r in receipts:
+            receipt_dict = dict(r)
+            # Parse the JSON transaction_data
+            try:
+                receipt_dict['transaction_data'] = json.loads(receipt_dict['transaction_data'])
+            except:
+                receipt_dict['transaction_data'] = {}
+            receipts_list.append(receipt_dict)
+        
+        return jsonify({
+            'status': 'success',
+            'count': len(receipts_list),
+            'receipts': receipts_list
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting receipts: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/receipts', methods=['POST'])
+def save_receipt():
+    """Save a receipt to database"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        receipt_id = data.get('id')
+        square_payment_id = data.get('square_payment_id')
+        total = data.get('total', 0)
+        tax = data.get('tax', 0)
+        payment_method = data.get('paymentMethod', 'Unknown')
+        cashier = data.get('cashier', 'Admin')
+        
+        if not receipt_id:
+            return jsonify({'status': 'error', 'error': 'Missing receipt ID'}), 400
+        
+        # Convert the entire transaction to JSON string for storage
+        transaction_json = json.dumps(data)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if receipt already exists
+        cursor.execute('SELECT id FROM receipts WHERE receipt_id = ?', (receipt_id,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing receipt
+            cursor.execute('''
+                UPDATE receipts 
+                SET transaction_data = ?, total = ?, tax = ?, 
+                    payment_method = ?, cashier = ?, square_payment_id = ?
+                WHERE receipt_id = ?
+            ''', (transaction_json, total, tax, payment_method, cashier, square_payment_id, receipt_id))
+            message = 'Receipt updated'
+        else:
+            # Insert new receipt
+            cursor.execute('''
+                INSERT INTO receipts 
+                (receipt_id, square_payment_id, transaction_data, total, tax, payment_method, cashier)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (receipt_id, square_payment_id, transaction_json, total, tax, payment_method, cashier))
+            message = 'Receipt saved'
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': message,
+            'receipt_id': receipt_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error saving receipt: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/receipts/<receipt_id>', methods=['GET'])
+def get_receipt(receipt_id):
+    """Get a single receipt by ID"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM receipts WHERE receipt_id = ?', (receipt_id,))
+        receipt = cursor.fetchone()
+        conn.close()
+        
+        if not receipt:
+            return jsonify({'status': 'error', 'error': 'Receipt not found'}), 404
+        
+        receipt_dict = dict(receipt)
+        try:
+            receipt_dict['transaction_data'] = json.loads(receipt_dict['transaction_data'])
+        except:
+            receipt_dict['transaction_data'] = {}
+        
+        return jsonify({
+            'status': 'success',
+            'receipt': receipt_dict
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting receipt: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/receipts/<receipt_id>', methods=['DELETE'])
+def delete_receipt(receipt_id):
+    """Delete a receipt (admin only)"""
+    try:
+        # Check if user is admin (you may want to add authentication check)
+        if session.get('role') != 'admin':
+            return jsonify({'status': 'error', 'error': 'Unauthorized'}), 403
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM receipts WHERE receipt_id = ?', (receipt_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        
+        if affected > 0:
+            return jsonify({
+                'status': 'success',
+                'message': 'Receipt deleted'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': 'Receipt not found'
+            }), 404
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting receipt: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/receipts/stats', methods=['GET'])
+def get_receipt_stats():
+    """Get receipt statistics"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get date range
+        days = request.args.get('days', 30, type=int)
+        
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_count,
+                SUM(total) as total_sales,
+                SUM(tax) as total_tax,
+                AVG(total) as average_sale,
+                payment_method,
+                DATE(created_at) as sale_date
+            FROM receipts
+            WHERE created_at >= DATE('now', ?)
+            GROUP BY DATE(created_at), payment_method
+            ORDER BY sale_date DESC
+        ''', (f'-{days} days',))
+        
+        stats = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'stats': [dict(s) for s in stats]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting receipt stats: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/debug/checkout-direct/<checkout_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def debug_checkout_direct(checkout_id):
+    """Debug endpoint to directly call Square API for a checkout"""
+    try:
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        environment = os.environ.get('SQUARE_ENVIRONMENT', 'production')
+        base_url = 'https://connect.squareup.com' if environment == 'production' else 'https://connect.squareupsandbox.com'
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        # Try different URL formats
+        results = {}
+        
+        # Format 1: Standard
+        url1 = f"{base_url}/v2/terminals/checkouts/{checkout_id}"
+        response1 = requests.get(url1, headers=headers)
+        results['standard'] = {
+            'url': url1,
+            'status': response1.status_code,
+            'response': response1.text[:500]
+        }
+        
+        # Format 2: With termapia prefix
+        url2 = f"{base_url}/v2/terminals/checkouts/termapia:{checkout_id}"
+        response2 = requests.get(url2, headers=headers)
+        results['with_prefix'] = {
+            'url': url2,
+            'status': response2.status_code,
+            'response': response2.text[:500]
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'checkout_id': checkout_id,
+            'results': results
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/receipts/sync', methods=['POST'])
+def sync_receipts():
+    """Sync localStorage receipts to database"""
+    try:
+        data = request.json
+        if not data or 'receipts' not in data:
+            return jsonify({'status': 'error', 'error': 'No receipts provided'}), 400
+        
+        local_receipts = data['receipts']
+        synced_count = 0
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        for receipt_data in local_receipts:
+            receipt_id = receipt_data.get('id')
+            if not receipt_id:
+                continue
+            
+            square_payment_id = receipt_data.get('square_payment_id')
+            total = receipt_data.get('total', 0)
+            tax = receipt_data.get('tax', 0)
+            payment_method = receipt_data.get('paymentMethod', 'Unknown')
+            cashier = receipt_data.get('cashier', 'Admin')
+            transaction_json = json.dumps(receipt_data)
+            
+            # Check if already exists
+            cursor.execute('SELECT id FROM receipts WHERE receipt_id = ?', (receipt_id,))
+            existing = cursor.fetchone()
+            
+            if not existing:
+                cursor.execute('''
+                    INSERT INTO receipts 
+                    (receipt_id, square_payment_id, transaction_data, total, tax, payment_method, cashier, synced_from_local)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                ''', (receipt_id, square_payment_id, transaction_json, total, tax, payment_method, cashier))
+                synced_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Synced {synced_count} receipts to database',
+            'synced_count': synced_count
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error syncing receipts: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/square/terminal/session/<checkout_id>', methods=['GET'])
 @login_required
@@ -2009,6 +2331,143 @@ def search_records():
         return response, 500
     finally:
         conn.close()
+
+@app.route('/api/square/refund', methods=['POST', 'OPTIONS'])
+def square_refund():
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+    
+    try:
+        data = request.json
+        payment_id = data.get('payment_id')
+        amount = data.get('amount')
+        reason = data.get('reason', 'Customer request')
+        device_id = data.get('device_id')
+        items = data.get('items', [])
+        
+        if not payment_id or not amount:
+            return jsonify({'status': 'error', 'error': 'Missing payment_id or amount'}), 400
+        
+        app.logger.info(f"Processing refund for payment_id: {payment_id}")
+        
+        # Check if this is a local receipt ID (starts with SQUARE-)
+        if payment_id.startswith('SQUARE-'):
+            # Try to find the real payment_id from square_payment_sessions
+            # This would require storing a mapping between receipt_id and payment_id
+            app.logger.error(f"Cannot refund local receipt ID: {payment_id}. Need actual Square payment_id.")
+            return jsonify({
+                'status': 'error', 
+                'error': 'Please use the actual Square payment ID, not the receipt ID. This refund must be processed through the Square Dashboard.'
+            }), 400
+        
+        # Convert amount to cents for Square
+        amount_cents = int(round(amount * 100))
+        
+        # Get access token
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            return jsonify({
+                'status': 'error',
+                'error': 'SQUARE_ACCESS_TOKEN not configured'
+            }), 500
+        
+        # Determine environment
+        environment = os.environ.get('SQUARE_ENVIRONMENT', 'sandbox')
+        base_url = 'https://connect.squareup.com' if environment == 'production' else 'https://connect.squareupsandbox.com'
+        
+        # Create idempotency key to prevent duplicate refunds
+        idempotency_key = str(uuid.uuid4())
+        
+        # Prepare refund request
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        refund_data = {
+            "idempotency_key": idempotency_key,
+            "payment_id": payment_id,
+            "amount_money": {
+                "amount": amount_cents,
+                "currency": "USD"
+            },
+            "reason": reason
+        }
+        
+        # If device_id is provided, include it
+        if device_id:
+            refund_data["device_details"] = {
+                "device_id": device_id
+            }
+        
+        app.logger.info(f"Sending refund request to Square: {refund_data}")
+        
+        # Make the API call to Square
+        response = requests.post(
+            f'{base_url}/v2/refunds',
+            headers=headers,
+            json=refund_data
+        )
+        
+        if response.status_code != 200:
+            error_text = response.text[:500]
+            app.logger.error(f"Square refund API error: {error_text}")
+            
+            # Try to parse the error
+            try:
+                error_json = response.json()
+                if 'errors' in error_json:
+                    error_messages = [e.get('detail', 'Unknown error') for e in error_json['errors']]
+                    return jsonify({
+                        'status': 'error',
+                        'error': f"Square API error: {', '.join(error_messages)}"
+                    }), response.status_code
+            except:
+                pass
+                
+            return jsonify({
+                'status': 'error',
+                'error': f"Square API error: {error_text}"
+            }), response.status_code
+        
+        result = response.json()
+        
+        # Check if there were errors in the response
+        if 'errors' in result:
+            errors = result['errors']
+            error_messages = [e.get('detail', 'Unknown error') for e in errors]
+            return jsonify({
+                'status': 'error',
+                'error': ', '.join(error_messages)
+            }), 400
+        
+        # Refund successful
+        refund = result.get('refund', {})
+        
+        app.logger.info(f"Square refund successful: {refund.get('id')}")
+        
+        return jsonify({
+            'status': 'success',
+            'refund_id': refund.get('id'),
+            'square_refund_id': refund.get('id'),
+            'amount': amount,
+            'status': refund.get('status'),
+            'created_at': refund.get('created_at')
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error processing refund: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
+     
 
 @app.route('/records/random', methods=['GET'])
 def get_random_records():

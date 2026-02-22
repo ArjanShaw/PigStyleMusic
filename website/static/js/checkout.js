@@ -7,13 +7,14 @@ let checkoutCart = [];
 let pendingCartCheckout = null;
 let currentDiscount = {
     amount: 0,
-    type: 'percentage', // Changed default to 'percentage'
+    type: 'percentage',
     value: 0
 };
 let currentSearchResults = [];
 let availableTerminals = [];
 let selectedTerminalId = null;
 let activeCheckoutId = null;
+let square_payment_sessions = {}; // Track payment sessions
 
 // Make functions globally available
 window.refreshTerminals = refreshTerminals;
@@ -189,33 +190,40 @@ async function searchRecordsAndAccessories() {
     try {
         let recordsUrl = `${AppConfig.baseUrl}/records/search?q=${encodeURIComponent(query)}`;
         const recordsResponse = await fetch(recordsUrl);
+        if (!recordsResponse.ok) {
+            throw new Error(`Records search failed: ${recordsResponse.status}`);
+        }
         const recordsData = await recordsResponse.json();
+        
+        if (recordsData.status !== 'success') {
+            throw new Error(recordsData.error || 'Records search failed');
+        }
         
         const accessoriesUrl = `${AppConfig.baseUrl}/accessories`;
         const accessoriesResponse = await fetch(accessoriesUrl);
+        if (!accessoriesResponse.ok) {
+            throw new Error(`Accessories fetch failed: ${accessoriesResponse.status}`);
+        }
         const accessoriesData = await accessoriesResponse.json();
         
-        let records = [];
+        if (accessoriesData.status !== 'success') {
+            throw new Error(accessoriesData.error || 'Accessories fetch failed');
+        }
+        
+        let records = recordsData.records || [];
         let accessories = [];
         
-        if (recordsData.status === 'success') {
-            records = recordsData.records || [];
-        }
-        
-        if (accessoriesData.status === 'success') {
-            const allAcc = accessoriesData.accessories || [];
-            
-            const queryLower = query.toLowerCase();
-            accessories = allAcc.filter(acc => {
-                if (acc.bar_code && acc.bar_code.toLowerCase().includes(queryLower)) {
-                    return true;
-                }
-                if (acc.description && acc.description.toLowerCase().includes(queryLower)) {
-                    return true;
-                }
-                return false;
-            });
-        }
+        const allAcc = accessoriesData.accessories || [];
+        const queryLower = query.toLowerCase();
+        accessories = allAcc.filter(acc => {
+            if (acc.bar_code && acc.bar_code.toLowerCase().includes(queryLower)) {
+                return true;
+            }
+            if (acc.description && acc.description.toLowerCase().includes(queryLower)) {
+                return true;
+            }
+            return false;
+        });
         
         if (activeOnly) {
             records = records.filter(r => r.status_id === 2);
@@ -252,7 +260,7 @@ async function searchRecordsAndAccessories() {
         showCheckoutStatus(`Found ${records.length} records and ${accessories.length} accessories`, 'success');
     } catch (error) {
         console.error('Error searching:', error);
-        showCheckoutStatus('Error searching items', 'error');
+        showCheckoutStatus(`Error searching items: ${error.message}`, 'error');
     }
     
     showCheckoutLoading(false);
@@ -479,7 +487,7 @@ function calculateTotalsWithDiscount() {
             // Calculate percentage discount
             discountValue = subtotal * (currentDiscount.amount / 100);
             
-            // Validate percentage doesn't exceed subtotal (though this shouldn't happen with <=100%)
+            // Validate percentage doesn't exceed subtotal
             if (discountValue > subtotal) {
                 errorDiv.textContent = 'Discount cannot exceed subtotal';
                 errorDiv.style.display = 'block';
@@ -695,6 +703,89 @@ function closeTerminalSelectionModal() {
     document.getElementById('terminal-selection-modal').style.display = 'none';
 }
 
+// Poll for checkout status
+function startPollingCheckoutStatus(checkoutId) {
+    console.log('Starting to poll for checkout status:', checkoutId);
+    
+    const pollInterval = setInterval(async () => {
+        try {
+            // Use the clean ID without any prefix - Square returns IDs without prefixes
+            const url = `${AppConfig.baseUrl}/api/square/terminal/checkout/${checkoutId}/status`;
+            
+            console.log('Polling URL:', url);
+            
+            const response = await fetch(url, {
+                credentials: 'include'
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Status check failed: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status !== 'success') {
+                throw new Error(data.error || 'Failed to get checkout status');
+            }
+            
+            const checkout = data.checkout;
+            const status = checkout.status;
+            
+            console.log(`Checkout ${checkoutId} status:`, status);
+            
+            // Update session
+            if (square_payment_sessions[checkoutId]) {
+                square_payment_sessions[checkoutId].status = status;
+                
+                // If completed, capture the payment ID and process automatically
+                if (status === 'COMPLETED') {
+                    if (!checkout.payment_ids || checkout.payment_ids.length === 0) {
+                        throw new Error('Checkout completed but no payment ID found');
+                    }
+                    
+                    const paymentId = checkout.payment_ids[0];
+                    square_payment_sessions[checkoutId].payment_id = paymentId;
+                    console.log('✅ Payment ID captured:', paymentId);
+                    
+                    // Stop polling once we have the payment ID
+                    clearInterval(pollInterval);
+                    
+                    // Automatically process the payment and close the modal
+                    if (pendingCartCheckout) {
+                        // Show a quick success message
+                        showCheckoutStatus('Payment completed! Processing...', 'success');
+                        
+                        // Process the payment
+                        setTimeout(async () => {
+                            await processSquarePaymentSuccess();
+                            closeTerminalCheckoutModal();
+                        }, 1000);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error polling checkout status:', error);
+            // Don't show error for every poll attempt, just log it
+            // Only clear interval if it's a fatal error
+            if (error.message.includes('404') || error.message.includes('500')) {
+                clearInterval(pollInterval);
+            }
+        }
+    }, 3000); // Poll every 3 seconds
+    
+    // Store interval ID to clear later if needed
+    if (square_payment_sessions[checkoutId]) {
+        square_payment_sessions[checkoutId].pollInterval = pollInterval;
+    }
+    
+    // Auto-stop after 5 minutes
+    setTimeout(() => {
+        clearInterval(pollInterval);
+        console.log('Stopped polling for checkout:', checkoutId);
+    }, 300000); // 5 minutes
+}
+
 async function initiateCartTerminalCheckout() {
     if (!pendingCartCheckout) {
         showCheckoutStatus('No items selected for checkout', 'error');
@@ -769,30 +860,37 @@ async function initiateCartTerminalCheckout() {
         
         const data = JSON.parse(responseText);
         
-        if (data.status === 'success') {
-            const checkout = data.checkout;
-            activeCheckoutId = checkout.id;
-            
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon processing">
-                        <i class="fas fa-credit-card"></i>
-                    </div>
-                    <div class="payment-status-message">Checkout Created</div>
-                    <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
-                    <div class="payment-status-detail">Please complete payment on the Square Terminal</div>
-                    <div class="payment-status-detail" style="margin-top: 20px; font-weight: bold;">After payment is complete, click below to update record status</div>
-                    <button class="btn btn-success" onclick="completeSquarePayment()" style="margin-top: 20px;">
-                        <i class="fas fa-check-circle"></i> Payment Complete - Update Records
-                    </button>
-                    <button class="btn btn-warning" onclick="cancelTerminalCheckout()" style="margin-top: 10px;">
-                        <i class="fas fa-times"></i> Cancel Payment
-                    </button>
-                </div>
-            `;
-        } else {
+        if (data.status !== 'success') {
             throw new Error(data.message || 'Failed to create checkout');
         }
+        
+        const checkout = data.checkout;
+        activeCheckoutId = checkout.id;
+        
+        // Store the checkout info for later use
+        square_payment_sessions[activeCheckoutId] = {
+            record_ids: recordIds,
+            amount: total,
+            status: 'CREATED',
+            payment_id: null,
+            checkout_data: checkout
+        };
+        
+        // Start polling for checkout status
+        startPollingCheckoutStatus(activeCheckoutId);
+        
+        modalBody.innerHTML = `
+            <div class="payment-status">
+                <div class="payment-status-icon processing">
+                    <i class="fas fa-credit-card"></i>
+                </div>
+                <div class="payment-status-message">Checkout Created</div>
+                <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
+                <div class="payment-status-detail">Please complete payment on the Square Terminal</div>
+                <div class="payment-status-detail" style="margin-top: 20px; font-weight: bold;">Waiting for payment...</div>
+            </div>
+        `;
+        
     } catch (error) {
         console.error('Checkout error:', error);
         
@@ -813,6 +911,7 @@ async function initiateCartTerminalCheckout() {
     }
 }
 
+// Keep this function as a backup but it will be called automatically now
 async function completeSquarePayment() {
     if (!pendingCartCheckout) {
         showCheckoutStatus('No pending checkout found', 'error');
@@ -845,48 +944,102 @@ async function processSquarePaymentSuccess() {
     let errorCount = 0;
     const soldItems = [];
     const consignorPayments = {};
+    let squarePaymentId = null;
+    
+    // Get payment ID from session
+    if (activeCheckoutId) {
+        console.log('Checking for payment ID for checkout:', activeCheckoutId);
+        
+        if (!square_payment_sessions || !square_payment_sessions[activeCheckoutId]) {
+            throw new Error('No checkout session found');
+        }
+        
+        squarePaymentId = square_payment_sessions[activeCheckoutId].payment_id;
+        
+        if (!squarePaymentId) {
+            // Try one more time via API with clean ID (no prefix)
+            const url = `${AppConfig.baseUrl}/api/square/terminal/checkout/${activeCheckoutId}/status`;
+            
+            console.log('Checking status URL:', url);
+            
+            const response = await fetch(url, {
+                credentials: 'include'
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to get checkout status: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            if (data.status !== 'success') {
+                throw new Error(data.error || 'Failed to get checkout status');
+            }
+            
+            const checkout = data.checkout;
+            if (checkout.status !== 'COMPLETED') {
+                throw new Error(`Checkout not completed. Status: ${checkout.status}`);
+            }
+            
+            if (!checkout.payment_ids || checkout.payment_ids.length === 0) {
+                throw new Error('Checkout completed but no payment ID found');
+            }
+            
+            squarePaymentId = checkout.payment_ids[0];
+            square_payment_sessions[activeCheckoutId].payment_id = squarePaymentId;
+        }
+        
+        console.log('Payment ID verified:', squarePaymentId);
+    } else {
+        throw new Error('No active checkout ID found');
+    }
     
     for (const item of pendingCartCheckout.items) {
         if (item.type === 'accessory') {
             try {
                 const getResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`);
+                if (!getResponse.ok) {
+                    throw new Error(`Failed to get accessory: ${getResponse.status}`);
+                }
                 const getData = await getResponse.json();
                 
-                if (getData.status === 'success') {
-                    const accessory = getData.accessory;
-                    const newCount = accessory.count - 1;
-                    
-                    const updateResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            count: newCount
-                        })
-                    });
-                    
-                    if (updateResponse.ok) {
-                        const updateData = await updateResponse.json();
-                        if (updateData.status === 'success') {
-                            successCount++;
-                            soldItems.push({
-                                ...item,
-                                description: accessory.description,
-                                store_price: accessory.store_price
-                            });
-                        } else {
-                            errorCount++;
-                        }
-                    } else {
-                        errorCount++;
-                    }
-                } else {
-                    errorCount++;
+                if (getData.status !== 'success') {
+                    throw new Error(getData.error || 'Failed to get accessory');
                 }
+                
+                const accessory = getData.accessory;
+                const newCount = accessory.count - 1;
+                
+                const updateResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        count: newCount
+                    })
+                });
+                
+                if (!updateResponse.ok) {
+                    throw new Error(`Failed to update accessory: ${updateResponse.status}`);
+                }
+                
+                const updateData = await updateResponse.json();
+                if (updateData.status !== 'success') {
+                    throw new Error(updateData.error || 'Failed to update accessory');
+                }
+                
+                successCount++;
+                soldItems.push({
+                    ...item,
+                    description: accessory.description,
+                    store_price: accessory.store_price
+                });
+                
             } catch (error) {
                 console.error(`Error updating accessory ${item.original_id}:`, error);
                 errorCount++;
+                throw error;
             }
         } else if (item.type === 'custom') {
             successCount++;
@@ -907,35 +1060,36 @@ async function processSquarePaymentSuccess() {
                     })
                 });
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        successCount++;
-                        soldItems.push(item);
-                        
-                        if (item.consignor_id) {
-                            const commissionRate = item.commission_rate || 10;
-                            const consignorShare = item.store_price * (1 - (commissionRate / 100));
-                            
-                            if (!consignorPayments[item.consignor_id]) {
-                                consignorPayments[item.consignor_id] = 0;
-                            }
-                            consignorPayments[item.consignor_id] += consignorShare;
-                        }
-                        
-                        const recordIndex = allRecords.findIndex(r => r.id === item.id);
-                        if (recordIndex !== -1) {
-                            allRecords[recordIndex].status_id = 3;
-                        }
-                    } else {
-                        errorCount++;
+                if (!response.ok) {
+                    throw new Error(`Failed to update record: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    throw new Error(data.error || 'Failed to update record');
+                }
+                
+                successCount++;
+                soldItems.push(item);
+                
+                if (item.consignor_id) {
+                    const commissionRate = item.commission_rate || 10;
+                    const consignorShare = item.store_price * (1 - (commissionRate / 100));
+                    
+                    if (!consignorPayments[item.consignor_id]) {
+                        consignorPayments[item.consignor_id] = 0;
                     }
-                } else {
-                    errorCount++;
+                    consignorPayments[item.consignor_id] += consignorShare;
+                }
+                
+                const recordIndex = allRecords.findIndex(r => r.id === item.id);
+                if (recordIndex !== -1) {
+                    allRecords[recordIndex].status_id = 3;
                 }
             } catch (error) {
                 console.error(`Error updating record ${item.id}:`, error);
                 errorCount++;
+                throw error;
             }
         }
     }
@@ -964,7 +1118,7 @@ async function processSquarePaymentSuccess() {
         const subtotal = pendingCartCheckout.items.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
         let taxRate = 0;
         try {
-            taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+            taxRate = getConfigValue('TAX_ENABLED') ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
         } catch (e) {
             console.log('Tax config not found, using 0');
         }
@@ -976,6 +1130,7 @@ async function processSquarePaymentSuccess() {
         
         const transaction = {
             id: `SQUARE-${Date.now()}`,
+            square_payment_id: squarePaymentId,
             date: new Date(),
             items: [...soldItems],
             subtotal: discountedSubtotal,
@@ -995,18 +1150,18 @@ async function processSquarePaymentSuccess() {
         };
         
         // Call the global saveReceipt function
-        if (typeof window.saveReceipt === 'function') {
-            window.saveReceipt(transaction);
-        } else {
-            console.error('saveReceipt function not found');
+        if (typeof window.saveReceipt !== 'function') {
+            throw new Error('saveReceipt function not found');
         }
         
+        await window.saveReceipt(transaction);
+        
         const receiptText = formatReceiptForPrinter(transaction);
-        if (typeof window.printToThermalPrinter === 'function') {
-            window.printToThermalPrinter(receiptText);
-        } else {
-            console.error('printToThermalPrinter function not found');
+        if (typeof window.printToThermalPrinter !== 'function') {
+            throw new Error('printToThermalPrinter function not found');
         }
+        
+        window.printToThermalPrinter(receiptText);
         
         checkoutCart = [];
         currentDiscount = { amount: 0, type: 'percentage', value: 0 };
@@ -1015,9 +1170,9 @@ async function processSquarePaymentSuccess() {
         updateCartDisplay();
         searchRecordsAndAccessories();
         
-        showCheckoutStatus(`Successfully sold ${successCount} items${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
+        showCheckoutStatus(`Successfully sold ${successCount} items`, 'success');
     } else {
-        showCheckoutStatus(`Failed to process sale: ${errorCount} errors`, 'error');
+        throw new Error('No items were successfully processed');
     }
     
     showCheckoutLoading(false);
@@ -1028,6 +1183,11 @@ async function cancelTerminalCheckout() {
     if (!activeCheckoutId) {
         showCheckoutStatus('No active checkout to cancel', 'info');
         return;
+    }
+    
+    // Clear polling interval if exists
+    if (square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
+        clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
     }
     
     const modalBody = document.getElementById('terminal-checkout-body');
@@ -1043,11 +1203,8 @@ async function cancelTerminalCheckout() {
     try {
         console.log('Original checkout ID:', activeCheckoutId);
         
-        const checkoutIdToUse = `termapia:${activeCheckoutId}`;
-        console.log('Using checkout ID with prefix:', checkoutIdToUse);
-        
-        const encodedId = encodeURIComponent(checkoutIdToUse);
-        const url = `${AppConfig.baseUrl}/api/square/terminal/checkout/${encodedId}/cancel`;
+        // Use clean ID for cancel
+        const url = `${AppConfig.baseUrl}/api/square/terminal/checkout/${activeCheckoutId}/cancel`;
         console.log('Sending cancel request to:', url);
         
         const response = await fetch(url, {
@@ -1064,40 +1221,44 @@ async function cancelTerminalCheckout() {
         const responseText = await response.text();
         console.log('Cancel response body:', responseText);
         
-        let data;
-        try {
-            data = JSON.parse(responseText);
-        } catch (e) {
-            data = { message: responseText };
-        }
-        
-        if (response.ok) {
-            if (data.status === 'success') {
-                showCheckoutStatus('Checkout cancelled successfully', 'success');
-                
-                modalBody.innerHTML = `
-                    <div class="payment-status">
-                        <div class="payment-status-icon success">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                        <div class="payment-status-message">Checkout Cancelled Successfully</div>
-                        <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                            <i class="fas fa-times"></i> Close
-                        </button>
-                    </div>
-                `;
-                
-                activeCheckoutId = null;
-            } else {
-                throw new Error(data.message || 'Failed to cancel checkout');
-            }
-        } else {
-            let errorMessage = `Error ${response.status}: ${response.statusText}`;
-            if (data.message) {
-                errorMessage = data.message;
+        if (!response.ok) {
+            let errorMessage = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || errorData.error || errorMessage;
+            } catch (e) {
+                if (responseText) errorMessage = responseText;
             }
             throw new Error(errorMessage);
         }
+        
+        const data = JSON.parse(responseText);
+        
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Failed to cancel checkout');
+        }
+        
+        showCheckoutStatus('Checkout cancelled successfully', 'success');
+        
+        modalBody.innerHTML = `
+            <div class="payment-status">
+                <div class="payment-status-icon success">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="payment-status-message">Checkout Cancelled Successfully</div>
+                <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                    <i class="fas fa-times"></i> Close
+                </button>
+            </div>
+        `;
+        
+        // Clean up session
+        if (square_payment_sessions[activeCheckoutId]) {
+            delete square_payment_sessions[activeCheckoutId];
+        }
+        
+        activeCheckoutId = null;
+        
     } catch (error) {
         console.error('Cancel checkout error:', error);
         
@@ -1126,6 +1287,12 @@ async function cancelTerminalCheckout() {
 
 function closeTerminalCheckoutModal() {
     document.getElementById('terminal-checkout-modal').style.display = 'none';
+    
+    // Clean up polling if still active
+    if (activeCheckoutId && square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
+        clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
+    }
+    
     activeCheckoutId = null;
 }
 
@@ -1189,43 +1356,48 @@ async function processCashPayment() {
         if (item.type === 'accessory') {
             try {
                 const getResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`);
+                if (!getResponse.ok) {
+                    throw new Error(`Failed to get accessory: ${getResponse.status}`);
+                }
                 const getData = await getResponse.json();
                 
-                if (getData.status === 'success') {
-                    const accessory = getData.accessory;
-                    const newCount = accessory.count - 1;
-                    
-                    const updateResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            count: newCount
-                        })
-                    });
-                    
-                    if (updateResponse.ok) {
-                        const updateData = await updateResponse.json();
-                        if (updateData.status === 'success') {
-                            successCount++;
-                            soldItems.push({
-                                ...item,
-                                description: accessory.description,
-                                store_price: accessory.store_price
-                            });
-                        } else {
-                            errorCount++;
-                        }
-                    } else {
-                        errorCount++;
-                    }
-                } else {
-                    errorCount++;
+                if (getData.status !== 'success') {
+                    throw new Error(getData.error || 'Failed to get accessory');
                 }
+                
+                const accessory = getData.accessory;
+                const newCount = accessory.count - 1;
+                
+                const updateResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        count: newCount
+                    })
+                });
+                
+                if (!updateResponse.ok) {
+                    throw new Error(`Failed to update accessory: ${updateResponse.status}`);
+                }
+                
+                const updateData = await updateResponse.json();
+                if (updateData.status !== 'success') {
+                    throw new Error(updateData.error || 'Failed to update accessory');
+                }
+                
+                successCount++;
+                soldItems.push({
+                    ...item,
+                    description: accessory.description,
+                    store_price: accessory.store_price
+                });
+                
             } catch (error) {
                 console.error(`Error updating accessory ${item.original_id}:`, error);
                 errorCount++;
+                throw error;
             }
         } else if (item.type === 'custom') {
             successCount++;
@@ -1246,35 +1418,36 @@ async function processCashPayment() {
                     })
                 });
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        successCount++;
-                        soldItems.push(item);
-                        
-                        if (item.consignor_id) {
-                            const commissionRate = item.commission_rate || 10;
-                            const consignorShare = item.store_price * (1 - (commissionRate / 100));
-                            
-                            if (!consignorPayments[item.consignor_id]) {
-                                consignorPayments[item.consignor_id] = 0;
-                            }
-                            consignorPayments[item.consignor_id] += consignorShare;
-                        }
-                        
-                        const recordIndex = allRecords.findIndex(r => r.id === item.id);
-                        if (recordIndex !== -1) {
-                            allRecords[recordIndex].status_id = 3;
-                        }
-                    } else {
-                        errorCount++;
+                if (!response.ok) {
+                    throw new Error(`Failed to update record: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    throw new Error(data.error || 'Failed to update record');
+                }
+                
+                successCount++;
+                soldItems.push(item);
+                
+                if (item.consignor_id) {
+                    const commissionRate = item.commission_rate || 10;
+                    const consignorShare = item.store_price * (1 - (commissionRate / 100));
+                    
+                    if (!consignorPayments[item.consignor_id]) {
+                        consignorPayments[item.consignor_id] = 0;
                     }
-                } else {
-                    errorCount++;
+                    consignorPayments[item.consignor_id] += consignorShare;
+                }
+                
+                const recordIndex = allRecords.findIndex(r => r.id === item.id);
+                if (recordIndex !== -1) {
+                    allRecords[recordIndex].status_id = 3;
                 }
             } catch (error) {
                 console.error(`Error updating record ${item.id}:`, error);
                 errorCount++;
+                throw error;
             }
         }
     }
@@ -1303,7 +1476,7 @@ async function processCashPayment() {
         const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
         let taxRate = 0;
         try {
-            taxRate = getConfigValue('TAX_ENABLED') ? (getConfigValue('TAX_RATE') / 100) : 0;
+            taxRate = getConfigValue('TAX_ENABLED') ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
         } catch (e) {
             console.log('Tax config not found, using 0');
         }
@@ -1335,18 +1508,18 @@ async function processCashPayment() {
         };
         
         // Call the global saveReceipt function
-        if (typeof window.saveReceipt === 'function') {
-            window.saveReceipt(transaction);
-        } else {
-            console.error('saveReceipt function not found');
+        if (typeof window.saveReceipt !== 'function') {
+            throw new Error('saveReceipt function not found');
         }
         
+        await window.saveReceipt(transaction);
+        
         const receiptText = formatReceiptForPrinter(transaction);
-        if (typeof window.printToThermalPrinter === 'function') {
-            window.printToThermalPrinter(receiptText);
-        } else {
-            console.error('printToThermalPrinter function not found');
+        if (typeof window.printToThermalPrinter !== 'function') {
+            throw new Error('printToThermalPrinter function not found');
         }
+        
+        window.printToThermalPrinter(receiptText);
         
         checkoutCart = [];
         currentDiscount = { amount: 0, type: 'percentage', value: 0 };
@@ -1355,9 +1528,9 @@ async function processCashPayment() {
         updateCartDisplay();
         searchRecordsAndAccessories();
         
-        showCheckoutStatus(`Successfully sold ${successCount} items${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
+        showCheckoutStatus(`Successfully sold ${successCount} items`, 'success');
     } else {
-        showCheckoutStatus(`Failed to process sale: ${errorCount} errors`, 'error');
+        throw new Error('No items were successfully processed');
     }
     
     showCheckoutLoading(false);
