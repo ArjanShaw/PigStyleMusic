@@ -2531,3 +2531,200 @@ select.form-control option {
         grid-template-columns: 1fr;
     }
 }
+
+/* Receipt Card Enhancements */
+.receipt-card {
+    background: white;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.receipt-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.receipt-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.receipt-card-title {
+    font-weight: bold;
+    color: #333;
+}
+
+.receipt-card-date {
+    color: #666;
+    font-size: 0.9em;
+}
+
+.receipt-card-meta {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 10px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+.receipt-card-items {
+    margin: 10px 0;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.receipt-item-preview {
+    font-size: 0.9em;
+    padding: 3px 0;
+    color: #555;
+}
+
+.receipt-item-preview.more {
+    color: #999;
+    font-style: italic;
+}
+
+.item-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.item-badge.accessory {
+    background: #9b59b6;
+    color: white;
+}
+
+.item-badge.custom {
+    background: #ffd700;
+    color: #333;
+}
+
+.receipt-card-total-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 10px 0;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+    font-weight: bold;
+}
+
+.receipt-card-total {
+    color: #27ae60;
+    font-size: 1.2em;
+}
+
+.receipt-card-discount {
+    color: #27ae60;
+    font-size: 0.9em;
+    margin-bottom: 10px;
+}
+
+.receipt-card-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+/* Refund Modal Styles */
+.refund-item {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 5px;
+    background: #f8f9fa;
+}
+
+.refund-item:hover {
+    background: #e9ecef;
+}
+
+.refund-item-checkbox {
+    margin-right: 10px;
+}
+
+.refund-item-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    flex: 1;
+}
+
+.refund-item-desc {
+    flex: 1;
+}
+
+.refund-item-price {
+    font-weight: bold;
+    color: #27ae60;
+    margin-left: 15px;
+}
+
+/* Receipt Modal Styles */
+.receipt-modal-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.receipt-modal-info {
+    margin-bottom: 20px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.receipt-modal-items {
+    margin-bottom: 20px;
+}
+
+.receipt-modal-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.receipt-modal-totals {
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 2px solid #333;
+}
+
+.total-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 5px 0;
+}
+
+.total-row.discount {
+    color: #27ae60;
+}
+
+.total-row.grand-total {
+    font-weight: bold;
+    font-size: 1.2em;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #333;
+}
+
+.receipt-modal-footer {
+    margin-top: 30px;
+    text-align: center;
+    font-style: italic;
+    color: #666;
+}

@@ -229,7 +229,7 @@
                 
                 <div id="cart-items" class="cart-items"></div>
                 
-                <!-- Discount Field Added Here -->
+                <!-- Discount Field -->
                 <div class="discount-section" style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 4px;">
                     <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                         <div style="flex: 1;">
@@ -250,7 +250,7 @@
                                         style="width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
                                         onchange="updateCartWithDiscount()">
                                     <option value="fixed">$ Fixed</option>
-                                    <option value="percentage">% Off</option>
+                                    <option value="percentage" selected>% Off</option>
                                 </select>
                             </div>
                         </div>
@@ -278,17 +278,6 @@
                     <div class="summary-row total">
                         <span>Total:</span>
                         <span id="cart-total">$0.00</span>
-                    </div>
-                </div>
-                
-                <!-- Refund Button Added Here -->
-                <div class="refund-section" style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-undo-alt" style="color: #856404;"></i>
-                        <span style="flex: 1; color: #856404;">Need to issue a refund?</span>
-                        <button class="btn btn-warning btn-sm" onclick="showRefundModal()">
-                            <i class="fas fa-undo"></i> Process Refund
-                        </button>
                     </div>
                 </div>
                 
@@ -347,7 +336,7 @@
                     </div>
                     <div class="date-field">
                         <label for="receipt-search-query">Receipt # or Item:</label>
-                        <input type="text" id="receipt-search-query" class="filter-select" placeholder="Search...">
+                        <input type="text" id="receipt-search-query" class="filter-select" placeholder="Search by artist, title, catalog #...">
                     </div>
                     <div class="filter-group">
                         <button class="btn btn-primary" onclick="searchReceipts()">
@@ -361,10 +350,7 @@
             </div>
             
             <div id="receipts-grid" class="receipts-grid">
-                <div style="text-align: center; padding: 40px; color: #666; grid-column: 1/-1;">
-                    <i class="fas fa-receipt" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
-                    <p>No receipts found</p>
-                </div>
+                <!-- Receipts will be dynamically rendered here -->
             </div>
             
             <div class="loading" id="receipts-loading">
@@ -1200,75 +1186,59 @@
         </div>
     </div>
 
-    <!-- Refund Modal (New) -->
+    <!-- Refund Modal (Enhanced) -->
     <div id="refund-modal" class="modal-overlay">
-        <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
                 <h3 class="modal-title"><i class="fas fa-undo-alt"></i> Process Refund</h3>
                 <button class="modal-close" onclick="closeRefundModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div style="margin-bottom: 20px;">
-                    <label for="refund-search" style="display: block; margin-bottom: 5px; font-weight: 500;">
-                        <i class="fas fa-search"></i> Search Receipt or Transaction ID:
-                    </label>
-                    <div style="display: flex; gap: 10px;">
-                        <input type="text" 
-                               id="refund-search" 
-                               class="search-input" 
-                               placeholder="Enter receipt # or transaction ID..."
-                               style="flex: 1;">
-                        <button class="btn btn-primary" onclick="searchRefundTransaction()">
-                            <i class="fas fa-search"></i> Search
-                        </button>
-                    </div>
+                <div id="refund-receipt-info" style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <!-- Receipt info will be populated here -->
                 </div>
                 
-                <div id="refund-transaction-details" style="display: none;">
-                    <h4 style="margin: 20px 0 10px; color: #333;">Transaction Details</h4>
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 4px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                            <span style="color: #666;">Receipt #:</span>
-                            <span id="refund-receipt-id" style="font-weight: bold;"></span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                            <span style="color: #666;">Date:</span>
-                            <span id="refund-date"></span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                            <span style="color: #666;">Original Total:</span>
-                            <span id="refund-original-amount" style="font-weight: bold;"></span>
-                        </div>
-                        
-                        <div style="margin: 15px 0;">
-                            <label for="refund-amount" style="display: block; margin-bottom: 5px; font-weight: 500;">
-                                Refund Amount:
-                            </label>
-                            <input type="number" 
-                                   id="refund-amount" 
-                                   class="tender-input" 
-                                   placeholder="Enter amount to refund"
-                                   min="0.01"
-                                   step="0.01"
-                                   style="width: 100%;">
-                        </div>
-                        
-                        <div style="margin: 15px 0;">
-                            <label for="refund-reason" style="display: block; margin-bottom: 5px; font-weight: 500;">
-                                Reason (optional):
-                            </label>
-                            <select id="refund-reason" class="filter-select" style="width: 100%;">
-                                <option value="Customer request">Customer request</option>
-                                <option value="Defective item">Defective item</option>
-                                <option value="Wrong item">Wrong item</option>
-                                <option value="Customer changed mind">Customer changed mind</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        
-                        <div id="refund-error" class="status-message status-error" style="display: none;"></div>
-                    </div>
+                <div id="refund-items-container" style="margin-bottom: 20px; max-height: 300px; overflow-y: auto;">
+                    <!-- Items will be populated here -->
                 </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label for="refund-terminal-select" style="display: block; margin-bottom: 5px; font-weight: 500;">
+                        <i class="fas fa-square"></i> Select Terminal (for Square refunds):
+                    </label>
+                    <select id="refund-terminal-select" class="filter-select" style="width: 100%;">
+                        <option value="">Loading terminals...</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label for="refund-amount" style="display: block; margin-bottom: 5px; font-weight: 500;">
+                        Refund Amount:
+                    </label>
+                    <input type="number" 
+                           id="refund-amount" 
+                           class="tender-input" 
+                           placeholder="0.00"
+                           min="0.01"
+                           step="0.01"
+                           style="width: 100%;"
+                           readonly>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label for="refund-reason" style="display: block; margin-bottom: 5px; font-weight: 500;">
+                        Reason:
+                    </label>
+                    <select id="refund-reason" class="filter-select" style="width: 100%;">
+                        <option value="Customer request">Customer request</option>
+                        <option value="Defective item">Defective item</option>
+                        <option value="Wrong item">Wrong item</option>
+                        <option value="Customer changed mind">Customer changed mind</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                
+                <div id="refund-error" class="status-message status-error" style="display: none;"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeRefundModal()">Cancel</button>
