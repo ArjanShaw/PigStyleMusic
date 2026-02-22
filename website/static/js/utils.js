@@ -111,48 +111,58 @@ function showMessage(message, type = 'info') {
 
 function showStatus(message, type = 'info') {
     const statusEl = document.getElementById('status-message');
-    statusEl.textContent = message;
-    statusEl.className = `status-message status-${type}`;
-    statusEl.style.display = 'block';
-    
-    setTimeout(() => {
-        statusEl.style.display = 'none';
-    }, 5000);
+    if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.className = `status-message status-${type}`;
+        statusEl.style.display = 'block';
+        
+        setTimeout(() => {
+            statusEl.style.display = 'none';
+        }, 5000);
+    }
 }
 
 function showCheckoutStatus(message, type = 'info') {
     const statusEl = document.getElementById('checkout-status-message');
-    statusEl.textContent = message;
-    statusEl.className = `status-message status-${type}`;
-    statusEl.style.display = 'block';
-    
-    setTimeout(() => {
-        statusEl.style.display = 'none';
-    }, 5000);
+    if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.className = `status-message status-${type}`;
+        statusEl.style.display = 'block';
+        
+        setTimeout(() => {
+            statusEl.style.display = 'none';
+        }, 5000);
+    }
 }
 
 function showLoading(show) {
-    document.getElementById('loading').style.display = show ? 'block' : 'none';
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
 }
 
 function showCheckoutLoading(show) {
-    document.getElementById('checkout-loading').style.display = show ? 'block' : 'none';
+    const loadingEl = document.getElementById('checkout-loading');
+    if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
 }
 
 function showReceiptsLoading(show) {
-    document.getElementById('receipts-loading').style.display = show ? 'block' : 'none';
+    const loadingEl = document.getElementById('receipts-loading');
+    if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
 }
 
 function showArtistsLoading(show) {
-    document.getElementById('artists-loading').style.display = show ? 'block' : 'none';
+    const loadingEl = document.getElementById('artists-loading');
+    if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
 }
 
 function showGenresLoading(show) {
-    document.getElementById('genres-loading').style.display = show ? 'block' : 'none';
+    const loadingEl = document.getElementById('genres-loading');
+    if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
 }
 
 function showAccessoriesLoading(show) {
-    document.getElementById('accessories-loading').style.display = show ? 'block' : 'none';
+    const loadingEl = document.getElementById('accessories-loading');
+    if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
 }
 
 // Text Utilities
@@ -229,6 +239,20 @@ let totalPages = 1;
 let dbConfigValues = {};
 let recentlyPrintedIds = new Set();
 let savedReceipts = [];
+
+// Function declarations to be implemented by other files
+// These will be overridden by the actual implementations
+function loadSavedReceipts() { console.warn('loadSavedReceipts not implemented'); return []; }
+function saveReceipt(transaction) { console.warn('saveReceipt not implemented'); }
+function renderReceipts(receipts) { console.warn('renderReceipts not implemented'); }
+function searchReceipts() { console.warn('searchReceipts not implemented'); }
+function resetReceiptSearch() { console.warn('resetReceiptSearch not implemented'); }
+function viewReceipt(receiptId) { console.warn('viewReceipt not implemented'); }
+function downloadReceiptPDF(receiptId) { console.warn('downloadReceiptPDF not implemented'); }
+function printReceipt(receiptId) { console.warn('printReceipt not implemented'); }
+function closeReceiptModal() { console.warn('closeReceiptModal not implemented'); }
+function printToThermalPrinter(text) { console.warn('printToThermalPrinter not implemented'); }
+function formatReceiptForPrinter(transaction) { console.warn('formatReceiptForPrinter not implemented'); return ''; }
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {

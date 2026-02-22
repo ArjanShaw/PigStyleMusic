@@ -7,13 +7,36 @@ let checkoutCart = [];
 let pendingCartCheckout = null;
 let currentDiscount = {
     amount: 0,
-    type: 'fixed',
+    type: 'percentage', // Changed default to 'percentage'
     value: 0
 };
 let currentSearchResults = [];
 let availableTerminals = [];
 let selectedTerminalId = null;
 let activeCheckoutId = null;
+
+// Make functions globally available
+window.refreshTerminals = refreshTerminals;
+window.selectTerminal = selectTerminal;
+window.addCustomItemToCart = addCustomItemToCart;
+window.removeCustomItemFromCart = removeCustomItemFromCart;
+window.searchRecordsAndAccessories = searchRecordsAndAccessories;
+window.addAccessoryToCart = addAccessoryToCart;
+window.removeAccessoryFromCart = removeAccessoryFromCart;
+window.addToCartFromData = addToCartFromData;
+window.removeFromCart = removeFromCart;
+window.clearCart = clearCart;
+window.updateCartWithDiscount = updateCartWithDiscount;
+window.processSquarePayment = processSquarePayment;
+window.selectTerminalForCheckout = selectTerminalForCheckout;
+window.closeTerminalSelectionModal = closeTerminalSelectionModal;
+window.initiateCartTerminalCheckout = initiateCartTerminalCheckout;
+window.completeSquarePayment = completeSquarePayment;
+window.cancelTerminalCheckout = cancelTerminalCheckout;
+window.closeTerminalCheckoutModal = closeTerminalCheckoutModal;
+window.showTenderModal = showTenderModal;
+window.closeTenderModal = closeTenderModal;
+window.processCashPayment = processCashPayment;
 
 // Terminal Management
 async function refreshTerminals() {
@@ -400,17 +423,33 @@ function clearCart() {
     
     if (confirm('Are you sure you want to clear the cart?')) {
         checkoutCart = [];
-        currentDiscount = { amount: 0, type: 'fixed', value: 0 };
+        currentDiscount = { amount: 0, type: 'percentage', value: 0 };
+        document.getElementById('discount-amount').value = '';
+        document.getElementById('discount-type').value = 'percentage';
         updateCartDisplay();
         searchRecordsAndAccessories();
         showCheckoutStatus('Cart cleared', 'info');
     }
 }
 
+// Updated discount function with better percentage handling
 function updateCartWithDiscount() {
     const discountAmount = parseFloat(document.getElementById('discount-amount').value) || 0;
     const discountType = document.getElementById('discount-type').value;
     const errorDiv = document.getElementById('discount-error');
+    
+    // Validate discount amount
+    if (discountAmount < 0) {
+        errorDiv.textContent = 'Discount cannot be negative';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    if (discountType === 'percentage' && discountAmount > 100) {
+        errorDiv.textContent = 'Percentage discount cannot exceed 100%';
+        errorDiv.style.display = 'block';
+        return;
+    }
     
     currentDiscount = {
         amount: discountAmount,
@@ -419,10 +458,10 @@ function updateCartWithDiscount() {
     };
     
     errorDiv.style.display = 'none';
-    
     updateCartDisplay();
 }
 
+// Calculate totals with discount
 function calculateTotalsWithDiscount() {
     let subtotal = 0;
     checkoutCart.forEach(item => {
@@ -437,29 +476,36 @@ function calculateTotalsWithDiscount() {
     
     if (currentDiscount.amount > 0) {
         if (currentDiscount.type === 'percentage') {
-            if (currentDiscount.amount <= 100) {
-                discountValue = subtotal * (currentDiscount.amount / 100);
-            } else {
-                errorDiv.textContent = 'Percentage discount cannot exceed 100%';
+            // Calculate percentage discount
+            discountValue = subtotal * (currentDiscount.amount / 100);
+            
+            // Validate percentage doesn't exceed subtotal (though this shouldn't happen with <=100%)
+            if (discountValue > subtotal) {
+                errorDiv.textContent = 'Discount cannot exceed subtotal';
                 errorDiv.style.display = 'block';
                 currentDiscount.value = 0;
                 discountRow.style.display = 'none';
+                return subtotal;
             }
+            
+            // Display the percentage in the discount display
+            currentDiscount.value = discountValue;
+            discountDisplay.textContent = `-$${discountValue.toFixed(2)} (${currentDiscount.amount}%)`;
+            discountRow.style.display = 'flex';
+            
         } else {
+            // Fixed discount
             if (currentDiscount.amount <= subtotal) {
                 discountValue = currentDiscount.amount;
+                currentDiscount.value = discountValue;
+                discountDisplay.textContent = `-$${discountValue.toFixed(2)}`;
+                discountRow.style.display = 'flex';
             } else {
                 errorDiv.textContent = 'Fixed discount cannot exceed subtotal';
                 errorDiv.style.display = 'block';
                 currentDiscount.value = 0;
                 discountRow.style.display = 'none';
             }
-        }
-        
-        if (discountValue > 0) {
-            currentDiscount.value = discountValue;
-            discountDisplay.textContent = `-$${discountValue.toFixed(2)}`;
-            discountRow.style.display = 'flex';
         }
     } else {
         discountRow.style.display = 'none';
@@ -480,7 +526,7 @@ function updateCartDisplay() {
     
     if (checkoutCart.length === 0) {
         cartSection.style.display = 'none';
-        squareBtn.disabled = true;
+        if (squareBtn) squareBtn.disabled = true;
         return;
     }
     
@@ -509,7 +555,7 @@ function updateCartDisplay() {
     cartTax.textContent = `$${tax.toFixed(2)}`;
     cartTotal.textContent = `$${total.toFixed(2)}`;
     
-    squareBtn.disabled = availableTerminals.length === 0;
+    if (squareBtn) squareBtn.disabled = availableTerminals.length === 0;
     
     let cartHtml = '';
     checkoutCart.forEach(item => {
@@ -934,6 +980,8 @@ async function processSquarePaymentSuccess() {
             items: [...soldItems],
             subtotal: discountedSubtotal,
             discount: discount,
+            discountType: pendingCartCheckout.discount ? pendingCartCheckout.discount.type : null,
+            discountAmount: pendingCartCheckout.discount ? pendingCartCheckout.discount.amount : 0,
             tax: tax,
             taxRate: taxRate * 100,
             total: total,
@@ -946,13 +994,24 @@ async function processSquarePaymentSuccess() {
             consignorPayments: consignorPayments
         };
         
-        saveReceipt(transaction);
+        // Call the global saveReceipt function
+        if (typeof window.saveReceipt === 'function') {
+            window.saveReceipt(transaction);
+        } else {
+            console.error('saveReceipt function not found');
+        }
         
         const receiptText = formatReceiptForPrinter(transaction);
-        printToThermalPrinter(receiptText);
+        if (typeof window.printToThermalPrinter === 'function') {
+            window.printToThermalPrinter(receiptText);
+        } else {
+            console.error('printToThermalPrinter function not found');
+        }
         
         checkoutCart = [];
-        currentDiscount = { amount: 0, type: 'fixed', value: 0 };
+        currentDiscount = { amount: 0, type: 'percentage', value: 0 };
+        document.getElementById('discount-amount').value = '';
+        document.getElementById('discount-type').value = 'percentage';
         updateCartDisplay();
         searchRecordsAndAccessories();
         
@@ -1259,6 +1318,8 @@ async function processCashPayment() {
             items: [...soldItems],
             subtotal: discountedSubtotal,
             discount: discount,
+            discountType: currentDiscount.type,
+            discountAmount: currentDiscount.amount,
             tax: tax,
             taxRate: taxRate * 100,
             total: total,
@@ -1273,13 +1334,24 @@ async function processCashPayment() {
             consignorPayments: consignorPayments
         };
         
-        saveReceipt(transaction);
+        // Call the global saveReceipt function
+        if (typeof window.saveReceipt === 'function') {
+            window.saveReceipt(transaction);
+        } else {
+            console.error('saveReceipt function not found');
+        }
         
         const receiptText = formatReceiptForPrinter(transaction);
-        printToThermalPrinter(receiptText);
+        if (typeof window.printToThermalPrinter === 'function') {
+            window.printToThermalPrinter(receiptText);
+        } else {
+            console.error('printToThermalPrinter function not found');
+        }
         
         checkoutCart = [];
-        currentDiscount = { amount: 0, type: 'fixed', value: 0 };
+        currentDiscount = { amount: 0, type: 'percentage', value: 0 };
+        document.getElementById('discount-amount').value = '';
+        document.getElementById('discount-type').value = 'percentage';
         updateCartDisplay();
         searchRecordsAndAccessories();
         
@@ -1306,3 +1378,26 @@ document.addEventListener('tabChanged', function(e) {
         refreshTerminals();
     }
 });
+
+// Make functions globally available
+window.refreshTerminals = refreshTerminals;
+window.selectTerminal = selectTerminal;
+window.addCustomItemToCart = addCustomItemToCart;
+window.removeCustomItemFromCart = removeCustomItemFromCart;
+window.searchRecordsAndAccessories = searchRecordsAndAccessories;
+window.addAccessoryToCart = addAccessoryToCart;
+window.removeAccessoryFromCart = removeAccessoryFromCart;
+window.addToCartFromData = addToCartFromData;
+window.removeFromCart = removeFromCart;
+window.clearCart = clearCart;
+window.updateCartWithDiscount = updateCartWithDiscount;
+window.processSquarePayment = processSquarePayment;
+window.selectTerminalForCheckout = selectTerminalForCheckout;
+window.closeTerminalSelectionModal = closeTerminalSelectionModal;
+window.initiateCartTerminalCheckout = initiateCartTerminalCheckout;
+window.completeSquarePayment = completeSquarePayment;
+window.cancelTerminalCheckout = cancelTerminalCheckout;
+window.closeTerminalCheckoutModal = closeTerminalCheckoutModal;
+window.showTenderModal = showTenderModal;
+window.closeTenderModal = closeTenderModal;
+window.processCashPayment = processCashPayment;
