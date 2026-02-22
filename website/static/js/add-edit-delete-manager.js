@@ -1,0 +1,1341 @@
+// ============================================================================
+// add-edit-delete-manager.js - Add/Edit/Delete Tab Functionality
+// ============================================================================
+
+// Genre Predictor Class
+class GenrePredictor {
+    constructor() {
+        this.genreMappingCache = {};
+    }
+    
+    async predictGenre(discogsGenre) {
+        if (!discogsGenre) return null;
+        
+        let cleanGenre = discogsGenre;
+        if (cleanGenre.includes('/')) {
+            cleanGenre = cleanGenre.replace('/', ' ');
+        }
+        
+        if (this.genreMappingCache[cleanGenre]) {
+            console.log(`GENRE_CACHE: Using cached prediction for "${cleanGenre}"`);
+            return this.genreMappingCache[cleanGenre];
+        }
+        
+        const response = await APIUtils.get(
+            `/discogs-genre-mappings/${encodeURIComponent(cleanGenre)}`
+        );
+        
+        if (response.status === 'success' && response.mapping) {
+            this.genreMappingCache[cleanGenre] = response.mapping;
+            console.log(`GENRE_PREDICTION: Found mapping for "${cleanGenre}" -> ${response.mapping.local_genre_name}`);
+            return response.mapping;
+        } else {
+            console.log(`GENRE_PREDICTION: No mapping found for "${cleanGenre}"`);
+            this.genreMappingCache[cleanGenre] = null;
+            return null;
+        }
+    }
+    
+    clearCache() {
+        this.genreMappingCache = {};
+    }
+    
+    async saveMapping(discogsGenre, localGenreId, localGenreName) {
+        const cleanGenre = discogsGenre.includes('/') ? 
+            discogsGenre.replace('/', ' ') : discogsGenre;
+        
+        const mappingData = {
+            discogs_genre: cleanGenre,
+            local_genre_id: localGenreId
+        };
+        
+        const response = await APIUtils.post('/discogs-genre-mappings', mappingData);
+        
+        if (response.status === 'success') {
+            this.genreMappingCache[cleanGenre] = {
+                local_genre_id: localGenreId,
+                local_genre_name: localGenreName
+            };
+            
+            console.log(`GENRE_MAPPING: Saved mapping "${cleanGenre}" -> ${localGenreName}`);
+            return response;
+        }
+        return null;
+    }
+}
+
+// Barcode Generator Class
+class BarcodeGenerator {
+    constructor() {
+        this.baseCounter = 3290;
+        this.prefix = '22';
+        this.loadCounter();
+    }
+    
+    loadCounter() {
+        try {
+            const savedCounter = localStorage.getItem('pigstyle_barcode_counter');
+            if (savedCounter) {
+                const parsed = parseInt(savedCounter);
+                if (!isNaN(parsed) && parsed > this.baseCounter) {
+                    this.baseCounter = parsed;
+                }
+            }
+            console.log('BARCODE: Loaded counter:', this.baseCounter);
+        } catch (error) {
+            console.warn('BARCODE: Could not load counter:', error);
+        }
+    }
+    
+    saveCounter() {
+        try {
+            localStorage.setItem('pigstyle_barcode_counter', this.baseCounter.toString());
+        } catch (error) {
+            console.warn('BARCODE: Could not save counter:', error);
+        }
+    }
+    
+    generateBarcode() {
+        const sequence = this.baseCounter.toString().padStart(4, '0');
+        const barcode = `${this.prefix}000000${sequence}`;
+        console.log('BARCODE_GENERATED:', barcode, 'Sequence:', this.baseCounter);
+        this.baseCounter++;
+        this.saveCounter();
+        return barcode;
+    }
+    
+    validateBarcode(barcode) {
+        if (!barcode || typeof barcode !== 'string') {
+            return false;
+        }
+        return /^\d+$/.test(barcode);
+    }
+    
+    getCurrentCounter() {
+        return this.baseCounter;
+    }
+    
+    resetCounter(startFrom = 3290) {
+        this.baseCounter = startFrom;
+        this.saveCounter();
+        console.log('BARCODE: Counter reset to:', startFrom);
+    }
+}
+
+// Add/Edit/Delete Manager Class
+class AddEditDeleteManager {
+    constructor() {
+        this.currentSearchType = 'add';
+        this.currentSearchField = 'all';
+        this.currentResults = [];
+        this.genres = [];
+        this.conditions = [];
+        this.statuses = ['new', 'active', 'sold', 'removed'];
+        this.genrePredictor = new GenrePredictor();
+        this.barcodeGenerator = new BarcodeGenerator();
+        this.commissionRate = 0.20;
+        this.minimumPrice = 1.99;
+        
+        this.init();
+    }
+
+    async init() {
+        await this.loadMinimumPrice();
+        await this.loadStats();
+        await this.loadGenres();
+        this.loadConditions();
+        this.setupEventListeners();
+    }
+
+    async loadMinimumPrice() {
+        try {
+            const response = await APIUtils.get('/config/MIN_STORE_PRICE');
+            this.minimumPrice = parseFloat(response.config_value) || 1.99;
+            console.log(`MIN_PRICE: Minimum store price loaded: $${this.minimumPrice.toFixed(2)}`);
+        } catch (error) {
+            console.warn('MIN_PRICE: Could not load MIN_STORE_PRICE, using default:', error);
+            this.minimumPrice = 1.99;
+        }
+    }
+
+    async loadStats() {
+        try {
+            const response = await APIUtils.get('/records/count');
+            const recordsCount = response.count || 0;
+            document.getElementById('total-records').textContent = recordsCount;
+
+            const commissionResponse = await APIUtils.get('/api/commission-rate');
+            this.commissionRate = commissionResponse.commission_rate / 100;
+            document.getElementById('commission-rate').textContent = 
+                `${commissionResponse.commission_rate || 20.0}%`;
+
+            const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
+            const capacity = parseInt(configResponse.config_value);
+            const fillPercentage = (recordsCount / capacity * 100).toFixed(1);
+            document.getElementById('store-fill').textContent = `${fillPercentage}%`;
+
+            await this.loadLastAddedRecord();
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+
+    async loadLastAddedRecord() {
+        try {
+            const response = await APIUtils.get('/records', { 
+                limit: 1, 
+                order_by: 'created_at', 
+                order: 'desc' 
+            });
+            
+            if (response.records && response.records.length > 0) {
+                const record = response.records[0];
+                document.getElementById('last-added').textContent = 
+                    `${record.artist.substring(0, 15)}...`;
+            }
+        } catch (error) {
+            console.error('Error loading last added record:', error);
+        }
+    }
+
+    async loadGenres() {
+        console.log('LOAD_GENRES: Starting to load genres from /genres endpoint');
+        try {
+            const response = await APIUtils.get('/genres');
+            console.log('LOAD_GENRES: Raw API response:', response);
+            
+            if (response && response.genres) {
+                this.genres = response.genres;
+                console.log('LOAD_GENRES: Genres loaded successfully:', this.genres);
+            } else {
+                console.error('LOAD_GENRES: Invalid response format:', response);
+                this.genres = [];
+            }
+        } catch (error) {
+            console.error('Error loading genres:', error);
+            this.genres = [];
+        }
+    }
+
+    loadConditions() {
+        const allConditions = [
+            'Mint (M)',
+            'Near Mint (NM or M-)',
+            'Very Good Plus (VG+)',
+            'Very Good (VG)',
+            'Good Plus (G+)',
+            'Good (G)',
+            'Fair (F)',
+            'Poor (P)'
+        ];
+        
+        this.conditions = allConditions;
+        console.log('LOAD_CONDITIONS: Conditions loaded:', this.conditions);
+    }
+
+    setupEventListeners() {
+        document.querySelectorAll('input[name="searchType"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.currentSearchType = e.target.value;
+                this.updateSearchPlaceholder();
+                this.clearResults();
+            });
+        });
+
+        document.getElementById('searchField').addEventListener('change', (e) => {
+            this.currentSearchField = e.target.value;
+            this.updateSearchPlaceholder();
+        });
+
+        document.getElementById('searchForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const searchTerm = document.getElementById('searchInput').value.trim();
+            
+            if (!searchTerm) {
+                showMessage('Please enter a search term', 'error');
+                return;
+            }
+
+            await this.performSearch(searchTerm);
+        });
+
+        document.getElementById('clearSearch').addEventListener('click', () => {
+            document.getElementById('searchInput').value = '';
+            this.clearResults();
+        });
+
+        this.updateSearchPlaceholder();
+    }
+
+    updateSearchPlaceholder() {
+        const searchInput = document.getElementById('searchInput');
+        const searchField = this.currentSearchField;
+        
+        let placeholderText = 'Enter search term...';
+        
+        if (this.currentSearchType === 'add') {
+            placeholderText = 'Search Discogs (artist, album, catalog #)...';
+        } else {
+            switch(searchField) {
+                case 'barcode':
+                    placeholderText = 'Enter barcode...';
+                    break;
+                case 'artist':
+                    placeholderText = 'Enter artist name...';
+                    break;
+                case 'title':
+                    placeholderText = 'Enter album title...';
+                    break;
+                case 'all':
+                default:
+                    placeholderText = 'Enter barcode, artist, or title...';
+                    break;
+            }
+        }
+        
+        searchInput.placeholder = placeholderText;
+    }
+
+    async performSearch(searchTerm) {
+        const resultsContainer = document.getElementById('results-container');
+        resultsContainer.innerHTML = `
+            <div class="loading">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Searching...</p>
+            </div>
+        `;
+
+        console.log('PERFORM_SEARCH: Starting search for:', searchTerm);
+        console.log('PERFORM_SEARCH: Search type:', this.currentSearchType);
+        console.log('PERFORM_SEARCH: Search field:', this.currentSearchField);
+        console.log('PERFORM_SEARCH: Current genres:', this.genres);
+        console.log('PERFORM_SEARCH: Current conditions:', this.conditions);
+
+        if (this.currentSearchType === 'add') {
+            this.currentResults = await this.searchDiscogs(searchTerm);
+        } else {
+            this.currentResults = await this.searchDatabase(searchTerm);
+        }
+
+        console.log('PERFORM_SEARCH: Found', this.currentResults.length, 'results');
+        this.displayResults();
+    }
+
+    async searchDiscogs(searchTerm) {
+        try {
+            const response = await APIUtils.get('/api/discogs/search', { q: searchTerm });
+            
+            if (response.status === 'success' && response.results) {
+                const enhancedResults = await Promise.all(
+                    response.results.map(async (record) => {
+                        if (record.genre) {
+                            const prediction = await this.genrePredictor.predictGenre(record.genre);
+                            if (prediction) {
+                                record.predicted_genre = prediction;
+                                console.log(`GENRE_PREDICTION: "${record.genre}" -> ${prediction.local_genre_name}`);
+                            }
+                        }
+                        return record;
+                    })
+                );
+                
+                return enhancedResults;
+            }
+        } catch (error) {
+            console.error('Error searching Discogs:', error);
+        }
+        
+        return this.getSampleResults(searchTerm);
+    }
+
+    async searchDatabase(searchTerm) {
+        try {
+            let params = { 
+                q: searchTerm,
+                search_field: this.currentSearchField
+            };
+            
+            const response = await APIUtils.get('/search', params);
+            
+            if (response.status === 'success' && response.records) {
+                return response.records;
+            }
+        } catch (error) {
+            console.error('Error searching database:', error);
+        }
+        return [];
+    }
+
+    getSampleResults(searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        
+        if (searchLower.includes('nirvana')) {
+            return [
+                {
+                    id: 'discogs_1',
+                    artist: 'Nirvana',
+                    title: 'Nevermind',
+                    year: '1991',
+                    genre: 'Rock, Grunge',
+                    format: 'Vinyl, LP, Album',
+                    country: 'US',
+                    image_url: 'https://img.discogs.com/GHS-24425.jpg',
+                    catalog_number: 'GHS 24425',
+                    discogs_id: '123456',
+                    barcode: ['GHS 24425', '075992442517'],
+                    predicted_genre: { local_genre_id: 1, local_genre_name: 'Rock' }
+                }
+            ];
+        } else {
+            return [
+                {
+                    id: 'discogs_4',
+                    artist: 'Sample Artist',
+                    title: `Sample Album for "${searchTerm}"`,
+                    year: '2023',
+                    genre: 'Rock',
+                    format: 'Vinyl, LP',
+                    country: 'US',
+                    image_url: '',
+                    catalog_number: 'SMP001',
+                    discogs_id: '999999',
+                    barcode: ['123456789012'],
+                    predicted_genre: null
+                }
+            ];
+        }
+    }
+
+    displayResults() {
+        const resultsContainer = document.getElementById('results-container');
+        
+        if (!this.currentResults || this.currentResults.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="loading">
+                    <i class="fas fa-search"></i>
+                    <p>No results found</p>
+                    <p><small>Try a different search term</small></p>
+                </div>
+            `;
+            return;
+        }
+
+        if (this.currentSearchType === 'add') {
+            resultsContainer.innerHTML = this.renderDiscogsResults();
+        } else {
+            resultsContainer.innerHTML = this.renderDatabaseResults();
+        }
+
+        this.attachResultEventListeners();
+    }
+
+    renderDiscogsResults() {
+        const resultsCount = this.currentResults.length;
+        
+        const findGenreIndex = (genreId) => {
+            if (!this.genres || !genreId) return -1;
+            return this.genres.findIndex(g => g.id == genreId);
+        };
+        
+        return `
+            <h3>Search Results (${resultsCount})</h3>
+            <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
+                <i class="fas fa-info-circle"></i>
+                <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
+                <div style="margin-top: 5px;">
+                    <div>• Prices are rounded according to store pricing rules</div>
+                    <div>• <strong>Price step: $1.00</strong> - Use +/- buttons to adjust by whole dollars</div>
+                </div>
+            </div>
+            ${this.currentResults.map((record, index) => {
+                const hasPrediction = record.predicted_genre;
+                const predictedGenreId = hasPrediction ? record.predicted_genre.local_genre_id : null;
+                const predictedGenreName = hasPrediction ? record.predicted_genre.local_genre_name : null;
+                const predictionIndex = findGenreIndex(predictedGenreId);
+                
+                const genreOptions = this.genres.map((genre, idx) => {
+                    const selected = hasPrediction && idx === predictionIndex ? 'selected' : '';
+                    return `<option value="${genre.id}" ${selected}>${genre.genre_name}</option>`;
+                }).join('');
+                
+                const conditionOptions = this.conditions.map(condition => {
+                    return `<option value="${condition}">${condition}</option>`;
+                }).join('');
+                
+                let discogsIdentifiers = '';
+                if (record.barcode) {
+                    if (Array.isArray(record.barcode)) {
+                        discogsIdentifiers = record.barcode.join(', ');
+                    } else {
+                        discogsIdentifiers = record.barcode;
+                    }
+                }
+                
+                return `
+                    <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}">
+                        <div class="record-header">
+                            ${record.image_url ? `
+                                <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image" 
+                                     onerror="this.src='https://via.placeholder.com/100x100/333/666?text=No+Image'">
+                            ` : `
+                                <div class="record-image" style="background: #333; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-record-vinyl" style="font-size: 40px; color: #666;"></i>
+                                </div>
+                            `}
+                            <div class="record-info">
+                                <div class="record-title">${record.artist} - ${record.title}</div>
+                                <div class="record-details">
+                                    ${record.year ? `<p><strong>Year:</strong> ${record.year}</p>` : ''}
+                                    ${record.genre ? `<p><strong>Discogs Genre:</strong> ${record.genre}</p>` : ''}
+                                    ${record.format ? `<p><strong>Format:</strong> ${record.format}</p>` : ''}
+                                    ${record.country ? `<p><strong>Country:</strong> ${record.country}</p>` : ''}
+                                    ${record.catalog_number ? `<p><strong>Discogs Catalog #:</strong> ${record.catalog_number}</p>` : ''}
+                                    ${discogsIdentifiers ? `<p><strong>Discogs Identifiers:</strong> ${discogsIdentifiers}</p>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${hasPrediction ? `
+                            <div class="genre-prediction prediction-available" id="prediction-banner-${record.discogs_id}">
+                                <i class="fas fa-lightbulb prediction-icon"></i>
+                                <div class="prediction-text">
+                                    <strong>💡 Genre Prediction:</strong> "${record.genre}" maps to <strong>${predictedGenreName}</strong>
+                                    <div class="prediction-hint">
+                                        Based on previous mappings. The dropdown is pre-selected.
+                                    </div>
+                                </div>
+                                <button class="btn accept-prediction-btn" 
+                                        data-record-id="${record.discogs_id}"
+                                        data-discogs-genre="${record.genre}"
+                                        data-genre-id="${predictedGenreId}"
+                                        data-genre-name="${predictedGenreName}">
+                                    <i class="fas fa-check"></i> Confirm
+                                </button>
+                            </div>
+                        ` : record.genre ? `
+                            <div class="genre-prediction">
+                                <i class="fas fa-search prediction-icon"></i>
+                                <div class="prediction-text">
+                                    No genre prediction found for "${record.genre}"
+                                    <div class="prediction-hint">
+                                        Select a genre manually to create a mapping for future records
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Genre *</label>
+                                <select class="form-control genre-select ${hasPrediction ? 'predicted-genre' : ''}" 
+                                        required
+                                        data-record-id="${record.discogs_id}">
+                                    <option value="">Select genre...</option>
+                                    ${genreOptions}
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Condition *</label>
+                                <select class="form-control condition-select" required>
+                                    <option value="">Select condition...</option>
+                                    ${conditionOptions}
+                                </select>
+                                <div class="estimation-hint">
+                                    <i class="fas fa-bolt"></i>
+                                    Price auto-estimates when condition is selected
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Price ($) *</label>
+                                <input type="number" 
+                                       class="form-control price-input" 
+                                       step="1" 
+                                       min="${this.minimumPrice}" 
+                                       placeholder="Min: $${this.minimumPrice.toFixed(2)}" 
+                                       required>
+                                <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                    <i class="fas fa-plus-circle"></i> <i class="fas fa-minus-circle"></i> Use +/- buttons to adjust by $1.00
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="barcode-info">
+                            <i class="fas fa-barcode"></i>
+                            <span>A numeric PigStyle barcode will be automatically generated when you add this record</span>
+                        </div>
+                        
+                        <div id="calculation-${record.discogs_id}" class="calculation-container"></div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <button class="btn btn-primary add-record-btn">
+                                    <i class="fas fa-plus"></i> Add to Inventory
+                                </button>
+                                <div class="form-hint" style="font-size: 12px; color: rgba(0,0,0,0.5); margin-top: 5px;">
+                                    * Required fields
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        `;
+    }
+
+    renderDatabaseResults() {
+        const user = JSON.parse(localStorage.getItem('user')) || {};
+        const userRole = user.role || 'admin';
+        const userId = user.id;
+        const resultsCount = this.currentResults.length;
+        
+        const filteredResults = this.currentResults;
+        
+        if (filteredResults.length === 0) {
+            return `
+                <div class="loading">
+                    <i class="fas fa-search"></i>
+                    <p>No matching records found in database</p>
+                    <p><small>Try searching for different terms or add new records</small></p>
+                </div>
+            `;
+        }
+        
+        const getGenreOptions = (recordId) => {
+            const record = this.currentResults.find(r => r.id == recordId);
+            return this.genres.map(genre => {
+                const selected = record && record.genre_id == genre.id ? 'selected' : '';
+                return `<option value="${genre.id}" ${selected}>${genre.genre_name}</option>`;
+            }).join('');
+        };
+        
+        const getConditionOptions = (recordId) => {
+            const record = this.currentResults.find(r => r.id == recordId);
+            return this.conditions.map(condition => {
+                const selected = record && record.condition === condition ? 'selected' : '';
+                return `<option value="${condition}" ${selected}>${condition}</option>`;
+            }).join('');
+        };
+        
+        const getStatusOptions = (recordId) => {
+            const record = this.currentResults.find(r => r.id == recordId);
+            return this.statuses.map(status => {
+                const selected = record && (record.status_name || 'active').toLowerCase() === status ? 'selected' : '';
+                return `<option value="${status}" ${selected}>${status.charAt(0).toUpperCase() + status.slice(1)}</option>`;
+            }).join('');
+        };
+        
+        return `
+            <h3>Database Results (${filteredResults.length})</h3>
+            <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
+                <i class="fas fa-info-circle"></i>
+                <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
+                <div style="margin-top: 5px;">
+                    <div>• Prices are rounded according to store pricing rules</div>
+                    <div>• <strong>Price step: $1.00</strong> - Use +/- buttons to adjust by whole dollars</div>
+                </div>
+            </div>
+            ${filteredResults.map((record, index) => {
+                const statusName = (record.status_name || 'active').toLowerCase();
+                const statusClass = statusName.replace(/\s+/g, '-');
+                const displayStatus = record.status_name || 'Active';
+                
+                return `
+                    <div class="record-card" data-record-id="${record.id}" data-index="${index}">
+                        <div class="record-header">
+                            ${record.image_url ? `
+                                <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image"
+                                     onerror="this.src='https://via.placeholder.com/100x100/333/666?text=No+Image'">
+                            ` : `
+                                <div class="record-image" style="background: #333; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-record-vinyl" style="font-size: 40px; color: #666;"></i>
+                                </div>
+                            `}
+                            <div class="record-info">
+                                <div class="record-title">${record.artist} - ${record.title}</div>
+                                <div class="record-details">
+                                    ${record.genre_name ? `<p><strong>Genre:</strong> ${record.genre_name}</p>` : ''}
+                                    ${record.barcode ? `<p><strong>PigStyle Barcode:</strong> <span class="barcode-value">${record.barcode}</span></p>` : ''}
+                                    ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
+                                    <p><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</p>
+                                    <p><strong>Commission:</strong> ${(this.commissionRate * 100).toFixed(1)}%</p>
+                                    ${record.condition ? `<p><strong>Condition:</strong> ${record.condition}</p>` : ''}
+                                    <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></p>
+                                    ${record.consignor_name ? `<p><strong>Consignor:</strong> ${record.consignor_name}</p>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="calculation-${record.id}" class="calculation-container"></div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Genre</label>
+                                <select class="form-control edit-genre-select" data-record-id="${record.id}">
+                                    <option value="">Select genre...</option>
+                                    ${getGenreOptions(record.id)}
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Condition</label>
+                                <select class="form-control edit-condition-select" data-record-id="${record.id}">
+                                    <option value="">Select condition...</option>
+                                    ${getConditionOptions(record.id)}
+                                </select>
+                                <div class="estimation-hint">
+                                    <i class="fas fa-bolt"></i>
+                                    Price auto-estimates when condition is selected
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Price ($)</label>
+                                <input type="number" 
+                                       class="form-control edit-price-input" 
+                                       data-record-id="${record.id}"
+                                       value="${record.store_price || ''}" 
+                                       step="1" 
+                                       min="${this.minimumPrice}"
+                                       placeholder="Min: $${this.minimumPrice.toFixed(2)}">
+                                <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                    <i class="fas fa-plus-circle"></i> <i class="fas fa-minus-circle"></i> Use +/- buttons to adjust by $1.00
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                ${userRole === 'admin' ? `
+                                    <div style="margin-bottom: 10px;">
+                                        <label class="form-label">Status</label>
+                                        <select class="form-control edit-status-select" data-record-id="${record.id}">
+                                            ${getStatusOptions(record.id)}
+                                        </select>
+                                    </div>
+                                ` : ''}
+                                
+                                <button class="btn btn-primary save-changes-btn" data-record-id="${record.id}">
+                                    <i class="fas fa-save"></i> Save Changes
+                                </button>
+                            </div>
+                            
+                            ${userRole === 'admin' ? `
+                                <div class="form-group">
+                                    <button class="btn btn-secondary delete-record-btn" data-record-id="${record.id}">
+                                        <i class="fas fa-trash"></i> Delete Record
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        `;
+    }
+
+    async estimatePriceForRecord(record, selectedCondition) {
+        console.log('ESTIMATE_PRICE: Estimating price for', record.artist, '-', record.title, 'Condition:', selectedCondition);
+            
+        try {
+            const response = await APIUtils.post('/api/price-estimate', {
+                artist: record.artist,
+                title: record.title,
+                condition: selectedCondition,
+                discogs_genre: record.genre || '',
+                discogs_id: record.discogs_id || ''
+            });
+            
+            console.log('ESTIMATE_PRICE: API response:', response);
+            return response;
+        } catch (error) {
+            console.error('Error estimating price:', error);
+            return { success: false };
+        }
+    }
+
+    async handleConditionChange(event, isEditMode = false) {
+        const selectElement = event.target;
+        const card = selectElement.closest('.record-card');
+        const recordId = card.getAttribute('data-record-id');
+        const selectedCondition = selectElement.value;
+        
+        if (!selectedCondition) {
+            return;
+        }
+        
+        let record;
+        if (isEditMode) {
+            record = this.currentResults.find(r => r.id == recordId);
+        } else {
+            const index = card.getAttribute('data-index');
+            record = this.currentResults[index];
+        }
+        
+        if (!record) {
+            console.error('HANDLE_CONDITION_CHANGE: Record not found');
+            return;
+        }
+        
+        let priceInput;
+        if (isEditMode) {
+            priceInput = card.querySelector('.edit-price-input');
+        } else {
+            priceInput = card.querySelector('.price-input');
+        }
+        
+        if (!priceInput) {
+            console.error('HANDLE_CONDITION_CHANGE: Price input not found');
+            return;
+        }
+        
+        const hasExistingValue = priceInput.value && priceInput.value.trim() !== '' && !isNaN(parseFloat(priceInput.value));
+        
+        const originalValue = priceInput.value;
+        priceInput.disabled = true;
+        
+        const priceContainer = priceInput.parentElement;
+        const tempOverlay = document.createElement('div');
+        tempOverlay.className = 'price-estimating';
+        tempOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.1) 100%);
+            border: 1px solid rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: bold;
+            z-index: 10;
+            animation: pulse 2s infinite;
+        `;
+        tempOverlay.textContent = hasExistingValue ? 'Calculating advised price...' : 'Estimating...';
+        priceContainer.style.position = 'relative';
+        priceContainer.appendChild(tempOverlay);
+        
+        const estimate = await this.estimatePriceForRecord(record, selectedCondition);
+        
+        tempOverlay.remove();
+        priceInput.disabled = false;
+        
+        if (estimate.success || estimate.estimated_price || estimate.calculation) {
+            let estimatedPrice;
+            let priceSource = 'unknown';
+            
+            if (estimate.estimated_price) {
+                estimatedPrice = estimate.estimated_price;
+                priceSource = estimate.price_source || 'estimated';
+            } else if (estimate.price) {
+                estimatedPrice = estimate.price;
+                priceSource = estimate.source || 'estimated';
+            } else if (estimate.calculation && estimate.calculation.length > 0) {
+                const finalStep = estimate.calculation[estimate.calculation.length - 1];
+                if (finalStep.includes('Final advised price:')) {
+                    const priceMatch = finalStep.match(/\$([\d.]+)/);
+                    if (priceMatch) {
+                        estimatedPrice = parseFloat(priceMatch[1]);
+                        priceSource = 'calculated';
+                    }
+                }
+            }
+            
+            if (estimatedPrice) {
+                const finalPrice = estimatedPrice;
+                
+                priceInput.value = parseFloat(finalPrice).toFixed(2);
+                priceInput.classList.add('price-estimated');
+                
+                const existingHints = priceInput.parentElement.querySelectorAll('.estimation-hint, .advised-price-note');
+                existingHints.forEach(hint => hint.remove());
+                
+                const hint = document.createElement('div');
+                hint.className = 'estimation-hint';
+                
+                if (hasExistingValue && Math.abs(parseFloat(originalValue) - finalPrice) > 0.01) {
+                    hint.innerHTML = `
+                        <i class="fas fa-lightbulb"></i>
+                        <strong>Advised Price:</strong> $${finalPrice.toFixed(2)} (Your entry: $${parseFloat(originalValue).toFixed(2)})
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">
+                            Based on ${priceSource} data • Already rounded to store price
+                        </div>
+                        <button class="btn btn-small" style="margin-left: auto; padding: 2px 8px; font-size: 10px;" 
+                                onclick="this.closest('.estimation-hint').remove(); this.closest('.form-group').querySelector('input').value = '${originalValue}';">
+                            <i class="fas fa-times"></i> Keep my price
+                        </button>
+                    `;
+                } else {
+                    hint.innerHTML = `
+                        <i class="fas fa-bolt"></i>
+                        <strong>Advised Price:</strong> $${finalPrice.toFixed(2)}
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">
+                            Based on ${priceSource} data • Already rounded to store price
+                        </div>
+                        <button class="btn btn-small" style="margin-left: auto; padding: 2px 8px; font-size: 10px;" 
+                                onclick="this.closest('.estimation-hint').remove()">
+                            <i class="fas fa-times"></i> Dismiss
+                        </button>
+                    `;
+                }
+                
+                priceInput.parentElement.appendChild(hint);
+                
+                this.showExpandableCalculationDetails(record, selectedCondition, estimate, recordId, finalPrice);
+                
+            } else {
+                if (!hasExistingValue) {
+                    priceInput.value = '';
+                }
+                showMessage('Could not estimate price. Please enter manually.', 'warning');
+            }
+        } else {
+            if (!hasExistingValue) {
+                priceInput.value = originalValue;
+            }
+            showMessage('Could not estimate price. Please enter manually.', 'warning');
+        }
+    }
+
+    showExpandableCalculationDetails(record, condition, estimate, recordId, finalPrice) {
+        const calculationContainer = document.getElementById(`calculation-${recordId}`);
+        if (!calculationContainer) return;
+        
+        let calculationHTML = '';
+        let priceSourceClass = 'estimated';
+        
+        if (estimate.estimated_price || estimate.price) {
+            if (estimate.price_source === 'discogs' || estimate.source === 'discogs') {
+                priceSourceClass = 'estimated';
+            } else if (estimate.price_source === 'calculated' || estimate.source === 'calculated') {
+                priceSourceClass = 'calculated';
+            }
+        }
+        
+        calculationHTML += `
+            <div class="rounding-info" style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
+                <strong>💰 Price Rules Applied by API:</strong>
+                <div style="margin-top: 5px;">
+                    <div>• <strong>Final Price:</strong> $${finalPrice.toFixed(2)} (already rounded)</div>
+                    <div>• <strong>Minimum Price:</strong> $${this.minimumPrice.toFixed(2)} ${finalPrice === this.minimumPrice ? '✓ Minimum applied' : '✓ Met minimum'}</div>
+                    <div style="font-size: 11px; color: #666; margin-top: 3px;">
+                        Price has been automatically rounded according to store pricing rules
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        if (estimate.calculation && estimate.calculation.length > 0) {
+            calculationHTML += `
+                <div class="calculation-content">
+                    <strong>🧮 Price Calculation:</strong>
+                    ${estimate.calculation.map(step => `
+                        <div class="calculation-step">
+                            ${step}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        if (estimate.ebay_summary && Object.keys(estimate.ebay_summary).length > 0) {
+            const searchQuery = estimate.search_query || estimate.ebay_summary.search_query || 'Nirvana Nevermind vinyl';
+            
+            calculationHTML += `
+                <div class="ebay-summary">
+                    <strong>🛒 eBay Listings Summary</strong>
+                    <div class="ebay-summary-table-container">
+                        <table class="ebay-summary-table">
+                            <tr>
+                                <th>Search Query</th>
+                                <td>${searchQuery}</td>
+                            </tr>
+                            <tr>
+                                <th>Total Listings</th>
+                                <td>${estimate.ebay_summary.total_listings || 0}</td>
+                            </tr>
+                            <tr>
+                                <th>Condition Listings</th>
+                                <td>${estimate.ebay_summary.condition_listings || 0}</td>
+                            </tr>
+                            <tr>
+                                <th>Condition Median</th>
+                                <td>$${(estimate.ebay_summary.condition_median || 0).toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <th>Generic Median</th>
+                                <td>$${(estimate.ebay_summary.generic_median || 0).toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <th>Price Range</th>
+                                <td>$${(estimate.ebay_summary.price_range?.[0] || 0).toFixed(2)} - $${(estimate.ebay_summary.price_range?.[1] || 0).toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <th>Average Price</th>
+                                <td>$${(estimate.ebay_summary.average_price || 0).toFixed(2)}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (estimate.ebay_listings && estimate.ebay_listings.length > 0) {
+            calculationHTML += `
+                <div class="ebay-listings" style="margin-top: 15px;">
+                    <div class="table-header">
+                        <h4>📊 eBay Listings Details</h4>
+                        <span class="table-count">
+                            ${estimate.ebay_listings.length} listings
+                        </span>
+                    </div>
+                    <div class="table-scroll-container">
+                        <table class="ebay-listings-table">
+                            <thead>
+                                <tr>
+                                    <th>Price</th>
+                                    <th>Shipping</th>
+                                    <th>Total</th>
+                                    <th>Condition</th>
+                                    <th>Title</th>
+                                    <th>Link</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${estimate.ebay_listings.map(listing => `
+                                    <tr class="${listing.matches_condition ? 'matches-condition' : ''}">
+                                        <td>
+                                            <div class="ebay-price">$${listing.price.toFixed(2)}</div>
+                                        </td>
+                                        <td>
+                                            <div class="ebay-shipping">
+                                                ${listing.shipping != null ? `$${listing.shipping.toFixed(2)}` : 'n/a'}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="ebay-total">
+                                                ${typeof listing.total === 'number' ? `$${listing.total.toFixed(2)}` : 'n/a'}
+                                            </div>
+                                            ${listing.matches_condition ? '<span class="condition-match-badge">✓ Match</span>' : ''}
+                                        </td>
+                                         
+                                        <td>
+                                            <div class="ebay-condition">${listing.condition || 'N/A'}</div>
+                                        </td>
+                                        <td>
+                                            <div class="ebay-title" title="${listing.full_title || listing.title}">
+                                                ${listing.title}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <a href="${listing.url}" target="_blank" rel="noopener noreferrer" 
+                                            class="ebay-link">
+                                                <i class="fas fa-external-link-alt"></i> View
+                                            </a>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (calculationHTML) {
+            calculationContainer.innerHTML = `
+                <div class="calculation-toggle" onclick="this.classList.toggle('expanded'); 
+                    this.nextElementSibling.classList.toggle('expanded');">
+                    <i class="fas fa-chevron-down"></i>
+                    <span>Show price calculation details</span>
+                    <span class="price-source-badge ${priceSourceClass}">
+                        ${priceSourceClass === 'calculated' ? 'CALCULATED' : 'ESTIMATED'}
+                    </span>
+                </div>
+                <div class="calculation-details">
+                    ${calculationHTML}
+                </div>
+            `;
+        } else {
+            calculationContainer.innerHTML = '';
+        }
+    }
+
+    addConditionChangeListeners() {
+        document.querySelectorAll('.condition-select').forEach(select => {
+            select.addEventListener('change', (e) => this.handleConditionChange(e, false));
+        });
+        
+        document.querySelectorAll('.edit-condition-select').forEach(select => {
+            select.addEventListener('change', (e) => this.handleConditionChange(e, true));
+        });
+    }
+
+    attachResultEventListeners() {
+        document.querySelectorAll('.add-record-btn').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                const card = e.target.closest('.record-card');
+                const index = card.getAttribute('data-index');
+                const record = this.currentResults[index];
+                
+                await this.addRecordFromDiscogs(card, record);
+            });
+        });
+
+        document.querySelectorAll('.accept-prediction-btn').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                e.preventDefault();
+                
+                const discogsGenre = button.getAttribute('data-discogs-genre');
+                const genreId = button.getAttribute('data-genre-id');
+                const genreName = button.getAttribute('data-genre-name');
+                const recordId = button.getAttribute('data-record-id');
+                
+                const saved = await this.genrePredictor.saveMapping(discogsGenre, genreId, genreName);
+                
+                if (saved) {
+                    const banner = document.getElementById(`prediction-banner-${recordId}`);
+                    if (banner) {
+                        banner.innerHTML = `
+                            <i class="fas fa-check-circle"></i>
+                            <div class="prediction-text">
+                                <strong>✅ Mapping Saved!</strong> Future "${discogsGenre}" records will default to ${genreName}
+                            </div>
+                        `;
+                        banner.classList.add('prediction-success');
+                        banner.classList.remove('prediction-available');
+                    }
+                    
+                    button.style.display = 'none';
+                    
+                    showMessage(`Genre mapping saved: "${discogsGenre}" → ${genreName}`, 'success');
+                }
+            });
+        });
+
+        document.querySelectorAll('.save-changes-btn').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                const recordId = e.target.getAttribute('data-record-id');
+                await this.saveRecordChanges(recordId);
+            });
+        });
+
+        document.querySelectorAll('.delete-record-btn').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                const recordId = e.target.getAttribute('data-record-id');
+                if (confirm('Are you sure you want to delete this record?')) {
+                    await this.deleteRecord(recordId);
+                }
+            });
+        });
+        
+        this.addConditionChangeListeners();
+    }
+
+    async addRecordFromDiscogs(card, discogsRecord) {
+        const genreSelect = card.querySelector('.genre-select');
+        const conditionSelect = card.querySelector('.condition-select');
+        const priceInput = card.querySelector('.price-input');
+        
+        const genreId = genreSelect.value;
+        const condition = conditionSelect.value;
+        const price = parseFloat(priceInput.value);
+        
+        const errors = [];
+        if (!genreId) errors.push('Please select a genre');
+        if (!condition) errors.push('Please select a condition');
+        if (!price || price < this.minimumPrice) errors.push(`Price must be at least $${this.minimumPrice.toFixed(2)}`);
+        
+        if (errors.length > 0) {
+            showMessage(errors.join('. '), 'error');
+            return;
+        }
+        
+        const user = JSON.parse(localStorage.getItem('user')) || {};
+        const genre = this.genres.find(g => g.id == genreId);
+        const genreName = genre ? genre.genre_name : '';
+        
+        const pigstyleBarcode = this.barcodeGenerator.generateBarcode();
+        
+        if (!this.barcodeGenerator.validateBarcode(pigstyleBarcode)) {
+            showMessage('Error: Generated barcode is not valid numeric format', 'error');
+            return;
+        }
+        
+        console.log('=== ADDING RECORD ===');
+        console.log('Generated PigStyle barcode (numeric):', pigstyleBarcode);
+        console.log('Barcode validation:', this.barcodeGenerator.validateBarcode(pigstyleBarcode));
+        console.log('Input price:', price);
+        console.log('Artist:', discogsRecord.artist);
+        console.log('Title:', discogsRecord.title);
+        console.log('Genre ID:', genreId);
+        console.log('Condition:', condition);
+        console.log('Final Price:', price);
+        
+        const recordData = {
+            artist: discogsRecord.artist,
+            title: discogsRecord.title,
+            barcode: pigstyleBarcode,
+            genre_id: parseInt(genreId),
+            genre_name: genreName,
+            image_url: discogsRecord.image_url || '',
+            catalog_number: discogsRecord.catalog_number || '',
+            format: discogsRecord.format || 'Vinyl',
+            condition: condition,
+            store_price: price,
+            youtube_url: '',
+            consignor_id: user.id || null,
+            commission_rate: this.commissionRate,
+            status_id: 1,
+        };
+        
+        console.log('Sending to /records endpoint:', recordData);
+        
+        try {
+            const response = await APIUtils.post('/records', recordData);
+            
+            if (response.status === 'success') {
+                showMessage(`Record added successfully! Barcode: ${pigstyleBarcode}. Price: $${price.toFixed(2)}`, 'success');
+
+                if (discogsRecord.genre && discogsRecord.predicted_genre && 
+                    discogsRecord.predicted_genre.local_genre_id == genreId) {
+                    await this.genrePredictor.saveMapping(
+                        discogsRecord.genre,
+                        genreId,
+                        genreName
+                    );
+                } else if (discogsRecord.genre && genreId) {
+                    await this.genrePredictor.saveMapping(
+                        discogsRecord.genre,
+                        genreId,
+                        genreName
+                    );
+                }
+                
+                await this.loadStats();
+                
+                this.clearResults();
+                document.getElementById('searchInput').value = '';
+                
+                document.getElementById('searchInput').focus();
+                
+            } else {
+                showMessage(`Error: ${response.error || 'Failed to add record'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error adding record:', error);
+            showMessage(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async saveRecordChanges(recordId) {
+        const card = document.querySelector(`[data-record-id="${recordId}"]`);
+        if (!card) return;
+        
+        const genreSelect = card.querySelector('.edit-genre-select');
+        const conditionSelect = card.querySelector('.edit-condition-select');
+        const priceInput = card.querySelector('.edit-price-input');
+        const statusSelect = card.querySelector('.edit-status-select');
+        
+        const updates = {};
+        
+        if (genreSelect && genreSelect.value) {
+            updates.genre_id = parseInt(genreSelect.value);
+        }
+        
+        if (conditionSelect && conditionSelect.value) {
+            updates.condition = conditionSelect.value;
+        }
+        
+        if (priceInput) {
+            const price = parseFloat(priceInput.value);
+            if (!isNaN(price) && price >= 0) {
+                if (price < this.minimumPrice) {
+                    showMessage(`Price must be at least $${this.minimumPrice.toFixed(2)}`, 'error');
+                    return;
+                }
+                updates.store_price = price;
+            }
+        }
+        
+        if (statusSelect && statusSelect.value) {
+            const statusMap = {
+                'new': 1,
+                'active': 2,
+                'sold': 3,
+                'removed': 4
+            };
+            updates.status_id = statusMap[statusSelect.value] || 2;
+        }
+        
+        if (Object.keys(updates).length === 0) {
+            showMessage('No changes to save', 'info');
+            return;
+        }
+        
+        console.log('SAVE_CHANGES: Updating record', recordId, 'with:', updates);
+        
+        try {
+            const response = await APIUtils.put(`/records/${recordId}`, updates);
+            
+            if (response.status === 'success') {
+                showMessage(`Record updated successfully! Price: $${updates.store_price ? (response.record.store_price || updates.store_price).toFixed(2) : 'unchanged'}`, 'success');
+                const currentSearch = document.getElementById('searchInput').value;
+                if (currentSearch) {
+                    await this.performSearch(currentSearch);
+                }
+                await this.loadStats();
+            } else {
+                showMessage(`Error: ${response.error || 'Failed to update record'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error updating record:', error);
+            showMessage(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async deleteRecord(recordId) {
+        try {
+            const response = await APIUtils.delete(`/records/${recordId}`);
+            
+            if (response.status === 'success') {
+                showMessage('Record deleted successfully!', 'success');
+                
+                this.currentResults = this.currentResults.filter(r => r.id != recordId);
+                
+                this.displayResults();
+                
+                await this.loadStats();
+            } else {
+                showMessage(`Error: ${response.error || 'Failed to delete record'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting record:', error);
+            showMessage(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    clearResults() {
+        this.currentResults = [];
+        document.getElementById('results-container').innerHTML = `
+            <div class="loading">
+                <i class="fas fa-search"></i>
+                <p>Search for records to get started</p>
+                <p><small>Enter a search term above</small></p>
+            </div>
+        `;
+    }
+}
+
+// Initialize when tab is activated
+document.addEventListener('tabChanged', function(e) {
+    if (e.detail.tabName === 'add-edit-delete') {
+        if (!window.addEditDeleteManager) {
+            window.addEditDeleteManager = new AddEditDeleteManager();
+        }
+    }
+});
