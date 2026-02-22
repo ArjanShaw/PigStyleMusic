@@ -2,6 +2,19 @@
 // receipts.js - Receipts Tab Functionality
 // ============================================================================
 
+// Override the utility function declarations with actual implementations
+window.loadSavedReceipts = loadSavedReceipts;
+window.saveReceipt = saveReceipt;
+window.renderReceipts = renderReceipts;
+window.searchReceipts = searchReceipts;
+window.resetReceiptSearch = resetReceiptSearch;
+window.viewReceipt = viewReceipt;
+window.downloadReceiptPDF = downloadReceiptPDF;
+window.printReceipt = printReceipt;
+window.closeReceiptModal = closeReceiptModal;
+window.printToThermalPrinter = printToThermalPrinter;
+window.formatReceiptForPrinter = formatReceiptForPrinter;
+
 // Load saved receipts from localStorage
 function loadSavedReceipts() {
     const saved = localStorage.getItem('pigstyle_receipts');
@@ -42,6 +55,8 @@ function saveReceipt(transaction) {
 // Render receipts in the receipts tab
 function renderReceipts(receipts) {
     const container = document.getElementById('receipts-grid');
+    
+    if (!container) return;
     
     if (receipts.length === 0) {
         container.innerHTML = `
@@ -89,6 +104,11 @@ function renderReceipts(receipts) {
                     <span>Items: ${itemCount}</span>
                     <span class="receipt-card-total">$${(receipt.total || 0).toFixed(2)}</span>
                 </div>
+                ${receipt.discount && receipt.discount > 0 ? 
+                    `<div class="receipt-card-discount" style="color: #27ae60; font-size: 0.9em; margin-top: 5px;">
+                        <i class="fas fa-tag"></i> Discount: -$${receipt.discount.toFixed(2)} 
+                        ${receipt.discountType === 'percentage' ? `(${receipt.discountAmount}%)` : ''}
+                    </div>` : ''}
                 <div class="receipt-card-items" title="${itemSummary}">
                     <i class="fas fa-music"></i> ${itemSummary}
                 </div>
@@ -240,7 +260,7 @@ async function downloadReceiptPDF(receiptId) {
         
         y += 5;
         
-        if (y > 270) {
+        if (y > 250) {
             doc.addPage();
             y = 20;
         }
@@ -250,9 +270,20 @@ async function downloadReceiptPDF(receiptId) {
     doc.line(20, y, 190, y);
     y += 5;
     
+    // Show subtotal before discount
     doc.setFont('helvetica', 'bold');
-    doc.text(`Subtotal: $${(receipt.subtotal || 0).toFixed(2)}`, 180, y, { align: 'right' });
+    doc.text(`Subtotal: $${((receipt.subtotal || 0) + (receipt.discount || 0)).toFixed(2)}`, 180, y, { align: 'right' });
     y += 5;
+    
+    // Show discount if applicable
+    if (receipt.discount && receipt.discount > 0) {
+        const discountText = receipt.discountType === 'percentage' 
+            ? `Discount (${receipt.discountAmount}%): -$${receipt.discount.toFixed(2)}`
+            : `Discount: -$${receipt.discount.toFixed(2)}`;
+        doc.text(discountText, 180, y, { align: 'right' });
+        y += 5;
+    }
+    
     doc.text(`Tax (${receipt.taxRate || (dbConfigValues['TAX_RATE'] && dbConfigValues['TAX_RATE'].value) || 0}%): $${(receipt.tax || 0).toFixed(2)}`, 180, y, { align: 'right' });
     y += 5;
     doc.setFontSize(11);
@@ -263,9 +294,12 @@ async function downloadReceiptPDF(receiptId) {
     doc.setFont('helvetica', 'normal');
     doc.text(`Payment Method: ${receipt.paymentMethod || 'Cash'}`, 20, y);
     y += 5;
-    doc.text(`Tendered: $${(receipt.tendered || 0).toFixed(2)}`, 20, y);
-    y += 5;
-    doc.text(`Change: $${(receipt.change || 0).toFixed(2)}`, 20, y);
+    if (receipt.tendered) {
+        doc.text(`Tendered: $${(receipt.tendered || 0).toFixed(2)}`, 20, y);
+        y += 5;
+        doc.text(`Change: $${(receipt.change || 0).toFixed(2)}`, 20, y);
+        y += 5;
+    }
     
     y += 10;
     doc.setFontSize(9);
@@ -292,6 +326,8 @@ function printReceipt(receiptId) {
 // Show receipt in modal
 function showReceipt(transaction) {
     const receiptContent = document.getElementById('receipt-content');
+    if (!receiptContent) return;
+    
     const dateStr = transaction.date.toLocaleDateString() + ' ' + 
                    transaction.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
@@ -321,6 +357,8 @@ function showReceipt(transaction) {
         }
     });
     
+    const subtotalBeforeDiscount = (transaction.subtotal || 0) + (transaction.discount || 0);
+    
     receiptContent.innerHTML = `
         <div style="text-align: center; margin-bottom: 20px;">
             <h2>${escapeHtml(transaction.storeName) || (dbConfigValues['STORE_NAME'] && dbConfigValues['STORE_NAME'].value) || 'PigStyle Music'}</h2>
@@ -344,8 +382,13 @@ function showReceipt(transaction) {
         <div style="border-top: 1px solid #ccc; padding-top: 10px;">
             <div style="display: flex; justify-content: space-between;">
                 <span>Subtotal:</span>
-                <span>$${(transaction.subtotal || 0).toFixed(2)}</span>
+                <span>$${subtotalBeforeDiscount.toFixed(2)}</span>
             </div>
+            ${transaction.discount && transaction.discount > 0 ? 
+                `<div style="display: flex; justify-content: space-between; color: #27ae60;">
+                    <span>Discount ${transaction.discountType === 'percentage' ? `(${transaction.discountAmount}%)` : ''}:</span>
+                    <span>-$${transaction.discount.toFixed(2)}</span>
+                </div>` : ''}
             <div style="display: flex; justify-content: space-between;">
                 <span>Tax (${transaction.taxRate || (dbConfigValues['TAX_RATE'] && dbConfigValues['TAX_RATE'].value) || 0}%):</span>
                 <span>$${(transaction.tax || 0).toFixed(2)}</span>
@@ -410,7 +453,7 @@ async function printToThermalPrinter(text) {
     }
 }
 
-// Function to format receipt for thermal printer
+// Function to format receipt for thermal printer - UPDATED with discount info
 function formatReceiptForPrinter(transaction) {
     const storeName = transaction.storeName || 'PigStyle Music';
     const storeAddress = transaction.storeAddress || '';
@@ -454,8 +497,17 @@ function formatReceiptForPrinter(transaction) {
     
     receipt.push(''.padEnd(32, '-') + '\n');
     
+    const subtotalBeforeDiscount = (transaction.subtotal || 0) + (transaction.discount || 0);
+    receipt.push(`Subtotal:`.padEnd(24) + `$${subtotalBeforeDiscount.toFixed(2)}`.padStart(8) + '\n');
+    
+    if (transaction.discount && transaction.discount > 0) {
+        const discountText = transaction.discountType === 'percentage' 
+            ? `Discount (${transaction.discountAmount}%):`.padEnd(24)
+            : `Discount:`.padEnd(24);
+        receipt.push(discountText + `-$${transaction.discount.toFixed(2)}`.padStart(8) + '\n');
+    }
+    
     receipt.push('\x1B\x45\x01');
-    receipt.push(`Subtotal:`.padEnd(24) + `$${transaction.subtotal.toFixed(2)}`.padStart(8) + '\n');
     receipt.push(`Tax (${transaction.taxRate || 0}%):`.padEnd(24) + `$${transaction.tax.toFixed(2)}`.padStart(8) + '\n');
     receipt.push(`TOTAL:`.padEnd(24) + `$${transaction.total.toFixed(2)}`.padStart(8) + '\n');
     receipt.push('\x1B\x45\x00');
@@ -484,3 +536,16 @@ document.addEventListener('tabChanged', function(e) {
         renderReceipts(savedReceipts);
     }
 });
+
+// Make functions globally available
+window.loadSavedReceipts = loadSavedReceipts;
+window.saveReceipt = saveReceipt;
+window.renderReceipts = renderReceipts;
+window.searchReceipts = searchReceipts;
+window.resetReceiptSearch = resetReceiptSearch;
+window.viewReceipt = viewReceipt;
+window.downloadReceiptPDF = downloadReceiptPDF;
+window.printReceipt = printReceipt;
+window.closeReceiptModal = closeReceiptModal;
+window.printToThermalPrinter = printToThermalPrinter;
+window.formatReceiptForPrinter = formatReceiptForPrinter;
