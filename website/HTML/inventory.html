@@ -17,13 +17,182 @@
     
     <link rel="stylesheet" href="/static/css/catalog.css">
     <script src="/static/js/app-config.js"></script>
+    
+    <style>
+        /* Additional styles for copy count and price range */
+        .copy-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 8px 0 5px 0;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .copy-count {
+            background: #ff6b6b;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .price-range {
+            font-weight: 600;
+            color: #28a745;
+            font-size: 13px;
+        }
+        
+        .condition-indicator {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-right: 4px;
+        }
+        
+        .condition-mint { background: #d4edda; color: #155724; }
+        .condition-near-mint { background: #cce5ff; color: #004085; }
+        .condition-very-good-plus { background: #d1ecf1; color: #0c5460; }
+        .condition-very-good { background: #fff3cd; color: #856404; }
+        .condition-good-plus { background: #f8d7da; color: #721c24; }
+        .condition-good { background: #f8d7da; color: #721c24; }
+        .condition-fair { background: #e2e3e5; color: #383d41; }
+        .condition-poor { background: #e2e3e5; color: #383d41; }
+        
+        .conditions-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 5px;
+        }
+        
+        .card:hover .conditions-list {
+            opacity: 1;
+        }
+        
+        /* Tooltip for additional copies */
+        .more-copies {
+            font-size: 11px;
+            color: #999;
+            margin-left: 4px;
+        }
+
+        /* Popup/Modal styles */
+        .copies-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .copies-modal {
+            background: white;
+            border-radius: 8px;
+            width: 500px;
+            max-width: 90%;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .copies-modal-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 2px solid #ff6b6b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .copies-modal-header h3 {
+            margin: 0;
+            color: #000000;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .copies-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #000000;
+            padding: 0;
+            line-height: 1;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .copies-modal-close:hover {
+            opacity: 1;
+            color: #ff6b6b;
+        }
+
+        .copies-list {
+            padding: 20px;
+            max-height: calc(80vh - 120px);
+            overflow-y: auto;
+            background: white;
+        }
+
+        .copy-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .copy-item:last-child {
+            border-bottom: none;
+        }
+
+        .copy-condition {
+            flex: 2;
+        }
+
+        .copy-price {
+            flex: 1;
+            text-align: right;
+            font-weight: 600;
+            color: #000000;
+            font-size: 16px;
+        }
+
+        .copies-modal-footer {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .footer-total {
+            color: #000000;
+            font-weight: 500;
+        }
+
+        .footer-range {
+            color: #000000;
+            font-weight: 500;
+        }
+    </style>
 </head>
 <body>
     <!-- Navbar -->
     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
         <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
             <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
-            
         </a>
         <div style="display: flex; gap: 20px; align-items: center;">
             <a href="/inventory" style="color: white; text-decoration: none;">Inventory</a>
@@ -43,8 +212,6 @@
         <div class="background-overlay"></div>
     </div>
 
-     
-    
     <div class="header-section">
         <div class='search-container'>
             <input type='text' id='searchBox' placeholder='Search artist or record...'>
@@ -54,6 +221,18 @@
             <div class="filter-group">
                 <select id="artistFilter" class="filter-select">
                     <option value="">All Artists</option>
+                </select>
+                
+                <select id="conditionFilter" class="filter-select">
+                    <option value="">All Conditions</option>
+                    <option value="Mint (M)">Mint (M)</option>
+                    <option value="Near Mint (NM or M-)">Near Mint (NM or M-)</option>
+                    <option value="Very Good Plus (VG+)">Very Good Plus (VG+)</option>
+                    <option value="Very Good (VG)">Very Good (VG)</option>
+                    <option value="Good Plus (G+)">Good Plus (G+)</option>
+                    <option value="Good (G)">Good (G)</option>
+                    <option value="Fair (F)">Fair (F)</option>
+                    <option value="Poor (P)">Poor (P)</option>
                 </select>
                 
                 <div class="price-filter-group">
@@ -80,247 +259,376 @@
     </div>
 
     <script>
-        // Store all records globally for search functionality
-        let allRecords = [];
-        let currentFilteredRecords = [];
+        // Store all releases globally
+        let allReleases = [];
 
-        // Load data from Flask API
+        // Load data from new grouped API endpoint
         async function loadCatalogData() {
             try {
-                console.log('Loading catalog data from API...');
-                const response = await pigstyleAPI.loadCatalogGroupedRecords();
+                console.log('Loading grouped catalog data from API...');
+                const response = await fetch(`${AppConfig.baseUrl}/catalog/grouped-by-release`);
+                const data = await response.json();
                 
-                // Debug: log the response format
-                console.log('API Response:', response);
+                console.log('API Response:', data);
                 
-                // Handle different response formats
-                let catalogData;
-                if (Array.isArray(response)) {
-                    // Response is already an array of records
-                    console.log('Response is array, converting to grouped format...');
-                    catalogData = {
-                        count: response.length,
-                        groups: createPriceGroupsFromArray(response)
-                    };
-                } else if (response && response.groups && Array.isArray(response.groups)) {
-                    // Response already has groups property
-                    catalogData = response;
-                } else if (response && response.records && Array.isArray(response.records)) {
-                    // Response has records property
-                    console.log('Response has records property, converting to grouped format...');
-                    catalogData = {
-                        count: response.records.length,
-                        groups: createPriceGroupsFromArray(response.records)
-                    };
-                } else if (response && response.data && Array.isArray(response.data)) {
-                    // Response has data property
-                    console.log('Response has data property, converting to grouped format...');
-                    catalogData = {
-                        count: response.data.length,
-                        groups: createPriceGroupsFromArray(response.data)
-                    };
+                if (data.status === 'success') {
+                    allReleases = data.groups || [];
+                    console.log(`Loaded ${allReleases.length} unique releases with ${data.total_copies} total copies`);
+                    displayReleases(allReleases);
+                    populateArtistFilter();
                 } else {
-                    // Unknown format, try to find any array
-                    console.log('Unknown response format, attempting to find array...');
-                    for (const key in response) {
-                        if (Array.isArray(response[key])) {
-                            console.log(`Found array in property: ${key}`);
-                            catalogData = {
-                                count: response[key].length,
-                                groups: createPriceGroupsFromArray(response[key])
-                            };
-                            break;
-                        }
-                    }
+                    throw new Error('Invalid response from server');
                 }
-                
-                if (!catalogData || !catalogData.groups) {
-                    throw new Error(`Invalid response format: ${JSON.stringify(response).substring(0, 200)}...`);
-                }
-                
-                console.log(`Loaded ${catalogData.count} records in ${catalogData.groups.length} price groups`);
-                
-                // Flatten all records for search functionality
-                allRecords = [];
-                catalogData.groups.forEach(group => {
-                    if (group.records && Array.isArray(group.records)) {
-                        allRecords = allRecords.concat(group.records);
-                    }
-                });
-                
-                currentFilteredRecords = allRecords;
-                
-                displayCatalogGroups(catalogData.groups);
-                populateArtistFilter();
                 
             } catch (error) {
                 console.error('Error loading catalog data:', error);
+                // Fallback to original endpoint if new one fails
+                loadCatalogDataFallback();
+            }
+        }
+
+        // Fallback to original endpoint
+        async function loadCatalogDataFallback() {
+            try {
+                console.log('Falling back to original catalog endpoint...');
+                const response = await pigstyleAPI.loadCatalogGroupedRecords();
+                
+                let catalogData;
+                if (Array.isArray(response)) {
+                    catalogData = {
+                        groups: [{
+                            label: 'All Records',
+                            records: response
+                        }]
+                    };
+                } else if (response && response.groups) {
+                    catalogData = response;
+                } else {
+                    throw new Error('Invalid response format');
+                }
+                
+                // Convert flat records to grouped format
+                const records = catalogData.groups.flatMap(g => g.records || []);
+                const grouped = groupRecordsByRelease(records);
+                allReleases = grouped;
+                
+                displayReleases(grouped);
+                populateArtistFilter();
+                
+            } catch (error) {
+                console.error('Error loading fallback data:', error);
                 document.getElementById('catalogContainer').innerHTML = 
                     '<div class="error-message">Error loading catalog. Please try again later.<br>' + 
                     error.message + '</div>';
             }
         }
 
-        // Helper function to create price groups from a flat array
-        function createPriceGroupsFromArray(recordsArray) {
-            if (!recordsArray || !Array.isArray(recordsArray)) {
-                return [];
-            }
+        // Helper function to group flat records by release
+        function groupRecordsByRelease(records) {
+            const groups = {};
+            const conditionOrder = {
+                'Mint (M)': 1,
+                'Near Mint (NM or M-)': 2,
+                'Very Good Plus (VG+)': 3,
+                'Very Good (VG)': 4,
+                'Good Plus (G+)': 5,
+                'Good (G)': 6,
+                'Fair (F)': 7,
+                'Poor (P)': 8
+            };
             
-            // Define price ranges
-            const priceRanges = [
-                { label: "$0 - $5", min: 0, max: 5 },
-                { label: "$5 - $10", min: 5, max: 10 },
-                { label: "$10 - $15", min: 10, max: 15 },
-                { label: "$15 - $20", min: 15, max: 20 },
-                { label: "$20 - $25", min: 20, max: 25 },
-                { label: "$25 - $30", min: 25, max: 30 },
-                { label: "$30 - $40", min: 30, max: 40 },
-                { label: "$40 - $50", min: 40, max: 50 },
-                { label: "$50 - $100", min: 50, max: 100 },
-                { label: "$100+", min: 100, max: 99999 }
-            ];
-            
-            // Group records by price range
-            const groups = priceRanges.map(range => {
-                const recordsInRange = recordsArray.filter(record => {
-                    const price = parseFloat(record.store_price) || 0;
-                    return price >= range.min && price < range.max;
-                });
+            records.forEach(record => {
+                const artist = (record.artist || '').trim();
+                const title = (record.title || '').trim();
+                const key = `${artist.toLowerCase()}|${title.toLowerCase()}`;
                 
-                return {
-                    label: range.label,
-                    min: range.min,
-                    max: range.max,
-                    records: recordsInRange
+                if (!groups[key]) {
+                    groups[key] = {
+                        artist: artist,
+                        title: title,
+                        genre_name: record.genre_name,
+                        image_url: record.image_url,
+                        total_copies: 0,
+                        price_range: { min: Infinity, max: 0 },
+                        copies: []
+                    };
+                }
+                
+                const copy = {
+                    id: record.id,
+                    condition: record.condition,
+                    condition_rank: conditionOrder[record.condition] || 99,
+                    store_price: parseFloat(record.store_price) || 0,
+                    barcode: record.barcode,
+                    catalog_number: record.catalog_number,
+                    youtube_url: record.youtube_url
                 };
+                
+                groups[key].copies.push(copy);
+                groups[key].total_copies++;
+                
+                if (copy.store_price > 0) {
+                    groups[key].price_range.min = Math.min(groups[key].price_range.min, copy.store_price);
+                    groups[key].price_range.max = Math.max(groups[key].price_range.max, copy.store_price);
+                }
             });
             
-            // Filter out empty groups
-            return groups.filter(group => group.records && group.records.length > 0);
+            // Clean up price ranges
+            Object.values(groups).forEach(group => {
+                if (group.price_range.min === Infinity) {
+                    group.price_range = { min: 0, max: 0 };
+                }
+            });
+            
+            return Object.values(groups).sort((a, b) => 
+                (a.artist || '').localeCompare(b.artist || '')
+            );
         }
 
-        // Display catalog groups
-        function displayCatalogGroups(groups) {
+        // Display releases (keeps same tile layout)
+        function displayReleases(releases) {
             const container = document.getElementById('catalogContainer');
             container.innerHTML = ''; // Clear loading message
 
-            if (!groups || groups.length === 0) {
+            if (!releases || releases.length === 0) {
                 container.innerHTML = '<div class="no-records">No records found in the database.</div>';
                 return;
             }
 
-            // Filter out empty groups
-            const nonEmptyGroups = groups.filter(group => group.records && group.records.length > 0);
-            
-            if (nonEmptyGroups.length === 0) {
-                container.innerHTML = '<div class="no-records">No records found in the database.</div>';
-                return;
-            }
+            console.log(`Displaying ${releases.length} releases`);
 
-            console.log(`Displaying ${nonEmptyGroups.length} non-empty price groups`);
-
-            nonEmptyGroups.forEach(group => {
-                const groupElement = createGroupElement(group);
-                container.appendChild(groupElement);
-            });
-
-            // Initialize search and filter functionality
-            initializeSearch();
-            initializeFilters();
-        }
-
-        // Create a price group element
-        function createGroupElement(group) {
-            const groupDiv = document.createElement('div');
-            groupDiv.className = 'price-group';
-            groupDiv.dataset.groupLabel = group.label;
-            groupDiv.dataset.minPrice = group.min || 0;
-            groupDiv.dataset.maxPrice = group.max || 99999;
-            
+            // Create a gallery container to maintain same layout
             const gallery = document.createElement('div');
             gallery.className = 'group-gallery';
-            
-            // Add cards for each record in this group
-            if (group.records && Array.isArray(group.records)) {
-                group.records.forEach(record => {
-                    const card = createCardElement(record);
-                    gallery.appendChild(card);
-                });
-            }
-            
-            groupDiv.appendChild(gallery);
-            
-            return groupDiv;
+            gallery.style.display = 'grid';
+            gallery.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
+            gallery.style.gap = '20px';
+            gallery.style.padding = '20px';
+
+            releases.forEach(release => {
+                const card = createReleaseCard(release);
+                gallery.appendChild(card);
+            });
+
+            container.appendChild(gallery);
         }
 
-        // Create a card element
-        function createCardElement(record) {
+        // Create a card for a release (keeps same visual style as original)
+        function createReleaseCard(release) {
             const card = document.createElement('div');
             card.className = 'card';
             
-            const artist = record.artist || 'Unknown Artist';
-            const title = record.title || 'Unknown Title';
-            const imageUrl = record.image_url || '/static/images/default-record.jpg';
-            const genre = record.genre_name || 'Unknown Genre';
-            const price = record.store_price ? pigstyleAPI.formatPrice(record.store_price) : 'Price N/A';
-            const youtubeUrl = record.youtube_url || '';
-            const recordCondition = record.condition || '';
+            // Set data attributes for filtering
+            card.setAttribute('data-artist', (release.artist || '').toLowerCase());
+            card.setAttribute('data-title', (release.title || '').toLowerCase());
             
-            card.setAttribute('data-artist', artist.toLowerCase());
-            card.setAttribute('data-title', title.toLowerCase());
-            card.setAttribute('data-price', parseFloat(record.store_price) || 0);
-            if (recordCondition) {
-                card.setAttribute('data-condition', recordCondition.toLowerCase());
+            // Get the best image (first copy with image, or default)
+            const imageUrl = release.image_url || '/static/images/default-record.jpg';
+            
+            // Get genre
+            const genre = release.genre_name || 'Unknown Genre';
+            
+            // Calculate price range display
+            const priceRange = release.price_range;
+            let priceDisplay = '';
+            if (priceRange.min > 0 && priceRange.max > 0) {
+                if (priceRange.min === priceRange.max) {
+                    priceDisplay = `$${priceRange.min.toFixed(2)}`;
+                } else {
+                    priceDisplay = `$${priceRange.min.toFixed(2)} - $${priceRange.max.toFixed(2)}`;
+                }
+            } else if (priceRange.min > 0) {
+                priceDisplay = `$${priceRange.min.toFixed(2)}`;
+            } else {
+                priceDisplay = 'Price varies';
             }
             
-            const hasYouTube = youtubeUrl && youtubeUrl.trim() !== '';
-            const hasCondition = recordCondition && recordCondition.trim() !== '';
+            // Get all unique conditions from copies
+            const conditions = [...new Set(release.copies.map(c => c.condition).filter(Boolean))];
+            const conditionCounts = {};
+            release.copies.forEach(copy => {
+                if (copy.condition) {
+                    conditionCounts[copy.condition] = (conditionCounts[copy.condition] || 0) + 1;
+                }
+            });
             
-            // Create condition class based on condition value
-            let conditionClass = 'condition';
-            if (hasCondition) {
-                const conditionSlug = recordCondition.toLowerCase().replace(/\s+/g, '-');
-                conditionClass += ` condition-${conditionSlug}`;
+            // Sort conditions by grade
+            const conditionOrder = {
+                'Mint (M)': 1,
+                'Near Mint (NM or M-)': 2,
+                'Very Good Plus (VG+)': 3,
+                'Very Good (VG)': 4,
+                'Good Plus (G+)': 5,
+                'Good (G)': 6,
+                'Fair (F)': 7,
+                'Poor (P)': 8
+            };
+            
+            const sortedConditions = conditions.sort((a, b) => 
+                (conditionOrder[a] || 99) - (conditionOrder[b] || 99)
+            );
+            
+            // Build conditions HTML
+            let conditionsHtml = '';
+            if (sortedConditions.length > 0) {
+                conditionsHtml = '<div class="conditions-list">';
+                sortedConditions.slice(0, 3).forEach(condition => {
+                    if (!condition) return;
+                    const conditionClass = getConditionClass(condition);
+                    const count = conditionCounts[condition] || '';
+                    const countDisplay = count > 1 ? ` (${count})` : '';
+                    conditionsHtml += `<span class="condition-indicator ${conditionClass}">${condition}${countDisplay}</span>`;
+                });
+                if (sortedConditions.length > 3) {
+                    conditionsHtml += `<span class="more-copies">+${sortedConditions.length - 3} more</span>`;
+                }
+                conditionsHtml += '</div>';
             }
+            
+            // Copy count display
+            const copyCountText = release.total_copies === 1 
+                ? '1 copy' 
+                : `${release.total_copies} copies`;
             
             card.innerHTML = `
                 <div class="card-image">
-                    <img src="${imageUrl}" alt="${title}" onerror="this.src='/static/images/default-record.jpg'">
+                    <img src="${imageUrl}" alt="${release.title}" onerror="this.src='/static/images/default-record.jpg'">
                 </div>
                 <div class="card-info">
-                    <h3>${pigstyleAPI.escapeHtml(title)}</h3>
-                    <p class="artist">${pigstyleAPI.escapeHtml(artist)}</p>
-                    <p class="price">${price}</p>
+                    <h3>${pigstyleAPI.escapeHtml(release.title)}</h3>
+                    <p class="artist">${pigstyleAPI.escapeHtml(release.artist)}</p>
+                    
+                    <div class="copy-info">
+                        <span class="copy-count">${copyCountText}</span>
+                        <span class="price-range">${priceDisplay}</span>
+                    </div>
+                    
                     <p class="genre">${pigstyleAPI.escapeHtml(genre)}</p>
-                    ${hasCondition ? `
-                        <p class="${conditionClass}">Condition: ${recordCondition}</p>
-                    ` : ''}
-                    ${hasYouTube ? `
-                        <a href="#" class="youtube-link" onclick="openYouTubeModal('${youtubeUrl.replace(/'/g, "\\'")}', '${pigstyleAPI.escapeHtml(artist)} - ${pigstyleAPI.escapeHtml(title)}'); return false;">
+                    
+                    ${conditionsHtml}
+                    
+                    ${release.copies.some(c => c.youtube_url) ? `
+                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${pigstyleAPI.escapeHtml(release.artist)} - ${pigstyleAPI.escapeHtml(release.title)}'); return false;">
                             🎵 Watch Video
                         </a>
                     ` : ''}
                 </div>
             `;
             
+            // Add click handler to show all copies popup
+            card.addEventListener('click', function(e) {
+                // Don't trigger if clicking on YouTube link
+                if (e.target.closest('.youtube-link')) return;
+                
+                // Show popup with all copies
+                showCopiesPopup(release);
+            });
+            
             return card;
         }
 
-        // YouTube modal function
-        function openYouTubeModal(youtubeUrl, title) {
-            // Extract YouTube video ID
+        // Helper function to get CSS class for condition
+        function getConditionClass(condition) {
+            const conditionLower = (condition || '').toLowerCase();
+            if (conditionLower.includes('mint') && !conditionLower.includes('near')) {
+                return 'condition-mint';
+            } else if (conditionLower.includes('near mint')) {
+                return 'condition-near-mint';
+            } else if (conditionLower.includes('very good plus')) {
+                return 'condition-very-good-plus';
+            } else if (conditionLower.includes('very good')) {
+                return 'condition-very-good';
+            } else if (conditionLower.includes('good plus')) {
+                return 'condition-good-plus';
+            } else if (conditionLower.includes('good')) {
+                return 'condition-good';
+            } else if (conditionLower.includes('fair')) {
+                return 'condition-fair';
+            } else if (conditionLower.includes('poor')) {
+                return 'condition-poor';
+            }
+            return '';
+        }
+
+        // Show popup with all copies (all text black)
+        function showCopiesPopup(release) {
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.className = 'copies-modal-overlay';
+            
+            // Sort copies by condition (best first)
+            const conditionOrder = {
+                'Mint (M)': 1,
+                'Near Mint (NM or M-)': 2,
+                'Very Good Plus (VG+)': 3,
+                'Very Good (VG)': 4,
+                'Good Plus (G+)': 5,
+                'Good (G)': 6,
+                'Fair (F)': 7,
+                'Poor (P)': 8
+            };
+            
+            const sortedCopies = [...release.copies].sort((a, b) => {
+                const orderA = conditionOrder[a.condition] || 99;
+                const orderB = conditionOrder[b.condition] || 99;
+                if (orderA !== orderB) return orderA - orderB;
+                return b.store_price - a.store_price; // Higher price first for same condition
+            });
+            
+            // Create modal content
+            modal.innerHTML = `
+                <div class="copies-modal">
+                    <div class="copies-modal-header">
+                        <h3>${pigstyleAPI.escapeHtml(release.artist)} - ${pigstyleAPI.escapeHtml(release.title)}</h3>
+                        <button class="copies-modal-close">&times;</button>
+                    </div>
+                    <div class="copies-list">
+                        ${sortedCopies.map(copy => {
+                            const conditionClass = getConditionClass(copy.condition);
+                            return `
+                                <div class="copy-item">
+                                    <span class="copy-condition">
+                                        <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
+                                    </span>
+                                    <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    <div class="copies-modal-footer">
+                        <span class="footer-total">Total Copies: ${release.total_copies}</span>
+                        <span class="footer-range">Price Range: $${release.price_range.min.toFixed(2)} - $${release.price_range.max.toFixed(2)}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Add click handler to close button
+            const closeBtn = modal.querySelector('.copies-modal-close');
+            closeBtn.addEventListener('click', () => {
+                modal.remove();
+            });
+            
+            // Add click outside to close
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            document.body.appendChild(modal);
+        }
+
+        // Handle YouTube click
+        function handleYouTubeClick(youtubeUrl, title) {
             const videoId = extractYouTubeId(youtubeUrl);
             if (!videoId) {
                 alert('Invalid YouTube URL');
                 return;
             }
             
-            // Create modal overlay
             const modal = document.createElement('div');
             modal.className = 'youtube-modal-overlay';
             
-            // Create modal content
             modal.innerHTML = `
                 <div class="youtube-modal">
                     <div class="youtube-modal-header">
@@ -334,37 +642,19 @@
                             allowfullscreen>
                         </iframe>
                     </div>
-                    <div class="youtube-modal-footer">
-                        <a href="${youtubeUrl}" target="_blank">Open in YouTube ↗</a>
-                    </div>
                 </div>
             `;
             
-            // Add click outside to close
             modal.addEventListener('click', function(e) {
                 if (e.target === modal) {
                     modal.remove();
                 }
             });
             
-            // Add escape key to close
-            const closeOnEsc = function(e) {
-                if (e.key === 'Escape') {
-                    modal.remove();
-                    document.removeEventListener('keydown', closeOnEsc);
-                }
-            };
-            document.addEventListener('keydown', closeOnEsc);
-            
             document.body.appendChild(modal);
-            
-            // Remove event listener when modal closes
-            modal.addEventListener('DOMNodeRemoved', function() {
-                document.removeEventListener('keydown', closeOnEsc);
-            });
         }
 
-        // Helper function to extract YouTube ID
+        // Extract YouTube ID
         function extractYouTubeId(url) {
             if (!url) return null;
             
@@ -388,14 +678,22 @@
         // Populate artist filter dropdown
         function populateArtistFilter() {
             const artistFilter = document.getElementById('artistFilter');
-            const artists = pigstyleAPI.getUniqueArtists(allRecords);
+            
+            const artists = new Set();
+            allReleases.forEach(release => {
+                if (release.artist && release.artist.trim() !== '') {
+                    artists.add(release.artist.trim());
+                }
+            });
+            
+            const sortedArtists = Array.from(artists).sort();
             
             // Clear existing options (keeping "All Artists")
             while (artistFilter.options.length > 1) {
                 artistFilter.remove(1);
             }
             
-            artists.forEach(artist => {
+            sortedArtists.forEach(artist => {
                 const option = document.createElement('option');
                 option.value = artist;
                 option.textContent = artist;
@@ -403,121 +701,102 @@
             });
         }
 
-        // Initialize search functionality
-        function initializeSearch() {
-            const searchBox = document.getElementById('searchBox');
-            
-            searchBox.addEventListener('input', () => {
-                applyAllFilters();
-            });
-        }
-
-        // Initialize filter functionality
+        // Initialize search and filter functionality
         function initializeFilters() {
+            const searchBox = document.getElementById('searchBox');
             const artistFilter = document.getElementById('artistFilter');
+            const conditionFilter = document.getElementById('conditionFilter');
             const minPrice = document.getElementById('minPrice');
             const maxPrice = document.getElementById('maxPrice');
             
-            artistFilter.addEventListener('change', applyAllFilters);
-            minPrice.addEventListener('input', applyAllFilters);
-            maxPrice.addEventListener('input', applyAllFilters);
-            
-            // Clear price filters button functionality
-            const clearPriceFilters = () => {
-                minPrice.value = '';
-                maxPrice.value = '';
-                applyAllFilters();
-            };
-            
-            // Add clear button if not exists
-            if (!document.getElementById('clearPriceFilters')) {
-                const clearButton = document.createElement('button');
-                clearButton.id = 'clearPriceFilters';
-                clearButton.textContent = 'Clear Price Filter';
-                clearButton.className = 'clear-price-filter';
-                clearButton.addEventListener('click', clearPriceFilters);
-                
-                const priceFilterGroup = document.querySelector('.price-filter-group');
-                priceFilterGroup.appendChild(clearButton);
-            }
+            [searchBox, artistFilter, conditionFilter, minPrice, maxPrice].forEach(element => {
+                if (element) {
+                    element.addEventListener('input', applyFilters);
+                    element.addEventListener('change', applyFilters);
+                }
+            });
         }
 
-        // Apply all filters (search, artist, price)
-        function applyAllFilters() {
+        // Apply all filters
+        function applyFilters() {
             const searchTerm = document.getElementById('searchBox').value.toLowerCase().trim();
             const selectedArtist = document.getElementById('artistFilter').value;
+            const selectedCondition = document.getElementById('conditionFilter').value;
             const minPriceValue = parseFloat(document.getElementById('minPrice').value) || 0;
             const maxPriceValue = parseFloat(document.getElementById('maxPrice').value) || 99999;
             
             const container = document.getElementById('catalogContainer');
-            const groups = Array.from(container.querySelectorAll('.price-group'));
+            const cards = container.querySelectorAll('.card');
             
-            let visibleGroupCount = 0;
+            let visibleCount = 0;
             
-            groups.forEach(group => {
-                const cards = Array.from(group.querySelectorAll('.card'));
-                let visibleCardsInGroup = 0;
+            cards.forEach(card => {
+                const artist = card.getAttribute('data-artist') || '';
+                const title = card.getAttribute('data-title') || '';
                 
-                cards.forEach(card => {
-                    const artist = card.getAttribute('data-artist');
-                    const title = card.getAttribute('data-title');
-                    const price = parseFloat(card.getAttribute('data-price'));
-                    const condition = card.getAttribute('data-condition') || '';
-                    
-                    // Check search term match
-                    const searchMatch = !searchTerm || 
-                        artist.includes(searchTerm) || 
-                        title.includes(searchTerm) ||
-                        condition.includes(searchTerm);
-                    
-                    // Check artist filter match
-                    const artistMatch = !selectedArtist || 
-                        artist === selectedArtist.toLowerCase();
-                    
-                    // Check price range match
-                    const priceMatch = price >= minPriceValue && price <= maxPriceValue;
-                    
-                    // Show card only if it matches all active filters
-                    const shouldShow = searchMatch && artistMatch && priceMatch;
-                    
-                    if (shouldShow) {
-                        card.style.display = 'block';
-                        visibleCardsInGroup++;
-                    } else {
-                        card.style.display = 'none';
+                // Get condition indicators from card
+                const conditionSpans = card.querySelectorAll('.condition-indicator');
+                const cardConditions = Array.from(conditionSpans).map(span => span.textContent.trim().replace(/ \(\d+\)$/, '')); // Remove count for filtering
+                
+                // Get price range from card
+                const priceRangeText = card.querySelector('.price-range')?.textContent || '';
+                let cardMinPrice = 0;
+                let cardMaxPrice = 99999;
+                
+                if (priceRangeText.includes('-')) {
+                    const matches = priceRangeText.match(/\$([\d.]+)/g);
+                    if (matches && matches.length >= 2) {
+                        cardMinPrice = parseFloat(matches[0].replace('$', ''));
+                        cardMaxPrice = parseFloat(matches[1].replace('$', ''));
                     }
-                });
-                
-                // Show/hide entire group based on whether it has visible cards
-                if (visibleCardsInGroup > 0) {
-                    group.style.display = 'block';
-                    visibleGroupCount++;
-                } else {
-                    group.style.display = 'none';
+                } else if (priceRangeText.includes('$')) {
+                    const match = priceRangeText.match(/\$([\d.]+)/);
+                    if (match) {
+                        cardMinPrice = cardMaxPrice = parseFloat(match[1]);
+                    }
                 }
+                
+                // Check search term match
+                const searchMatch = !searchTerm || 
+                    artist.includes(searchTerm) || 
+                    title.includes(searchTerm);
+                
+                // Check artist filter match
+                const artistMatch = !selectedArtist || 
+                    artist === selectedArtist.toLowerCase();
+                
+                // Check condition filter match
+                const conditionMatch = !selectedCondition || 
+                    cardConditions.some(c => c.includes(selectedCondition));
+                
+                // Check price range overlap
+                const priceMatch = !(cardMaxPrice < minPriceValue || cardMinPrice > maxPriceValue);
+                
+                // Show card if it matches all active filters
+                const shouldShow = searchMatch && artistMatch && conditionMatch && priceMatch;
+                
+                card.style.display = shouldShow ? 'block' : 'none';
+                if (shouldShow) visibleCount++;
             });
             
-            // Show message if no records match filters
-            if (visibleGroupCount === 0) {
-                if (container.querySelector('.no-records')) {
-                    container.querySelector('.no-records').style.display = 'block';
-                } else {
-                    const noRecordsDiv = document.createElement('div');
-                    noRecordsDiv.className = 'no-records';
-                    noRecordsDiv.textContent = 'No records match your search criteria.';
-                    container.appendChild(noRecordsDiv);
+            // Show no results message if needed
+            const existingNoResults = container.querySelector('.no-records');
+            if (visibleCount === 0) {
+                if (!existingNoResults) {
+                    const noResultsDiv = document.createElement('div');
+                    noResultsDiv.className = 'no-records';
+                    noResultsDiv.textContent = 'No records match your search criteria.';
+                    container.appendChild(noResultsDiv);
                 }
-            } else {
-                const noRecordsDiv = container.querySelector('.no-records');
-                if (noRecordsDiv) {
-                    noRecordsDiv.style.display = 'none';
-                }
+            } else if (existingNoResults) {
+                existingNoResults.remove();
             }
         }
 
         // Load the catalog data when page loads
         document.addEventListener('DOMContentLoaded', function() {
             loadCatalogData();
+            initializeFilters();
         });
     </script>
 </body>
