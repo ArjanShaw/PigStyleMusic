@@ -45,6 +45,7 @@ function showRefundModal(receiptId) {
             <div><strong>Date:</strong> ${dateStr}</div>
             <div><strong>Original Total:</strong> $${(receipt.total || 0).toFixed(2)}</div>
             <div><strong>Payment Method:</strong> ${escapeHtml(receipt.paymentMethod || 'Unknown')}</div>
+            ${receipt.square_payment_id ? `<div><strong>Square Payment ID:</strong> ${escapeHtml(receipt.square_payment_id)}</div>` : ''}
         `;
     }
     
@@ -205,6 +206,12 @@ async function processRefund() {
         return;
     }
     
+    // Validate terminal for Square payments
+    if ((paymentMethod === 'Square Terminal' || paymentMethod === 'Square') && !terminalId) {
+        alert('Please select a Square terminal');
+        return;
+    }
+    
     // Process based on payment method
     const processBtn = document.getElementById('process-refund-btn');
     if (processBtn) {
@@ -214,24 +221,21 @@ async function processRefund() {
     
     try {
         if (paymentMethod === 'Square Terminal' || paymentMethod === 'Square') {
-            // Square refund
-            if (!terminalId) {
-                alert('Please select a Square terminal');
-                if (processBtn) {
-                    processBtn.innerHTML = '<i class="fas fa-undo"></i> Process Refund';
-                    processBtn.disabled = false;
-                }
-                return;
+            // For Square payments, we MUST have the square_payment_id
+            if (!currentRefundReceipt.square_payment_id) {
+                throw new Error('No Square payment ID found for this receipt. Cannot process refund through Square.');
             }
             
             // Call Square refund API
+            console.log('Calling Square refund API with payment ID:', currentRefundReceipt.square_payment_id);
+            
             const response = await fetch(`${AppConfig.baseUrl}/api/square/refund`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    payment_id: currentRefundReceipt.id,
+                    payment_id: currentRefundReceipt.square_payment_id, // Use the Square payment ID, not the receipt ID
                     amount: refundAmount,
                     reason: refundReason,
                     device_id: terminalId,
@@ -244,22 +248,28 @@ async function processRefund() {
             });
             
             if (!response.ok) {
-                const error = await response.text();
-                throw new Error(error);
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(errorData.error || `HTTP error ${response.status}`);
             }
             
             const data = await response.json();
-            if (data.status !== 'success') {
-                throw new Error(data.message || 'Refund failed');
+            
+            // Square refunds return status "PENDING" when successful, not "success"
+            // Check if we got a refund_id back instead of looking for status
+            if (!data.refund_id) {
+                throw new Error(data.message || 'Refund failed - no refund ID returned');
             }
+            
+            console.log('Square refund successful:', data);
         }
         
-        // Update the receipt in localStorage
+        // Update the receipt in localStorage (for both Square and Cash)
         if (remainingItems.length === 0) {
             // All items refunded - remove the receipt
             const index = window.savedReceipts.findIndex(r => r.id === currentRefundReceipt.id);
             if (index !== -1) {
                 window.savedReceipts.splice(index, 1);
+                console.log('Receipt removed (all items refunded)');
             }
         } else {
             // Partial refund - update the receipt
@@ -278,6 +288,8 @@ async function processRefund() {
                 receipt.subtotal = discountedSubtotal;
                 receipt.tax = tax;
                 receipt.total = total;
+                
+                console.log('Receipt updated with remaining items:', remainingItems.length);
             }
         }
         
@@ -289,12 +301,12 @@ async function processRefund() {
             window.renderReceipts(window.savedReceipts);
         }
         
-        alert(`Refund of $${refundAmount.toFixed(2)} processed successfully`);
+        alert(`✅ Refund of $${refundAmount.toFixed(2)} processed successfully`);
         closeRefundModal();
         
     } catch (error) {
         console.error('Refund error:', error);
-        alert(`Refund failed: ${error.message}`);
+        alert(`❌ Refund failed: ${error.message}`);
     } finally {
         if (processBtn) {
             processBtn.innerHTML = '<i class="fas fa-undo"></i> Process Refund';
