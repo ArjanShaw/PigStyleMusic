@@ -221,8 +221,11 @@ function switchTab(tabName) {
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     
-    document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
-    document.getElementById(`${tabName}-tab`).classList.add('active');
+    const tab = document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`);
+    if (tab) tab.classList.add('active');
+    
+    const content = document.getElementById(`${tabName}-tab`);
+    if (content) content.classList.add('active');
     
     // Dispatch custom event for tab change
     const event = new CustomEvent('tabChanged', { detail: { tabName } });
@@ -240,19 +243,22 @@ let dbConfigValues = {};
 let recentlyPrintedIds = new Set();
 let savedReceipts = [];
 
-// Function declarations to be implemented by other files
-// These will be overridden by the actual implementations
-function loadSavedReceipts() { console.warn('loadSavedReceipts not implemented'); return []; }
-function saveReceipt(transaction) { console.warn('saveReceipt not implemented'); }
-function renderReceipts(receipts) { console.warn('renderReceipts not implemented'); }
-function searchReceipts() { console.warn('searchReceipts not implemented'); }
-function resetReceiptSearch() { console.warn('resetReceiptSearch not implemented'); }
-function viewReceipt(receiptId) { console.warn('viewReceipt not implemented'); }
-function downloadReceiptPDF(receiptId) { console.warn('downloadReceiptPDF not implemented'); }
-function printReceipt(receiptId) { console.warn('printReceipt not implemented'); }
-function closeReceiptModal() { console.warn('closeReceiptModal not implemented'); }
-function printToThermalPrinter(text) { console.warn('printToThermalPrinter not implemented'); }
-function formatReceiptForPrinter(transaction) { console.warn('formatReceiptForPrinter not implemented'); return ''; }
+// Placeholder functions - will be overridden by receipts.js
+// These are empty functions that won't log warnings
+window.loadSavedReceipts = function() { return []; };
+window.saveReceipt = function(transaction) { };
+window.renderReceipts = function(receipts) { };
+window.searchReceipts = function() { };
+window.resetReceiptSearch = function() { };
+window.viewReceiptDetails = function(receiptId) { };
+window.closeReceiptModal = function() { };
+window.showRefundModal = function(receiptId) { };
+window.closeRefundModal = function() { };
+window.processRefund = function() { };
+window.downloadReceiptPDF = function(receiptId) { };
+window.printReceipt = function(receiptId) { };
+window.printToThermalPrinter = function(text) { };
+window.formatReceiptForPrinter = function(transaction) { return ''; };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
