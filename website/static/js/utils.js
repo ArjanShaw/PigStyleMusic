@@ -218,9 +218,6 @@ function getStatusIdFromFilter(filterValue) {
  
 // Tab Switching
 function switchTab(tabName) {
-
-    // alert(`Switching to tab: ${tabName}`);
-
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     
@@ -232,13 +229,10 @@ function switchTab(tabName) {
     
     // Tab-specific initialization
     if (tabName === 'add-edit-delete') {
-        // Check if we need to initialize the AddEditDeleteManager
         if (typeof window.addEditDeleteManager === 'undefined' || !window.addEditDeleteManager) {
-            // You'll need to create this instance - it might be defined elsewhere
             console.log('Add/Edit/Delete tab activated');
         }
     } else if (tabName === 'admin-config') {
-        // Load config tables when switching to admin config tab
         if (typeof loadConfigTables === 'function') {
             loadConfigTables();
         } else {
@@ -301,7 +295,6 @@ let recentlyPrintedIds = new Set();
 let savedReceipts = [];
 
 // Placeholder functions - will be overridden by receipts.js
-// These are empty functions that won't log warnings
 window.loadSavedReceipts = function() { return []; };
 window.saveReceipt = function(transaction) { };
 window.renderReceipts = function(receipts) { };
@@ -318,7 +311,7 @@ window.printToThermalPrinter = function(text) { };
 window.formatReceiptForPrinter = function(transaction) { return ''; };
 
 // Initialize
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     const userData = localStorage.getItem('user');
     if (userData) {
         try {
@@ -334,6 +327,31 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         window.location.href = '/';
         return;
+    }
+    
+    // Load configuration from database FIRST, before anything else
+    try {
+        if (typeof fetchAllConfigValues === 'function') {
+            await fetchAllConfigValues();
+            console.log('✅ Configuration loaded successfully:', dbConfigValues);
+            
+            // Verify required config values exist
+            const requiredConfigs = ['TAX_ENABLED', 'TAX_RATE', 'STORE_NAME'];
+            const missingConfigs = requiredConfigs.filter(key => !dbConfigValues[key]);
+            
+            if (missingConfigs.length > 0) {
+                throw new Error(`Missing required configuration keys: ${missingConfigs.join(', ')}`);
+            }
+            
+            console.log('✅ TAX_ENABLED:', dbConfigValues['TAX_ENABLED'].value);
+            console.log('✅ TAX_RATE:', dbConfigValues['TAX_RATE'].value);
+        } else {
+            throw new Error('fetchAllConfigValues function not found');
+        }
+    } catch (error) {
+        console.error('❌ FATAL: Failed to load configuration:', error);
+        showMessage(`FATAL ERROR: ${error.message}. The application cannot continue.`, 'error');
+        throw error; // Re-throw to stop execution
     }
     
     window.selectedRecords = new Set();
