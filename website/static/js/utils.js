@@ -215,9 +215,12 @@ function getStatusIdFromFilter(filterValue) {
         default: return null;
     }
 }
-
+ 
 // Tab Switching
 function switchTab(tabName) {
+
+    // alert(`Switching to tab: ${tabName}`);
+
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     
@@ -226,6 +229,60 @@ function switchTab(tabName) {
     
     const content = document.getElementById(`${tabName}-tab`);
     if (content) content.classList.add('active');
+    
+    // Tab-specific initialization
+    if (tabName === 'add-edit-delete') {
+        // Check if we need to initialize the AddEditDeleteManager
+        if (typeof window.addEditDeleteManager === 'undefined' || !window.addEditDeleteManager) {
+            // You'll need to create this instance - it might be defined elsewhere
+            console.log('Add/Edit/Delete tab activated');
+        }
+    } else if (tabName === 'admin-config') {
+        // Load config tables when switching to admin config tab
+        if (typeof loadConfigTables === 'function') {
+            loadConfigTables();
+        } else {
+            console.error('loadConfigTables function not found');
+        }
+    } else if (tabName === 'check-out') {
+        const searchResults = document.getElementById('search-results');
+        if (searchResults && (!window.currentSearchResults || window.currentSearchResults.length === 0)) {
+            searchResults.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #666;">
+                    <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
+                    <p>Enter a search term to find records or accessories</p>
+                </div>
+            `;
+        }
+        if (typeof refreshTerminals === 'function') {
+            refreshTerminals();
+        }
+    } else if (tabName === 'receipts') {
+        if (typeof loadSavedReceipts === 'function' && typeof renderReceipts === 'function') {
+            const receipts = loadSavedReceipts();
+            renderReceipts(receipts);
+        }
+    } else if (tabName === 'consignors') {
+        if (typeof loadConsignors === 'function') {
+            loadConsignors();
+        }
+    } else if (tabName === 'artists') {
+        if (typeof loadArtists === 'function') {
+            loadArtists();
+        }
+    } else if (tabName === 'genres') {
+        if (typeof loadGenreMismatches === 'function') {
+            loadGenreMismatches();
+        }
+    } else if (tabName === 'accessories') {
+        if (typeof loadAccessories === 'function') {
+            loadAccessories();
+        }
+    } else if (tabName === 'price-tags') {
+        if (typeof loadRecords === 'function') {
+            loadRecords();
+        }
+    }
     
     // Dispatch custom event for tab change
     const event = new CustomEvent('tabChanged', { detail: { tabName } });
