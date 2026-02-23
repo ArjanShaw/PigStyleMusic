@@ -2256,6 +2256,9 @@ function escapeHtml(text) {
 
 // Helper functions
 function switchTab(tabName) {
+
+    console.log(`switchTab "${tabName}"`);
+ 
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     
