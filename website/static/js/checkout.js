@@ -469,7 +469,7 @@ function updateCartWithDiscount() {
     updateCartDisplay();
 }
 
-// Calculate totals with discount
+// Calculate totals with discount - NO TRY/CATCH, let errors propagate
 function calculateTotalsWithDiscount() {
     let subtotal = 0;
     checkoutCart.forEach(item => {
@@ -523,6 +523,7 @@ function calculateTotalsWithDiscount() {
     return subtotal - discountValue;
 }
 
+// Updated updateCartDisplay - NO TRY/CATCH, let errors propagate
 function updateCartDisplay() {
     const cartSection = document.getElementById('shopping-cart-section');
     const cartItems = document.getElementById('cart-items');
@@ -549,12 +550,9 @@ function updateCartDisplay() {
     
     const discountedSubtotal = calculateTotalsWithDiscount();
     
-    let taxRate = 0;
-    try {
-        taxRate = getConfigValue('TAX_ENABLED') ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
-    } catch (e) {
-        console.log('Tax config not found, using 0');
-    }
+    // These will throw errors if config values are missing - that's what we want
+    const taxEnabled = getConfigValue('TAX_ENABLED');
+    const taxRate = taxEnabled ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
     
     const tax = discountedSubtotal * taxRate;
     const total = discountedSubtotal + tax;
@@ -1116,12 +1114,10 @@ async function processSquarePaymentSuccess() {
         }
         
         const subtotal = pendingCartCheckout.items.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-        let taxRate = 0;
-        try {
-            taxRate = getConfigValue('TAX_ENABLED') ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
-        } catch (e) {
-            console.log('Tax config not found, using 0');
-        }
+        
+        // These will throw errors if config values are missing - that's what we want
+        const taxEnabled = getConfigValue('TAX_ENABLED');
+        const taxRate = taxEnabled ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
         
         const discount = pendingCartCheckout.discount ? pendingCartCheckout.discount.value || 0 : 0;
         const discountedSubtotal = subtotal - discount;
@@ -1474,12 +1470,10 @@ async function processCashPayment() {
         }
         
         const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
-        let taxRate = 0;
-        try {
-            taxRate = getConfigValue('TAX_ENABLED') ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
-        } catch (e) {
-            console.log('Tax config not found, using 0');
-        }
+        
+        // These will throw errors if config values are missing - that's what we want
+        const taxEnabled = getConfigValue('TAX_ENABLED');
+        const taxRate = taxEnabled ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
         
         const discount = currentDiscount.value || 0;
         const discountedSubtotal = subtotal - discount;

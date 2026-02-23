@@ -260,41 +260,25 @@ function updateUIFromConfig() {
         
     } catch (error) {
         console.error('Error updating UI from config:', error);
+        throw error; // Re-throw to ensure we don't silently fail
     }
 }
 
 // Get admin config values for backward compatibility
 function getAdminConfig() {
-    let taxRate = 0;
-    let taxEnabled = false;
-    let commissionRate = 10;
-    
-    try {
-        taxRate = getConfigValue('TAX_RATE');
-    } catch (e) {
-        console.log('TAX_RATE not found, using default');
-    }
-    
-    try {
-        taxEnabled = getConfigValue('TAX_ENABLED');
-    } catch (e) {
-        console.log('TAX_ENABLED not found, using default false');
-    }
-    
-    try {
-        commissionRate = getConfigValue('COMMISSION_RATE');
-    } catch (e) {
-        console.log('COMMISSION_RATE not found, using default 10');
-    }
+    // These will throw errors if config values are missing - that's what we want
+    const taxRate = getConfigValue('TAX_RATE');
+    const taxEnabled = getConfigValue('TAX_ENABLED');
+    const commissionRate = getConfigValue('COMMISSION_RATE');
     
     return {
         taxRate: taxRate,
         taxEnabled: taxEnabled,
         commissionRate: commissionRate,
-        storeName: (dbConfigValues['STORE_NAME'] && dbConfigValues['STORE_NAME'].value) || 'PigStyle Music',
-        storeAddress: (dbConfigValues['STORE_ADDRESS'] && dbConfigValues['STORE_ADDRESS'].value) || '',
-        storePhone: (dbConfigValues['STORE_PHONE'] && dbConfigValues['STORE_PHONE'].value) || '',
-        receiptFooter: (dbConfigValues['RECEIPT_FOOTER'] && dbConfigValues['RECEIPT_FOOTER'].value) || 'Thank you for your purchase!',
-        autoPrintReceipt: (dbConfigValues['AUTO_PRINT_RECEIPT'] && dbConfigValues['AUTO_PRINT_RECEIPT'].value) || false
+        storeName: dbConfigValues['STORE_NAME']?.value || 'PigStyle Music',
+        storeAddress: dbConfigValues['STORE_ADDRESS']?.value || '',
+        storePhone: dbConfigValues['STORE_PHONE']?.value || '',
+        receiptFooter: dbConfigValues['RECEIPT_FOOTER']?.value || 'Thank you for your purchase!',
+        autoPrintReceipt: dbConfigValues['AUTO_PRINT_RECEIPT']?.value || false
     };
 }
