@@ -1,734 +1,849 @@
 // ============================================================================
-// receipts.js - Receipts Tab Functionality with Database Storage
+// receipts.js - Receipts Tab Functionality
 // ============================================================================
 
-console.log('✅ receipts.js loaded successfully');
+let allReceipts = [];
 
-// Global variables
-let currentReceiptForRefund = null;
-let selectedRefundItems = new Set();
-let refundAvailableTerminals = [];
+// Make functions globally available
+window.loadReceipts = loadReceipts;
+window.renderReceipts = renderReceipts;
+window.searchReceipts = searchReceipts;
+window.resetReceiptSearch = resetReceiptSearch;
+window.printReceipt = printReceipt;
+window.showRefundModal = showRefundModal;
+window.saveReceipt = saveReceipt;
 
-// Load saved receipts from database only
-async function loadSavedReceipts() {
-    console.log('Loading receipts from database...');
+// Helper function to safely format date
+function formatReceiptDate(receipt) {
+    if (!receipt) return 'Invalid Date';
     
-    const response = await fetch(`${AppConfig.baseUrl}/api/receipts`, {
-        credentials: 'include'
-    });
-    
-    if (!response.ok) {
-        throw new Error(`Failed to load receipts: ${response.status} ${response.statusText}`);
+    try {
+        let dateValue;
+        
+        // First try to get date from transaction_data
+        if (receipt.transaction_data) {
+            // If transaction_data is a string, parse it
+            if (typeof receipt.transaction_data === 'string') {
+                try {
+                    const transactionData = JSON.parse(receipt.transaction_data);
+                    dateValue = transactionData.date;
+                } catch (e) {
+                    console.error('Error parsing transaction_data:', e);
+                }
+            } 
+            // If transaction_data is already an object
+            else if (typeof receipt.transaction_data === 'object') {
+                dateValue = receipt.transaction_data.date;
+            }
+        }
+        
+        // If no date in transaction_data, try created_at
+        if (!dateValue) {
+            dateValue = receipt.created_at || receipt.date;
+        }
+        
+        if (!dateValue) return 'Invalid Date';
+        
+        // Parse the date
+        let date;
+        if (typeof dateValue === 'string') {
+            // Handle ISO format
+            if (dateValue.includes('T')) {
+                date = new Date(dateValue);
+            }
+            // Handle MySQL datetime format (YYYY-MM-DD HH:MM:SS)
+            else if (dateValue.includes(' ')) {
+                date = new Date(dateValue.replace(' ', 'T') + 'Z');
+            }
+            else {
+                date = new Date(dateValue);
+            }
+        } else if (typeof dateValue === 'number') {
+            date = new Date(dateValue);
+        } else if (dateValue instanceof Date) {
+            date = dateValue;
+        } else {
+            return 'Invalid Date';
+        }
+        
+        // Final validation
+        if (isNaN(date.getTime())) {
+            return 'Invalid Date';
+        }
+        
+        // Format the date
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true 
+        });
+    } catch (e) {
+        console.error('Date parsing error:', e, 'Receipt:', receipt);
+        return 'Invalid Date';
     }
-    
-    const data = await response.json();
-    
-    if (data.status !== 'success') {
-        throw new Error(data.error || 'Failed to load receipts');
-    }
-    
-    // Convert database receipts to the format expected by the UI
-    const dbReceipts = data.receipts.map(r => {
-        // Parse the stored transaction data
-        const transaction = r.transaction_data;
-        // Ensure date is a Date object
-        transaction.date = new Date(transaction.date || r.created_at);
-        return transaction;
-    });
-    
-    window.savedReceipts = dbReceipts;
-    console.log(`Loaded ${dbReceipts.length} receipts from database`);
-    return window.savedReceipts;
 }
 
-// Save a receipt to database only
-async function saveReceipt(transaction) {
-    console.log('Saving receipt:', transaction.id);
+// Helper function to parse transaction data
+function parseTransactionData(receipt) {
+    if (!receipt) return {};
     
-    // Prepare the receipt for saving
-    const receiptToSave = {
-        ...transaction,
-        date: transaction.date.toISOString()
-    };
-    
-    // Save to database only
-    const response = await fetch(`${AppConfig.baseUrl}/api/receipts`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(receiptToSave)
-    });
-    
-    if (!response.ok) {
-        throw new Error(`Failed to save receipt: ${response.status} ${response.statusText}`);
+    try {
+        if (receipt.transaction_data) {
+            if (typeof receipt.transaction_data === 'string') {
+                return JSON.parse(receipt.transaction_data);
+            } else if (typeof receipt.transaction_data === 'object') {
+                return receipt.transaction_data;
+            }
+        }
+    } catch (e) {
+        console.error('Error parsing transaction_data:', e);
     }
     
-    const data = await response.json();
+    return {};
+}
+
+// Load receipts from database
+async function loadReceipts() {
+    const loading = document.getElementById('receipts-loading');
+    const grid = document.getElementById('receipts-grid');
     
-    if (data.status !== 'success') {
-        throw new Error(data.error || 'Failed to save receipt');
-    }
+    if (loading) loading.style.display = 'block';
+    if (grid) grid.innerHTML = '';
     
-    console.log('✅ Receipt saved to database:', data.receipt_id);
-    
-    // Update local array
-    if (!window.savedReceipts) window.savedReceipts = [];
-    window.savedReceipts.unshift(receiptToSave);
-    
-    // Update UI if receipts tab is active
-    if (document.getElementById('receipts-tab')?.classList.contains('active')) {
-        renderReceipts(window.savedReceipts);
+    try {
+        console.log('Loading receipts from database...');
+        const response = await fetch(`${AppConfig.baseUrl}/api/receipts`, {
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to load receipts: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Receipts data received:', data);
+        
+        if (data.status === 'success') {
+            allReceipts = data.receipts || [];
+            console.log(`Loaded ${allReceipts.length} receipts from database`);
+            
+            // Log the first receipt to see its structure
+            if (allReceipts.length > 0) {
+                console.log('Sample receipt:', allReceipts[0]);
+                // Test date formatting
+                console.log('Formatted date:', formatReceiptDate(allReceipts[0]));
+            }
+            
+            // Clear any filters
+            const startDate = document.getElementById('receipt-start-date');
+            const endDate = document.getElementById('receipt-end-date');
+            const searchQuery = document.getElementById('receipt-search-query');
+            
+            if (startDate) startDate.value = '';
+            if (endDate) endDate.value = '';
+            if (searchQuery) searchQuery.value = '';
+            
+            // Render the receipts
+            renderReceipts(allReceipts);
+        } else {
+            throw new Error(data.error || 'Failed to load receipts');
+        }
+    } catch (error) {
+        console.error('Error loading receipts:', error);
+        if (grid) {
+            grid.innerHTML = `
+                <div class="error-message" style="text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-circle" style="font-size: 48px; color: #dc3545; margin-bottom: 20px;"></i>
+                    <p style="color: #666; margin-bottom: 20px;">Error loading receipts: ${error.message}</p>
+                    <button class="btn btn-primary" onclick="loadReceipts()">
+                        <i class="fas fa-sync-alt"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
+    } finally {
+        if (loading) loading.style.display = 'none';
     }
 }
 
-// Render receipts with item details
+// Render receipts to the grid
 function renderReceipts(receipts) {
-    const container = document.getElementById('receipts-grid');
-    if (!container) {
-        throw new Error('Receipts grid container not found');
-    }
+    const grid = document.getElementById('receipts-grid');
+    if (!grid) return;
     
-    console.log('Rendering', receipts.length, 'receipts');
+    console.log('Rendering receipts:', receipts ? receipts.length : 0);
     
-    // Update stats
-    updateReceiptStats(receipts);
-    
-    if (!receipts || receipts.length === 0) {
-        container.innerHTML = `
-            <div style="text-align:center;padding:40px;color:#666;grid-column:1/-1;">
-                <i class="fas fa-receipt" style="font-size:48px;margin-bottom:20px;color:#ccc;"></i>
-                <p>No receipts found</p>
-                <p><small>Complete a sale to generate a receipt</small></p>
+    // Make sure receipts is an array
+    if (!receipts || !Array.isArray(receipts)) {
+        console.error('Receipts is not an array:', receipts);
+        grid.innerHTML = `
+            <div class="error-message" style="text-align: center; padding: 40px;">
+                <i class="fas fa-exclamation-circle" style="font-size: 48px; color: #dc3545; margin-bottom: 20px;"></i>
+                <p style="color: #666; margin-bottom: 20px;">Invalid receipt data received</p>
+                <button class="btn btn-primary" onclick="loadReceipts()">
+                    <i class="fas fa-sync-alt"></i> Reload
+                </button>
             </div>
         `;
         return;
     }
     
-    let html = '';
-    
-    receipts.forEach(receipt => {
-        const date = new Date(receipt.date);
-        const dateStr = date.toLocaleDateString() + ' ' + 
-                       date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        
-        // Generate items preview HTML
-        let itemsPreview = '';
-        receipt.items.slice(0, 3).forEach(item => {
-            let itemDesc = '';
-            if (item.type === 'accessory') {
-                itemDesc = `<span class="item-badge accessory">ACC</span> ${escapeHtml(item.description || 'Unknown')}`;
-            } else if (item.type === 'custom') {
-                itemDesc = `<span class="item-badge custom">CUS</span> ${escapeHtml(item.note || 'Custom')}`;
-            } else {
-                itemDesc = `${escapeHtml(item.artist || '')} - ${escapeHtml(item.title || 'Unknown')}`;
-            }
-            itemsPreview += `<div class="receipt-item-preview">${itemDesc} - $${(item.store_price || 0).toFixed(2)}</div>`;
-        });
-        
-        if (receipt.items.length > 3) {
-            itemsPreview += `<div class="receipt-item-preview more">...and ${receipt.items.length - 3} more items</div>`;
-        }
-        
-        html += `
-            <div class="receipt-card" data-receipt-id="${receipt.id}">
-                <div class="receipt-card-header">
-                    <span class="receipt-card-title">${escapeHtml(receipt.id)}</span>
-                    <span class="receipt-card-date">${dateStr}</span>
-                </div>
-                <div class="receipt-card-meta">
-                    <span><i class="fas fa-cash-register"></i> ${escapeHtml(receipt.paymentMethod || 'Unknown')}</span>
-                    <span><i class="fas fa-user"></i> ${escapeHtml(receipt.cashier || 'Admin')}</span>
-                </div>
-                <div class="receipt-card-items">
-                    ${itemsPreview}
-                </div>
-                <div class="receipt-card-total-row">
-                    <span class="receipt-card-total-label">Total:</span>
-                    <span class="receipt-card-total">$${(receipt.total || 0).toFixed(2)}</span>
-                </div>
-                ${receipt.discount && receipt.discount > 0 ? 
-                    `<div class="receipt-card-discount">
-                        <i class="fas fa-tag"></i> Discount: -$${receipt.discount.toFixed(2)} 
-                        ${receipt.discountType === 'percentage' ? `(${receipt.discountAmount}%)` : ''}
-                    </div>` : ''}
-                <div class="receipt-card-actions">
-                    <button class="btn btn-sm btn-primary" onclick="viewReceiptDetails('${receipt.id}')">
-                        <i class="fas fa-eye"></i> View
-                    </button>
-                    <button class="btn btn-sm btn-warning" onclick="showRefundModal('${receipt.id}')">
-                        <i class="fas fa-undo-alt"></i> Refund
-                    </button>
-                    <button class="btn btn-sm btn-success" onclick="downloadReceiptPDF('${receipt.id}')">
-                        <i class="fas fa-download"></i> PDF
-                    </button>
-                    <button class="btn btn-sm btn-secondary" onclick="printReceipt('${receipt.id}')">
-                        <i class="fas fa-print"></i> Print
-                    </button>
-                </div>
+    if (receipts.length === 0) {
+        grid.innerHTML = `
+            <div class="empty-state" style="text-align: center; padding: 60px 20px;">
+                <i class="fas fa-receipt" style="font-size: 64px; color: #ccc; margin-bottom: 20px;"></i>
+                <h3 style="color: #333; margin-bottom: 10px;">No Receipts Found</h3>
+                <p style="color: #666;">Complete a sale to generate your first receipt</p>
             </div>
         `;
+        updateReceiptStats(receipts);
+        return;
+    }
+    
+    // Sort receipts by date (newest first)
+    const sortedReceipts = [...receipts].sort((a, b) => {
+        const dateA = new Date(formatReceiptDate(a)).getTime();
+        const dateB = new Date(formatReceiptDate(b)).getTime();
+        return dateB - dateA;
     });
     
-    container.innerHTML = html;
+    let html = '';
+    sortedReceipts.forEach(receipt => {
+        html += renderReceiptCard(receipt);
+    });
+    
+    grid.innerHTML = html;
+    updateReceiptStats(receipts);
+}
+
+// Render a single receipt card
+function renderReceiptCard(receipt) {
+    // Parse transaction data to get additional fields
+    const transactionData = parseTransactionData(receipt);
+    
+    // Safely parse the date using our helper function
+    const formattedDate = formatReceiptDate(receipt);
+    
+    // Get items from transaction data or receipt
+    const items = transactionData.items || receipt.items || [];
+    
+    // Get item count safely
+    const itemCount = Array.isArray(items) ? items.length : 0;
+    
+    // Get first few items for preview safely
+    let itemsPreview = '';
+    if (Array.isArray(items)) {
+        itemsPreview = items.slice(0, 3).map(item => {
+            if (item.type === 'accessory') {
+                return item.description || 'Accessory';
+            } else if (item.type === 'custom') {
+                return item.note || 'Custom Item';
+            } else {
+                return `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
+            }
+        }).join(', ');
+    }
+    
+    const moreItems = itemCount > 3 ? ` +${itemCount - 3} more` : '';
+    
+    // Safely get total
+    const total = transactionData.total || receipt.total || 0;
+    
+    // Get receipt ID safely
+    const receiptId = receipt.receipt_id || receipt.id || 'Unknown';
+    
+    // Get payment method safely
+    const paymentMethod = transactionData.paymentMethod || receipt.payment_method || 'Unknown';
+    
+    // Get cashier safely
+    const cashier = transactionData.cashier || receipt.cashier || 'Admin';
+    
+    return `
+        <div class="receipt-card" onclick="showReceiptDetails('${receiptId}')">
+            <div class="receipt-card-header">
+                <span class="receipt-id">#${escapeHtml(receiptId)}</span>
+                <span class="receipt-date">${escapeHtml(formattedDate)}</span>
+            </div>
+            <div class="receipt-card-body">
+                <div class="receipt-items-preview">${escapeHtml(itemsPreview)}${escapeHtml(moreItems)}</div>
+                <div class="receipt-total">$${parseFloat(total).toFixed(2)}</div>
+            </div>
+            <div class="receipt-card-footer">
+                <span class="receipt-payment-method">
+                    <i class="fas ${paymentMethod.toLowerCase().includes('cash') ? 'fa-money-bill-wave' : 'fa-square'}"></i>
+                    ${escapeHtml(paymentMethod)}
+                </span>
+                <span class="receipt-cashier">${escapeHtml(cashier)}</span>
+            </div>
+        </div>
+    `;
 }
 
 // Update receipt statistics
 function updateReceiptStats(receipts) {
+    console.log('Updating stats for receipts:', receipts ? receipts.length : 0);
+    
+    // Make sure receipts is an array
+    if (!receipts || !Array.isArray(receipts)) {
+        console.error('Cannot update stats: receipts is not an array');
+        return;
+    }
+    
     let totalSales = 0;
     let totalTax = 0;
     let totalItems = 0;
     
     receipts.forEach(receipt => {
-        totalSales += receipt.total || 0;
-        totalTax += receipt.tax || 0;
-        totalItems += receipt.items?.length || 0;
+        const transactionData = parseTransactionData(receipt);
+        totalSales += parseFloat(transactionData.total || receipt.total || 0);
+        totalTax += parseFloat(transactionData.tax || receipt.tax || 0);
+        
+        const items = transactionData.items || receipt.items || [];
+        if (Array.isArray(items)) {
+            totalItems += items.length;
+        }
     });
     
+    const totalReceipts = receipts.length;
+    
+    // Update the DOM
     const totalReceiptsEl = document.getElementById('total-receipts');
     const totalSalesEl = document.getElementById('total-receipts-sales');
     const totalTaxEl = document.getElementById('total-receipts-tax');
     const totalItemsEl = document.getElementById('total-receipts-items');
     
-    if (!totalReceiptsEl || !totalSalesEl || !totalTaxEl || !totalItemsEl) {
-        throw new Error('Receipt stats elements not found');
-    }
-    
-    totalReceiptsEl.textContent = receipts.length;
-    totalSalesEl.textContent = `$${totalSales.toFixed(2)}`;
-    totalTaxEl.textContent = `$${totalTax.toFixed(2)}`;
-    totalItemsEl.textContent = totalItems;
+    if (totalReceiptsEl) totalReceiptsEl.textContent = totalReceipts;
+    if (totalSalesEl) totalSalesEl.textContent = `$${totalSales.toFixed(2)}`;
+    if (totalTaxEl) totalTaxEl.textContent = `$${totalTax.toFixed(2)}`;
+    if (totalItemsEl) totalItemsEl.textContent = totalItems;
 }
 
-// View receipt details in modal
-function viewReceiptDetails(receiptId) {
-    const receipt = window.savedReceipts.find(r => r.id === receiptId);
-    if (!receipt) {
-        throw new Error(`Receipt ${receiptId} not found`);
+// Search receipts
+function searchReceipts() {
+    const startDate = document.getElementById('receipt-start-date')?.value;
+    const endDate = document.getElementById('receipt-end-date')?.value;
+    const searchQuery = document.getElementById('receipt-search-query')?.value.toLowerCase().trim() || '';
+    
+    console.log('Searching receipts with:', { startDate, endDate, searchQuery });
+    
+    let filtered = [...allReceipts];
+    
+    // Filter by date range
+    if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        filtered = filtered.filter(r => {
+            const receiptDate = new Date(formatReceiptDate(r));
+            return receiptDate >= start;
+        });
     }
     
-    if (typeof receipt.date === 'string') {
-        receipt.date = new Date(receipt.date);
+    if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(r => {
+            const receiptDate = new Date(formatReceiptDate(r));
+            return receiptDate <= end;
+        });
     }
     
-    showReceiptModal(receipt);
-}
-
-// Show receipt in modal
-function showReceiptModal(transaction) {
-    const modal = document.getElementById('receipt-modal');
-    const content = document.getElementById('receipt-content');
-    if (!modal || !content) {
-        throw new Error('Receipt modal elements not found');
+    // Filter by search query
+    if (searchQuery) {
+        filtered = filtered.filter(receipt => {
+            const transactionData = parseTransactionData(receipt);
+            
+            // Search in receipt ID
+            const receiptId = (receipt.receipt_id || receipt.id || '').toLowerCase();
+            if (receiptId.includes(searchQuery)) return true;
+            
+            // Search in items
+            const items = transactionData.items || receipt.items || [];
+            if (Array.isArray(items)) {
+                return items.some(item => {
+                    const artist = (item.artist || '').toLowerCase();
+                    const title = (item.title || '').toLowerCase();
+                    const catalog = (item.catalog_number || '').toLowerCase();
+                    const description = (item.description || '').toLowerCase();
+                    const note = (item.note || '').toLowerCase();
+                    
+                    return artist.includes(searchQuery) ||
+                           title.includes(searchQuery) ||
+                           catalog.includes(searchQuery) ||
+                           description.includes(searchQuery) ||
+                           note.includes(searchQuery);
+                });
+            }
+            return false;
+        });
     }
     
-    const dateStr = transaction.date.toLocaleDateString() + ' ' + 
-                   transaction.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    
-    let itemsHtml = '';
-    transaction.items.forEach((item, index) => {
-        if (item.type === 'accessory') {
-            itemsHtml += `
-                <div class="receipt-modal-item">
-                    <div>
-                        <span class="item-badge accessory">ACCESSORY</span>
-                        ${escapeHtml(item.description) || 'Unknown Accessory'}
-                    </div>
-                    <div>$${(item.store_price || 0).toFixed(2)}</div>
-                </div>
-            `;
-        } else if (item.type === 'custom') {
-            itemsHtml += `
-                <div class="receipt-modal-item">
-                    <div>
-                        <span class="item-badge custom">CUSTOM</span>
-                        ${escapeHtml(item.note) || 'Custom Item'}
-                    </div>
-                    <div>$${(item.store_price || 0).toFixed(2)}</div>
-                </div>
-            `;
-        } else {
-            itemsHtml += `
-                <div class="receipt-modal-item">
-                    <div>
-                        <strong>${escapeHtml(item.artist) || 'Unknown'}</strong> - ${escapeHtml(item.title) || 'Unknown'}
-                        ${item.catalog_number ? `<br><small>Cat#: ${escapeHtml(item.catalog_number)}</small>` : ''}
-                    </div>
-                    <div>$${(item.store_price || 0).toFixed(2)}</div>
-                </div>
-            `;
-        }
-    });
-    
-    const subtotalBeforeDiscount = (transaction.subtotal || 0) + (transaction.discount || 0);
-    
-    content.innerHTML = `
-        <div class="receipt-modal-header">
-            <h2>${escapeHtml(transaction.storeName) || 'PigStyle Music'}</h2>
-            <p>${escapeHtml(transaction.storeAddress) || ''}</p>
-            <p>${escapeHtml(transaction.storePhone) || ''}</p>
-        </div>
-        
-        <div class="receipt-modal-info">
-            <div><strong>Receipt #:</strong> ${escapeHtml(transaction.id)}</div>
-            <div><strong>Date:</strong> ${dateStr}</div>
-            <div><strong>Cashier:</strong> ${escapeHtml(transaction.cashier) || 'Admin'}</div>
-            <div><strong>Payment:</strong> ${escapeHtml(transaction.paymentMethod) || 'Cash'}</div>
-        </div>
-        
-        <div class="receipt-modal-items">
-            <h3>Items</h3>
-            ${itemsHtml}
-        </div>
-        
-        <div class="receipt-modal-totals">
-            <div class="total-row">
-                <span>Subtotal:</span>
-                <span>$${subtotalBeforeDiscount.toFixed(2)}</span>
-            </div>
-            ${transaction.discount && transaction.discount > 0 ? 
-                `<div class="total-row discount">
-                    <span>Discount ${transaction.discountType === 'percentage' ? `(${transaction.discountAmount}%)` : ''}:</span>
-                    <span>-$${transaction.discount.toFixed(2)}</span>
-                </div>` : ''}
-            <div class="total-row">
-                <span>Tax (${transaction.taxRate || 0}%):</span>
-                <span>$${(transaction.tax || 0).toFixed(2)}</span>
-            </div>
-            <div class="total-row grand-total">
-                <span>TOTAL:</span>
-                <span>$${(transaction.total || 0).toFixed(2)}</span>
-            </div>
-        </div>
-        
-        <div class="receipt-modal-footer">
-            ${escapeHtml(transaction.footer) || 'Thank you for your purchase!'}
-        </div>
-    `;
-    
-    modal.style.display = 'flex';
-}
-
-// Close receipt modal
-function closeReceiptModal() {
-    const modal = document.getElementById('receipt-modal');
-    if (modal) modal.style.display = 'none';
-}
-
-// Search receipts with item-level search
-async function searchReceipts() {
-    const startDate = document.getElementById('receipt-start-date').value;
-    const endDate = document.getElementById('receipt-end-date').value;
-    const query = document.getElementById('receipt-search-query').value.toLowerCase().trim();
-    
-    // Build query string
-    const params = new URLSearchParams();
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    if (query) params.append('search', query);
-    
-    const response = await fetch(`${AppConfig.baseUrl}/api/receipts?${params.toString()}`, {
-        credentials: 'include'
-    });
-    
-    if (!response.ok) {
-        throw new Error(`Failed to search receipts: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    if (data.status !== 'success') {
-        throw new Error(data.error || 'Failed to search receipts');
-    }
-    
-    // Convert to UI format
-    const receipts = data.receipts.map(r => {
-        const transaction = r.transaction_data;
-        transaction.date = new Date(transaction.date || r.created_at);
-        return transaction;
-    });
-    
-    renderReceipts(receipts);
+    console.log(`Found ${filtered.length} receipts matching criteria`);
+    renderReceipts(filtered);
 }
 
 // Reset receipt search
 function resetReceiptSearch() {
-    document.getElementById('receipt-start-date').value = '';
-    document.getElementById('receipt-end-date').value = '';
-    document.getElementById('receipt-search-query').value = '';
-    loadSavedReceipts().then(renderReceipts);
+    const startDate = document.getElementById('receipt-start-date');
+    const endDate = document.getElementById('receipt-end-date');
+    const searchQuery = document.getElementById('receipt-search-query');
+    
+    if (startDate) startDate.value = '';
+    if (endDate) endDate.value = '';
+    if (searchQuery) searchQuery.value = '';
+    
+    renderReceipts(allReceipts);
 }
 
-// Show refund modal for a receipt
-function showRefundModal(receiptId) {
-    const receipt = window.savedReceipts.find(r => r.id === receiptId);
+// Print a receipt
+function printReceipt(receiptId) {
+    const receipt = allReceipts.find(r => r.receipt_id === receiptId || r.id === receiptId);
     if (!receipt) {
-        throw new Error(`Receipt ${receiptId} not found`);
-    }
-    
-    currentReceiptForRefund = receipt;
-    selectedRefundItems.clear();
-    
-    // Refresh terminals
-    refreshTerminalsForRefund();
-    
-    // Populate refund modal
-    const modal = document.getElementById('refund-modal');
-    const itemsContainer = document.getElementById('refund-items-container');
-    const receiptInfo = document.getElementById('refund-receipt-info');
-    const refundAmount = document.getElementById('refund-amount');
-    const refundReason = document.getElementById('refund-reason');
-    const refundError = document.getElementById('refund-error');
-    const processBtn = document.getElementById('process-refund-btn');
-    const terminalSelect = document.getElementById('refund-terminal-select');
-    
-    // Check if modal exists
-    if (!modal) {
-        throw new Error('Refund modal not found in DOM');
-    }
-    
-    if (!itemsContainer || !receiptInfo || !refundAmount || !refundReason || !processBtn) {
-        throw new Error('Required refund modal elements not found');
-    }
-    
-    // Show receipt info
-    const dateStr = new Date(receipt.date).toLocaleString();
-    receiptInfo.innerHTML = `
-        <div><strong>Receipt:</strong> ${escapeHtml(receipt.id)}</div>
-        <div><strong>Date:</strong> ${dateStr}</div>
-        <div><strong>Original Total:</strong> $${(receipt.total || 0).toFixed(2)}</div>
-        <div><strong>Payment Method:</strong> ${escapeHtml(receipt.paymentMethod || 'Unknown')}</div>
-        ${receipt.square_payment_id ? `<div><strong>Square Payment ID:</strong> ${escapeHtml(receipt.square_payment_id)}</div>` : ''}
-    `;
-    
-    // Show items with checkboxes
-    let itemsHtml = '<h4>Select Items to Refund:</h4>';
-    receipt.items.forEach((item, index) => {
-        let itemDesc = '';
-        if (item.type === 'accessory') {
-            itemDesc = `[ACCESSORY] ${escapeHtml(item.description || 'Unknown')}`;
-        } else if (item.type === 'custom') {
-            itemDesc = `[CUSTOM] ${escapeHtml(item.note || 'Custom Item')}`;
-        } else {
-            itemDesc = `${escapeHtml(item.artist || 'Unknown')} - ${escapeHtml(item.title || 'Unknown')}`;
-        }
-        
-        itemsHtml += `
-            <div class="refund-item">
-                <input type="checkbox" class="refund-item-checkbox" data-item-index="${index}" data-item-price="${item.store_price || 0}" id="refund-item-${index}">
-                <label for="refund-item-${index}" class="refund-item-label">
-                    <span class="refund-item-desc">${itemDesc}</span>
-                    <span class="refund-item-price">$${(item.store_price || 0).toFixed(2)}</span>
-                </label>
-            </div>
-        `;
-    });
-    
-    itemsContainer.innerHTML = itemsHtml;
-    
-    // Add event listeners to checkboxes
-    document.querySelectorAll('.refund-item-checkbox').forEach(cb => {
-        cb.addEventListener('change', updateRefundTotal);
-    });
-    
-    // Reset form
-    refundAmount.value = '0.00';
-    refundReason.value = 'Customer request';
-    if (refundError) refundError.style.display = 'none';
-    processBtn.disabled = true;
-    
-    // Show modal
-    modal.style.display = 'flex';
-    
-    // Refresh terminals
-    if (terminalSelect) {
-        refreshTerminalsForRefund();
-    }
-}
-
-// Update refund total based on selected items
-function updateRefundTotal() {
-    const checkboxes = document.querySelectorAll('.refund-item-checkbox:checked');
-    const refundAmount = document.getElementById('refund-amount');
-    const processBtn = document.getElementById('process-refund-btn');
-    
-    if (!refundAmount || !processBtn) return;
-    
-    let total = 0;
-    checkboxes.forEach(cb => {
-        total += parseFloat(cb.dataset.itemPrice) || 0;
-    });
-    
-    refundAmount.value = total.toFixed(2);
-    processBtn.disabled = checkboxes.length === 0;
-}
-
-// Refresh terminals for refund
-async function refreshTerminalsForRefund() {
-    const terminalSelect = document.getElementById('refund-terminal-select');
-    if (!terminalSelect) return;
-    
-    terminalSelect.innerHTML = '<option value="">Loading terminals...</option>';
-    
-    const response = await fetch(`${AppConfig.baseUrl}/api/square/terminals`, {
-        credentials: 'include'
-    });
-    
-    if (!response.ok) {
-        throw new Error(`Failed to fetch terminals: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    if (data.status !== 'success') {
-        throw new Error(data.error || 'Failed to fetch terminals');
-    }
-    
-    refundAvailableTerminals = data.terminals || [];
-    renderTerminalSelect(terminalSelect, refundAvailableTerminals);
-}
-
-// Render terminal select dropdown
-function renderTerminalSelect(selectElement, terminals) {
-    const onlineTerminals = terminals.filter(t => t.status === 'ONLINE');
-    
-    if (onlineTerminals.length === 0) {
-        selectElement.innerHTML = '<option value="">No online terminals</option>';
+        alert('Receipt not found');
         return;
     }
     
-    let html = '<option value="">Select a terminal...</option>';
-    onlineTerminals.forEach(terminal => {
-        let terminalId = terminal.id;
-        if (terminalId && terminalId.startsWith('device:')) {
-            terminalId = terminalId.replace('device:', '');
-        }
-        html += `<option value="${terminalId}">${escapeHtml(terminal.device_name) || 'Square Terminal'} (Online)</option>`;
+    const transactionData = parseTransactionData(receipt);
+    const receiptText = formatReceiptForPrinter({
+        ...receipt,
+        ...transactionData
     });
     
-    selectElement.innerHTML = html;
+    // Try to print to thermal printer
+    if (typeof window.printToThermalPrinter === 'function') {
+        window.printToThermalPrinter(receiptText);
+    } else {
+        // Fallback to browser print
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write('<pre>' + receiptText + '</pre>');
+        printWindow.document.close();
+        printWindow.print();
+    }
+}
+
+// Show receipt details in modal
+function showReceiptDetails(receiptId) {
+    const receipt = allReceipts.find(r => r.receipt_id === receiptId || r.id === receiptId);
+    if (!receipt) return;
+    
+    const modal = document.getElementById('receipt-modal');
+    const content = document.getElementById('receipt-content');
+    
+    if (!modal || !content) return;
+    
+    const transactionData = parseTransactionData(receipt);
+    const formattedDate = formatReceiptDate(receipt);
+    
+    // Get items from transaction data
+    const items = transactionData.items || receipt.items || [];
+    
+    let itemsHtml = '';
+    if (Array.isArray(items)) {
+        items.forEach(item => {
+            if (item.type === 'accessory') {
+                itemsHtml += `
+                    <tr>
+                        <td>${escapeHtml(item.description || 'Accessory')}</td>
+                        <td>1</td>
+                        <td>$${(item.store_price || 0).toFixed(2)}</td>
+                        <td>$${(item.store_price || 0).toFixed(2)}</td>
+                    </tr>
+                `;
+            } else if (item.type === 'custom') {
+                itemsHtml += `
+                    <tr>
+                        <td>${escapeHtml(item.note || 'Custom Item')}</td>
+                        <td>1</td>
+                        <td>$${(item.store_price || 0).toFixed(2)}</td>
+                        <td>$${(item.store_price || 0).toFixed(2)}</td>
+                    </tr>
+                `;
+            } else {
+                itemsHtml += `
+                    <tr>
+                        <td>${escapeHtml(item.artist || 'Unknown')} - ${escapeHtml(item.title || 'Unknown')}</td>
+                        <td>1</td>
+                        <td>$${(item.store_price || 0).toFixed(2)}</td>
+                        <td>$${(item.store_price || 0).toFixed(2)}</td>
+                    </tr>
+                `;
+            }
+        });
+    }
+    
+    const paymentMethod = transactionData.paymentMethod || receipt.payment_method || 'Unknown';
+    const cashier = transactionData.cashier || receipt.cashier || 'Admin';
+    const total = transactionData.total || receipt.total || 0;
+    const subtotal = transactionData.subtotal || 0;
+    const tax = transactionData.tax || receipt.tax || 0;
+    const taxRate = transactionData.taxRate || 0;
+    const discount = transactionData.discount || 0;
+    const discountType = transactionData.discountType;
+    const discountAmount = transactionData.discountAmount || 0;
+    const tendered = transactionData.tendered || 0;
+    const change = transactionData.change || 0;
+    const squarePaymentId = transactionData.square_payment_id || receipt.square_payment_id || null;
+    
+    content.innerHTML = `
+        <div class="receipt-detail">
+            <div class="receipt-detail-header">
+                <h3>Receipt #${escapeHtml(receiptId)}</h3>
+                <button class="btn btn-primary btn-small" onclick="printReceipt('${receiptId}')">
+                    <i class="fas fa-print"></i> Print
+                </button>
+            </div>
+            
+            <div class="receipt-info">
+                <p><strong>Date:</strong> ${escapeHtml(formattedDate)}</p>
+                <p><strong>Cashier:</strong> ${escapeHtml(cashier)}</p>
+                <p><strong>Payment Method:</strong> ${escapeHtml(paymentMethod)}</p>
+                ${squarePaymentId ? `<p><strong>Square ID:</strong> ${escapeHtml(squarePaymentId)}</p>` : ''}
+            </div>
+            
+            <div class="receipt-items">
+                <table class="receipt-items-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Qty</th>
+                            <th>Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsHtml || '<tr><td colspan="4" style="text-align:center;">No items</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="receipt-summary">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span>$${(subtotal || 0).toFixed(2)}</span>
+                </div>
+                ${discount && discount > 0 ? `
+                <div class="summary-row discount">
+                    <span>${discountType === 'percentage' ? `Discount (${discountAmount}%)` : 'Discount'}:</span>
+                    <span>-$${(discount || 0).toFixed(2)}</span>
+                </div>
+                ` : ''}
+                <div class="summary-row">
+                    <span>Tax (${(taxRate || 0)}%):</span>
+                    <span>$${(tax || 0).toFixed(2)}</span>
+                </div>
+                <div class="summary-row total">
+                    <span>Total:</span>
+                    <span>$${(total || 0).toFixed(2)}</span>
+                </div>
+                ${paymentMethod.toLowerCase().includes('cash') && change > 0 ? `
+                <div class="summary-row">
+                    <span>Tendered:</span>
+                    <span>$${(tendered || 0).toFixed(2)}</span>
+                </div>
+                <div class="summary-row">
+                    <span>Change:</span>
+                    <span>$${(change || 0).toFixed(2)}</span>
+                </div>
+                ` : ''}
+            </div>
+            
+            <div class="receipt-actions">
+                <button class="btn btn-warning" onclick="showRefundModal('${receiptId}')">
+                    <i class="fas fa-undo-alt"></i> Process Refund
+                </button>
+            </div>
+        </div>
+    `;
+    
+    modal.style.display = 'flex';
+}
+
+// Save receipt to database
+async function saveReceipt(transaction) {
+    console.log('Saving receipt:', transaction.id);
+    
+    // Validate and clean the transaction data
+    const cleanTransaction = {
+        id: transaction.id || `CASH-${Date.now()}`,
+        date: transaction.date || new Date().toISOString(),
+        items: Array.isArray(transaction.items) ? transaction.items.map(item => ({
+            id: item.id || null,
+            type: item.type || 'record',
+            artist: item.artist || null,
+            title: item.title || null,
+            description: item.description || item.note || null,
+            note: item.note || null,
+            store_price: parseFloat(item.store_price) || 0,
+            catalog_number: item.catalog_number || null,
+            barcode: item.barcode || null,
+            consignor_id: item.consignor_id || null
+        })) : [],
+        subtotal: parseFloat(transaction.subtotal) || 0,
+        discount: parseFloat(transaction.discount) || 0,
+        discountType: transaction.discountType || null,
+        discountAmount: parseFloat(transaction.discountAmount) || 0,
+        tax: parseFloat(transaction.tax) || 0,
+        taxRate: parseFloat(transaction.taxRate) || 0,
+        total: parseFloat(transaction.total) || 0,
+        tendered: parseFloat(transaction.tendered) || 0,
+        change: parseFloat(transaction.change) || 0,
+        paymentMethod: transaction.paymentMethod || 'Cash',
+        cashier: transaction.cashier || 'Admin',
+        storeName: transaction.storeName || 'PigStyle Music',
+        storeAddress: transaction.storeAddress || '',
+        storePhone: transaction.storePhone || '',
+        footer: transaction.footer || 'Thank you for your purchase!',
+        consignorPayments: transaction.consignorPayments || {},
+        square_payment_id: transaction.square_payment_id || null
+    };
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/receipts`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(cleanTransaction)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to save receipt: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            console.log(`✅ Receipt saved to database: ${transaction.id}`);
+            // Add to local array
+            allReceipts.push(cleanTransaction);
+            return true;
+        } else {
+            throw new Error(data.error || 'Failed to save receipt');
+        }
+    } catch (error) {
+        console.error('Error saving receipt:', error);
+        return false;
+    }
+}
+
+// Show refund modal
+function showRefundModal(receiptId) {
+    const receipt = allReceipts.find(r => r.receipt_id === receiptId || r.id === receiptId);
+    if (!receipt) return;
+    
+    const modal = document.getElementById('refund-modal');
+    const receiptInfo = document.getElementById('refund-receipt-info');
+    const itemsContainer = document.getElementById('refund-items-container');
+    const refundAmount = document.getElementById('refund-amount');
+    const processBtn = document.getElementById('process-refund-btn');
+    
+    if (!modal || !receiptInfo || !itemsContainer || !refundAmount || !processBtn) return;
+    
+    const transactionData = parseTransactionData(receipt);
+    const formattedDate = formatReceiptDate(receipt);
+    
+    // Show receipt info
+    receiptInfo.innerHTML = `
+        <p><strong>Receipt:</strong> #${escapeHtml(receiptId)}</p>
+        <p><strong>Date:</strong> ${escapeHtml(formattedDate)}</p>
+        <p><strong>Total:</strong> $${(transactionData.total || receipt.total || 0).toFixed(2)}</p>
+        <p><strong>Payment Method:</strong> ${escapeHtml(transactionData.paymentMethod || receipt.payment_method || 'Unknown')}</p>
+    `;
+    
+    // Show items
+    const items = transactionData.items || receipt.items || [];
+    let itemsHtml = '<h4>Items on this receipt:</h4>';
+    if (Array.isArray(items)) {
+        items.forEach((item, index) => {
+            let description = '';
+            if (item.type === 'accessory') {
+                description = item.description || 'Accessory';
+            } else if (item.type === 'custom') {
+                description = item.note || 'Custom Item';
+            } else {
+                description = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
+            }
+            
+            itemsHtml += `
+                <div class="refund-item">
+                    <label>
+                        <input type="checkbox" class="refund-item-checkbox" data-index="${index}" data-price="${item.store_price || 0}" checked>
+                        ${escapeHtml(description)} - $${(item.store_price || 0).toFixed(2)}
+                    </label>
+                </div>
+            `;
+        });
+    }
+    
+    itemsContainer.innerHTML = itemsHtml;
+    
+    // Set refund amount to total
+    refundAmount.value = (transactionData.total || receipt.total || 0).toFixed(2);
+    
+    // Add event listeners to checkboxes
+    document.querySelectorAll('.refund-item-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', updateRefundAmount);
+    });
+    
+    // Enable process button
+    processBtn.disabled = false;
+    
+    modal.style.display = 'flex';
+}
+
+// Update refund amount based on selected items
+function updateRefundAmount() {
+    const checkboxes = document.querySelectorAll('.refund-item-checkbox:checked');
+    const refundAmount = document.getElementById('refund-amount');
+    
+    let total = 0;
+    checkboxes.forEach(cb => {
+        total += parseFloat(cb.dataset.price) || 0;
+    });
+    
+    if (refundAmount) {
+        refundAmount.value = total.toFixed(2);
+    }
 }
 
 // Close refund modal
-function closeRefundModal() {
+window.closeRefundModal = function() {
     const modal = document.getElementById('refund-modal');
     if (modal) modal.style.display = 'none';
-    currentReceiptForRefund = null;
-    selectedRefundItems.clear();
-}
+};
 
 // Process refund
-async function processRefund() {
-    if (!currentReceiptForRefund) {
-        throw new Error('No receipt selected for refund');
+window.processRefund = async function() {
+    const modal = document.getElementById('refund-modal');
+    const refundAmount = document.getElementById('refund-amount')?.value;
+    const refundReason = document.getElementById('refund-reason')?.value;
+    const terminalSelect = document.getElementById('refund-terminal-select');
+    const errorDiv = document.getElementById('refund-error');
+    
+    if (!refundAmount || parseFloat(refundAmount) <= 0) {
+        if (errorDiv) {
+            errorDiv.textContent = 'Please enter a valid refund amount';
+            errorDiv.style.display = 'block';
+        }
+        return;
     }
     
     // Get selected items
-    const selectedCheckboxes = document.querySelectorAll('.refund-item-checkbox:checked');
-    if (selectedCheckboxes.length === 0) {
-        throw new Error('Please select items to refund');
-    }
-    
-    const refundAmount = parseFloat(document.getElementById('refund-amount')?.value);
-    if (isNaN(refundAmount) || refundAmount <= 0) {
-        throw new Error('Invalid refund amount');
-    }
-    
-    const refundReason = document.getElementById('refund-reason')?.value || 'Customer request';
-    const terminalId = document.getElementById('refund-terminal-select')?.value;
-    const paymentMethod = currentReceiptForRefund.paymentMethod;
-    
-    // Get selected items data
     const selectedItems = [];
-    const remainingItems = [];
-    
-    selectedCheckboxes.forEach(cb => {
-        const index = parseInt(cb.dataset.itemIndex);
-        selectedItems.push(currentReceiptForRefund.items[index]);
+    document.querySelectorAll('.refund-item-checkbox:checked').forEach(cb => {
+        selectedItems.push({
+            index: cb.dataset.index,
+            price: parseFloat(cb.dataset.price)
+        });
     });
     
-    // Get remaining items (not selected for refund)
-    currentReceiptForRefund.items.forEach((item, index) => {
-        const isSelected = Array.from(selectedCheckboxes).some(cb => parseInt(cb.dataset.itemIndex) === index);
-        if (!isSelected) {
-            remainingItems.push(item);
+    if (selectedItems.length === 0) {
+        if (errorDiv) {
+            errorDiv.textContent = 'Please select at least one item to refund';
+            errorDiv.style.display = 'block';
         }
+        return;
+    }
+    
+    // Here you would implement the actual refund logic
+    console.log('Processing refund:', {
+        amount: parseFloat(refundAmount),
+        reason: refundReason,
+        items: selectedItems,
+        terminal: terminalSelect?.value
     });
     
-    const processBtn = document.getElementById('process-refund-btn');
-    if (processBtn) {
-        processBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing...';
-        processBtn.disabled = true;
-    }
-    
-    try {
-        // Prepare refund request
-        const refundRequest = {
-            amount: refundAmount,
-            reason: refundReason,
-            payment_method: paymentMethod,
-            items: selectedItems.map(item => ({
-                id: item.id,
-                type: item.type,
-                price: item.store_price
-            }))
-        };
-        
-        // For Square payments, include payment_id if we have it
-        if (paymentMethod === 'Square Terminal' || paymentMethod === 'Square') {
-            if (!currentReceiptForRefund.square_payment_id) {
-                throw new Error('No Square payment ID found for this receipt. Cannot process refund through Square.');
-            }
-            
-            refundRequest.payment_id = currentReceiptForRefund.square_payment_id;
-            
-            // Add terminal ID if selected
-            if (terminalId) {
-                refundRequest.device_id = terminalId;
-            }
-            
-            // Call Square refund API
-            console.log('Calling Square refund API with:', refundRequest);
-            
-            const response = await fetch(`${AppConfig.baseUrl}/api/square/refund`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(refundRequest)
-            });
-            
-            const responseData = await response.json();
-            
-            if (!response.ok) {
-                throw new Error(responseData.error || `HTTP error ${response.status}`);
-            }
-            
-            if (responseData.status !== 'success') {
-                throw new Error(responseData.message || 'Refund failed');
-            }
-            
-            console.log('Square refund successful:', responseData);
-        }
-        
-        // Update the receipt in database
-        if (remainingItems.length === 0) {
-            // All items refunded - delete the receipt from database
-            const deleteResponse = await fetch(`${AppConfig.baseUrl}/api/receipts/${currentReceiptForRefund.id}`, {
-                method: 'DELETE',
-                credentials: 'include'
-            });
-            
-            if (!deleteResponse.ok) {
-                throw new Error(`Failed to delete receipt: ${deleteResponse.status}`);
-            }
-            
-            // Remove from local array
-            const index = window.savedReceipts.findIndex(r => r.id === currentReceiptForRefund.id);
-            if (index !== -1) {
-                window.savedReceipts.splice(index, 1);
-            }
-        } else {
-            // Partial refund - update the receipt
-            const receipt = window.savedReceipts.find(r => r.id === currentReceiptForRefund.id);
-            if (!receipt) {
-                throw new Error('Receipt not found in local array');
-            }
-            
-            receipt.items = remainingItems;
-            
-            // Recalculate totals
-            const subtotal = remainingItems.reduce((sum, item) => sum + (item.store_price || 0), 0);
-            const discount = receipt.discount || 0;
-            const discountedSubtotal = subtotal - discount;
-            const taxRate = (receipt.taxRate || 0) / 100;
-            const tax = discountedSubtotal * taxRate;
-            const total = discountedSubtotal + tax;
-            
-            receipt.subtotal = discountedSubtotal;
-            receipt.tax = tax;
-            receipt.total = total;
-            
-            // Save updated receipt to database
-            await saveReceipt(receipt);
-        }
-        
-        // Refresh display
-        renderReceipts(window.savedReceipts);
-        
-        alert(`✅ Refund of $${refundAmount.toFixed(2)} processed successfully`);
-        closeRefundModal();
-        
-    } catch (error) {
-        console.error('Refund error:', error);
-        alert(`❌ Refund failed: ${error.message}`);
-    } finally {
-        if (processBtn) {
-            processBtn.innerHTML = '<i class="fas fa-undo"></i> Process Refund';
-            processBtn.disabled = false;
-        }
-    }
-}
+    alert('Refund functionality would be implemented here');
+    closeRefundModal();
+};
 
-// Download receipt as PDF (placeholder - implement later)
-function downloadReceiptPDF(receiptId) {
-    alert('PDF download functionality coming soon!');
-}
-
-// Print receipt
-function printReceipt(receiptId) {
-    const receipt = window.savedReceipts.find(r => r.id === receiptId);
-    if (!receipt) {
-        throw new Error(`Receipt ${receiptId} not found`);
-    }
-    
-    if (typeof receipt.date === 'string') {
-        receipt.date = new Date(receipt.date);
-    }
-    
-    showReceiptModal(receipt);
-    setTimeout(() => {
-        window.print();
-    }, 500);
-}
-
-// Print to thermal printer (placeholder - implement later)
-function printToThermalPrinter(text) {
-    console.log('Thermal print would happen here:', text?.substring(0, 100));
-    // Implement actual thermal printing here
-}
-
-// Format receipt for printer (placeholder - implement later)
+// Helper function to format receipt for printer
 function formatReceiptForPrinter(transaction) {
-    return JSON.stringify(transaction, null, 2);
+    const storeName = transaction.storeName || 'PigStyle Music';
+    const storeAddress = transaction.storeAddress || '';
+    const storePhone = transaction.storePhone || '';
+    const footer = transaction.footer || 'Thank you for your purchase!';
+    
+    let receipt = '';
+    receipt += ''.padStart(32, '=') + '\n';
+    receipt += centerText(storeName, 32) + '\n';
+    if (storeAddress) receipt += centerText(storeAddress, 32) + '\n';
+    if (storePhone) receipt += centerText(storePhone, 32) + '\n';
+    receipt += ''.padStart(32, '=') + '\n\n';
+    
+    receipt += `Receipt #: ${transaction.id}\n`;
+    receipt += `Date: ${new Date(transaction.date).toLocaleString()}\n`;
+    receipt += `Cashier: ${transaction.cashier || 'Admin'}\n`;
+    receipt += `Payment: ${transaction.paymentMethod || 'Cash'}\n\n`;
+    
+    receipt += ''.padStart(32, '-') + '\n';
+    
+    if (transaction.items && Array.isArray(transaction.items)) {
+        transaction.items.forEach(item => {
+            let description = '';
+            if (item.type === 'accessory') {
+                description = item.description || 'Accessory';
+            } else if (item.type === 'custom') {
+                description = item.note || 'Custom Item';
+            } else {
+                description = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
+            }
+            
+            const price = item.store_price || 0;
+            const shortDesc = description.length > 20 ? description.substring(0, 18) + '..' : description;
+            receipt += `${shortDesc.padEnd(20)} $${price.toFixed(2).padStart(8)}\n`;
+        });
+    }
+    
+    receipt += ''.padStart(32, '-') + '\n';
+    receipt += `Subtotal:${''.padStart(14)} $${(transaction.subtotal || 0).toFixed(2).padStart(8)}\n`;
+    
+    if (transaction.discount && transaction.discount > 0) {
+        const discountText = transaction.discountType === 'percentage' ? 
+            `Discount (${transaction.discountAmount}%):` : 'Discount:';
+        receipt += `${discountText.padEnd(22)} -$${(transaction.discount || 0).toFixed(2).padStart(8)}\n`;
+    }
+    
+    receipt += `Tax (${transaction.taxRate || 0}%):${''.padStart(12)} $${(transaction.tax || 0).toFixed(2).padStart(8)}\n`;
+    receipt += ''.padStart(32, '=') + '\n';
+    receipt += `TOTAL:${''.padStart(16)} $${(transaction.total || 0).toFixed(2).padStart(8)}\n`;
+    receipt += ''.padStart(32, '=') + '\n\n';
+    
+    if (transaction.paymentMethod && transaction.paymentMethod.toLowerCase().includes('cash') && transaction.change > 0) {
+        receipt += `Tendered: $${(transaction.tendered || 0).toFixed(2)}\n`;
+        receipt += `Change: $${(transaction.change || 0).toFixed(2)}\n\n`;
+    }
+    
+    if (transaction.square_payment_id) {
+        receipt += `Square ID: ${transaction.square_payment_id}\n\n`;
+    }
+    
+    receipt += centerText(footer, 32) + '\n';
+    receipt += ''.padStart(32, '=') + '\n';
+    
+    return receipt;
 }
 
-// Initialize when tab is activated
-document.addEventListener('tabChanged', async function(e) {
+function centerText(text, width) {
+    const padding = Math.max(0, width - text.length);
+    const leftPad = Math.floor(padding / 2);
+    const rightPad = padding - leftPad;
+    return ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
+}
+
+// Escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Load receipts when tab is activated
+document.addEventListener('tabChanged', function(e) {
     if (e.detail.tabName === 'receipts') {
-        try {
-            await loadSavedReceipts();
-            renderReceipts(window.savedReceipts);
-        } catch (error) {
-            console.error('Failed to load receipts:', error);
-            alert(`Error loading receipts: ${error.message}`);
-        }
+        loadReceipts();
     }
 });
 
-// Make functions globally available
-window.loadSavedReceipts = loadSavedReceipts;
-window.saveReceipt = saveReceipt;
-window.renderReceipts = renderReceipts;
-window.searchReceipts = searchReceipts;
-window.resetReceiptSearch = resetReceiptSearch;
-window.viewReceiptDetails = viewReceiptDetails;
-window.closeReceiptModal = closeReceiptModal;
-window.showRefundModal = showRefundModal;
-window.closeRefundModal = closeRefundModal;
-window.processRefund = processRefund;
-window.downloadReceiptPDF = downloadReceiptPDF;
-window.printReceipt = printReceipt;
-window.printToThermalPrinter = printToThermalPrinter;
-window.formatReceiptForPrinter = formatReceiptForPrinter;
-
-console.log('✅ Receipt functions attached to window');
+console.log('✅ receipts.js loaded');
