@@ -1015,6 +1015,100 @@
         .role-badge.consignor { background: #28a745; color: white; }
         .role-badge.youtube_linker { background: #ffc107; color: #333; }
 
+        /* Price Checker Tab Styles */
+        .price-checker-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        
+        .price-checker-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        .price-checker-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .price-checker-table tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .status-badge.found {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status-badge.not-found {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status-badge.unique {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        
+        .price-diff-positive {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .price-diff-negative {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        .progress-container {
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s;
+        }
+        
+        .csv-preview {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+        
+        .csv-preview table {
+            width: 100%;
+            font-size: 12px;
+        }
+        
+        .csv-preview th {
+            background: #f8f9fa;
+            padding: 8px;
+            position: sticky;
+            top: 0;
+        }
+        
+        .csv-preview td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #eee;
+        }
+
         @keyframes slideIn {
             from {
                 transform: translateX(100%);
@@ -1074,6 +1168,12 @@
             </div>
             <div class="tab" onclick="switchTab('accessories')">
                 <i class="fas fa-headphones"></i> Accessories
+            </div>
+            <div class="tab" onclick="switchTab('youtube-linker')">
+                <i class="fab fa-youtube" style="color: #ff0000;"></i> YouTube Linker
+            </div>
+            <div class="tab" onclick="switchTab('price-checker')">
+                <i class="fas fa-chart-line"></i> Price Checker
             </div>
             <div class="tab" onclick="switchTab('admin-config')">
                 <i class="fas fa-sliders-h"></i> Admin Config
@@ -1943,6 +2043,138 @@
             </div>
         </div>
         
+        <!-- Price Checker Tab -->
+        <div id="price-checker-tab" class="tab-content">
+            <h2><i class="fas fa-chart-line"></i> Price Checker</h2>
+            
+            <div class="info-message" style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <i class="fas fa-info-circle"></i> Upload a CSV file with Artist, Title, Catalog#, and Price columns. The system will search Discogs for each item and show comparison data.
+            </div>
+            
+            <!-- CSV Upload Section -->
+            <div class="csv-upload-section" style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 30px;">
+                <h3 style="margin-bottom: 15px;"><i class="fas fa-upload"></i> Upload CSV File</h3>
+                
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
+                    <div style="flex: 2;">
+                        <label for="csv-file" style="display: block; margin-bottom: 5px; font-weight: 500;">Select CSV File:</label>
+                        <input type="file" 
+                               id="csv-file" 
+                               accept=".csv, text/csv" 
+                               class="filter-select" 
+                               style="padding: 10px; background: white;">
+                        <p class="hint" style="font-size: 12px; color: #666; margin-top: 5px;">
+                            <i class="fas fa-info-circle"></i> CSV must have columns: Artist, Title, Catalog#, Price (headers optional)
+                        </p>
+                    </div>
+                    
+                    <div style="flex: 0 0 auto;">
+                        <button class="btn btn-primary" onclick="uploadAndCheckPrices()" id="upload-btn">
+                            <i class="fas fa-search"></i> Check Prices
+                        </button>
+                    </div>
+                    
+                    <div style="flex: 0 0 auto;">
+                        <a href="#" 
+                           class="btn btn-secondary"
+                           onclick="downloadTemplate()">
+                            <i class="fas fa-download"></i> Download Template
+                        </a>
+                    </div>
+                </div>
+                
+                <div id="csv-preview" style="margin-top: 20px; display: none;">
+                    <h4>CSV Preview</h4>
+                    <div class="table-scroll-container" style="max-height: 200px; overflow-y: auto;">
+                        <table class="ebay-listings-table" style="font-size: 12px;">
+                            <thead>
+                                <tr>
+                                    <th>Artist</th>
+                                    <th>Title</th>
+                                    <th>Catalog #</th>
+                                    <th>Your Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="csv-preview-body">
+                                <!-- Preview rows will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Progress Section -->
+            <div id="progress-section" style="display: none; margin-bottom: 20px;">
+                <div class="progress-container" style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span><i class="fas fa-spinner fa-spin"></i> Processing...</span>
+                        <span id="progress-count">0/0</span>
+                    </div>
+                    <div class="progress-bar" style="width: 100%; height: 20px; background: #e9ecef; border-radius: 10px; overflow: hidden;">
+                        <div id="progress-fill" style="width: 0%; height: 100%; background: #007bff; transition: width 0.3s;"></div>
+                    </div>
+                    <div id="current-item" style="margin-top: 10px; font-size: 13px; color: #666;"></div>
+                </div>
+            </div>
+            
+            <!-- Stats Cards -->
+            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                <div class="stat-card">
+                    <h3>Total Items</h3>
+                    <p class="stat-number" id="total-items">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Found on Discogs</h3>
+                    <p class="stat-number" id="found-items">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Unique to Your Collection</h3>
+                    <p class="stat-number" id="unique-items">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Avg. Price Difference</h3>
+                    <p class="stat-number" id="avg-diff">$0.00</p>
+                </div>
+            </div>
+            
+            <!-- Results Table -->
+            <div id="results-table-container" style="display: none;">
+                <div class="table-header">
+                    <h3><i class="fas fa-table"></i> Price Comparison Results</h3>
+                    <div>
+                        <button class="btn btn-secondary btn-small" onclick="exportResultsToCSV()">
+                            <i class="fas fa-download"></i> Export CSV
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-scroll-container">
+                    <table class="price-checker-table" id="price-checker-table">
+                        <thead>
+                            <tr>
+                                <th>Artist</th>
+                                <th>Title</th>
+                                <th>Catalog #</th>
+                                <th>Your Price</th>
+                                <th>Discogs Price</th>
+                                <th>Difference</th>
+                                <th>Status</th>
+                                <th>Discogs Link</th>
+                            </tr>
+                        </thead>
+                        <tbody id="price-checker-body">
+                            <!-- Results will be added here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="loading" id="price-checker-loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>Processing CSV and searching Discogs...</p>
+            </div>
+        </div>
+        
         <!-- Admin Config Tab -->
         <div id="admin-config-tab" class="tab-content">
             <h2><i class="fas fa-sliders-h"></i> Admin Configuration</h2>
@@ -2455,6 +2687,7 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     
     <!-- Admin JavaScript Modules -->
     <script src="/static/js/utils.js"></script>
@@ -2469,5 +2702,6 @@
     <script src="/static/js/accessories.js"></script>
     <script src="/static/js/refunds.js"></script>
     <script src="/static/js/youtube-linker.js"></script>
+    <script src="/static/js/price-checker.js"></script>
 </body>
 </html>
