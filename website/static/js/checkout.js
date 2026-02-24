@@ -1071,7 +1071,7 @@ async function processSquarePaymentSuccess() {
                 soldItems.push(item);
                 
                 if (item.consignor_id) {
-                    const commissionRate = item.commission_rate || 10;
+                    const commissionRate = item.commission_rate ;
                     const consignorShare = item.store_price * (1 - (commissionRate / 100));
                     
                     if (!consignorPayments[item.consignor_id]) {
@@ -1427,7 +1427,7 @@ async function processCashPayment() {
                 soldItems.push(item);
                 
                 if (item.consignor_id) {
-                    const commissionRate = item.commission_rate || 10;
+                    const commissionRate = item.commission_rate ;
                     const consignorShare = item.store_price * (1 - (commissionRate / 100));
                     
                     if (!consignorPayments[item.consignor_id]) {

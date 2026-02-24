@@ -167,7 +167,7 @@ class AddEditDeleteManager {
             const commissionResponse = await APIUtils.get('/api/commission-rate');
             this.commissionRate = commissionResponse.commission_rate / 100;
             document.getElementById('commission-rate').textContent = 
-                `${commissionResponse.commission_rate || 20.0}%`;
+                `${commissionResponse.commission_rate }%`;
 
             const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
             const capacity = parseInt(configResponse.config_value);
