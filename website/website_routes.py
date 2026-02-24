@@ -30,7 +30,14 @@ def login():
 
 @app.route('/dashboard')
 def dashboard():
+    # Check if user is logged in and has appropriate role
+    # This is a simplified check - you may want to implement proper session checking
     return send_from_directory('HTML', 'dashboard.html')
+
+@app.route('/youtube-linker')
+def youtube_linker():
+    # Serve the YouTube Linker page
+    return send_from_directory('HTML', 'youtube-linker.html')
 
 # *** ONLY ONE /admin ROUTE - THIS IS THE CORRECT ONE ***
 @app.route('/admin')
