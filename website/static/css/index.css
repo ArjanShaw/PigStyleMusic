@@ -609,3 +609,58 @@ input[type='text'] {
         margin-top: 20px;
     }
 }
+
+
+/* User Dropdown Styling */
+.user-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-toggle {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    min-width: 200px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border-radius: 4px;
+    display: none;
+    z-index: 1000;
+}
+
+.dropdown-menu a {
+    display: block;
+    padding: 10px 15px;
+    text-decoration: none;
+    color: #333 !important;  /* Force black text */
+    transition: background 0.2s;
+}
+
+.dropdown-menu a:hover {
+    background-color: #ffd700 !important;  /* Yellow background on hover */
+    color: #000 !important;  /* Keep text black on hover */
+}
+
+.dropdown-menu i {
+    margin-right: 8px;
+}
+
+.dropdown-menu .fa-youtube {
+    color: #ff0000;  /* Keep YouTube icon red */
+}
+
+.dropdown-menu .divider {
+    border-top: 1px solid #eee;
+}
