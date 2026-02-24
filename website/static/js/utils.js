@@ -276,8 +276,17 @@ function switchTab(tabName) {
         if (typeof loadRecords === 'function') {
             loadRecords();
         }
+    } else if (tabName === 'youtube-linker') {
+        if (typeof initYoutubeLinker === 'function') {
+            initYoutubeLinker();
+        } else {
+            console.error('initYoutubeLinker function not found');
+        }
+    } else if (tabName === 'users') {
+        if (typeof loadUsers === 'function') {
+            loadUsers();
+        }
     }
-    
     // Dispatch custom event for tab change
     const event = new CustomEvent('tabChanged', { detail: { tabName } });
     document.dispatchEvent(event);
@@ -310,13 +319,68 @@ window.printReceipt = function(receiptId) { };
 window.printToThermalPrinter = function(text) { };
 window.formatReceiptForPrinter = function(transaction) { return ''; };
 
+// Auth object
+if (typeof window.Auth === 'undefined') {
+    window.Auth = {
+        isLoggedIn: false,
+        user: null,
+        
+        async checkSession() {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                this.isLoggedIn = true;
+                try {
+                    const response = await APIUtils.get('/auth/me');
+                    if (response.status === 'success' && response.user) {
+                        this.user = response.user;
+                    }
+                } catch (error) {
+                    console.error('Auth check failed:', error);
+                }
+            }
+            return this.isLoggedIn;
+        },
+        
+        getUser() {
+            return this.user;
+        },
+        
+        isAdmin() {
+            return this.user && this.user.role === 'admin';
+        },
+        
+        isConsignor() {
+            return this.user && this.user.role === 'consignor';
+        },
+        
+        isYoutubeLinker() {
+            return this.user && this.user.role === 'youtube_linker';
+        },
+        
+        hasPermission(permission) {
+            if (!this.isLoggedIn) return false;
+            
+            const permissions = {
+                'admin': ['view_dashboard', 'view_admin_panel', 'add_records', 'manage_all_records', 
+                         'process_payouts', 'manage_users', 'edit_own_records', 'view_sales_reports',
+                         'approve_payout', 'link_youtube'],
+                'consignor': ['view_dashboard', 'add_records', 'edit_own_records', 'view_sales_reports',
+                             'request_payout', 'link_youtube'],
+                'youtube_linker': ['view_dashboard', 'link_youtube']
+            };
+            
+            return permissions[this.user?.role]?.includes(permission) || false;
+        }
+    };
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async function() {
     const userData = localStorage.getItem('user');
     if (userData) {
         try {
             const user = JSON.parse(userData);
-            if (user.role !== 'admin') {
+            if (user.role !== 'admin' && user.role !== 'consignor' && user.role !== 'youtube_linker') {
                 window.location.href = '/';
                 return;
             }
@@ -351,7 +415,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch (error) {
         console.error('❌ FATAL: Failed to load configuration:', error);
         showMessage(`FATAL ERROR: ${error.message}. The application cannot continue.`, 'error');
-        throw error; // Re-throw to stop execution
+        throw error;
     }
     
     window.selectedRecords = new Set();

@@ -72,9 +72,9 @@ const AppConfig = {
     
     // API Endpoints Configuration
     endpoints: {
-        // Authentication - FIXED: Changed from /api/logout to /logout to match Flask route
+        // Authentication
         login: '/api/login',
-        logout: '/logout', // FIXED: Correct endpoint for Flask session logout
+        logout: '/logout',
         session: '/session/check',
         sessionCheck: '/session/check', // Alias for backward compatibility
         
@@ -94,12 +94,12 @@ const AppConfig = {
         'catalog/grouped-records': '/catalog/grouped-records',
 
         // Genres
-        genres: '/api/genres',
-        genreByName: (name) => `/api/genres/by-name/${encodeURIComponent(name)}`,
+        genres: '/genres',
+        genreByName: (name) => `/genres/by-name/${encodeURIComponent(name)}`,
         
         // Config
-        config: '/api/config',
-        configByKey: (key) => `/api/config/${key}`,
+        config: '/config',
+        configByKey: (key) => `/config/${key}`,
         
         // Price & Commission
         priceAdvice: '/api/price-advice',
@@ -107,12 +107,12 @@ const AppConfig = {
         commissionRate: '/api/commission-rate',
         
         // Consignment
-        consignmentRecords: '/api/consignment',
-        consignmentStats: '/api/consignment/stats',
+        consignmentRecords: '/consignment/records',
+        consignmentStats: '/consignment/stats',
         
         // Users
-        users: '/api/users',
-        userById: (id) => `/api/users/${id}`,
+        users: '/users',
+        userById: (id) => `/users/${id}`,
         
         // Voting (legacy endpoints)
         vote: (recordId, voterIp, voteType) => `/api/vote/${recordId}/${voterIp}/${voteType}`,
@@ -123,7 +123,7 @@ const AppConfig = {
         spotify: '/api/spotify',
         
         // Stats & Health
-        stats: '/api/stats',
+        stats: '/stats',
         health: '/health'
     },
     
@@ -301,13 +301,11 @@ const pigstyleAPI = {
             params: { random: true, limit, has_youtube: hasYouTube }
         });
     },
+    
     loadCatalogGroupedRecords() {
         console.log('Loading catalog grouped records...');
-        return this.request('catalog/grouped-records', {  // Changed from 'records' to 'catalog/grouped-records'
-            // No params needed since the backend endpoint handles it directly
-        });
+        return this.request('catalog/grouped-records');
     },
-     
     
     // Get a single record by ID
     getRecord(recordId) {
@@ -422,7 +420,7 @@ const pigstyleAPI = {
     }
 };
 
-// AUTHENTICATION MODULE - FIXED logout method
+// AUTHENTICATION MODULE
 const Auth = {
     // Current user state
     user: null,
@@ -451,7 +449,7 @@ const Auth = {
                     this.user = data.user;
                     this.isLoggedIn = true;
                     this.role = data.user.role;
-                    console.log('User logged in:', this.user.username);
+                    console.log('User logged in:', this.user.username, 'Role:', this.role);
                     
                     // Store token if available
                     if (data.token) {
@@ -461,6 +459,9 @@ const Auth = {
                     // Store in localStorage for quick access
                     localStorage.setItem('user', JSON.stringify(data.user));
                     localStorage.setItem('auth_timestamp', Date.now().toString());
+                    
+                    // Update navbar links based on role
+                    this.updateNavLinks();
                 } else {
                     this.clearAuth();
                 }
@@ -470,6 +471,27 @@ const Auth = {
         } catch (error) {
             console.error('Session check failed:', error);
             this.clearAuth();
+        }
+    },
+    
+    // Update navigation links based on role
+    updateNavLinks() {
+        const dashboardLink = document.getElementById('dashboard-nav-link');
+        const youtubeLinkerLink = document.getElementById('youtube-linker-nav-link');
+        
+        if (!dashboardLink || !youtubeLinkerLink) return;
+        
+        if (this.isLoggedIn) {
+            if (this.role === 'youtube_linker') {
+                dashboardLink.style.display = 'none';
+                youtubeLinkerLink.style.display = 'inline-block';
+            } else if (this.role === 'admin' || this.role === 'consignor') {
+                dashboardLink.style.display = 'inline-block';
+                youtubeLinkerLink.style.display = 'none';
+            }
+        } else {
+            dashboardLink.style.display = 'none';
+            youtubeLinkerLink.style.display = 'none';
         }
     },
     
@@ -507,6 +529,15 @@ const Auth = {
                 localStorage.setItem('auth_timestamp', Date.now().toString());
                 
                 this.updateUI();
+                this.updateNavLinks();
+                
+                // Redirect based on role
+                if (this.role === 'youtube_linker') {
+                    window.location.href = '/youtube-linker';
+                } else {
+                    window.location.href = '/dashboard';
+                }
+                
                 return { success: true, user: data.user };
             } else {
                 return { success: false, error: data.error || 'Login failed' };
@@ -517,16 +548,16 @@ const Auth = {
         }
     },
     
-    // FIXED: Logout user - proper endpoint, cookie clearing, and redirect
+    // Logout user
     async logout() {
         console.log('Logging out...');
         
         try {
-            // Call the logout endpoint - FIXED: Now uses correct /logout endpoint
+            // Call the logout endpoint
             const response = await fetch(AppConfig.getUrl('logout'), {
                 method: 'POST',
                 headers: AppConfig.getHeaders(),
-                credentials: 'include' // Important: sends cookies
+                credentials: 'include'
             });
             
             if (response.ok) {
@@ -542,19 +573,19 @@ const Auth = {
         // Clear all client-side auth data
         this.clearAuth();
         
-        // FIXED: Force clear all cookies (including any non-HttpOnly ones)
+        // Force clear all cookies
         this.clearAllCookies();
         
         // Update UI to show logged out state
         this.updateUI();
         
-        // FIXED: Redirect to home page immediately
+        // Redirect to home page
         window.location.href = '/';
         
         return { success: true };
     },
     
-    // FIXED: New method to clear all cookies
+    // Clear all cookies
     clearAllCookies() {
         const cookies = document.cookie.split(";");
         
@@ -580,7 +611,7 @@ const Auth = {
         localStorage.removeItem('user');
         localStorage.removeItem('auth_timestamp');
         localStorage.removeItem('auth_token');
-        sessionStorage.removeItem('clientId'); // Also clear session storage
+        sessionStorage.removeItem('clientId');
         console.log('Auth data cleared from localStorage');
     },
     
@@ -588,10 +619,11 @@ const Auth = {
     hasPermission(requiredRole) {
         if (!this.isLoggedIn) return false;
         
-        // Role hierarchy: admin > consignor > public
+        // Role hierarchy: admin > consignor > youtube_linker > public
         const roleHierarchy = {
-            'admin': ['admin', 'consignor', 'public'],
+            'admin': ['admin', 'consignor', 'youtube_linker', 'public'],
             'consignor': ['consignor', 'public'],
+            'youtube_linker': ['youtube_linker', 'public'],
             'public': ['public']
         };
         
@@ -610,7 +642,8 @@ const Auth = {
             'edit_own_records': ['admin', 'consignor'],
             'view_sales_reports': ['admin', 'consignor'],
             'request_payout': ['consignor'],
-            'approve_payout': ['admin']
+            'approve_payout': ['admin'],
+            'link_youtube': ['admin', 'youtube_linker']
         };
         
         if (!featurePermissions[feature]) return true;
@@ -634,19 +667,13 @@ const Auth = {
                 const password = document.getElementById('password').value;
                 
                 const result = await this.login(username, password);
-                if (result.success) {
-                    this.showMessage('Login successful!', 'success');
-                    setTimeout(() => {
-                        window.location.href = '/dashboard';
-                    }, 1000);
-                } else {
+                if (!result.success) {
                     this.showMessage(result.error || 'Login failed', 'error');
                 }
             });
         }
         
-        // FIXED: Improved logout button event listener
-        // Use both event delegation and direct attachment for reliability
+        // Logout button event listener
         document.addEventListener('click', (e) => {
             const logoutButton = e.target.closest('#logout-button');
             if (logoutButton) {
@@ -665,14 +692,12 @@ const Auth = {
         this.updateButtons();
     },
     
-    // Update navbar based on auth state - FIXED: Added direct logout button handler
+    // Update navbar based on auth state
     updateNavbar() {
         const authSection = document.getElementById('auth-section');
-
         if (!authSection) return;
         
         if (this.isLoggedIn) {
-            
             authSection.innerHTML = `
                 <div class="user-menu">
                     <span class="user-greeting">Hi, ${this.user?.username || 'User'}</span>
@@ -682,9 +707,16 @@ const Auth = {
                             <i class="fas fa-caret-down"></i>
                         </button>
                         <div class="dropdown-menu" id="dropdown-menu">
+                            ${this.role === 'youtube_linker' ? `
+                            <a href="/youtube-linker" class="dropdown-item">
+                                <i class="fab fa-youtube"></i> YouTube Linker
+                            </a>
+                            ` : ''}
+                            ${this.role === 'admin' || this.role === 'consignor' ? `
                             <a href="/dashboard" class="dropdown-item">
                                 <i class="fas fa-tachometer-alt"></i> Dashboard
                             </a>
+                            ` : ''}
                             ${this.role === 'admin' ? `
                             <a href="/admin" class="dropdown-item">
                                 <i class="fas fa-cog"></i> Admin Panel
@@ -702,11 +734,10 @@ const Auth = {
             // Set up dropdown interaction
             this.setupDropdown();
             
-            // FIXED: Direct attachment of logout button click handler
+            // Direct attachment of logout button click handler
             setTimeout(() => {
                 const logoutBtn = document.getElementById('logout-button');
                 if (logoutBtn) {
-                    // Remove any existing listeners to avoid duplicates
                     const newLogoutBtn = logoutBtn.cloneNode(true);
                     logoutBtn.parentNode.replaceChild(newLogoutBtn, logoutBtn);
                     
@@ -730,30 +761,25 @@ const Auth = {
     
     // Setup dropdown interaction
     setupDropdown() {
-        // Wait a moment for DOM to update
         setTimeout(() => {
             const toggleButton = document.getElementById('dropdown-toggle-button');
             const dropdownMenu = document.getElementById('dropdown-menu');
             
             if (toggleButton && dropdownMenu) {
-                // Remove existing listeners to avoid duplicates
                 const newToggleButton = toggleButton.cloneNode(true);
                 toggleButton.parentNode.replaceChild(newToggleButton, toggleButton);
                 
-                // Toggle dropdown on click
                 newToggleButton.addEventListener('click', function(e) {
                     e.stopPropagation();
                     dropdownMenu.classList.toggle('show');
                 });
                 
-                // Close dropdown when clicking outside
                 document.addEventListener('click', function(e) {
                     if (!newToggleButton.contains(e.target) && !dropdownMenu.contains(e.target)) {
                         dropdownMenu.classList.remove('show');
                     }
                 });
                 
-                // Keep dropdown open when hovering over it
                 dropdownMenu.addEventListener('mouseenter', function() {
                     dropdownMenu.classList.add('show');
                 });
@@ -762,14 +788,12 @@ const Auth = {
                     dropdownMenu.classList.remove('show');
                 });
                 
-                // Close dropdown when clicking on menu item
                 dropdownMenu.querySelectorAll('.dropdown-item').forEach(item => {
                     item.addEventListener('click', function() {
                         dropdownMenu.classList.remove('show');
                     });
                 });
                 
-                // Close dropdown with Escape key
                 document.addEventListener('keydown', function(e) {
                     if (e.key === 'Escape' && dropdownMenu.classList.contains('show')) {
                         dropdownMenu.classList.remove('show');
@@ -998,6 +1022,20 @@ const addAuthStyles = () => {
         .nav-link:hover {
             background: rgba(255, 255, 255, 0.3);
         }
+        
+        /* Role badges */
+        .role-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .role-badge.admin { background: #dc3545; color: white; }
+        .role-badge.consignor { background: #28a745; color: white; }
+        .role-badge.youtube_linker { background: #ffc107; color: #333; }
         
         /* Fix for small screens */
         @media (max-width: 768px) {
