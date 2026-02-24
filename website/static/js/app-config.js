@@ -980,7 +980,8 @@ const addAuthStyles = () => {
             display: flex;
             align-items: center;
             padding: 10px 15px;
-            color: #333;
+            color: #333 !important;  // Add !important here
+
             text-decoration: none;
             border-bottom: 1px solid #eee;
             transition: background 0.2s;
