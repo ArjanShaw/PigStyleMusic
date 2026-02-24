@@ -140,12 +140,7 @@ const UsersModule = (function() {
         let totalOwed = 0;
         
         for (const record of consignorSoldRecords) {
-            if (record.store_price === undefined || 
-                record.store_price === null || 
-                record.commission_rate === undefined || 
-                record.commission_rate === null) {
-                continue;
-            }
+            
             
             const storePrice = Number(record.store_price);
             const commissionRate = Number(record.commission_rate);

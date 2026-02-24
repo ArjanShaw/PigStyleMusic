@@ -2224,7 +2224,7 @@ def create_record():
     
     try:
         consignor_id = data.get('consignor_id')
-        commission_rate = data.get('commission_rate', 0.20)
+        commission_rate = data.get('commission_rate')
         status_id = data.get('status_id', 1)
         
         cursor.execute('''
@@ -3060,7 +3060,7 @@ def add_consignor_record():
 
     cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'COMMISSION_DEFAULT_RATE'")
     commission_result = cursor.fetchone()
-    commission_rate = float(commission_result['config_value']) if commission_result else 0.20
+    commission_rate = float(commission_result['config_value']) 
 
     cursor.execute('''
         INSERT INTO records (
