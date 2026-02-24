@@ -1732,9 +1732,100 @@ def check_session():
         'logged_in': False,
         'user': None
     })
+ 
+@app.route('/api/youtube/status', methods=['GET'])
+def youtube_status():
+    """Check if YouTube API is configured (without exposing the key)"""
+    youtube_api_key = os.environ.get('YOUTUBE_API_KEY')
+    return jsonify({
+        'status': 'success',
+        'configured': bool(youtube_api_key)
+    })
+
+@app.route('/api/youtube/search', methods=['POST'])
+def youtube_search():
+    """Proxy YouTube API search - uses environment variable for API key"""
+    try:
+        data = request.get_json()
+        query = data.get('query')
+        
+        if not query:
+            return jsonify({'status': 'error', 'error': 'Search query required'}), 400
+        
+        # Get YouTube API key from environment variable
+        youtube_api_key = os.environ.get('YOUTUBE_API_KEY')
+        if not youtube_api_key:
+            app.logger.error("YOUTUBE_API_KEY not found in environment variables")
+            return jsonify({
+                'status': 'error', 
+                'error': 'YouTube API not configured on server'
+            }), 503
+        
+        # Search YouTube
+        import requests
+        search_url = "https://www.googleapis.com/youtube/v3/search"
+        params = {
+            'part': 'snippet',
+            'q': query,
+            'type': 'video',
+            'maxResults': 20,
+            'videoEmbeddable': 'true',
+            'videoDuration': 'short',
+            'order': 'relevance',
+            'key': youtube_api_key
+        }
+        
+        response = requests.get(search_url, params=params)
+        
+        # Check for quota exceeded
+        if response.status_code == 403:
+            error_text = response.text.lower()
+            if 'quota' in error_text:
+                app.logger.warning("YouTube API quota exceeded")
+                return jsonify({
+                    'status': 'error', 
+                    'error': 'YouTube API quota exceeded'
+                }), 429
+        
+        if response.status_code != 200:
+            app.logger.error(f"YouTube API error: {response.status_code}")
+            return jsonify({
+                'status': 'error', 
+                'error': f'YouTube API error: {response.status_code}'
+            }), response.status_code
+        
+        data = response.json()
+        
+        # Process results
+        results = []
+        for item in data.get('items', []):
+            video_id = item.get('id', {}).get('videoId')
+            if not video_id:
+                continue
+                
+            snippet = item.get('snippet', {})
+            
+            results.append({
+                'title': snippet.get('title', ''),
+                'channel': snippet.get('channelTitle', ''),
+                'url': f"https://www.youtube.com/watch?v={video_id}",
+                'video_id': video_id,
+                'thumbnail': snippet.get('thumbnails', {}).get('default', {}).get('url', '')
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'results': results
+        })
+        
+    except Exception as e:
+        app.logger.error(f"YouTube search error: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 # ==================== USER MANAGEMENT ENDPOINTS ====================
-
 @app.route('/users', methods=['POST'])
 def create_user():
     data = request.get_json()
@@ -1751,11 +1842,13 @@ def create_user():
     password = data['password']
     role = data['role']
     full_name = data.get('full_name', '')
+    initials = data.get('initials', '')
 
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         return jsonify({'status': 'error', 'error': 'Invalid email format'}), 400
 
-    if role not in ['admin', 'consignor']:
+    # Update this line to include 'youtube_linker'
+    if role not in ['admin', 'consignor', 'youtube_linker']:
         return jsonify({'status': 'error', 'error': 'Invalid role'}), 400
 
     if len(password) < 8:
@@ -1787,9 +1880,9 @@ def create_user():
     password_hash = f"{salt}${hashlib.sha256((salt + password).encode()).hexdigest()}"
 
     cursor.execute('''
-        INSERT INTO users (username, email, password_hash, role, full_name, created_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ''', (username, email, password_hash, role, full_name))
+        INSERT INTO users (username, email, password_hash, role, full_name, initials, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ''', (username, email, password_hash, role, full_name, initials))
 
     user_id = cursor.lastrowid
     conn.commit()
@@ -1971,6 +2064,72 @@ def change_password(user_id):
 
     return jsonify({'status': 'success', 'message': 'Password changed successfully'})
 
+@app.route('/users/<int:user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    """Delete a user (admin only)"""
+    # Debug: Print session info
+    print(f"DELETE /users/{user_id} - Session: {dict(session)}")
+    print(f"DELETE /users/{user_id} - logged_in: {session.get('logged_in')}")
+    print(f"DELETE /users/{user_id} - role: {session.get('role')}")
+    
+    # Check if user is logged in
+    if not session.get('logged_in') or 'user_id' not in session:
+        return jsonify({
+            'status': 'error',
+            'error': 'Authentication required - not logged in'
+        }), 401
+    
+    # Check if user has admin role
+    if session.get('role') != 'admin':
+        return jsonify({
+            'status': 'error',
+            'error': f'Admin role required. Current role: {session.get("role")}'
+        }), 403
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Check if user exists
+        cursor.execute('SELECT id, username, role FROM users WHERE id = ?', (user_id,))
+        user = cursor.fetchone()
+        
+        if not user:
+            return jsonify({
+                'status': 'error',
+                'error': 'User not found'
+            }), 404
+        
+        # Check if user has any records
+        cursor.execute('SELECT COUNT(*) as count FROM records WHERE consignor_id = ?', (user_id,))
+        records_count = cursor.fetchone()['count']
+        
+        if records_count > 0:
+            return jsonify({
+                'status': 'error',
+                'error': f'Cannot delete user with {records_count} existing records. Please reassign or delete records first.'
+            }), 400
+        
+        # Delete the user
+        cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        conn.commit()
+        
+        app.logger.info(f"User {user_id} ({user['username']}) deleted by admin")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'User {user["username"]} deleted successfully'
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting user {user_id}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': f'Server error: {str(e)}'
+        }), 500
+    finally:
+        conn.close()
+
 @app.route('/api/admin/users', methods=['GET'])
 @role_required(['admin'])
 def get_all_users_admin():
@@ -2008,6 +2167,8 @@ def get_all_users_admin():
         'count': len(users_list),
         'users': users_list
     })
+
+ 
 
 @app.route('/debug/verify-login/<int:user_id>', methods=['POST'])
 def verify_login(user_id):

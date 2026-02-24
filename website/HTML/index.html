@@ -158,13 +158,14 @@
     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
         <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
             <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
-             
         </a>
         <div style="display: flex; gap: 20px; align-items: center;">
             <a href="/inventory" style="color: white; text-decoration: none;">Inventory</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
             <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
+            <a href="/dashboard" style="color: white; text-decoration: none; display: none;" id="dashboard-nav-link">Dashboard</a>
             <div id="auth-section">
+                <!-- Populated by app-config.js - includes YouTube Linker in dropdown -->
             </div>
         </div>
     </nav>
@@ -241,5 +242,39 @@
             </div>
         </div>
     </div>
+
+    <script>
+        // Update dashboard link visibility based on user role
+        function updateDashboardLink() {
+            const userData = localStorage.getItem('user');
+            const dashboardLink = document.getElementById('dashboard-nav-link');
+            
+            if (userData) {
+                try {
+                    const user = JSON.parse(userData);
+                    if (user.role === 'admin' || user.role === 'consignor') {
+                        dashboardLink.style.display = 'inline-block';
+                    } else {
+                        dashboardLink.style.display = 'none';
+                    }
+                } catch (e) {
+                    console.error('Error parsing user data:', e);
+                    dashboardLink.style.display = 'none';
+                }
+            } else {
+                dashboardLink.style.display = 'none';
+            }
+        }
+
+        // Run on page load
+        document.addEventListener('DOMContentLoaded', updateDashboardLink);
+        
+        // Also run when localStorage changes (e.g., after login)
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'user') {
+                updateDashboardLink();
+            }
+        });
+    </script>
 </body>
 </html>
