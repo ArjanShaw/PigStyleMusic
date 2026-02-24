@@ -12,6 +12,7 @@ window.resetReceiptSearch = resetReceiptSearch;
 window.printReceipt = printReceipt;
 window.showRefundModal = showRefundModal;
 window.saveReceipt = saveReceipt;
+window.closeReceiptModal = closeReceiptModal;
 
 // Helper function to safely format date
 function formatReceiptDate(receipt) {
@@ -394,29 +395,17 @@ function resetReceiptSearch() {
     renderReceipts(allReceipts);
 }
 
-// Print a receipt
+// Print a receipt - now just calls the detail view with print option
 function printReceipt(receiptId) {
-    const receipt = allReceipts.find(r => r.receipt_id === receiptId || r.id === receiptId);
-    if (!receipt) {
-        alert('Receipt not found');
-        return;
-    }
-    
-    const transactionData = parseTransactionData(receipt);
-    const receiptText = formatReceiptForPrinter({
-        ...receipt,
-        ...transactionData
-    });
-    
-    // Try to print to thermal printer
-    if (typeof window.printToThermalPrinter === 'function') {
-        window.printToThermalPrinter(receiptText);
-    } else {
-        // Fallback to browser print
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write('<pre>' + receiptText + '</pre>');
-        printWindow.document.close();
-        printWindow.print();
+    // Instead of opening a new popup, show the receipt in the detail modal with print button
+    showReceiptDetails(receiptId);
+}
+
+// Close receipt modal
+function closeReceiptModal() {
+    const modal = document.getElementById('receipt-modal');
+    if (modal) {
+        modal.style.display = 'none';
     }
 }
 
@@ -483,13 +472,31 @@ function showReceiptDetails(receiptId) {
     const change = transactionData.change || 0;
     const squarePaymentId = transactionData.square_payment_id || receipt.square_payment_id || null;
     
+    // Generate a printable version of the receipt
+    const printableReceipt = generatePrintableReceipt({
+        ...receipt,
+        ...transactionData,
+        formattedDate,
+        items,
+        paymentMethod,
+        cashier,
+        total,
+        subtotal,
+        tax,
+        taxRate,
+        discount,
+        discountType,
+        discountAmount,
+        tendered,
+        change,
+        squarePaymentId
+    });
+    
     content.innerHTML = `
         <div class="receipt-detail">
             <div class="receipt-detail-header">
                 <h3>Receipt #${escapeHtml(receiptId)}</h3>
-                <button class="btn btn-primary btn-small" onclick="printReceipt('${receiptId}')">
-                    <i class="fas fa-print"></i> Print
-                </button>
+                <button class="modal-close" onclick="closeReceiptModal()">&times;</button>
             </div>
             
             <div class="receipt-info">
@@ -546,15 +553,100 @@ function showReceiptDetails(receiptId) {
                 ` : ''}
             </div>
             
+            <div class="receipt-printable-version" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; font-family: monospace; white-space: pre-wrap; font-size: 12px; max-height: 200px; overflow-y: auto;">
+                ${escapeHtml(printableReceipt).replace(/\n/g, '<br>')}
+            </div>
+            
             <div class="receipt-actions">
+                <button class="btn btn-primary" onclick="window.print()">
+                    <i class="fas fa-print"></i> Print Receipt
+                </button>
                 <button class="btn btn-warning" onclick="showRefundModal('${receiptId}')">
                     <i class="fas fa-undo-alt"></i> Process Refund
+                </button>
+                <button class="btn btn-secondary" onclick="closeReceiptModal()">
+                    <i class="fas fa-times"></i> Close
                 </button>
             </div>
         </div>
     `;
     
     modal.style.display = 'flex';
+}
+
+// Generate printable receipt text
+function generatePrintableReceipt(data) {
+    const storeName = data.storeName || 'PigStyle Music';
+    const storeAddress = data.storeAddress || '';
+    const storePhone = data.storePhone || '';
+    const footer = data.footer || 'Thank you for your purchase!';
+    const receiptId = data.receipt_id || data.id || 'Unknown';
+    
+    let receipt = '';
+    receipt += ''.padStart(32, '=') + '\n';
+    receipt += centerText(storeName, 32) + '\n';
+    if (storeAddress) receipt += centerText(storeAddress, 32) + '\n';
+    if (storePhone) receipt += centerText(storePhone, 32) + '\n';
+    receipt += ''.padStart(32, '=') + '\n\n';
+    
+    receipt += `Receipt #: ${receiptId}\n`;
+    receipt += `Date: ${data.formattedDate || new Date().toLocaleString()}\n`;
+    receipt += `Cashier: ${data.cashier || 'Admin'}\n`;
+    receipt += `Payment: ${data.paymentMethod || 'Cash'}\n\n`;
+    
+    receipt += ''.padStart(32, '-') + '\n';
+    
+    if (data.items && Array.isArray(data.items)) {
+        data.items.forEach(item => {
+            let description = '';
+            if (item.type === 'accessory') {
+                description = item.description || 'Accessory';
+            } else if (item.type === 'custom') {
+                description = item.note || 'Custom Item';
+            } else {
+                description = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
+            }
+            
+            const price = item.store_price || 0;
+            const shortDesc = description.length > 20 ? description.substring(0, 18) + '..' : description;
+            receipt += `${shortDesc.padEnd(20)} $${price.toFixed(2).padStart(8)}\n`;
+        });
+    }
+    
+    receipt += ''.padStart(32, '-') + '\n';
+    receipt += `Subtotal:${''.padStart(14)} $${(data.subtotal || 0).toFixed(2).padStart(8)}\n`;
+    
+    if (data.discount && data.discount > 0) {
+        const discountText = data.discountType === 'percentage' ? 
+            `Discount (${data.discountAmount}%):` : 'Discount:';
+        receipt += `${discountText.padEnd(22)} -$${(data.discount || 0).toFixed(2).padStart(8)}\n`;
+    }
+    
+    receipt += `Tax (${data.taxRate || 0}%):${''.padStart(12)} $${(data.tax || 0).toFixed(2).padStart(8)}\n`;
+    receipt += ''.padStart(32, '=') + '\n';
+    receipt += `TOTAL:${''.padStart(16)} $${(data.total || 0).toFixed(2).padStart(8)}\n`;
+    receipt += ''.padStart(32, '=') + '\n\n';
+    
+    if (data.paymentMethod && data.paymentMethod.toLowerCase().includes('cash') && data.change > 0) {
+        receipt += `Tendered: $${(data.tendered || 0).toFixed(2)}\n`;
+        receipt += `Change: $${(data.change || 0).toFixed(2)}\n\n`;
+    }
+    
+    if (data.squarePaymentId) {
+        receipt += `Square ID: ${data.squarePaymentId}\n\n`;
+    }
+    
+    receipt += centerText(footer, 32) + '\n';
+    receipt += ''.padStart(32, '=') + '\n';
+    
+    return receipt;
+}
+
+function centerText(text, width) {
+    const padding = Math.max(0, width - text.length);
+    const leftPad = Math.floor(padding / 2);
+    const rightPad = padding - leftPad;
+    return ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
 }
 
 // Save receipt to database
@@ -756,80 +848,6 @@ window.processRefund = async function() {
     alert('Refund functionality would be implemented here');
     closeRefundModal();
 };
-
-// Helper function to format receipt for printer
-function formatReceiptForPrinter(transaction) {
-    const storeName = transaction.storeName || 'PigStyle Music';
-    const storeAddress = transaction.storeAddress || '';
-    const storePhone = transaction.storePhone || '';
-    const footer = transaction.footer || 'Thank you for your purchase!';
-    
-    let receipt = '';
-    receipt += ''.padStart(32, '=') + '\n';
-    receipt += centerText(storeName, 32) + '\n';
-    if (storeAddress) receipt += centerText(storeAddress, 32) + '\n';
-    if (storePhone) receipt += centerText(storePhone, 32) + '\n';
-    receipt += ''.padStart(32, '=') + '\n\n';
-    
-    receipt += `Receipt #: ${transaction.id}\n`;
-    receipt += `Date: ${new Date(transaction.date).toLocaleString()}\n`;
-    receipt += `Cashier: ${transaction.cashier || 'Admin'}\n`;
-    receipt += `Payment: ${transaction.paymentMethod || 'Cash'}\n\n`;
-    
-    receipt += ''.padStart(32, '-') + '\n';
-    
-    if (transaction.items && Array.isArray(transaction.items)) {
-        transaction.items.forEach(item => {
-            let description = '';
-            if (item.type === 'accessory') {
-                description = item.description || 'Accessory';
-            } else if (item.type === 'custom') {
-                description = item.note || 'Custom Item';
-            } else {
-                description = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
-            }
-            
-            const price = item.store_price || 0;
-            const shortDesc = description.length > 20 ? description.substring(0, 18) + '..' : description;
-            receipt += `${shortDesc.padEnd(20)} $${price.toFixed(2).padStart(8)}\n`;
-        });
-    }
-    
-    receipt += ''.padStart(32, '-') + '\n';
-    receipt += `Subtotal:${''.padStart(14)} $${(transaction.subtotal || 0).toFixed(2).padStart(8)}\n`;
-    
-    if (transaction.discount && transaction.discount > 0) {
-        const discountText = transaction.discountType === 'percentage' ? 
-            `Discount (${transaction.discountAmount}%):` : 'Discount:';
-        receipt += `${discountText.padEnd(22)} -$${(transaction.discount || 0).toFixed(2).padStart(8)}\n`;
-    }
-    
-    receipt += `Tax (${transaction.taxRate || 0}%):${''.padStart(12)} $${(transaction.tax || 0).toFixed(2).padStart(8)}\n`;
-    receipt += ''.padStart(32, '=') + '\n';
-    receipt += `TOTAL:${''.padStart(16)} $${(transaction.total || 0).toFixed(2).padStart(8)}\n`;
-    receipt += ''.padStart(32, '=') + '\n\n';
-    
-    if (transaction.paymentMethod && transaction.paymentMethod.toLowerCase().includes('cash') && transaction.change > 0) {
-        receipt += `Tendered: $${(transaction.tendered || 0).toFixed(2)}\n`;
-        receipt += `Change: $${(transaction.change || 0).toFixed(2)}\n\n`;
-    }
-    
-    if (transaction.square_payment_id) {
-        receipt += `Square ID: ${transaction.square_payment_id}\n\n`;
-    }
-    
-    receipt += centerText(footer, 32) + '\n';
-    receipt += ''.padStart(32, '=') + '\n';
-    
-    return receipt;
-}
-
-function centerText(text, width) {
-    const padding = Math.max(0, width - text.length);
-    const leftPad = Math.floor(padding / 2);
-    const rightPad = padding - leftPad;
-    return ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
-}
 
 // Escape HTML
 function escapeHtml(text) {
