@@ -186,6 +186,137 @@
             color: #000000;
             font-weight: 500;
         }
+
+        /* Date filter styles */
+        .date-filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 250px;
+        }
+
+        .date-filter-group label {
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+            margin-bottom: 2px;
+        }
+
+        .date-inputs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .date-input {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #333;
+            background: white;
+        }
+
+        .date-input:focus {
+            outline: none;
+            border-color: #ff6b6b;
+            box-shadow: 0 0 0 2px rgba(255,107,107,0.1);
+        }
+
+        .date-separator {
+            color: #666;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .date-presets {
+            display: flex;
+            gap: 6px;
+            margin-top: 5px;
+            flex-wrap: wrap;
+        }
+
+        .date-preset-btn {
+            padding: 4px 10px;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            color: #333;
+            transition: all 0.2s;
+        }
+
+        .date-preset-btn:hover {
+            background: #ff6b6b;
+            border-color: #ff6b6b;
+            color: white;
+        }
+
+        .date-preset-btn.active {
+            background: #ff6b6b;
+            border-color: #ff6b6b;
+            color: white;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .filter-select, .price-input {
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #333;
+            background: white;
+        }
+
+        .price-filter-group {
+            min-width: 200px;
+        }
+
+        .price-inputs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .price-separator {
+            color: #666;
+            font-weight: 600;
+        }
+
+        /* New arrivals badge */
+        .new-arrival-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ff6b6b;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            z-index: 2;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .card {
+            position: relative;
+        }
     </style>
 </head>
 <body>
@@ -219,27 +350,48 @@
         
         <div class="filters-container">
             <div class="filter-group">
-                <select id="artistFilter" class="filter-select">
-                    <option value="">All Artists</option>
-                </select>
+                <div class="filter-row">
+                    <select id="artistFilter" class="filter-select">
+                        <option value="">All Artists</option>
+                    </select>
+                    
+                    <select id="conditionFilter" class="filter-select">
+                        <option value="">All Conditions</option>
+                        <option value="Mint (M)">Mint (M)</option>
+                        <option value="Near Mint (NM or M-)">Near Mint (NM or M-)</option>
+                        <option value="Very Good Plus (VG+)">Very Good Plus (VG+)</option>
+                        <option value="Very Good (VG)">Very Good (VG)</option>
+                        <option value="Good Plus (G+)">Good Plus (G+)</option>
+                        <option value="Good (G)">Good (G)</option>
+                        <option value="Fair (F)">Fair (F)</option>
+                        <option value="Poor (P)">Poor (P)</option>
+                    </select>
+                    
+                    <div class="price-filter-group">
+                        <div class="price-inputs">
+                            <input type="number" id="minPrice" class="price-input" placeholder="Min Price" min="0" value="">
+                            <span class="price-separator">-</span>
+                            <input type="number" id="maxPrice" class="price-input" placeholder="Max Price" min="0" value="">
+                        </div>
+                    </div>
+                </div>
                 
-                <select id="conditionFilter" class="filter-select">
-                    <option value="">All Conditions</option>
-                    <option value="Mint (M)">Mint (M)</option>
-                    <option value="Near Mint (NM or M-)">Near Mint (NM or M-)</option>
-                    <option value="Very Good Plus (VG+)">Very Good Plus (VG+)</option>
-                    <option value="Very Good (VG)">Very Good (VG)</option>
-                    <option value="Good Plus (G+)">Good Plus (G+)</option>
-                    <option value="Good (G)">Good (G)</option>
-                    <option value="Fair (F)">Fair (F)</option>
-                    <option value="Poor (P)">Poor (P)</option>
-                </select>
-                
-                <div class="price-filter-group">
-                    <div class="price-inputs">
-                        <input type="number" id="minPrice" class="price-input" placeholder="Min Price" min="0" value="">
-                        <span class="price-separator">-</span>
-                        <input type="number" id="maxPrice" class="price-input" placeholder="Max Price" min="0" value="">
+                <!-- New Date Filter Row -->
+                <div class="filter-row">
+                    <div class="date-filter-group">
+                        <label><i class="far fa-calendar-alt"></i> Date Added to Database:</label>
+                        <div class="date-inputs">
+                            <input type="date" id="minDate" class="date-input" placeholder="From">
+                            <span class="date-separator">→</span>
+                            <input type="date" id="maxDate" class="date-input" placeholder="To">
+                        </div>
+                        <div class="date-presets">
+                            <button type="button" class="date-preset-btn" data-days="7">Last 7 days</button>
+                            <button type="button" class="date-preset-btn" data-days="30">Last 30 days</button>
+                            <button type="button" class="date-preset-btn" data-days="90">Last 90 days</button>
+                            <button type="button" class="date-preset-btn" data-days="365">Last year</button>
+                            <button type="button" class="date-preset-btn" id="clearDates">Clear</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -350,7 +502,9 @@
                         image_url: record.image_url,
                         total_copies: 0,
                         price_range: { min: Infinity, max: 0 },
-                        copies: []
+                        copies: [],
+                        // Track the earliest created_at date for this release
+                        created_at: record.created_at
                     };
                 }
                 
@@ -361,11 +515,17 @@
                     store_price: parseFloat(record.store_price) || 0,
                     barcode: record.barcode,
                     catalog_number: record.catalog_number,
-                    youtube_url: record.youtube_url
+                    youtube_url: record.youtube_url,
+                    created_at: record.created_at
                 };
                 
                 groups[key].copies.push(copy);
                 groups[key].total_copies++;
+                
+                // Track the earliest creation date for the release
+                if (record.created_at && (!groups[key].created_at || record.created_at < groups[key].created_at)) {
+                    groups[key].created_at = record.created_at;
+                }
                 
                 if (copy.store_price > 0) {
                     groups[key].price_range.min = Math.min(groups[key].price_range.min, copy.store_price);
@@ -421,6 +581,23 @@
             // Set data attributes for filtering
             card.setAttribute('data-artist', (release.artist || '').toLowerCase());
             card.setAttribute('data-title', (release.title || '').toLowerCase());
+            
+            // Set date attribute for filtering (earliest creation date)
+            if (release.created_at) {
+                card.setAttribute('data-created', release.created_at);
+                
+                // Add "New Arrival" badge for items added in the last 30 days
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                const createdDate = new Date(release.created_at);
+                
+                if (createdDate >= thirtyDaysAgo) {
+                    const badge = document.createElement('div');
+                    badge.className = 'new-arrival-badge';
+                    badge.textContent = 'NEW';
+                    card.appendChild(badge);
+                }
+            }
             
             // Get the best image (first copy with image, or default)
             const imageUrl = release.image_url || '/static/images/default-record.jpg';
@@ -490,7 +667,7 @@
                 ? '1 copy' 
                 : `${release.total_copies} copies`;
             
-            card.innerHTML = `
+            card.innerHTML += `
                 <div class="card-image">
                     <img src="${imageUrl}" alt="${release.title}" onerror="this.src='/static/images/default-record.jpg'">
                 </div>
@@ -708,12 +885,53 @@
             const conditionFilter = document.getElementById('conditionFilter');
             const minPrice = document.getElementById('minPrice');
             const maxPrice = document.getElementById('maxPrice');
+            const minDate = document.getElementById('minDate');
+            const maxDate = document.getElementById('maxDate');
             
-            [searchBox, artistFilter, conditionFilter, minPrice, maxPrice].forEach(element => {
+            // Add event listeners for date filters
+            [searchBox, artistFilter, conditionFilter, minPrice, maxPrice, minDate, maxDate].forEach(element => {
                 if (element) {
                     element.addEventListener('input', applyFilters);
                     element.addEventListener('change', applyFilters);
                 }
+            });
+            
+            // Setup date preset buttons
+            document.querySelectorAll('.date-preset-btn[data-days]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const days = parseInt(this.dataset.days);
+                    const endDate = new Date();
+                    const startDate = new Date();
+                    startDate.setDate(startDate.getDate() - days);
+                    
+                    // Format dates as YYYY-MM-DD for input fields
+                    const formatDate = (date) => {
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    };
+                    
+                    document.getElementById('minDate').value = formatDate(startDate);
+                    document.getElementById('maxDate').value = formatDate(endDate);
+                    
+                    // Remove active class from all preset buttons
+                    document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    applyFilters();
+                });
+            });
+            
+            // Clear dates button
+            document.getElementById('clearDates').addEventListener('click', function() {
+                document.getElementById('minDate').value = '';
+                document.getElementById('maxDate').value = '';
+                
+                // Remove active class from all preset buttons
+                document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
+                
+                applyFilters();
             });
         }
 
@@ -725,6 +943,10 @@
             const minPriceValue = parseFloat(document.getElementById('minPrice').value) || 0;
             const maxPriceValue = parseFloat(document.getElementById('maxPrice').value) || 99999;
             
+            // Get date filter values
+            const minDateValue = document.getElementById('minDate').value;
+            const maxDateValue = document.getElementById('maxDate').value;
+            
             const container = document.getElementById('catalogContainer');
             const cards = container.querySelectorAll('.card');
             
@@ -733,6 +955,7 @@
             cards.forEach(card => {
                 const artist = card.getAttribute('data-artist') || '';
                 const title = card.getAttribute('data-title') || '';
+                const createdDate = card.getAttribute('data-created');
                 
                 // Get condition indicators from card
                 const conditionSpans = card.querySelectorAll('.condition-indicator');
@@ -772,8 +995,29 @@
                 // Check price range overlap
                 const priceMatch = !(cardMaxPrice < minPriceValue || cardMinPrice > maxPriceValue);
                 
+                // Check date range match
+                let dateMatch = true;
+                if (createdDate && (minDateValue || maxDateValue)) {
+                    const cardDate = new Date(createdDate);
+                    
+                    if (minDateValue) {
+                        const minDate = new Date(minDateValue);
+                        minDate.setHours(0, 0, 0, 0);
+                        dateMatch = dateMatch && cardDate >= minDate;
+                    }
+                    
+                    if (maxDateValue) {
+                        const maxDate = new Date(maxDateValue);
+                        maxDate.setHours(23, 59, 59, 999);
+                        dateMatch = dateMatch && cardDate <= maxDate;
+                    }
+                } else if (!createdDate && (minDateValue || maxDateValue)) {
+                    // If card has no date but date filter is active, don't show it
+                    dateMatch = false;
+                }
+                
                 // Show card if it matches all active filters
-                const shouldShow = searchMatch && artistMatch && conditionMatch && priceMatch;
+                const shouldShow = searchMatch && artistMatch && conditionMatch && priceMatch && dateMatch;
                 
                 card.style.display = shouldShow ? 'block' : 'none';
                 if (shouldShow) visibleCount++;
