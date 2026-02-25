@@ -134,8 +134,8 @@ function showStatus(message, type = 'info') {
     }
 }
 
-// Load users for filter
-async function loadUsers() {
+// Load consignors for filter (RENAMED from loadUsers to avoid conflict)
+async function loadConsignorsForPriceTags() {
     try {
         const url = `${AppConfig.baseUrl}/users`;
         const response = await fetch(url, {
@@ -196,7 +196,7 @@ async function loadUsers() {
 }
 
 // Load records
-async function loadRecords() {
+async function loadRecordsForPriceTags() {
     showLoading(true);
     
     try {
@@ -775,7 +775,7 @@ async function confirmMarkActive() {
     });
     
     // Reload records to get fresh data
-    await loadRecords();
+    await loadRecordsForPriceTags();
     
     if (successCount > 0) {
         showStatus(`Successfully marked ${successCount} records as Active${errorCount > 0 ? ` (${errorCount} failed)` : ''}`, 'success');
@@ -954,8 +954,8 @@ if (!window.priceTagsModule.initialized) {
     document.addEventListener('tabChanged', function(e) {
         if (e.detail && e.detail.tabName === 'price-tags') {
             console.log('Price tags tab activated, loading users and records...');
-            loadUsers();
-            loadRecords();
+            loadConsignorsForPriceTags();
+            loadRecordsForPriceTags();
         }
     });
     
@@ -965,17 +965,17 @@ if (!window.priceTagsModule.initialized) {
         const activeTab = document.querySelector('.tab-content.active');
         if (activeTab && activeTab.id === 'price-tags-tab') {
             console.log('Price tags tab is active on load, loading users and records...');
-            loadUsers();
-            loadRecords();
+            loadConsignorsForPriceTags();
+            loadRecordsForPriceTags();
         }
     });
     
     window.priceTagsModule.initialized = true;
 }
 
-// Export functions for use in HTML
-window.loadUsers = loadUsers;
-window.loadRecords = loadRecords;
+// Export functions for use in HTML (UPDATED function names)
+window.loadConsignorsForPriceTags = loadConsignorsForPriceTags;
+window.loadRecordsForPriceTags = loadRecordsForPriceTags;
 window.filterRecords = filterRecords;
 window.goToPage = goToPage;
 window.goToFirstPage = goToFirstPage;
