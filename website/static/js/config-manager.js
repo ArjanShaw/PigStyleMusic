@@ -254,10 +254,7 @@ function updateUIFromConfig() {
         const taxRate = getConfigValue('TAX_RATE');
         document.getElementById('tax-rate-display').textContent = taxRate;
         
-        document.getElementById('commission-rate-display').textContent = 'Per Record';
-        document.getElementById('admin-commission-display').textContent = 'Per Record';
-        document.getElementById('consignor-commission-display').textContent = 'Per Record';
-        
+         
     } catch (error) {
         console.error('Error updating UI from config:', error);
         throw error; // Re-throw to ensure we don't silently fail
