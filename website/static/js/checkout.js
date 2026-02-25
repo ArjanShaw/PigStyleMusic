@@ -59,11 +59,35 @@ let square_payment_sessions = {}; // Track payment sessions
         return statusMap[statusId] || 'Unknown';
     };
 
+    
+    // Update the getConfigValue function in checkout.js
     window.getConfigValue = function(key) {
-        if (typeof window.dbConfigValues !== 'undefined' && window.dbConfigValues[key]) {
-            return window.dbConfigValues[key].value;
+        // First check if window.dbConfigValues exists and has the key
+        if (window.dbConfigValues && window.dbConfigValues[key]) {
+            const value = window.dbConfigValues[key].value;
+            
+            // Convert string booleans to actual booleans
+            if (value === 'true') return true;
+            if (value === 'false') return false;
+            
+            // Convert numbers if possible
+            if (!isNaN(value) && value !== '') return parseFloat(value);
+            
+            return value;
         }
-        return null;
+        
+        // Fallback to defaults if config not loaded yet
+        const defaults = {
+            'TAX_ENABLED': 'true',
+            'TAX_RATE': '7.5',
+            'STORE_NAME': 'PigStyle Music',
+            'STORE_ADDRESS': '',
+            'STORE_PHONE': '',
+            'RECEIPT_FOOTER': 'Thank you for your purchase!'
+        };
+        
+        console.log(`Config key '${key}' not found, using default:`, defaults[key]);
+        return defaults[key] || null;
     };
 
     // ============================================================================
