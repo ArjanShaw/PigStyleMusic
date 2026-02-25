@@ -2703,5 +2703,135 @@
     <script src="/static/js/refunds.js"></script>
     <script src="/static/js/youtube-linker.js"></script>
     <script src="/static/js/price-checker.js"></script>
+    
+    <!-- Config Initializer - Loads database config for all tabs -->
+    <script>
+    // Initialize configuration values as soon as the page loads
+    (async function initializePageConfig() {
+        console.log('🔄 Initializing global configuration for admin panel...');
+        
+        try {
+            // Make sure AppConfig is available
+            if (typeof AppConfig === 'undefined') {
+                console.error('AppConfig not loaded yet, waiting...');
+                // Wait a moment for scripts to load
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            // Try multiple methods to load config
+            let configLoaded = false;
+            
+            // Method 1: Use fetchAllConfigValues if available
+            if (typeof fetchAllConfigValues === 'function') {
+                console.log('Loading config via fetchAllConfigValues()...');
+                await fetchAllConfigValues();
+                configLoaded = true;
+            } 
+            // Method 2: Direct API call
+            else {
+                console.log('fetchAllConfigValues not found, making direct API call...');
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/config`, {
+                        credentials: 'include',
+                        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (data.status === 'success') {
+                            // Initialize window.dbConfigValues
+                            window.dbConfigValues = {};
+                            
+                            // Handle different response formats
+                            if (data.configs) {
+                                Object.keys(data.configs).forEach(key => {
+                                    window.dbConfigValues[key] = data.configs[key];
+                                });
+                            } else if (data.config) {
+                                data.config.forEach(item => {
+                                    window.dbConfigValues[item.config_key] = {
+                                        value: item.config_value,
+                                        description: item.description || ''
+                                    };
+                                });
+                            }
+                            
+                            configLoaded = true;
+                            console.log('✅ Config loaded via direct API call');
+                        }
+                    }
+                } catch (directError) {
+                    console.error('Direct API call failed:', directError);
+                }
+            }
+            
+            // Method 3: Try the ConfigLoader if available (from app-config.js)
+            if (!configLoaded && typeof ConfigLoader !== 'undefined' && ConfigLoader.loadAll) {
+                console.log('Loading config via ConfigLoader...');
+                await ConfigLoader.loadAll();
+                configLoaded = true;
+            }
+            
+            if (configLoaded) {
+                console.log('✅ Global configuration loaded successfully!');
+                console.log('Available config keys:', Object.keys(window.dbConfigValues || {}));
+                
+                // Update any UI elements that need config values
+                if (typeof updateUIFromConfig === 'function') {
+                    updateUIFromConfig();
+                }
+                
+                // Dispatch an event that config is ready
+                window.dispatchEvent(new CustomEvent('configReady', {
+                    detail: { config: window.dbConfigValues }
+                }));
+            } else {
+                console.warn('⚠️ Could not load configuration. Using defaults where available.');
+                // Initialize empty config to prevent errors
+                window.dbConfigValues = window.dbConfigValues || {};
+            }
+            
+        } catch (error) {
+            console.error('❌ Failed to initialize configuration:', error);
+            // Ensure dbConfigValues exists to prevent errors
+            window.dbConfigValues = window.dbConfigValues || {};
+        }
+        
+        // Log the current config state for debugging
+        console.log('Current dbConfigValues:', window.dbConfigValues);
+        
+        // Specifically check for tax configuration
+        if (window.dbConfigValues) {
+            console.log('TAX_ENABLED:', window.dbConfigValues['TAX_ENABLED']);
+            console.log('TAX_RATE:', window.dbConfigValues['TAX_RATE']);
+        }
+    })();
+    </script>
+    
+    <!-- Safety check for checkout tab -->
+    <script>
+    // This runs after everything else to double-check config
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM fully loaded, verifying config...');
+        setTimeout(function() {
+            if (!window.dbConfigValues || Object.keys(window.dbConfigValues).length === 0) {
+                console.warn('Config still not loaded after DOM ready, attempting reload...');
+                if (typeof fetchAllConfigValues === 'function') {
+                    fetchAllConfigValues().then(() => {
+                        console.log('✅ Config loaded on safety check');
+                    }).catch(err => {
+                        console.error('Safety check config load failed:', err);
+                    });
+                }
+            } else {
+                console.log('✅ Config verified, keys:', Object.keys(window.dbConfigValues));
+            }
+        }, 1000);
+    });
+    </script>
 </body>
 </html>

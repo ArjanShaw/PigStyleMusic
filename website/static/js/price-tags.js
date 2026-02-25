@@ -2,28 +2,196 @@
 // price-tags.js - Price Tags Tab Functionality
 // ============================================================================
 
+// Use window object to avoid redeclaration errors
+window.priceTagsModule = window.priceTagsModule || {};
+
+// Cache for consignor information - check if it already exists
+if (typeof window.consignorCache === 'undefined') {
+    window.consignorCache = {};
+}
+
+// State variables - check if they already exist
+if (typeof window.allRecords === 'undefined') {
+    window.allRecords = [];
+}
+
+if (typeof window.filteredRecords === 'undefined') {
+    window.filteredRecords = [];
+}
+
+if (typeof window.currentPage === 'undefined') {
+    window.currentPage = 1;
+}
+
+if (typeof window.pageSize === 'undefined') {
+    window.pageSize = 100;
+}
+
+if (typeof window.totalPages === 'undefined') {
+    window.totalPages = 1;
+}
+
+if (typeof window.recentlyPrintedIds === 'undefined') {
+    window.recentlyPrintedIds = new Set();
+}
+
+// Selected records (make sure this is defined)
+window.selectedRecords = window.selectedRecords || new Set();
+
+// Helper functions
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+}
+
+function truncateText(text, maxLength) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function getStatusIdFromFilter(filter) {
+    switch(filter) {
+        case 'inactive': return 1;
+        case 'active': return 2;
+        case 'sold': return 3;
+        default: return null;
+    }
+}
+
+function getStatusText(statusId) {
+    switch(statusId) {
+        case 1: return 'Inactive';
+        case 2: return 'Active';
+        case 3: return 'Sold';
+        default: return 'Unknown';
+    }
+}
+
+function getStatusClass(statusId) {
+    switch(statusId) {
+        case 1: return 'inactive';
+        case 2: return 'active';
+        case 3: return 'sold';
+        default: return '';
+    }
+}
+
+function getConfigValue(key) {
+    if (window.dbConfigValues && window.dbConfigValues[key]) {
+        const value = window.dbConfigValues[key].value;
+        const num = parseFloat(value);
+        return isNaN(num) ? value : num;
+    }
+    
+    // Default values
+    const defaults = {
+        'LABEL_WIDTH_MM': 50.8,
+        'LABEL_HEIGHT_MM': 25.4,
+        'LEFT_MARGIN_MM': 8,
+        'GUTTER_SPACING_MM': 2,
+        'TOP_MARGIN_MM': 12,
+        'PRICE_FONT_SIZE': 14,
+        'TEXT_FONT_SIZE': 8,
+        'ARTIST_LABEL_FONT_SIZE': 12,
+        'BARCODE_HEIGHT': 8,
+        'PRINT_BORDERS': false,
+        'PRICE_Y_POS': 12,
+        'BARCODE_Y_POS': 16,
+        'INFO_Y_POS': 8
+    };
+    
+    return defaults[key] || null;
+}
+
+// Show loading indicator
+function showLoading(show) {
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) {
+        loadingEl.style.display = show ? 'flex' : 'none';
+    }
+}
+
+// Show status message
+function showStatus(message, type = 'info') {
+    const statusEl = document.getElementById('status-message');
+    if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.className = `status-message status-${type}`;
+        statusEl.style.display = 'block';
+        
+        setTimeout(() => {
+            statusEl.style.display = 'none';
+        }, 5000);
+    }
+}
+
 // Load users for filter
 async function loadUsers() {
-    const url = `${AppConfig.baseUrl}/users`;
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    if (data.status === 'success') {
-        const users = data.users || [];
-        const userSelect = $('#user-select');
-        userSelect.empty();
-        userSelect.append('<option value="all">All Users</option>');
-        
-        users.forEach(user => {
-            userSelect.append(`<option value="${user.id}">${user.username} (ID: ${user.id})</option>`);
+    try {
+        const url = `${AppConfig.baseUrl}/users`;
+        const response = await fetch(url, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
         });
         
-        users.forEach(user => {
-            consignorCache[user.id] = {
-                username: user.username || `User ${user.id}`,
-                initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
-            };
-        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const users = data.users || [];
+            const userSelect = document.getElementById('user-select');
+            
+            if (!userSelect) {
+                console.error('User select element not found');
+                return;
+            }
+            
+            // Clear existing options
+            userSelect.innerHTML = '';
+            
+            // Add "All Users" option
+            const allOption = document.createElement('option');
+            allOption.value = 'all';
+            allOption.textContent = 'All Users';
+            userSelect.appendChild(allOption);
+            
+            // Add user options
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = `${user.username} (ID: ${user.id})`;
+                userSelect.appendChild(option);
+                
+                // Cache user info
+                window.consignorCache[user.id] = {
+                    username: user.username || `User ${user.id}`,
+                    initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
+                };
+            });
+            
+            console.log(`Loaded ${users.length} users for filter`);
+        } else {
+            console.error('Failed to load users:', data.message);
+            showStatus('Failed to load users: ' + (data.message || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+        showStatus('Failed to load users: ' + error.message, 'error');
     }
 }
 
@@ -31,45 +199,82 @@ async function loadUsers() {
 async function loadRecords() {
     showLoading(true);
     
-    const userSelect = document.getElementById('user-select');
-    const selectedUserId = userSelect.value === 'all' ? null : userSelect.value;
-    
-    let url;
-    if (selectedUserId) {
-        url = `${AppConfig.baseUrl}/records/user/${selectedUserId}`;
-    } else {
-        url = `${AppConfig.baseUrl}/records`;
-    }
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    if (data.status === 'success') {
-        allRecords = data.records || [];
+    try {
+        const userSelect = document.getElementById('user-select');
+        if (!userSelect) {
+            console.error('User select element not found');
+            showLoading(false);
+            return;
+        }
         
-        allRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const selectedUserId = userSelect.value === 'all' ? null : userSelect.value;
         
-        document.getElementById('total-records-print').textContent = allRecords.length;
-        const inactiveCount = allRecords.filter(r => r.status_id === 1).length;
-        const activeCount = allRecords.filter(r => r.status_id === 2).length;
-        const soldCount = allRecords.filter(r => r.status_id === 3).length;
+        let url;
+        if (selectedUserId) {
+            url = `${AppConfig.baseUrl}/records/user/${selectedUserId}`;
+        } else {
+            url = `${AppConfig.baseUrl}/records`;
+        }
         
-        document.getElementById('inactive-records').textContent = inactiveCount;
-        document.getElementById('active-records').textContent = activeCount;
-        document.getElementById('sold-records').textContent = soldCount;
+        const response = await fetch(url, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
         
-        const batchSizeInput = document.getElementById('batch-size');
-        batchSizeInput.max = inactiveCount;
-        batchSizeInput.value = Math.min(parseInt(batchSizeInput.value) || 10, inactiveCount);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         
-        const consignorIds = new Set();
-        allRecords.forEach(r => { if (r.consignor_id) consignorIds.add(r.consignor_id); });
-        const fetchPromises = Array.from(consignorIds).map(id => getConsignorInfo(id));
-        await Promise.all(fetchPromises);
+        const data = await response.json();
         
-        filterRecords();
-        
-        showStatus(`Loaded ${allRecords.length} records (${inactiveCount} inactive, ${activeCount} active, ${soldCount} sold)`, 'success');
+        if (data.status === 'success') {
+            window.allRecords = data.records || [];
+            
+            // Sort by created date descending (newest first)
+            window.allRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            
+            // Update stats
+            const totalRecordsEl = document.getElementById('total-records-print');
+            if (totalRecordsEl) totalRecordsEl.textContent = window.allRecords.length;
+            
+            const inactiveCount = window.allRecords.filter(r => r.status_id === 1).length;
+            const activeCount = window.allRecords.filter(r => r.status_id === 2).length;
+            const soldCount = window.allRecords.filter(r => r.status_id === 3).length;
+            
+            const inactiveEl = document.getElementById('inactive-records');
+            const activeEl = document.getElementById('active-records');
+            const soldEl = document.getElementById('sold-records');
+            
+            if (inactiveEl) inactiveEl.textContent = inactiveCount;
+            if (activeEl) activeEl.textContent = activeCount;
+            if (soldEl) soldEl.textContent = soldCount;
+            
+            // Update batch size input
+            const batchSizeInput = document.getElementById('batch-size');
+            if (batchSizeInput) {
+                batchSizeInput.max = inactiveCount;
+                batchSizeInput.value = Math.min(parseInt(batchSizeInput.value) || 10, inactiveCount || 10);
+            }
+            
+            // Fetch any missing consignor info
+            const consignorIds = new Set();
+            window.allRecords.forEach(r => { if (r.consignor_id) consignorIds.add(r.consignor_id); });
+            
+            const fetchPromises = Array.from(consignorIds).map(id => getConsignorInfo(id));
+            await Promise.all(fetchPromises);
+            
+            filterRecords();
+            
+            showStatus(`Loaded ${window.allRecords.length} records (${inactiveCount} inactive, ${activeCount} active, ${soldCount} sold)`, 'success');
+        } else {
+            showStatus('Failed to load records: ' + (data.message || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error loading records:', error);
+        showStatus('Failed to load records: ' + error.message, 'error');
     }
     
     showLoading(false);
@@ -79,13 +284,20 @@ async function loadRecords() {
 async function getConsignorInfo(consignorId) {
     if (!consignorId) return { username: 'None', initials: '' };
     
-    if (consignorCache[consignorId]) {
-        return consignorCache[consignorId];
+    if (window.consignorCache[consignorId]) {
+        return window.consignorCache[consignorId];
     }
     
     try {
         const url = `${AppConfig.baseUrl}/users/${consignorId}`;
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        
         if (response.ok) {
             const data = await response.json();
             if (data.status === 'success') {
@@ -94,7 +306,7 @@ async function getConsignorInfo(consignorId) {
                     username: user.username || `User ${consignorId}`,
                     initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
                 };
-                consignorCache[consignorId] = consignorInfo;
+                window.consignorCache[consignorId] = consignorInfo;
                 return consignorInfo;
             }
         }
@@ -111,14 +323,15 @@ function filterRecords() {
     const statusId = getStatusIdFromFilter(statusFilter);
     
     if (statusId) {
-        filteredRecords = allRecords.filter(r => r.status_id === statusId);
+        window.filteredRecords = window.allRecords.filter(r => r.status_id === statusId);
     } else {
-        filteredRecords = [...allRecords];
+        window.filteredRecords = [...window.allRecords];
     }
     
-    filteredRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    // Keep the sort order (newest first)
+    window.filteredRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     
-    currentPage = 1;
+    window.currentPage = 1;
     updatePagination();
     renderCurrentPage();
     
@@ -126,32 +339,46 @@ function filterRecords() {
                       statusFilter === 'inactive' ? 'Inactive records' :
                       statusFilter === 'active' ? 'Active records' : 'Sold records';
     
-    showStatus(`Showing ${filteredRecords.length} ${statusText}`, 'info');
+    showStatus(`Showing ${window.filteredRecords.length} ${statusText}`, 'info');
 }
 
 // Update pagination
 function updatePagination() {
-    totalPages = Math.ceil(filteredRecords.length / pageSize);
-    if (totalPages === 0) totalPages = 1;
+    window.totalPages = Math.ceil(window.filteredRecords.length / window.pageSize);
+    if (window.totalPages === 0) window.totalPages = 1;
     
-    document.getElementById('total-pages').textContent = totalPages;
-    document.getElementById('current-page').value = currentPage;
-    document.getElementById('total-filtered').textContent = filteredRecords.length;
+    const totalPagesEl = document.getElementById('total-pages');
+    if (totalPagesEl) totalPagesEl.textContent = window.totalPages;
     
-    document.getElementById('first-page-btn').disabled = currentPage === 1;
-    document.getElementById('prev-page-btn').disabled = currentPage === 1;
-    document.getElementById('next-page-btn').disabled = currentPage === totalPages;
-    document.getElementById('last-page-btn').disabled = currentPage === totalPages;
+    const currentPageEl = document.getElementById('current-page');
+    if (currentPageEl) currentPageEl.value = window.currentPage;
     
-    const startIndex = (currentPage - 1) * pageSize + 1;
-    const endIndex = Math.min(currentPage * pageSize, filteredRecords.length);
+    const totalFilteredEl = document.getElementById('total-filtered');
+    if (totalFilteredEl) totalFilteredEl.textContent = window.filteredRecords.length;
     
-    document.getElementById('showing-start').textContent = filteredRecords.length > 0 ? startIndex : 0;
-    document.getElementById('showing-end').textContent = filteredRecords.length > 0 ? endIndex : 0;
-    document.getElementById('total-filtered').textContent = filteredRecords.length;
+    // Update button states
+    const firstBtn = document.getElementById('first-page-btn');
+    const prevBtn = document.getElementById('prev-page-btn');
+    const nextBtn = document.getElementById('next-page-btn');
+    const lastBtn = document.getElementById('last-page-btn');
+    
+    if (firstBtn) firstBtn.disabled = window.currentPage === 1;
+    if (prevBtn) prevBtn.disabled = window.currentPage === 1;
+    if (nextBtn) nextBtn.disabled = window.currentPage === window.totalPages;
+    if (lastBtn) lastBtn.disabled = window.currentPage === window.totalPages;
+    
+    const startIndex = (window.currentPage - 1) * window.pageSize + 1;
+    const endIndex = Math.min(window.currentPage * window.pageSize, window.filteredRecords.length);
+    
+    const showingStartEl = document.getElementById('showing-start');
+    const showingEndEl = document.getElementById('showing-end');
+    
+    if (showingStartEl) showingStartEl.textContent = window.filteredRecords.length > 0 ? startIndex : 0;
+    if (showingEndEl) showingEndEl.textContent = window.filteredRecords.length > 0 ? endIndex : 0;
     
     const selectedCount = window.selectedRecords ? window.selectedRecords.size : 0;
-    document.getElementById('selected-count').textContent = selectedCount;
+    const selectedCountEl = document.getElementById('selected-count');
+    if (selectedCountEl) selectedCountEl.textContent = selectedCount;
     
     updateButtonStates();
 }
@@ -161,30 +388,39 @@ function updateButtonStates() {
     const selectedCount = window.selectedRecords ? window.selectedRecords.size : 0;
     const hasSelection = selectedCount > 0;
     
-    document.getElementById('print-btn').disabled = !hasSelection;
-    document.getElementById('mark-active-btn').disabled = !hasSelection;
+    const printBtn = document.getElementById('print-btn');
+    const markActiveBtn = document.getElementById('mark-active-btn');
+    
+    if (printBtn) printBtn.disabled = !hasSelection;
+    if (markActiveBtn) markActiveBtn.disabled = !hasSelection;
+    
+    // Update selected tags count
+    const selectedTagsEl = document.getElementById('selected-tags');
+    if (selectedTagsEl) selectedTagsEl.textContent = selectedCount;
 }
 
 // Render current page
 function renderCurrentPage() {
     const tbody = document.getElementById('records-body');
+    if (!tbody) return;
+    
     tbody.innerHTML = '';
     
-    if (filteredRecords.length === 0) {
+    if (window.filteredRecords.length === 0) {
         tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 20px; color: #666;">No records found</td></tr>`;
         updatePagination();
         return;
     }
     
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = Math.min(startIndex + pageSize, filteredRecords.length);
-    const pageRecords = filteredRecords.slice(startIndex, endIndex);
+    const startIndex = (window.currentPage - 1) * window.pageSize;
+    const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
+    const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
     
     pageRecords.forEach((record, index) => {
         const globalIndex = startIndex + index;
-        const consignorInfo = consignorCache[record.consignor_id] || { username: 'None', initials: '' };
+        const consignorInfo = window.consignorCache[record.consignor_id] || { username: 'None', initials: '' };
         
-        const isRecentlyPrinted = recentlyPrintedIds.has(record.id.toString());
+        const isRecentlyPrinted = window.recentlyPrintedIds.has(record.id.toString());
         
         const tr = document.createElement('tr');
         if (isRecentlyPrinted) {
@@ -217,8 +453,13 @@ function renderCurrentPage() {
         tbody.appendChild(tr);
     });
     
+    // Add event listeners to checkboxes
     document.querySelectorAll('.record-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
+        // Remove existing listeners by cloning
+        const newCheckbox = checkbox.cloneNode(true);
+        checkbox.parentNode.replaceChild(newCheckbox, checkbox);
+        
+        newCheckbox.addEventListener('change', function() {
             const recordId = this.getAttribute('data-id');
             if (this.checked) {
                 window.selectedRecords.add(recordId);
@@ -230,22 +471,28 @@ function renderCurrentPage() {
         });
     });
     
+    // Handle select all checkbox
     const selectAllCheckbox = document.getElementById('select-all');
-    selectAllCheckbox.checked = false;
-    selectAllCheckbox.addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('.record-checkbox');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = this.checked;
-            const recordId = checkbox.getAttribute('data-id');
-            if (this.checked) {
-                window.selectedRecords.add(recordId);
-            } else {
-                window.selectedRecords.delete(recordId);
-            }
+    if (selectAllCheckbox) {
+        // Remove existing event listener by cloning and replacing
+        const newSelectAll = selectAllCheckbox.cloneNode(true);
+        selectAllCheckbox.parentNode.replaceChild(newSelectAll, selectAllCheckbox);
+        
+        newSelectAll.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.record-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = this.checked;
+                const recordId = checkbox.getAttribute('data-id');
+                if (this.checked) {
+                    window.selectedRecords.add(recordId);
+                } else {
+                    window.selectedRecords.delete(recordId);
+                }
+            });
+            updateButtonStates();
+            updatePagination();
         });
-        updateButtonStates();
-        updatePagination();
-    });
+    }
     
     updatePagination();
 }
@@ -253,9 +500,9 @@ function renderCurrentPage() {
 // Pagination functions
 function goToPage(page) {
     if (page < 1) page = 1;
-    if (page > totalPages) page = totalPages;
+    if (page > window.totalPages) page = window.totalPages;
     
-    currentPage = page;
+    window.currentPage = page;
     renderCurrentPage();
     updatePagination();
 }
@@ -265,56 +512,58 @@ function goToFirstPage() {
 }
 
 function goToPreviousPage() {
-    goToPage(currentPage - 1);
+    goToPage(window.currentPage - 1);
 }
 
 function goToNextPage() {
-    goToPage(currentPage + 1);
+    goToPage(window.currentPage + 1);
 }
 
 function goToLastPage() {
-    goToPage(totalPages);
+    goToPage(window.totalPages);
 }
 
 function changePageSize(newSize) {
-    pageSize = newSize;
-    currentPage = 1;
+    window.pageSize = newSize;
+    window.currentPage = 1;
     updatePagination();
     renderCurrentPage();
 }
 
-function updateSelectionUI() {
-    const count = window.selectedRecords ? window.selectedRecords.size : 0;
-    document.getElementById('selected-tags').textContent = count;
-    updateButtonStates();
-}
-
 // Selection functions
 function selectRecentInactiveRecords() {
-    const batchSize = parseInt(document.getElementById('batch-size').value) || 10;
+    const batchSizeInput = document.getElementById('batch-size');
+    if (!batchSizeInput) return;
     
+    const batchSize = parseInt(batchSizeInput.value) || 10;
+    
+    // Clear current selection
     window.selectedRecords.clear();
     
-    const recentRecords = allRecords
+    // Get inactive records
+    const inactiveRecords = window.allRecords
+        .filter(r => r.status_id === 1)
         .slice(0, batchSize);
     
-    recentRecords.forEach(record => {
+    // Add to selection
+    inactiveRecords.forEach(record => {
         window.selectedRecords.add(record.id.toString());
     });
     
     renderCurrentPage();
+    updateButtonStates();
     
-    if (recentRecords.length > 0) {
-        showStatus(`Selected ${recentRecords.length} most recent records`, 'success');
+    if (inactiveRecords.length > 0) {
+        showStatus(`Selected ${inactiveRecords.length} most recent inactive records`, 'success');
     } else {
-        showStatus('No records available to select', 'info');
+        showStatus('No inactive records available to select', 'info');
     }
 }
 
 function selectAllOnPage() {
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = Math.min(startIndex + pageSize, filteredRecords.length);
-    const pageRecords = filteredRecords.slice(startIndex, endIndex);
+    const startIndex = (window.currentPage - 1) * window.pageSize;
+    const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
+    const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
     
     pageRecords.forEach((record) => {
         const recordId = record.id.toString();
@@ -322,6 +571,7 @@ function selectAllOnPage() {
     });
     
     renderCurrentPage();
+    updateButtonStates();
     
     showStatus(`Selected all ${pageRecords.length} records on this page`, 'success');
 }
@@ -329,6 +579,7 @@ function selectAllOnPage() {
 function clearSelection() {
     window.selectedRecords.clear();
     renderCurrentPage();
+    updateButtonStates();
     showStatus('Selection cleared', 'info');
 }
 
@@ -340,21 +591,26 @@ function showPrintConfirmation() {
         return;
     }
     
-    const selectedRecords = allRecords.filter(r => selectedIds.includes(r.id.toString()));
+    const selectedRecordsList = window.allRecords.filter(r => selectedIds.includes(r.id.toString()));
     
-    document.getElementById('print-count').textContent = selectedRecords.length;
+    const printCountEl = document.getElementById('print-count');
+    if (printCountEl) printCountEl.textContent = selectedRecordsList.length;
     
     const summaryList = document.getElementById('print-summary-list');
-    summaryList.innerHTML = `
-        <li>Total selected: ${selectedRecords.length} records</li>
-        <li>These records will have price tags generated</li>
-    `;
+    if (summaryList) {
+        summaryList.innerHTML = `
+            <li>Total selected: ${selectedRecordsList.length} records</li>
+            <li>These records will have price tags generated</li>
+        `;
+    }
     
-    document.getElementById('print-confirmation-modal').style.display = 'flex';
+    const modal = document.getElementById('print-confirmation-modal');
+    if (modal) modal.style.display = 'flex';
 }
 
 function closePrintConfirmation() {
-    document.getElementById('print-confirmation-modal').style.display = 'none';
+    const modal = document.getElementById('print-confirmation-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 async function confirmPrint() {
@@ -363,19 +619,23 @@ async function confirmPrint() {
     closePrintConfirmation();
     showLoading(true);
     
-    const selectedRecords = allRecords
+    const selectedRecordsList = window.allRecords
         .filter(r => selectedIds.includes(r.id.toString()));
         
-    if (selectedRecords.length === 0) {
+    if (selectedRecordsList.length === 0) {
         showStatus('No records selected', 'error');
         showLoading(false);
         return;
     }
     
-    await fetchAllConfigValues();
+    // Make sure config is loaded
+    if (typeof fetchAllConfigValues === 'function') {
+        await fetchAllConfigValues();
+    }
     
-    const pdfBlob = await generatePDF(selectedRecords);
+    const pdfBlob = await generatePDF(selectedRecordsList);
     
+    // Download the PDF
     const url = URL.createObjectURL(pdfBlob);
     const a = document.createElement('a');
     a.href = url;
@@ -385,15 +645,18 @@ async function confirmPrint() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    selectedRecords.forEach(record => {
-        recentlyPrintedIds.add(record.id.toString());
+    // Mark as recently printed
+    selectedRecordsList.forEach(record => {
+        window.recentlyPrintedIds.add(record.id.toString());
     });
     
+    // Clear selection
     window.selectedRecords.clear();
     
-    showStatus(`PDF generated for ${selectedRecords.length} records.`, 'success');
+    showStatus(`PDF generated for ${selectedRecordsList.length} records.`, 'success');
     
     renderCurrentPage();
+    updateButtonStates();
     
     showLoading(false);
 }
@@ -405,33 +668,48 @@ function showMarkActiveConfirmation() {
         return;
     }
     
-    const selectedRecords = allRecords.filter(r => selectedIds.includes(r.id.toString()));
-    const inactiveRecords = selectedRecords.filter(r => r.status_id === 1);
-    const activeRecords = selectedRecords.filter(r => r.status_id === 2);
-    const soldRecords = selectedRecords.filter(r => r.status_id === 3);
+    const selectedRecordsList = window.allRecords.filter(r => selectedIds.includes(r.id.toString()));
+    const inactiveRecords = selectedRecordsList.filter(r => r.status_id === 1);
+    const activeRecords = selectedRecordsList.filter(r => r.status_id === 2);
+    const soldRecords = selectedRecordsList.filter(r => r.status_id === 3);
     
-    document.getElementById('mark-active-count').textContent = selectedRecords.length;
+    const markActiveCountEl = document.getElementById('mark-active-count');
+    if (markActiveCountEl) markActiveCountEl.textContent = selectedRecordsList.length;
     
     const summaryList = document.getElementById('mark-active-summary-list');
-    summaryList.innerHTML = `
-        <li>Total selected: ${selectedRecords.length} records</li>
-        <li>Inactive records: ${inactiveRecords.length} (will be marked as Active)</li>
-        <li>Active records: ${activeRecords.length} (already active - no change)</li>
-        <li>Sold records: ${soldRecords.length} (won't be changed)</li>
-    `;
+    if (summaryList) {
+        summaryList.innerHTML = `
+            <li>Total selected: ${selectedRecordsList.length} records</li>
+            <li>Inactive records: ${inactiveRecords.length} (will be marked as Active)</li>
+            <li>Active records: ${activeRecords.length} (already active - no change)</li>
+            <li>Sold records: ${soldRecords.length} (won't be changed)</li>
+        `;
+    }
     
-    document.getElementById('mark-active-confirmation-check').checked = false;
-    document.getElementById('confirm-mark-active-btn').disabled = true;
+    const confirmCheck = document.getElementById('mark-active-confirmation-check');
+    if (confirmCheck) confirmCheck.checked = false;
     
-    document.getElementById('mark-active-confirmation-modal').style.display = 'flex';
+    const confirmBtn = document.getElementById('confirm-mark-active-btn');
+    if (confirmBtn) confirmBtn.disabled = true;
     
-    document.getElementById('mark-active-confirmation-check').addEventListener('change', function() {
-        document.getElementById('confirm-mark-active-btn').disabled = !this.checked;
-    });
+    const modal = document.getElementById('mark-active-confirmation-modal');
+    if (modal) modal.style.display = 'flex';
+    
+    // Add event listener to checkbox
+    if (confirmCheck) {
+        // Remove existing listeners
+        const newCheck = confirmCheck.cloneNode(true);
+        confirmCheck.parentNode.replaceChild(newCheck, confirmCheck);
+        
+        newCheck.addEventListener('change', function() {
+            if (confirmBtn) confirmBtn.disabled = !this.checked;
+        });
+    }
 }
 
 function closeMarkActiveConfirmation() {
-    document.getElementById('mark-active-confirmation-modal').style.display = 'none';
+    const modal = document.getElementById('mark-active-confirmation-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 async function confirmMarkActive() {
@@ -441,7 +719,7 @@ async function confirmMarkActive() {
     showLoading(true);
     
     const inactiveRecordIds = selectedIds.filter(id => {
-        const record = allRecords.find(r => r.id.toString() === id);
+        const record = window.allRecords.find(r => r.id.toString() === id);
         return record && record.status_id === 1;
     });
     
@@ -471,9 +749,10 @@ async function confirmMarkActive() {
                 if (data.status === 'success') {
                     successCount++;
                     
-                    const recordIndex = allRecords.findIndex(r => r.id.toString() === recordId);
+                    // Update local data
+                    const recordIndex = window.allRecords.findIndex(r => r.id.toString() === recordId);
                     if (recordIndex !== -1) {
-                        allRecords[recordIndex].status_id = 2;
+                        window.allRecords[recordIndex].status_id = 2;
                     }
                 } else {
                     errorCount++;
@@ -487,12 +766,15 @@ async function confirmMarkActive() {
         }
     }
     
+    // Clear selection
     window.selectedRecords.clear();
     
+    // Remove from recently printed
     inactiveRecordIds.forEach(id => {
-        recentlyPrintedIds.delete(id);
+        window.recentlyPrintedIds.delete(id);
     });
     
+    // Reload records to get fresh data
     await loadRecords();
     
     if (successCount > 0) {
@@ -509,6 +791,7 @@ async function generatePDF(records) {
     return new Promise(async (resolve) => {
         const { jsPDF } = window.jspdf;
         
+        // Get configuration values
         const labelWidthMM = getConfigValue('LABEL_WIDTH_MM');
         const labelHeightMM = getConfigValue('LABEL_HEIGHT_MM');
         const leftMarginMM = getConfigValue('LEFT_MARGIN_MM');
@@ -524,6 +807,7 @@ async function generatePDF(records) {
         const barcodeYPos = getConfigValue('BARCODE_Y_POS');
         const infoYPos = getConfigValue('INFO_Y_POS');
         
+        // Convert mm to points (1 mm = 2.83465 points)
         const mmToPt = 2.83465;
         const labelWidthPt = labelWidthMM * mmToPt;
         const labelHeightPt = labelHeightMM * mmToPt;
@@ -537,19 +821,23 @@ async function generatePDF(records) {
             format: 'letter'
         });
         
+        // 15 rows, 4 columns = 60 labels per page
         const rows = 15;
         const cols = 4;
         const labelsPerPage = rows * cols;
         
         let currentLabel = 0;
         
+        // Check if these are artist labels (special case)
         const isArtistLabels = records.length > 0 && records[0].title === 'ARTIST LABEL';
         
         for (const record of records) {
+            // Add new page if needed
             if (currentLabel > 0 && currentLabel % labelsPerPage === 0) {
                 doc.addPage();
             }
             
+            // Calculate position on page
             const pageIndex = currentLabel % labelsPerPage;
             const row = Math.floor(pageIndex / cols);
             const col = pageIndex % cols;
@@ -557,6 +845,7 @@ async function generatePDF(records) {
             const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
             const y = topMarginPt + (row * labelHeightPt);
             
+            // Draw border if enabled
             if (printBorders) {
                 doc.setDrawColor(0);
                 doc.setLineWidth(0.5);
@@ -564,6 +853,7 @@ async function generatePDF(records) {
             }
             
             if (isArtistLabels) {
+                // Artist label mode
                 const artist = record.artist || 'Unknown';
                 
                 doc.setFontSize(artistLabelFontSize);
@@ -575,6 +865,7 @@ async function generatePDF(records) {
                 
                 doc.text(artist, textX, textY);
             } else {
+                // Regular price tag mode
                 const consignorId = record.consignor_id;
                 let consignorInitials = '';
                 if (consignorId) {
@@ -582,6 +873,7 @@ async function generatePDF(records) {
                     consignorInitials = consignorInfo.initials || '';
                 }
                 
+                // Print price
                 const price = record.store_price || 0;
                 const priceText = `$${price.toFixed(2)}`;
                 doc.setFontSize(priceFontSize);
@@ -593,6 +885,7 @@ async function generatePDF(records) {
                 
                 doc.text(priceText, priceX, priceY);
                 
+                // Print info (genre and artist)
                 const artist = record.artist || 'Unknown';
                 const genre = record.genre_name || record.genre || 'Unknown';
                 
@@ -606,9 +899,12 @@ async function generatePDF(records) {
                 
                 doc.setFontSize(textFontSize);
                 doc.setFont('helvetica', 'normal');
+                
+                // Calculate available width
                 const initialsWidth = initialsText ? doc.getTextWidth(initialsText) : 0;
                 const availableWidthForBase = maxInfoWidth - initialsWidth;
                 
+                // Truncate base text if needed
                 let displayBaseText = baseText;
                 if (doc.getTextWidth(baseText) > availableWidthForBase) {
                     while (doc.getTextWidth(displayBaseText + '…') > availableWidthForBase && displayBaseText.length > 0) {
@@ -625,6 +921,7 @@ async function generatePDF(records) {
                 
                 doc.text(infoText, infoX, infoY);
                 
+                // Print barcode
                 const barcodeNum = record.barcode;
                 if (barcodeNum) {
                     const canvas = document.createElement('canvas');
@@ -652,9 +949,46 @@ async function generatePDF(records) {
     });
 }
 
-// Initialize when tab is activated
-document.addEventListener('tabChanged', function(e) {
-    if (e.detail.tabName === 'price-tags') {
-        loadRecords();
-    }
-});
+// Initialize when tab is activated - use a flag to prevent multiple initializations
+if (!window.priceTagsModule.initialized) {
+    document.addEventListener('tabChanged', function(e) {
+        if (e.detail && e.detail.tabName === 'price-tags') {
+            console.log('Price tags tab activated, loading users and records...');
+            loadUsers();
+            loadRecords();
+        }
+    });
+    
+    // Also initialize if we're already on the tab when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if price-tags tab is active
+        const activeTab = document.querySelector('.tab-content.active');
+        if (activeTab && activeTab.id === 'price-tags-tab') {
+            console.log('Price tags tab is active on load, loading users and records...');
+            loadUsers();
+            loadRecords();
+        }
+    });
+    
+    window.priceTagsModule.initialized = true;
+}
+
+// Export functions for use in HTML
+window.loadUsers = loadUsers;
+window.loadRecords = loadRecords;
+window.filterRecords = filterRecords;
+window.goToPage = goToPage;
+window.goToFirstPage = goToFirstPage;
+window.goToPreviousPage = goToPreviousPage;
+window.goToNextPage = goToNextPage;
+window.goToLastPage = goToLastPage;
+window.changePageSize = changePageSize;
+window.selectRecentInactiveRecords = selectRecentInactiveRecords;
+window.selectAllOnPage = selectAllOnPage;
+window.clearSelection = clearSelection;
+window.showPrintConfirmation = showPrintConfirmation;
+window.closePrintConfirmation = closePrintConfirmation;
+window.confirmPrint = confirmPrint;
+window.showMarkActiveConfirmation = showMarkActiveConfirmation;
+window.closeMarkActiveConfirmation = closeMarkActiveConfirmation;
+window.confirmMarkActive = confirmMarkActive;
