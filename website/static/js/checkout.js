@@ -481,6 +481,7 @@ function showPrintableReceipt(receiptText) {
 }
 
 function centerText(text, width) {
+    if (!text) return ''.padEnd(width, ' ');
     const padding = Math.max(0, width - text.length);
     const leftPad = Math.floor(padding / 2);
     const rightPad = padding - leftPad;
@@ -1812,7 +1813,7 @@ window.closeTenderModal = function() {
 };
 
 // ============================================================================
-// UPDATED: processCashPayment with improved printing
+// FIXED: processCashPayment with proper receipt formatting
 // ============================================================================
 
 window.processCashPayment = async function() {
@@ -2059,6 +2060,10 @@ window.processCashPayment = async function() {
     }
 };
 
+// ============================================================================
+// FIXED: formatReceiptForPrinter with proper alignment and values
+// ============================================================================
+
 function formatReceiptForPrinter(transaction) {
     const storeName = transaction.storeName || getConfigValue('STORE_NAME') || 'PigStyle Music';
     const storeAddress = transaction.storeAddress || getConfigValue('STORE_ADDRESS') || '';
@@ -2067,19 +2072,26 @@ function formatReceiptForPrinter(transaction) {
     const charsPerLine = getConfigValue('PRINTER_CHARS_PER_LINE') || 32;
     
     let receipt = '';
+    
+    // Header with proper centering
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     receipt += centerText(storeName, charsPerLine) + '\n';
     if (storeAddress) receipt += centerText(storeAddress, charsPerLine) + '\n';
     if (storePhone) receipt += centerText(storePhone, charsPerLine) + '\n';
-    receipt += ''.padEnd(charsPerLine, '=') + '\n\n';
+    receipt += ''.padEnd(charsPerLine, '=') + '\n';
+    receipt += '\n';
     
+    // Receipt info - left aligned with proper spacing
     receipt += `Receipt #: ${transaction.id}\n`;
     receipt += `Date: ${new Date(transaction.date).toLocaleString()}\n`;
     receipt += `Cashier: ${transaction.cashier || 'Admin'}\n`;
-    receipt += `Payment: ${transaction.paymentMethod || 'Cash'}\n\n`;
+    receipt += `Payment: ${transaction.paymentMethod || 'Cash'}\n`;
+    receipt += '\n';
     
+    // Items header
     receipt += ''.padEnd(charsPerLine, '-') + '\n';
     
+    // Items - properly aligned with price column
     transaction.items.forEach(item => {
         let description = '';
         if (item.type === 'accessory') {
@@ -2091,36 +2103,62 @@ function formatReceiptForPrinter(transaction) {
         }
         
         const price = item.store_price || 0;
-        const maxDescLength = charsPerLine - 9;
-        const shortDesc = description.length > maxDescLength ? 
-            description.substring(0, maxDescLength - 3) + '...' : 
-            description.padEnd(maxDescLength);
-        receipt += `${shortDesc} $${price.toFixed(2).padStart(8)}\n`;
+        const priceStr = `$${price.toFixed(2)}`;
+        
+        // Calculate available space for description
+        const maxDescLength = charsPerLine - priceStr.length - 1; // -1 for space
+        let shortDesc = description;
+        if (description.length > maxDescLength) {
+            shortDesc = description.substring(0, maxDescLength - 3) + '...';
+        }
+        
+        // Pad description to align price
+        const paddingNeeded = charsPerLine - shortDesc.length - priceStr.length;
+        receipt += shortDesc + ' '.repeat(paddingNeeded) + priceStr + '\n';
     });
     
     receipt += ''.padEnd(charsPerLine, '-') + '\n';
-    receipt += `Subtotal:${''.padStart(charsPerLine - 13)} $${(transaction.subtotal || 0).toFixed(2).padStart(8)}\n`;
+    
+    // Totals with proper alignment
+    const subtotalStr = `$${(transaction.subtotal || 0).toFixed(2)}`;
+    receipt += `Subtotal:${' '.repeat(charsPerLine - 9 - subtotalStr.length)}${subtotalStr}\n`;
     
     if (transaction.discount && transaction.discount > 0) {
-        const discountText = transaction.discountType === 'percentage' ? 
-            `Discount (${transaction.discountAmount}%):` : 'Discount:';
-        receipt += `${discountText.padEnd(charsPerLine - 13)} -$${(transaction.discount || 0).toFixed(2).padStart(8)}\n`;
+        const discountStr = `-$${(transaction.discount || 0).toFixed(2)}`;
+        if (transaction.discountType === 'percentage') {
+            receipt += `Discount (${transaction.discountAmount}%):${' '.repeat(charsPerLine - 16 - discountStr.length)}${discountStr}\n`;
+        } else {
+            receipt += `Discount:${' '.repeat(charsPerLine - 9 - discountStr.length)}${discountStr}\n`;
+        }
     }
     
-    receipt += `Tax (${transaction.taxRate || 0}%):${''.padStart(charsPerLine - 16)} $${(transaction.tax || 0).toFixed(2).padStart(8)}\n`;
+    const taxStr = `$${(transaction.tax || 0).toFixed(2)}`;
+    receipt += `Tax (${transaction.taxRate || 0}%):${' '.repeat(charsPerLine - 12 - taxStr.length)}${taxStr}\n`;
+    
+    // Total line with equals signs
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
-    receipt += `TOTAL:${''.padStart(charsPerLine - 10)} $${(transaction.total || 0).toFixed(2).padStart(8)}\n`;
-    receipt += ''.padEnd(charsPerLine, '=') + '\n\n';
+    const totalStr = `$${(transaction.total || 0).toFixed(2)}`;
+    receipt += `TOTAL:${' '.repeat(charsPerLine - 6 - totalStr.length)}${totalStr}\n`;
+    receipt += ''.padEnd(charsPerLine, '=') + '\n';
+    receipt += '\n';
     
+    // Cash payment details if applicable
     if (transaction.paymentMethod === 'Cash' && transaction.change > 0) {
-        receipt += `Tendered: $${(transaction.tendered || 0).toFixed(2).padStart(8)}\n`;
-        receipt += `Change: $${(transaction.change || 0).toFixed(2).padStart(8)}\n\n`;
+        const tenderedStr = `$${(transaction.tendered || 0).toFixed(2)}`;
+        receipt += `Tendered:${' '.repeat(charsPerLine - 9 - tenderedStr.length)}${tenderedStr}\n`;
+        
+        const changeStr = `$${(transaction.change || 0).toFixed(2)}`;
+        receipt += `Change:${' '.repeat(charsPerLine - 7 - changeStr.length)}${changeStr}\n`;
+        receipt += '\n';
     }
     
+    // Square payment ID if applicable
     if (transaction.square_payment_id) {
-        receipt += `Square ID: ${transaction.square_payment_id}\n\n`;
+        receipt += `Square ID: ${transaction.square_payment_id}\n`;
+        receipt += '\n';
     }
     
+    // Footer with proper centering
     receipt += centerText(footer, charsPerLine) + '\n';
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     
