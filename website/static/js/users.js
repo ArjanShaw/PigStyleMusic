@@ -1,4 +1,4 @@
-// users.js - Clean version with no logging
+// users.js - Clean version with flag color support
 
 // ============================================================================
 // users.js - Users Tab Functionality
@@ -37,6 +37,7 @@ const UsersModule = (function() {
         document.getElementById('new-fullname').value = '';
         document.getElementById('new-initials').value = '';
         document.getElementById('new-role').value = 'consignor';
+        document.getElementById('new-flag-color').value = '';
         document.getElementById('password-strength').innerHTML = '';
     };
     
@@ -47,6 +48,7 @@ const UsersModule = (function() {
         const fullName = document.getElementById('new-fullname').value.trim();
         const initials = document.getElementById('new-initials').value.trim().toUpperCase();
         const role = document.getElementById('new-role').value;
+        const flagColor = document.getElementById('new-flag-color').value.trim();
         
         if (!username || !email || !password) {
             alert('Username, email, and password are required');
@@ -79,7 +81,8 @@ const UsersModule = (function() {
                     password: password,
                     role: role,
                     full_name: fullName,
-                    initials: initials
+                    initials: initials,
+                    flag_color: flagColor || null
                 })
             });
             
@@ -140,8 +143,6 @@ const UsersModule = (function() {
         let totalOwed = 0;
         
         for (const record of consignorSoldRecords) {
-            
-            
             const storePrice = Number(record.store_price);
             const commissionRate = Number(record.commission_rate);
             
@@ -204,6 +205,7 @@ const UsersModule = (function() {
                     full_name: u.full_name || '',
                     initials: u.initials || '',
                     role: u.role || '',
+                    flag_color: u.flag_color || '',
                     owed: u.role === 'consignor' ? (owedAmounts[u.id] || 0) : 0,
                     recordsSold: recordsSold
                 };
@@ -239,16 +241,37 @@ const UsersModule = (function() {
             
         } catch (error) {
             console.error('Error loading users:', error);
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color: #dc3545;">Error loading users: ${error.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #dc3545;">Error loading users: ${error.message}</td></tr>`;
         } finally {
             loading.style.display = 'none';
         }
     };
     
+    function getFlagColorStyle(color) {
+        if (!color) return '';
+        
+        // If it's a known color name, use it directly
+        const colorMap = {
+            'white_yellow': 'background: linear-gradient(135deg, #ffffff 50%, #ffc107 50%); color: #333; border: 1px solid #ddd;',
+            'green': 'background-color: #28a745; color: white; border: 1px solid #1e7e34;',
+            'blue': 'background-color: #007bff; color: white; border: 1px solid #0056b3;',
+            'red': 'background-color: #dc3545; color: white; border: 1px solid #bd2130;',
+            'purple': 'background-color: #6f42c1; color: white; border: 1px solid #5a32a3;',
+            'orange': 'background-color: #fd7e14; color: white; border: 1px solid #dc6b0d;',
+            'yellow': 'background-color: #ffc107; color: #333; border: 1px solid #e0a800;'
+        };
+        
+        // Check if it's a hex color
+        if (color.match(/^#[0-9A-Fa-f]{6}$/) || color.match(/^#[0-9A-Fa-f]{3}$/)) {
+            return `background-color: ${color}; color: white; border: 1px solid #666;`;
+        }
+        
+        return colorMap[color.toLowerCase()] || `background-color: ${color}; color: white; border: 1px solid #666;`;
+    }
     function renderUsers(users) {
         const tbody = document.getElementById('users-body');
         if (!users.length) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;">No users found</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;">No users found</td></tr>`;
             return;
         }
         
@@ -263,11 +286,17 @@ const UsersModule = (function() {
                 <td>${escapeHtml(u.full_name)}</td>
                 <td>${escapeHtml(u.initials)}</td>
                 <td><span class="role-badge ${roleClass}">${u.role.replace('_', ' ')}</span></td>
+                <td>
+                    ${escapeHtml(u.flag_color)}
+                </td>
                 <td>$${u.owed.toFixed(2)}</td>
                 <td>${u.recordsSold}</td>
                 <td>
+                    <button class="btn btn-sm btn-primary" onclick="editUser(${u.id})" style="margin-right: 5px;">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
                     ${u.owed > 0 ? `
-                        <button class="btn btn-sm btn-success" onclick="showPaymentModal('${u.id}', '${escapeHtml(u.username)}', ${u.owed})">
+                        <button class="btn btn-sm btn-success" onclick="showPaymentModal('${u.id}', '${escapeHtml(u.username)}', ${u.owed})" style="margin-right: 5px;">
                             <i class="fas fa-dollar-sign"></i> Pay
                         </button>
                     ` : ''}
@@ -278,7 +307,7 @@ const UsersModule = (function() {
             </tr>`;
         });
         tbody.innerHTML = html;
-    }
+    } 
     
     function updateUserStats(totalAdminCommission) {
         document.getElementById('total-users').textContent = usersList.length;
@@ -321,6 +350,174 @@ const UsersModule = (function() {
         
         window.closePaymentModal();
         await window.loadUsers();
+    };
+    
+    window.editUser = async function(userId) {
+        const user = usersList.find(u => u.id == userId);
+        if (!user) return;
+        
+        // Create modal for editing
+        const modalHtml = `
+            <div id="edit-user-modal" class="modal-overlay" style="display: flex;">
+                <div class="modal-content" style="max-width: 500px; background: white;">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; border-radius: 8px 8px 0 0;">
+                        <h3 class="modal-title" style="margin: 0; color: white;"><i class="fas fa-edit"></i> Edit User: ${escapeHtml(user.username)}</h3>
+                        <button class="modal-close" onclick="closeEditUserModal()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px; background: white;">
+                        <div class="user-form-grid" style="display: grid; grid-template-columns: 1fr; gap: 15px;">
+                            <div class="user-form-group">
+                                <label for="edit-username" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Username *</label>
+                                <input type="text" id="edit-username" value="${escapeHtml(user.username)}" placeholder="Enter username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                            </div>
+                            <div class="user-form-group">
+                                <label for="edit-email" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Email *</label>
+                                <input type="email" id="edit-email" value="${escapeHtml(user.email)}" placeholder="Enter email" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                            </div>
+                            <div class="user-form-group">
+                                <label for="edit-fullname" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Full Name</label>
+                                <input type="text" id="edit-fullname" value="${escapeHtml(user.full_name)}" placeholder="Enter full name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                            </div>
+                            <div class="user-form-group">
+                                <label for="edit-initials" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Initials</label>
+                                <input type="text" id="edit-initials" value="${escapeHtml(user.initials)}" placeholder="e.g., ADB" maxlength="5" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                            </div>
+                            <div class="user-form-group">
+                                <label for="edit-role" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Role *</label>
+                                <select id="edit-role" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                                    <option value="consignor" ${user.role === 'consignor' ? 'selected' : ''}>Consignor</option>
+                                    <option value="youtube_linker" ${user.role === 'youtube_linker' ? 'selected' : ''}>YouTube Linker</option>
+                                    <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                                </select>
+                            </div>
+                            <div class="user-form-group">
+                                <label for="edit-flag-color" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Flag Color</label>
+                                <input type="text" id="edit-flag-color" value="${escapeHtml(user.flag_color)}" placeholder="e.g., blue, #ff0000, white_yellow" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                                <p class="hint" style="font-size: 12px; color: #666; margin-top: 5px;">
+                                    <i class="fas fa-info-circle"></i> Enter any color name or hex code (e.g., blue, #ff0000, white_yellow)
+                                </p>
+                            </div>
+                            <div class="user-form-group">
+                                <label for="edit-password" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">New Password (leave blank to keep current)</label>
+                                <input type="password" id="edit-password" placeholder="Enter new password" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                                <div id="edit-password-strength" class="password-strength" style="color: #666;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="padding: 15px 20px; background: #f8f9fa; border-top: 1px solid #ddd; border-radius: 0 0 8px 8px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button class="btn btn-secondary" onclick="closeEditUserModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                        <button class="btn btn-success" onclick="saveUserEdit(${userId})" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            <i class="fas fa-save"></i> Save Changes
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove any existing edit modal
+        const existingModal = document.getElementById('edit-user-modal');
+        if (existingModal) existingModal.remove();
+        
+        // Add modal to body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Add password strength listener
+        document.getElementById('edit-password').addEventListener('keyup', function() {
+            const password = this.value;
+            const strengthDiv = document.getElementById('edit-password-strength');
+            if (!strengthDiv) return;
+            
+            if (!password) {
+                strengthDiv.innerHTML = '';
+                return;
+            }
+            
+            let strength = 0;
+            if (password.length >= 8) strength++;
+            if (password.match(/[a-z]+/)) strength++;
+            if (password.match(/[A-Z]+/)) strength++;
+            if (password.match(/[0-9]+/)) strength++;
+            if (password.match(/[$@#&!]+/)) strength++;
+            
+            const strengthMessages = ['Weak password', 'Medium password', 'Strong password'];
+            const strengthClasses = ['strength-weak', 'strength-medium', 'strength-strong'];
+            const index = Math.min(strength, 2);
+            
+            strengthDiv.innerHTML = strengthMessages[index];
+            strengthDiv.className = `password-strength ${strengthClasses[index]}`;
+        });
+    };
+    
+    window.closeEditUserModal = function() {
+        const modal = document.getElementById('edit-user-modal');
+        if (modal) modal.remove();
+    };
+    
+    window.saveUserEdit = async function(userId) {
+        const username = document.getElementById('edit-username').value.trim();
+        const email = document.getElementById('edit-email').value.trim();
+        const fullName = document.getElementById('edit-fullname').value.trim();
+        const initials = document.getElementById('edit-initials').value.trim().toUpperCase();
+        const role = document.getElementById('edit-role').value;
+        const flagColor = document.getElementById('edit-flag-color').value.trim();
+        const password = document.getElementById('edit-password').value;
+        
+        if (!username || !email) {
+            alert('Username and email are required');
+            return;
+        }
+        
+        if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+            alert('Please enter a valid email address');
+            return;
+        }
+        
+        if (password && password.length < 8) {
+            alert('Password must be at least 8 characters long if changing');
+            return;
+        }
+        
+        const loading = document.getElementById('users-loading');
+        loading.style.display = 'block';
+        
+        try {
+            const updateData = {
+                username: username,
+                email: email,
+                role: role,
+                full_name: fullName,
+                initials: initials,
+                flag_color: flagColor || null
+            };
+            
+            if (password) {
+                updateData.password = password;
+            }
+            
+            const response = await fetch(`${AppConfig.baseUrl}/users/${userId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(updateData)
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showStatus(`User updated successfully!`, 'success');
+                window.closeEditUserModal();
+                await window.loadUsers();
+            } else {
+                alert(`Error: ${data.error || 'Failed to update user'}`);
+            }
+        } catch (error) {
+            console.error('Error updating user:', error);
+            alert(`Error: ${error.message}`);
+        } finally {
+            loading.style.display = 'none';
+        }
     };
     
     window.deleteUser = async function(userId, username) {
