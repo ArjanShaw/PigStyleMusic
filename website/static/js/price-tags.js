@@ -60,28 +60,11 @@ function escapeHtml(text) {
 
 function getStatusIdFromFilter(filter) {
     switch(filter) {
-        case 'inactive': return 1;
+        case 'new': return 1;
         case 'active': return 2;
         case 'sold': return 3;
+        case 'removed': return 4;
         default: return null;
-    }
-}
-
-function getStatusText(statusId) {
-    switch(statusId) {
-        case 1: return 'Inactive';
-        case 2: return 'Active';
-        case 3: return 'Sold';
-        default: return 'Unknown';
-    }
-}
-
-function getStatusClass(statusId) {
-    switch(statusId) {
-        case 1: return 'inactive';
-        case 2: return 'active';
-        case 3: return 'sold';
-        default: return '';
     }
 }
 
@@ -134,7 +117,7 @@ function showStatus(message, type = 'info') {
     }
 }
 
-// Load consignors for filter (RENAMED from loadUsers to avoid conflict)
+// Load consignors for filter
 async function loadConsignorsForPriceTags() {
     try {
         const url = `${AppConfig.baseUrl}/users`;
@@ -240,23 +223,24 @@ async function loadRecordsForPriceTags() {
             const totalRecordsEl = document.getElementById('total-records-print');
             if (totalRecordsEl) totalRecordsEl.textContent = window.allRecords.length;
             
-            const inactiveCount = window.allRecords.filter(r => r.status_id === 1).length;
+            const newCount = window.allRecords.filter(r => r.status_id === 1).length;
             const activeCount = window.allRecords.filter(r => r.status_id === 2).length;
             const soldCount = window.allRecords.filter(r => r.status_id === 3).length;
+            const removedCount = window.allRecords.filter(r => r.status_id === 4).length;
             
-            const inactiveEl = document.getElementById('inactive-records');
+            const newEl = document.getElementById('inactive-records');
             const activeEl = document.getElementById('active-records');
             const soldEl = document.getElementById('sold-records');
             
-            if (inactiveEl) inactiveEl.textContent = inactiveCount;
+            if (newEl) newEl.textContent = newCount;
             if (activeEl) activeEl.textContent = activeCount;
             if (soldEl) soldEl.textContent = soldCount;
             
             // Update batch size input
             const batchSizeInput = document.getElementById('batch-size');
             if (batchSizeInput) {
-                batchSizeInput.max = inactiveCount;
-                batchSizeInput.value = Math.min(parseInt(batchSizeInput.value) || 10, inactiveCount || 10);
+                batchSizeInput.max = newCount;
+                batchSizeInput.value = Math.min(parseInt(batchSizeInput.value) || 10, newCount || 10);
             }
             
             // Fetch any missing consignor info
@@ -268,7 +252,7 @@ async function loadRecordsForPriceTags() {
             
             filterRecords();
             
-            showStatus(`Loaded ${window.allRecords.length} records (${inactiveCount} inactive, ${activeCount} active, ${soldCount} sold)`, 'success');
+            showStatus(`Loaded ${window.allRecords.length} records (${newCount} new, ${activeCount} active, ${soldCount} sold, ${removedCount} removed)`, 'success');
         } else {
             showStatus('Failed to load records: ' + (data.message || 'Unknown error'), 'error');
         }
@@ -336,8 +320,9 @@ function filterRecords() {
     renderCurrentPage();
     
     const statusText = statusFilter === 'all' ? 'All records' : 
-                      statusFilter === 'inactive' ? 'Inactive records' :
-                      statusFilter === 'active' ? 'Active records' : 'Sold records';
+                      statusFilter === 'new' ? 'New records' :
+                      statusFilter === 'active' ? 'Active records' : 
+                      statusFilter === 'sold' ? 'Sold records' : 'Removed records';
     
     showStatus(`Showing ${window.filteredRecords.length} ${statusText}`, 'info');
 }
@@ -399,7 +384,7 @@ function updateButtonStates() {
     if (selectedTagsEl) selectedTagsEl.textContent = selectedCount;
 }
 
-// Render current page
+// Render current page - DISPLAYING RAW STATUS_ID
 function renderCurrentPage() {
     const tbody = document.getElementById('records-body');
     if (!tbody) return;
@@ -416,11 +401,20 @@ function renderCurrentPage() {
     const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
     const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
     
+    // Debug: Log the first few records to see their status_id
+    console.log('============ RECORD STATUS DEBUG ================');
+    pageRecords.slice(0, 5).forEach((record, i) => {
+        console.log(`Record ${i}: ID=${record.id}, status_id=${record.status_id}, status_name=${record.status_name}`);
+    });
+    
     pageRecords.forEach((record, index) => {
         const globalIndex = startIndex + index;
         const consignorInfo = window.consignorCache[record.consignor_id] || { username: 'None', initials: '' };
         
         const isRecentlyPrinted = window.recentlyPrintedIds.has(record.id.toString());
+        
+        // Get status_id for display
+        const statusId = record.status_id;
         
         const tr = document.createElement('tr');
         if (isRecentlyPrinted) {
@@ -444,8 +438,8 @@ function renderCurrentPage() {
                     '<span style="color: #999;">None</span>'}
             </td>
             <td>
-                <span class="condition-badge ${getStatusClass(record.status_id)}">
-                    ${getStatusText(record.status_id)}
+                <span >
+                    ${statusId}
                 </span>
                 ${isRecentlyPrinted ? '<br><small style="color: #27ae60; font-size: 10px;">(Printed)</small>' : ''}
             </td>
@@ -531,7 +525,7 @@ function changePageSize(newSize) {
 }
 
 // Selection functions
-function selectRecentInactiveRecords() {
+function selectRecentNewRecords() {
     const batchSizeInput = document.getElementById('batch-size');
     if (!batchSizeInput) return;
     
@@ -540,23 +534,23 @@ function selectRecentInactiveRecords() {
     // Clear current selection
     window.selectedRecords.clear();
     
-    // Get inactive records
-    const inactiveRecords = window.allRecords
+    // Get new records (status_id = 1)
+    const newRecords = window.allRecords
         .filter(r => r.status_id === 1)
         .slice(0, batchSize);
     
     // Add to selection
-    inactiveRecords.forEach(record => {
+    newRecords.forEach(record => {
         window.selectedRecords.add(record.id.toString());
     });
     
     renderCurrentPage();
     updateButtonStates();
     
-    if (inactiveRecords.length > 0) {
-        showStatus(`Selected ${inactiveRecords.length} most recent inactive records`, 'success');
+    if (newRecords.length > 0) {
+        showStatus(`Selected ${newRecords.length} most recent new records`, 'success');
     } else {
-        showStatus('No inactive records available to select', 'info');
+        showStatus('No new records available to select', 'info');
     }
 }
 
@@ -669,9 +663,10 @@ function showMarkActiveConfirmation() {
     }
     
     const selectedRecordsList = window.allRecords.filter(r => selectedIds.includes(r.id.toString()));
-    const inactiveRecords = selectedRecordsList.filter(r => r.status_id === 1);
+    const newRecords = selectedRecordsList.filter(r => r.status_id === 1);
     const activeRecords = selectedRecordsList.filter(r => r.status_id === 2);
     const soldRecords = selectedRecordsList.filter(r => r.status_id === 3);
+    const removedRecords = selectedRecordsList.filter(r => r.status_id === 4);
     
     const markActiveCountEl = document.getElementById('mark-active-count');
     if (markActiveCountEl) markActiveCountEl.textContent = selectedRecordsList.length;
@@ -680,9 +675,10 @@ function showMarkActiveConfirmation() {
     if (summaryList) {
         summaryList.innerHTML = `
             <li>Total selected: ${selectedRecordsList.length} records</li>
-            <li>Inactive records: ${inactiveRecords.length} (will be marked as Active)</li>
+            <li>New records: ${newRecords.length} (will be marked as Active)</li>
             <li>Active records: ${activeRecords.length} (already active - no change)</li>
             <li>Sold records: ${soldRecords.length} (won't be changed)</li>
+            <li>Removed records: ${removedRecords.length} (won't be changed)</li>
         `;
     }
     
@@ -718,13 +714,13 @@ async function confirmMarkActive() {
     closeMarkActiveConfirmation();
     showLoading(true);
     
-    const inactiveRecordIds = selectedIds.filter(id => {
+    const newRecordIds = selectedIds.filter(id => {
         const record = window.allRecords.find(r => r.id.toString() === id);
         return record && record.status_id === 1;
     });
     
-    if (inactiveRecordIds.length === 0) {
-        showStatus('No inactive records to mark as active', 'info');
+    if (newRecordIds.length === 0) {
+        showStatus('No new records to mark as active', 'info');
         showLoading(false);
         return;
     }
@@ -732,7 +728,7 @@ async function confirmMarkActive() {
     let successCount = 0;
     let errorCount = 0;
     
-    for (const recordId of inactiveRecordIds) {
+    for (const recordId of newRecordIds) {
         try {
             const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
                 method: 'PUT',
@@ -770,7 +766,7 @@ async function confirmMarkActive() {
     window.selectedRecords.clear();
     
     // Remove from recently printed
-    inactiveRecordIds.forEach(id => {
+    newRecordIds.forEach(id => {
         window.recentlyPrintedIds.delete(id);
     });
     
@@ -973,7 +969,7 @@ if (!window.priceTagsModule.initialized) {
     window.priceTagsModule.initialized = true;
 }
 
-// Export functions for use in HTML (UPDATED function names)
+// Export functions for use in HTML
 window.loadConsignorsForPriceTags = loadConsignorsForPriceTags;
 window.loadRecordsForPriceTags = loadRecordsForPriceTags;
 window.filterRecords = filterRecords;
@@ -983,7 +979,7 @@ window.goToPreviousPage = goToPreviousPage;
 window.goToNextPage = goToNextPage;
 window.goToLastPage = goToLastPage;
 window.changePageSize = changePageSize;
-window.selectRecentInactiveRecords = selectRecentInactiveRecords;
+window.selectRecentNewRecords = selectRecentNewRecords;
 window.selectAllOnPage = selectAllOnPage;
 window.clearSelection = clearSelection;
 window.showPrintConfirmation = showPrintConfirmation;
