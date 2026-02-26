@@ -1147,7 +1147,7 @@
             background: white;
             border: 1px solid #ddd;
             border-radius: 8px;
-            margin-bottom: 20px;
+            margin-top: 20px;
             overflow: hidden;
         }
 
@@ -2508,12 +2508,12 @@
             </div>
         </div>
 
-        <!-- Price Tags Tab -->
+        <!-- Price Tags Tab - RESTRUCTURED -->
         <div id="price-tags-tab" class="tab-content">
             <h2><i class="fas fa-tags"></i> Print Price Tags</h2>
             
             <!-- Filter Controls -->
-            <div class="filter-controls">
+            <div class="filter-controls" style="margin-bottom: 20px;">
                 <div class="filter-group">
                     <label for="user-select"><i class="fas fa-user"></i> Select User:</label>
                     <select id="user-select" class="select2 filter-select" style="width: 250px;">
@@ -2538,12 +2538,32 @@
                 </div>
             </div>
             
-            <!-- Search Box for Locating Records -->
+            <!-- STATS CARDS - TOP -->
+            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Records</h3>
+                    <p class="stat-number" id="total-records-print" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Inactive Records</h3>
+                    <p class="stat-number" id="inactive-records" style="font-size: 28px; font-weight: bold; color: #dc3545; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Active Records</h3>
+                    <p class="stat-number" id="active-records" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Sold Records</h3>
+                    <p class="stat-number" id="sold-records" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
+                </div>
+            </div>
+            
+            <!-- SEARCH SECTION - MIDDLE -->
             <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #007bff;">
                 <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 300px;">
                         <label for="record-locator-search" style="display: block; margin-bottom: 5px; font-weight: 600; color: #007bff;">
-                            <i class="fas fa-search-location"></i> Locate Record (doesn't filter - just highlights matches)
+                            <i class="fas fa-search-location"></i> Locate Record
                         </label>
                         <div style="display: flex; gap: 10px;">
                             <input type="text" 
@@ -2570,60 +2590,9 @@
                 </p>
             </div>
             
-            <!-- Print Queue Section -->
-            <div class="queue-container">
-                <div class="queue-header">
-                    <h3><i class="fas fa-list-ol"></i> Print Queue <span class="queue-badge" id="queue-count">0</span></h3>
-                    <div class="queue-controls">
-                        <button class="btn btn-small btn-secondary" onclick="clearQueue()" id="clear-queue-btn" disabled>
-                            <i class="fas fa-trash"></i> Clear Queue
-                        </button>
-                    </div>
-                </div>
-                <div class="queue-content" id="queue-content">
-                    <div class="queue-empty" id="queue-empty">
-                        <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 10px; opacity: 0.5;"></i>
-                        <p>No records in print queue</p>
-                        <p style="font-size: 12px;">Click 'from' on a record to start a range selection</p>
-                    </div>
-                </div>
-                <div class="queue-actions">
-                    <button class="btn btn-success" onclick="showPrintConfirmation()" id="print-queue-btn" disabled>
-                        <i class="fas fa-print"></i> Print Queue (<span id="print-queue-count">0</span>)
-                    </button>
-                    <button class="btn btn-warning" onclick="showMarkActiveConfirmation()" id="mark-active-queue-btn" disabled>
-                        <i class="fas fa-check-circle"></i> Mark Queue as Active
-                    </button>
-                    <button class="btn btn-secondary" onclick="cancelRangeSelection()" id="cancel-range-btn" style="display: none;">
-                        <i class="fas fa-times"></i> Cancel Range
-                    </button>
-                </div>
-            </div>
-            
             <!-- Records Section -->
             <div id="records-section">
-                <h3><i class="fas fa-list"></i> Records</h3>
-                
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <h3>Total Records</h3>
-                        <p class="stat-number" id="total-records-print">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Inactive Records</h3>
-                        <p class="stat-number" id="inactive-records">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Active Records</h3>
-                        <p class="stat-number" id="active-records">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Sold Records</h3>
-                        <p class="stat-number" id="sold-records">0</p>
-                    </div>
-                </div>
-                
-                <div class="pagination" id="pagination-controls">
+                <div class="pagination" id="pagination-controls" style="margin-bottom: 15px;">
                     <button class="page-btn" onclick="goToFirstPage()" id="first-page-btn" disabled>
                         <i class="fas fa-angle-double-left"></i>
                     </button>
@@ -2679,14 +2648,14 @@
                     </table>
                 </div>
                 
-                <div class="pagination" id="pagination-footer">
+                <div class="pagination" id="pagination-footer" style="margin-top: 15px;">
                     <span class="pagination-info">
                         Showing <span id="showing-start">0</span>-<span id="showing-end">0</span> 
                         of <span id="total-filtered">0</span> records
                     </span>
                 </div>
                 
-                <div class="action-buttons">
+                <div class="action-buttons" style="margin-top: 15px;">
                     <button class="btn btn-primary" onclick="loadRecordsForPriceTags()">
                         <i class="fas fa-sync-alt"></i> Refresh Records
                     </button>
@@ -2700,6 +2669,36 @@
                 <div class="loading" id="loading">
                     <div class="loading-spinner"></div>
                     <p>Processing...</p>
+                </div>
+            </div>
+            
+            <!-- PRINT QUEUE SECTION - BOTTOM -->
+            <div class="queue-container">
+                <div class="queue-header">
+                    <h3><i class="fas fa-list-ol"></i> Print Queue <span class="queue-badge" id="queue-count">0</span></h3>
+                    <div class="queue-controls">
+                        <button class="btn btn-small btn-secondary" onclick="clearQueue()" id="clear-queue-btn" disabled>
+                            <i class="fas fa-trash"></i> Clear Queue
+                        </button>
+                    </div>
+                </div>
+                <div class="queue-content" id="queue-content">
+                    <div class="queue-empty" id="queue-empty">
+                        <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 10px; opacity: 0.5;"></i>
+                        <p>No records in print queue</p>
+                        <p style="font-size: 12px;">Click 'from' on a record to start a range selection</p>
+                    </div>
+                </div>
+                <div class="queue-actions">
+                    <button class="btn btn-success" onclick="showPrintConfirmation()" id="print-queue-btn" disabled>
+                        <i class="fas fa-print"></i> Print Queue (<span id="print-queue-count">0</span>)
+                    </button>
+                    <button class="btn btn-warning" onclick="showMarkActiveConfirmation()" id="mark-active-queue-btn" disabled>
+                        <i class="fas fa-check-circle"></i> Mark Queue as Active
+                    </button>
+                    <button class="btn btn-secondary" onclick="cancelRangeSelection()" id="cancel-range-btn" style="display: none;">
+                        <i class="fas fa-times"></i> Cancel Range
+                    </button>
                 </div>
             </div>
         </div>
