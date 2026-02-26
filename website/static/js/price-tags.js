@@ -168,6 +168,21 @@ async function loadConsignorsForPriceTags() {
             });
             
             console.log(`Loaded ${users.length} users for filter`);
+            
+            // Add event listener for user select change
+            // Remove existing listener first to avoid duplicates
+            const oldUserSelect = userSelect;
+            const newUserSelect = oldUserSelect.cloneNode(true);
+            oldUserSelect.parentNode.replaceChild(newUserSelect, oldUserSelect);
+            
+            newUserSelect.addEventListener('change', function() {
+                console.log('User selected changed to:', this.value);
+                // Clear current selection when changing users
+                window.selectedRecords.clear();
+                // Load records for the selected user
+                loadRecordsForPriceTags();
+            });
+            
         } else {
             console.error('Failed to load users:', data.message);
             showStatus('Failed to load users: ' + (data.message || 'Unknown error'), 'error');
@@ -191,6 +206,7 @@ async function loadRecordsForPriceTags() {
         }
         
         const selectedUserId = userSelect.value === 'all' ? null : userSelect.value;
+        console.log('Loading records for user:', selectedUserId);
         
         let url;
         if (selectedUserId) {
@@ -404,7 +420,7 @@ function renderCurrentPage() {
     // Debug: Log the first few records to see their status_id
     console.log('============ RECORD STATUS DEBUG ================');
     pageRecords.slice(0, 5).forEach((record, i) => {
-        console.log(`Record ${i}: ID=${record.id}, status_id=${record.status_id}, status_name=${record.status_name}`);
+        console.log(`Record ${i}: ID=${record.id}, status_id=${record.status_id}, status_name=${record.status_name}, consignor_id=${record.consignor_id}`);
     });
     
     pageRecords.forEach((record, index) => {
