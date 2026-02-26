@@ -1109,9 +1109,264 @@
             border-bottom: 1px solid #eee;
         }
 
+        /* Locator highlight styles */
+        .record-locator-match {
+            background-color: #fff3cd !important;
+            border-left: 4px solid #ffc107 !important;
+        }
+
+        .record-locator-current {
+            background-color: #cce5ff !important;
+            border-left: 4px solid #007bff !important;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+
+        .record-locator-current td {
+            background-color: #cce5ff !important;
+        }
+
+        .record-locator-match td {
+            background-color: #fff3cd !important;
+        }
+
+        /* Locator search section */
+        .locator-stats {
+            background: #e9ecef;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+
+        #record-locator-search:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+        }
+
+        /* Queue Styles */
+        .queue-container {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .queue-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .queue-header h3 {
+            margin: 0;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .queue-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .queue-content {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f8f9fa;
+        }
+
+        .queue-empty {
+            text-align: center;
+            padding: 30px;
+            color: #999;
+            font-style: italic;
+        }
+
+        .queue-item {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .queue-item:hover {
+            background: #f0f7ff;
+            border-color: #007bff;
+        }
+
+        .queue-item-number {
+            background: #6c757d;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .queue-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .queue-item-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .queue-item-details {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .queue-item-price {
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .queue-item-remove {
+            color: #dc3545;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: none;
+            border: 1px solid #dc3545;
+            transition: all 0.2s;
+        }
+
+        .queue-item-remove:hover {
+            background: #dc3545;
+            color: white;
+        }
+
+        .queue-item-move {
+            color: #007bff;
+            cursor: pointer;
+            padding: 5px 8px;
+            border-radius: 4px;
+            background: none;
+            border: 1px solid #007bff;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            margin-right: 5px;
+        }
+
+        .queue-item-move:hover {
+            background: #007bff;
+            color: white;
+        }
+
+        .queue-item-move:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            border-color: #ccc;
+        }
+
+        .queue-item-move:disabled:hover {
+            background: none;
+            color: #007bff;
+        }
+
+        .queue-actions {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .record-in-queue {
+            background-color: #e8f4fd !important;
+            border-left: 4px solid #007bff !important;
+        }
+
+        .record-in-queue td {
+            background-color: #e8f4fd !important;
+        }
+
+        .record-queue-position {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+            font-weight: bold;
+        }
+
+        .queue-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* Range selection styles */
+        .range-mode-active .from-btn {
+            background-color: #28a745 !important;
+            color: white !important;
+            border-color: #28a745 !important;
+        }
+
+        .range-mode-active .to-btn {
+            background-color: #ffc107 !important;
+            color: #333 !important;
+            border-color: #ffc107 !important;
+        }
+
+        .from-btn.selected-from {
+            background-color: #28a745 !important;
+            color: white !important;
+            border-color: #28a745 !important;
+            font-weight: bold;
+        }
+
+        .to-btn {
+            background-color: #6c757d !important;
+            color: white !important;
+        }
+
+        .to-btn.selected-to {
+            background-color: #ffc107 !important;
+            color: #333 !important;
+            border-color: #ffc107 !important;
+            font-weight: bold;
+        }
+
         @keyframes slideIn {
             from {
-                transform: translateX(100%);
+                transform: translateX(-10px);
                 opacity: 0;
             }
             to {
@@ -2277,8 +2532,70 @@
                 </div>
                 
                 <div class="filter-group">
-                    <button class="btn btn-secondary" onclick="loadRecords()" style="height: 38px;">
+                    <button class="btn btn-secondary" onclick="loadRecordsForPriceTags()" style="height: 38px;">
                         <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Search Box for Locating Records -->
+            <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #007bff;">
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 300px;">
+                        <label for="record-locator-search" style="display: block; margin-bottom: 5px; font-weight: 600; color: #007bff;">
+                            <i class="fas fa-search-location"></i> Locate Record (doesn't filter - just highlights matches)
+                        </label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" 
+                                   id="record-locator-search" 
+                                   class="search-input" 
+                                   placeholder="Search by artist, title, or barcode..."
+                                   style="flex: 1;"
+                                   onkeyup="locateRecord()">
+                            <button class="btn btn-info" onclick="findNextMatch()" title="Find next match">
+                                <i class="fas fa-arrow-down"></i> Find
+                            </button>
+                            <button class="btn btn-secondary" onclick="clearLocatorHighlight()" title="Clear highlights">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="locator-stats" id="locator-stats" style="color: #666; font-size: 14px;">
+                        <span id="match-count">0</span> matches found
+                    </div>
+                </div>
+                <p class="hint" style="margin-top: 8px; font-size: 12px; color: #666;">
+                    <i class="fas fa-info-circle"></i> 
+                    Type to search - matching rows will be highlighted. Use the Find button to jump to the next match.
+                </p>
+            </div>
+            
+            <!-- Print Queue Section -->
+            <div class="queue-container">
+                <div class="queue-header">
+                    <h3><i class="fas fa-list-ol"></i> Print Queue <span class="queue-badge" id="queue-count">0</span></h3>
+                    <div class="queue-controls">
+                        <button class="btn btn-small btn-secondary" onclick="clearQueue()" id="clear-queue-btn" disabled>
+                            <i class="fas fa-trash"></i> Clear Queue
+                        </button>
+                    </div>
+                </div>
+                <div class="queue-content" id="queue-content">
+                    <div class="queue-empty" id="queue-empty">
+                        <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 10px; opacity: 0.5;"></i>
+                        <p>No records in print queue</p>
+                        <p style="font-size: 12px;">Click 'from' on a record to start a range selection</p>
+                    </div>
+                </div>
+                <div class="queue-actions">
+                    <button class="btn btn-success" onclick="showPrintConfirmation()" id="print-queue-btn" disabled>
+                        <i class="fas fa-print"></i> Print Queue (<span id="print-queue-count">0</span>)
+                    </button>
+                    <button class="btn btn-warning" onclick="showMarkActiveConfirmation()" id="mark-active-queue-btn" disabled>
+                        <i class="fas fa-check-circle"></i> Mark Queue as Active
+                    </button>
+                    <button class="btn btn-secondary" onclick="cancelRangeSelection()" id="cancel-range-btn" style="display: none;">
+                        <i class="fas fa-times"></i> Cancel Range
                     </button>
                 </div>
             </div>
@@ -2304,16 +2621,6 @@
                         <h3>Sold Records</h3>
                         <p class="stat-number" id="sold-records">0</p>
                     </div>
-                    <div class="stat-card">
-                        <h3>Selected Tags</h3>
-                        <p class="stat-number" id="selected-tags">0</p>
-                    </div>
-                </div>
-                
-                <div class="input-group">
-                    <label for="batch-size"><i class="fas fa-sort-numeric-down"></i> Number of tags to print:</label>
-                    <input type="number" id="batch-size" min="1" value="10" onchange="selectRecentInactiveRecords()">
-                    <small>Most recent inactive records will be selected (sorted by creation date descending)</small>
                 </div>
                 
                 <div class="pagination" id="pagination-controls">
@@ -2353,9 +2660,9 @@
                     <table class="records-table" id="records-table">
                         <thead>
                             <tr>
-                                <th><input type="checkbox" id="select-all"></th>
+                                <th></th>
                                 <th>#</th>
-                                <th>Created Date <i class="fas fa-sort-down"></i></th>
+                                <th>Created Date</th>
                                 <th>Artist</th>
                                 <th>Title</th>
                                 <th>Price</th>
@@ -2376,28 +2683,15 @@
                     <span class="pagination-info">
                         Showing <span id="showing-start">0</span>-<span id="showing-end">0</span> 
                         of <span id="total-filtered">0</span> records
-                        (<span id="selected-count">0</span> selected)
                     </span>
                 </div>
                 
                 <div class="action-buttons">
-                    <button class="btn btn-primary" onclick="loadRecords()">
+                    <button class="btn btn-primary" onclick="loadRecordsForPriceTags()">
                         <i class="fas fa-sync-alt"></i> Refresh Records
                     </button>
-                    <button class="btn btn-success" onclick="showPrintConfirmation()" id="print-btn" disabled>
-                        <i class="fas fa-print"></i> Print Price Tags
-                    </button>
-                    <button class="btn btn-warning" onclick="showMarkActiveConfirmation()" id="mark-active-btn" disabled>
-                        <i class="fas fa-check-circle"></i> Mark as Active
-                    </button>
-                    <button class="btn btn-secondary" onclick="selectRecentInactiveRecords()" id="select-inactive-btn">
-                        <i class="fas fa-check-square"></i> Select Recent Inactive
-                    </button>
-                    <button class="btn btn-secondary" onclick="selectAllOnPage()">
-                        <i class="fas fa-check-double"></i> Select All on Page
-                    </button>
-                    <button class="btn btn-secondary" onclick="clearSelection()">
-                        <i class="fas fa-times-circle"></i> Clear Selection
+                    <button class="btn btn-secondary" onclick="addAllOnPageToQueue()">
+                        <i class="fas fa-plus-circle"></i> Add All on Page to Queue
                     </button>
                 </div>
                 
@@ -2421,11 +2715,11 @@
             <div class="modal-body">
                 <div class="print-summary">
                     <h4>Print Summary</h4>
-                    <p>You are about to print price tags for <strong id="print-count">0</strong> selected records.</p>
-                    <ul id="print-summary-list">
+                    <p>You are about to print price tags for <strong id="print-count">0</strong> records in the queue.</p>
+                    <div id="print-summary-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
                         <!-- Will be populated dynamically -->
-                    </ul>
-                    <p>After printing successfully, you should mark these records as <strong>Active</strong> using the "Mark as Active" button.</p>
+                    </div>
+                    <p>After printing successfully, you should mark these records as <strong>Active</strong> using the "Mark Queue as Active" button.</p>
                 </div>
             </div>
             <div class="modal-footer">
@@ -2440,16 +2734,16 @@
     <div id="mark-active-confirmation-modal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-check-circle"></i> Mark as Active</h3>
+                <h3 class="modal-title"><i class="fas fa-check-circle"></i> Mark Queue as Active</h3>
                 <button class="modal-close" onclick="closeMarkActiveConfirmation()">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="print-summary">
                     <h4>Confirmation Required</h4>
-                    <p>You are about to mark <strong id="mark-active-count">0</strong> selected records as <strong>Active</strong>.</p>
-                    <ul id="mark-active-summary-list">
+                    <p>You are about to mark <strong id="mark-active-count">0</strong> records in the queue as <strong>Active</strong>.</p>
+                    <div id="mark-active-summary-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
                         <!-- Will be populated dynamically -->
-                    </ul>
+                    </div>
                     <p><strong>Important:</strong> Only mark records as Active <em>after</em> you have successfully printed their price tags.</p>
                     <p>This will change their status from "Inactive" to "Active" in the system.</p>
                 </div>
@@ -2706,7 +3000,9 @@
     
     <!-- Config Initializer - Loads database config for all tabs -->
     <script>
-    // Initialize configuration values as soon as the page loads
+    // Initialize global config object
+    window.dbConfigValues = window.dbConfigValues || {};
+
     (async function initializePageConfig() {
         console.log('🔄 Initializing global configuration for admin panel...');
         
@@ -2714,22 +3010,25 @@
             // Make sure AppConfig is available
             if (typeof AppConfig === 'undefined') {
                 console.error('AppConfig not loaded yet, waiting...');
-                // Wait a moment for scripts to load
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
             
-            // Try multiple methods to load config
             let configLoaded = false;
             
-            // Method 1: Use fetchAllConfigValues if available
+            // Try fetchAllConfigValues if available
             if (typeof fetchAllConfigValues === 'function') {
                 console.log('Loading config via fetchAllConfigValues()...');
-                await fetchAllConfigValues();
-                configLoaded = true;
+                const config = await fetchAllConfigValues();
+                if (config && Object.keys(config).length > 0) {
+                    window.dbConfigValues = config;
+                    configLoaded = true;
+                    console.log('✅ Config loaded via fetchAllConfigValues, keys:', Object.keys(window.dbConfigValues));
+                }
             } 
-            // Method 2: Direct API call
-            else {
-                console.log('fetchAllConfigValues not found, making direct API call...');
+            
+            // If not loaded, try direct API call
+            if (!configLoaded) {
+                console.log('Making direct API call to /config...');
                 try {
                     const response = await fetch(`${AppConfig.baseUrl}/config`, {
                         credentials: 'include',
@@ -2743,10 +3042,8 @@
                         const data = await response.json();
                         
                         if (data.status === 'success') {
-                            // Initialize window.dbConfigValues
                             window.dbConfigValues = {};
                             
-                            // Handle different response formats
                             if (data.configs) {
                                 Object.keys(data.configs).forEach(key => {
                                     window.dbConfigValues[key] = data.configs[key];
@@ -2761,7 +3058,7 @@
                             }
                             
                             configLoaded = true;
-                            console.log('✅ Config loaded via direct API call');
+                            console.log('✅ Config loaded via direct API call, keys:', Object.keys(window.dbConfigValues));
                         }
                     }
                 } catch (directError) {
@@ -2769,60 +3066,35 @@
                 }
             }
             
-            // Method 3: Try the ConfigLoader if available (from app-config.js)
-            if (!configLoaded && typeof ConfigLoader !== 'undefined' && ConfigLoader.loadAll) {
-                console.log('Loading config via ConfigLoader...');
-                await ConfigLoader.loadAll();
-                configLoaded = true;
-            }
-            
             if (configLoaded) {
-                console.log('✅ Global configuration loaded successfully!');
-                console.log('Available config keys:', Object.keys(window.dbConfigValues || {}));
+                console.log('✅ Configuration loaded successfully!');
+                console.log('Config values:', window.dbConfigValues);
                 
-                // Update any UI elements that need config values
-                if (typeof updateUIFromConfig === 'function') {
-                    updateUIFromConfig();
-                }
-                
-                // Dispatch an event that config is ready
+                // Dispatch event that config is ready
                 window.dispatchEvent(new CustomEvent('configReady', {
                     detail: { config: window.dbConfigValues }
                 }));
             } else {
-                console.warn('⚠️ Could not load configuration. Using defaults where available.');
-                // Initialize empty config to prevent errors
-                window.dbConfigValues = window.dbConfigValues || {};
+                console.warn('⚠️ Could not load configuration.');
             }
             
         } catch (error) {
             console.error('❌ Failed to initialize configuration:', error);
-            // Ensure dbConfigValues exists to prevent errors
-            window.dbConfigValues = window.dbConfigValues || {};
-        }
-        
-        // Log the current config state for debugging
-        console.log('Current dbConfigValues:', window.dbConfigValues);
-        
-        // Specifically check for tax configuration
-        if (window.dbConfigValues) {
-            console.log('TAX_ENABLED:', window.dbConfigValues['TAX_ENABLED']);
-            console.log('TAX_RATE:', window.dbConfigValues['TAX_RATE']);
         }
     })();
-    </script>
-    
-    <!-- Safety check for checkout tab -->
-    <script>
-    // This runs after everything else to double-check config
+
+    // Safety check
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('DOM fully loaded, verifying config...');
+        console.log('DOM fully loaded, checking config...');
         setTimeout(function() {
             if (!window.dbConfigValues || Object.keys(window.dbConfigValues).length === 0) {
-                console.warn('Config still not loaded after DOM ready, attempting reload...');
+                console.warn('Config still not loaded, attempting final reload...');
                 if (typeof fetchAllConfigValues === 'function') {
-                    fetchAllConfigValues().then(() => {
-                        console.log('✅ Config loaded on safety check');
+                    fetchAllConfigValues().then(config => {
+                        if (config) {
+                            window.dbConfigValues = config;
+                            console.log('✅ Config loaded on safety check, keys:', Object.keys(window.dbConfigValues));
+                        }
                     }).catch(err => {
                         console.error('Safety check config load failed:', err);
                     });

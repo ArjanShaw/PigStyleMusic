@@ -1,16 +1,16 @@
 // ============================================================================
-// price-tags.js - Price Tags Tab Functionality
+// price-tags.js - Price Tags Tab Functionality with Range Selection
 // ============================================================================
 
 // Use window object to avoid redeclaration errors
 window.priceTagsModule = window.priceTagsModule || {};
 
-// Cache for consignor information - check if it already exists
+// Cache for consignor information
 if (typeof window.consignorCache === 'undefined') {
     window.consignorCache = {};
 }
 
-// State variables - check if they already exist
+// State variables
 if (typeof window.allRecords === 'undefined') {
     window.allRecords = [];
 }
@@ -35,8 +35,22 @@ if (typeof window.recentlyPrintedIds === 'undefined') {
     window.recentlyPrintedIds = new Set();
 }
 
-// Selected records (make sure this is defined)
-window.selectedRecords = window.selectedRecords || new Set();
+// Print Queue - array to maintain order
+window.printQueue = window.printQueue || [];
+
+// Range selection state
+window.rangeMode = false;
+window.rangeFromIndex = null;
+window.rangeFromId = null;
+
+// Locator state variables
+if (typeof window.locatorMatches === 'undefined') {
+    window.locatorMatches = [];
+}
+
+if (typeof window.currentMatchIndex === 'undefined') {
+    window.currentMatchIndex = -1;
+}
 
 // Helper functions
 function formatDate(dateString) {
@@ -69,30 +83,12 @@ function getStatusIdFromFilter(filter) {
 }
 
 function getConfigValue(key) {
-    if (window.dbConfigValues && window.dbConfigValues[key]) {
-        const value = window.dbConfigValues[key].value;
-        const num = parseFloat(value);
-        return isNaN(num) ? value : num;
+    if (!window.dbConfigValues || !window.dbConfigValues[key]) {
+        throw new Error(`Required configuration value '${key}' not found in database`);
     }
-    
-    // Default values
-    const defaults = {
-        'LABEL_WIDTH_MM': 50.8,
-        'LABEL_HEIGHT_MM': 25.4,
-        'LEFT_MARGIN_MM': 8,
-        'GUTTER_SPACING_MM': 2,
-        'TOP_MARGIN_MM': 12,
-        'PRICE_FONT_SIZE': 14,
-        'TEXT_FONT_SIZE': 8,
-        'ARTIST_LABEL_FONT_SIZE': 12,
-        'BARCODE_HEIGHT': 8,
-        'PRINT_BORDERS': false,
-        'PRICE_Y_POS': 12,
-        'BARCODE_Y_POS': 16,
-        'INFO_Y_POS': 8
-    };
-    
-    return defaults[key] || null;
+    const value = window.dbConfigValues[key].value;
+    const num = parseFloat(value);
+    return isNaN(num) ? value : num;
 }
 
 // Show loading indicator
@@ -170,15 +166,15 @@ async function loadConsignorsForPriceTags() {
             console.log(`Loaded ${users.length} users for filter`);
             
             // Add event listener for user select change
-            // Remove existing listener first to avoid duplicates
             const oldUserSelect = userSelect;
             const newUserSelect = oldUserSelect.cloneNode(true);
             oldUserSelect.parentNode.replaceChild(newUserSelect, oldUserSelect);
             
             newUserSelect.addEventListener('change', function() {
                 console.log('User selected changed to:', this.value);
-                // Clear current selection when changing users
-                window.selectedRecords.clear();
+                // Clear queue when changing users
+                clearQueue();
+                cancelRangeSelection();
                 // Load records for the selected user
                 loadRecordsForPriceTags();
             });
@@ -251,13 +247,6 @@ async function loadRecordsForPriceTags() {
             if (newEl) newEl.textContent = newCount;
             if (activeEl) activeEl.textContent = activeCount;
             if (soldEl) soldEl.textContent = soldCount;
-            
-            // Update batch size input
-            const batchSizeInput = document.getElementById('batch-size');
-            if (batchSizeInput) {
-                batchSizeInput.max = newCount;
-                batchSizeInput.value = Math.min(parseInt(batchSizeInput.value) || 10, newCount || 10);
-            }
             
             // Fetch any missing consignor info
             const consignorIds = new Set();
@@ -335,6 +324,10 @@ function filterRecords() {
     updatePagination();
     renderCurrentPage();
     
+    // Clear locator when filtering
+    clearLocatorHighlight();
+    cancelRangeSelection();
+    
     const statusText = statusFilter === 'all' ? 'All records' : 
                       statusFilter === 'new' ? 'New records' :
                       statusFilter === 'active' ? 'Active records' : 
@@ -376,31 +369,389 @@ function updatePagination() {
     
     if (showingStartEl) showingStartEl.textContent = window.filteredRecords.length > 0 ? startIndex : 0;
     if (showingEndEl) showingEndEl.textContent = window.filteredRecords.length > 0 ? endIndex : 0;
-    
-    const selectedCount = window.selectedRecords ? window.selectedRecords.size : 0;
-    const selectedCountEl = document.getElementById('selected-count');
-    if (selectedCountEl) selectedCountEl.textContent = selectedCount;
-    
-    updateButtonStates();
 }
 
-// Update button states
-function updateButtonStates() {
-    const selectedCount = window.selectedRecords ? window.selectedRecords.size : 0;
-    const hasSelection = selectedCount > 0;
+// Update queue display
+function updateQueueDisplay() {
+    const queueContent = document.getElementById('queue-content');
+    const queueEmpty = document.getElementById('queue-empty');
+    const queueCount = document.getElementById('queue-count');
+    const printQueueBtn = document.getElementById('print-queue-btn');
+    const markActiveQueueBtn = document.getElementById('mark-active-queue-btn');
+    const clearQueueBtn = document.getElementById('clear-queue-btn');
+    const printQueueCount = document.getElementById('print-queue-count');
     
-    const printBtn = document.getElementById('print-btn');
-    const markActiveBtn = document.getElementById('mark-active-btn');
+    if (!queueContent) return;
     
-    if (printBtn) printBtn.disabled = !hasSelection;
-    if (markActiveBtn) markActiveBtn.disabled = !hasSelection;
+    // Update queue count
+    if (queueCount) queueCount.textContent = window.printQueue.length;
+    if (printQueueCount) printQueueCount.textContent = window.printQueue.length;
     
-    // Update selected tags count
-    const selectedTagsEl = document.getElementById('selected-tags');
-    if (selectedTagsEl) selectedTagsEl.textContent = selectedCount;
+    // Update button states
+    const hasItems = window.printQueue.length > 0;
+    if (printQueueBtn) printQueueBtn.disabled = !hasItems;
+    if (markActiveQueueBtn) markActiveQueueBtn.disabled = !hasItems;
+    if (clearQueueBtn) clearQueueBtn.disabled = !hasItems;
+    
+    // Clear queue content
+    queueContent.innerHTML = '';
+    
+    if (window.printQueue.length === 0) {
+        if (queueEmpty) {
+            queueEmpty.style.display = 'block';
+        } else {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'queue-empty';
+            emptyDiv.innerHTML = `
+                <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 10px; opacity: 0.5;"></i>
+                <p>No records in print queue</p>
+                <p style="font-size: 12px;">Click 'from' on a record to start a range selection</p>
+            `;
+            queueContent.appendChild(emptyDiv);
+        }
+        return;
+    }
+    
+    if (queueEmpty) queueEmpty.style.display = 'none';
+    
+    // Render each item in the queue
+    window.printQueue.forEach((recordId, index) => {
+        const record = window.allRecords.find(r => r.id.toString() === recordId);
+        if (!record) return;
+        
+        const consignorInfo = window.consignorCache[record.consignor_id] || { username: 'None', initials: '' };
+        
+        const queueItem = document.createElement('div');
+        queueItem.className = 'queue-item';
+        queueItem.innerHTML = `
+            <div class="queue-item-number">${index + 1}</div>
+            <div class="queue-item-info">
+                <div class="queue-item-title">${escapeHtml(record.artist || 'Unknown')} - ${escapeHtml(record.title || 'Unknown')}</div>
+                <div class="queue-item-details">
+                    <span>$${(record.store_price || 0).toFixed(2)}</span>
+                    <span>${escapeHtml(record.genre_name || record.genre || 'Unknown')}</span>
+                    <span>${consignorInfo.initials ? `(${escapeHtml(consignorInfo.initials)})` : ''}</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button class="queue-item-move" onclick="moveQueueItem(${index}, 'up')" ${index === 0 ? 'disabled' : ''}>
+                    <i class="fas fa-arrow-up"></i>
+                </button>
+                <button class="queue-item-move" onclick="moveQueueItem(${index}, 'down')" ${index === window.printQueue.length - 1 ? 'disabled' : ''}>
+                    <i class="fas fa-arrow-down"></i>
+                </button>
+                <button class="queue-item-remove" onclick="removeFromQueue('${recordId}')">
+                    <i class="fas fa-times"></i> Remove
+                </button>
+            </div>
+        `;
+        queueContent.appendChild(queueItem);
+    });
+    
+    // Re-render current page to update row highlighting
+    renderCurrentPage();
 }
 
-// Render current page - DISPLAYING RAW STATUS_ID
+// Move queue item up or down
+function moveQueueItem(index, direction) {
+    if (direction === 'up' && index > 0) {
+        [window.printQueue[index - 1], window.printQueue[index]] = [window.printQueue[index], window.printQueue[index - 1]];
+    } else if (direction === 'down' && index < window.printQueue.length - 1) {
+        [window.printQueue[index], window.printQueue[index + 1]] = [window.printQueue[index + 1], window.printQueue[index]];
+    } else {
+        return;
+    }
+    
+    updateQueueDisplay();
+    showStatus('Queue order updated', 'success');
+}
+
+// Add to queue
+function addToQueue(recordId) {
+    const recordIdStr = recordId.toString();
+    
+    // Don't add sold records
+    const record = window.allRecords.find(r => r.id.toString() === recordIdStr);
+    if (record && record.status_id === 3) {
+        showStatus('Sold records cannot be added to queue', 'warning');
+        return;
+    }
+    
+    // Check if already in queue
+    if (window.printQueue.includes(recordIdStr)) {
+        showStatus('Record already in queue', 'info');
+        return;
+    }
+    
+    window.printQueue.push(recordIdStr);
+    updateQueueDisplay();
+    showStatus('Record added to queue', 'success');
+}
+
+// Remove from queue
+function removeFromQueue(recordId) {
+    const recordIdStr = recordId.toString();
+    const index = window.printQueue.indexOf(recordIdStr);
+    
+    if (index !== -1) {
+        window.printQueue.splice(index, 1);
+        updateQueueDisplay();
+        showStatus('Record removed from queue', 'info');
+    }
+}
+
+// Clear queue
+function clearQueue() {
+    if (window.printQueue.length === 0) return;
+    
+    if (confirm('Are you sure you want to clear the entire queue?')) {
+        window.printQueue = [];
+        cancelRangeSelection();
+        updateQueueDisplay();
+        showStatus('Queue cleared', 'info');
+    }
+}
+
+// Add all records on current page to queue
+function addAllOnPageToQueue() {
+    const startIndex = (window.currentPage - 1) * window.pageSize;
+    const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
+    const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
+    
+    // Filter out sold records and records already in queue
+    const recordsToAdd = pageRecords.filter(r => 
+        r.status_id !== 3 && !window.printQueue.includes(r.id.toString())
+    );
+    
+    if (recordsToAdd.length === 0) {
+        showStatus('No eligible records on this page to add', 'info');
+        return;
+    }
+    
+    recordsToAdd.forEach(record => {
+        window.printQueue.push(record.id.toString());
+    });
+    
+    updateQueueDisplay();
+    showStatus(`Added ${recordsToAdd.length} records from current page to queue`, 'success');
+}
+
+// Range selection functions
+function startRangeFrom(recordId, button) {
+    const recordIdStr = recordId.toString();
+    
+    // Check if we're clicking the same from button
+    if (window.rangeMode && window.rangeFromId === recordIdStr) {
+        cancelRangeSelection();
+        return;
+    }
+    
+    // Find the record's index in the filtered list
+    const recordIndex = window.filteredRecords.findIndex(r => r.id.toString() === recordIdStr);
+    if (recordIndex === -1) return;
+    
+    window.rangeMode = true;
+    window.rangeFromIndex = recordIndex;
+    window.rangeFromId = recordIdStr;
+    
+    // Update UI
+    document.querySelectorAll('.from-btn').forEach(btn => {
+        btn.classList.remove('selected-from');
+        btn.textContent = 'from';
+    });
+    
+    button.classList.add('selected-from');
+    button.textContent = 'from';
+    
+    document.querySelectorAll('.to-btn').forEach(btn => {
+        btn.textContent = 'to';
+        btn.classList.remove('selected-to');
+    });
+    
+    // Show cancel range button
+    const cancelBtn = document.getElementById('cancel-range-btn');
+    if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+    
+    showStatus(`Select 'to' to complete range selection`, 'info');
+}
+
+function completeRangeTo(recordId, button) {
+    if (!window.rangeMode) return;
+    
+    const recordIdStr = recordId.toString();
+    
+    // Find the record's index in the filtered list
+    const recordIndex = window.filteredRecords.findIndex(r => r.id.toString() === recordIdStr);
+    if (recordIndex === -1) return;
+    
+    // Determine range direction
+    const start = Math.min(window.rangeFromIndex, recordIndex);
+    const end = Math.max(window.rangeFromIndex, recordIndex);
+    
+    // Get records in range
+    const recordsInRange = window.filteredRecords.slice(start, end + 1);
+    
+    // Filter out sold records and records already in queue
+    const recordsToAdd = recordsInRange.filter(r => 
+        r.status_id !== 3 && !window.printQueue.includes(r.id.toString())
+    );
+    
+    if (recordsToAdd.length === 0) {
+        showStatus('No eligible records in selected range', 'info');
+        cancelRangeSelection();
+        return;
+    }
+    
+    // Add to queue in the order they appear in the table
+    recordsToAdd.forEach(record => {
+        window.printQueue.push(record.id.toString());
+    });
+    
+    updateQueueDisplay();
+    showStatus(`Added ${recordsToAdd.length} records from range to queue`, 'success');
+    
+    // Clear range mode
+    cancelRangeSelection();
+}
+
+function cancelRangeSelection() {
+    window.rangeMode = false;
+    window.rangeFromIndex = null;
+    window.rangeFromId = null;
+    
+    // Reset all buttons
+    document.querySelectorAll('.from-btn').forEach(btn => {
+        btn.classList.remove('selected-from');
+        btn.textContent = 'from';
+    });
+    
+    document.querySelectorAll('.to-btn').forEach(btn => {
+        btn.textContent = 'to';
+        btn.classList.remove('selected-to');
+    });
+    
+    // Hide cancel range button
+    const cancelBtn = document.getElementById('cancel-range-btn');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+}
+
+// Clear all locator highlights
+function clearLocatorHighlight() {
+    document.querySelectorAll('.record-locator-match, .record-locator-current').forEach(el => {
+        el.classList.remove('record-locator-match', 'record-locator-current');
+    });
+    
+    window.locatorMatches = [];
+    window.currentMatchIndex = -1;
+    
+    const matchCountEl = document.getElementById('match-count');
+    if (matchCountEl) matchCountEl.textContent = '0';
+    
+    const searchInput = document.getElementById('record-locator-search');
+    if (searchInput) searchInput.value = '';
+}
+
+// Locate record function
+function locateRecord() {
+    const searchTerm = document.getElementById('record-locator-search').value.trim().toLowerCase();
+    
+    document.querySelectorAll('.record-locator-match, .record-locator-current').forEach(el => {
+        el.classList.remove('record-locator-match', 'record-locator-current');
+    });
+    
+    if (!searchTerm) {
+        window.locatorMatches = [];
+        window.currentMatchIndex = -1;
+        document.getElementById('match-count').textContent = '0';
+        return;
+    }
+    
+    const allRows = document.querySelectorAll('#records-body tr');
+    const matches = [];
+    
+    allRows.forEach((row, index) => {
+        const rowText = row.textContent.toLowerCase();
+        if (rowText.includes(searchTerm)) {
+            matches.push({
+                element: row,
+                index: index
+            });
+            row.classList.add('record-locator-match');
+        }
+    });
+    
+    window.locatorMatches = matches;
+    
+    const matchCountEl = document.getElementById('match-count');
+    if (matchCountEl) {
+        matchCountEl.textContent = matches.length;
+    }
+    
+    if (matches.length > 0) {
+        if (window.currentMatchIndex >= 0 && window.currentMatchIndex < matches.length) {
+            highlightMatchIndex(window.currentMatchIndex);
+        } else {
+            window.currentMatchIndex = 0;
+            highlightMatchIndex(0);
+        }
+    } else {
+        window.currentMatchIndex = -1;
+    }
+}
+
+// Highlight a specific match by index
+function highlightMatchIndex(index) {
+    if (!window.locatorMatches || window.locatorMatches.length === 0) return;
+    if (index < 0 || index >= window.locatorMatches.length) return;
+    
+    document.querySelectorAll('.record-locator-current').forEach(el => {
+        el.classList.remove('record-locator-current');
+    });
+    
+    const match = window.locatorMatches[index];
+    match.element.classList.add('record-locator-current');
+    
+    match.element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+    });
+    
+    window.currentMatchIndex = index;
+    
+    const matchCountEl = document.getElementById('match-count');
+    if (matchCountEl) {
+        matchCountEl.textContent = `${index + 1}/${window.locatorMatches.length}`;
+    }
+}
+
+// Find next match
+function findNextMatch() {
+    if (!window.locatorMatches || window.locatorMatches.length === 0) {
+        locateRecord();
+        return;
+    }
+    
+    let nextIndex = window.currentMatchIndex + 1;
+    if (nextIndex >= window.locatorMatches.length) {
+        nextIndex = 0;
+    }
+    
+    highlightMatchIndex(nextIndex);
+}
+
+// Find previous match
+function findPreviousMatch() {
+    if (!window.locatorMatches || window.locatorMatches.length === 0) return;
+    
+    let prevIndex = window.currentMatchIndex - 1;
+    if (prevIndex < 0) {
+        prevIndex = window.locatorMatches.length - 1;
+    }
+    
+    highlightMatchIndex(prevIndex);
+}
+
+// Render current page
 function renderCurrentPage() {
     const tbody = document.getElementById('records-body');
     if (!tbody) return;
@@ -417,29 +768,54 @@ function renderCurrentPage() {
     const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
     const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
     
-    // Debug: Log the first few records to see their status_id
-    console.log('============ RECORD STATUS DEBUG ================');
-    pageRecords.slice(0, 5).forEach((record, i) => {
-        console.log(`Record ${i}: ID=${record.id}, status_id=${record.status_id}, status_name=${record.status_name}, consignor_id=${record.consignor_id}`);
-    });
-    
     pageRecords.forEach((record, index) => {
         const globalIndex = startIndex + index;
         const consignorInfo = window.consignorCache[record.consignor_id] || { username: 'None', initials: '' };
         
         const isRecentlyPrinted = window.recentlyPrintedIds.has(record.id.toString());
-        
-        // Get status_id for display
-        const statusId = record.status_id;
+        const isInQueue = window.printQueue.includes(record.id.toString());
+        const isSold = record.status_id === 3;
         
         const tr = document.createElement('tr');
-        if (isRecentlyPrinted) {
+        tr.setAttribute('data-record-id', record.id);
+        
+        if (isInQueue) {
+            tr.classList.add('record-in-queue');
+        } else if (isRecentlyPrinted) {
             tr.style.backgroundColor = '#f0fff0';
             tr.style.borderLeft = '3px solid #27ae60';
         }
         
+        const queuePosition = isInQueue ? window.printQueue.indexOf(record.id.toString()) + 1 : null;
+        
+        // Determine button state
+        let buttonHtml = '';
+        if (isInQueue) {
+            buttonHtml = `<span class="record-queue-position" title="Position in queue">#${queuePosition}</span>`;
+        } else if (isSold) {
+            buttonHtml = `<span style="color: #999; font-size: 11px;">sold</span>`;
+        } else {
+            const fromBtnClass = window.rangeMode && window.rangeFromId === record.id.toString() ? 'selected-from' : '';
+            buttonHtml = `
+                <div style="display: flex; gap: 3px;">
+                    <button class="btn btn-small from-btn ${fromBtnClass}" 
+                            onclick="event.stopPropagation(); startRangeFrom('${record.id}', this)" 
+                            style="padding: 3px 6px; font-size: 11px;">
+                        ${window.rangeMode && window.rangeFromId === record.id.toString() ? 'from' : 'from'}
+                    </button>
+                    <button class="btn btn-small to-btn" 
+                            onclick="event.stopPropagation(); completeRangeTo('${record.id}', this)" 
+                            style="padding: 3px 6px; font-size: 11px; background-color: #6c757d; color: white;">
+                        to
+                    </button>
+                </div>
+            `;
+        }
+        
         tr.innerHTML = `
-            <td><input type="checkbox" class="record-checkbox" data-id="${record.id}" ${window.selectedRecords && window.selectedRecords.has(record.id.toString()) ? 'checked' : ''}></td>
+            <td>
+                ${buttonHtml}
+            </td>
             <td>${globalIndex + 1}</td>
             <td><strong>${formatDate(record.created_at)}</strong></td>
             <td>${truncateText(escapeHtml(record.artist) || 'Unknown', 25)}</td>
@@ -454,8 +830,8 @@ function renderCurrentPage() {
                     '<span style="color: #999;">None</span>'}
             </td>
             <td>
-                <span >
-                    ${statusId}
+                <span>
+                    ${record.status_id}
                 </span>
                 ${isRecentlyPrinted ? '<br><small style="color: #27ae60; font-size: 10px;">(Printed)</small>' : ''}
             </td>
@@ -463,45 +839,10 @@ function renderCurrentPage() {
         tbody.appendChild(tr);
     });
     
-    // Add event listeners to checkboxes
-    document.querySelectorAll('.record-checkbox').forEach(checkbox => {
-        // Remove existing listeners by cloning
-        const newCheckbox = checkbox.cloneNode(true);
-        checkbox.parentNode.replaceChild(newCheckbox, checkbox);
-        
-        newCheckbox.addEventListener('change', function() {
-            const recordId = this.getAttribute('data-id');
-            if (this.checked) {
-                window.selectedRecords.add(recordId);
-            } else {
-                window.selectedRecords.delete(recordId);
-            }
-            updateButtonStates();
-            updatePagination();
-        });
-    });
-    
-    // Handle select all checkbox
-    const selectAllCheckbox = document.getElementById('select-all');
-    if (selectAllCheckbox) {
-        // Remove existing event listener by cloning and replacing
-        const newSelectAll = selectAllCheckbox.cloneNode(true);
-        selectAllCheckbox.parentNode.replaceChild(newSelectAll, selectAllCheckbox);
-        
-        newSelectAll.addEventListener('change', function() {
-            const checkboxes = document.querySelectorAll('.record-checkbox');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = this.checked;
-                const recordId = checkbox.getAttribute('data-id');
-                if (this.checked) {
-                    window.selectedRecords.add(recordId);
-                } else {
-                    window.selectedRecords.delete(recordId);
-                }
-            });
-            updateButtonStates();
-            updatePagination();
-        });
+    // Re-apply locator highlights if there's a search term
+    const searchInput = document.getElementById('record-locator-search');
+    if (searchInput && searchInput.value.trim()) {
+        locateRecord();
     }
     
     updatePagination();
@@ -513,6 +854,7 @@ function goToPage(page) {
     if (page > window.totalPages) page = window.totalPages;
     
     window.currentPage = page;
+    cancelRangeSelection();
     renderCurrentPage();
     updatePagination();
 }
@@ -536,82 +878,44 @@ function goToLastPage() {
 function changePageSize(newSize) {
     window.pageSize = newSize;
     window.currentPage = 1;
+    cancelRangeSelection();
     updatePagination();
     renderCurrentPage();
 }
 
-// Selection functions
-function selectRecentNewRecords() {
-    const batchSizeInput = document.getElementById('batch-size');
-    if (!batchSizeInput) return;
-    
-    const batchSize = parseInt(batchSizeInput.value) || 10;
-    
-    // Clear current selection
-    window.selectedRecords.clear();
-    
-    // Get new records (status_id = 1)
-    const newRecords = window.allRecords
-        .filter(r => r.status_id === 1)
-        .slice(0, batchSize);
-    
-    // Add to selection
-    newRecords.forEach(record => {
-        window.selectedRecords.add(record.id.toString());
-    });
-    
-    renderCurrentPage();
-    updateButtonStates();
-    
-    if (newRecords.length > 0) {
-        showStatus(`Selected ${newRecords.length} most recent new records`, 'success');
-    } else {
-        showStatus('No new records available to select', 'info');
-    }
-}
-
-function selectAllOnPage() {
-    const startIndex = (window.currentPage - 1) * window.pageSize;
-    const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
-    const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
-    
-    pageRecords.forEach((record) => {
-        const recordId = record.id.toString();
-        window.selectedRecords.add(recordId);
-    });
-    
-    renderCurrentPage();
-    updateButtonStates();
-    
-    showStatus(`Selected all ${pageRecords.length} records on this page`, 'success');
-}
-
-function clearSelection() {
-    window.selectedRecords.clear();
-    renderCurrentPage();
-    updateButtonStates();
-    showStatus('Selection cleared', 'info');
-}
-
 // Modal Functions
 function showPrintConfirmation() {
-    const selectedIds = Array.from(window.selectedRecords);
-    if (selectedIds.length === 0) {
-        showStatus('No records selected for printing', 'error');
+    if (window.printQueue.length === 0) {
+        showStatus('No records in queue to print', 'error');
         return;
     }
     
-    const selectedRecordsList = window.allRecords.filter(r => selectedIds.includes(r.id.toString()));
+    const selectedRecordsList = window.printQueue.map(id => 
+        window.allRecords.find(r => r.id.toString() === id)
+    ).filter(r => r); // Remove any undefined
     
     const printCountEl = document.getElementById('print-count');
     if (printCountEl) printCountEl.textContent = selectedRecordsList.length;
     
     const summaryList = document.getElementById('print-summary-list');
     if (summaryList) {
-        summaryList.innerHTML = `
-            <li>Total selected: ${selectedRecordsList.length} records</li>
-            <li>These records will have price tags generated</li>
-        `;
+        summaryList.innerHTML = '';
+        selectedRecordsList.slice(0, 10).forEach((record, i) => {
+            const item = document.createElement('div');
+            item.style.padding = '5px';
+            item.style.borderBottom = i < 9 ? '1px solid #eee' : 'none';
+            item.innerHTML = `<strong>${i + 1}.</strong> ${escapeHtml(record.artist || 'Unknown')} - ${escapeHtml(record.title || 'Unknown')} ($${(record.store_price || 0).toFixed(2)})`;
+            summaryList.appendChild(item);
+        });
+        
+        if (selectedRecordsList.length > 10) {
+            const more = document.createElement('div');
+            more.style.padding = '5px';
+            more.style.color = '#666';
+            more.style.fontStyle = 'italic';
+            more.textContent = `... and ${selectedRecordsList.length - 10} more`;
+            summaryList.appendChild(more);
+        }
     }
     
     const modal = document.getElementById('print-confirmation-modal');
@@ -624,78 +928,146 @@ function closePrintConfirmation() {
 }
 
 async function confirmPrint() {
-    const selectedIds = Array.from(window.selectedRecords);
+    const selectedIds = window.printQueue;
     
     closePrintConfirmation();
     showLoading(true);
     
-    const selectedRecordsList = window.allRecords
-        .filter(r => selectedIds.includes(r.id.toString()));
+    const selectedRecordsList = selectedIds.map(id => 
+        window.allRecords.find(r => r.id.toString() === id)
+    ).filter(r => r);
         
     if (selectedRecordsList.length === 0) {
-        showStatus('No records selected', 'error');
+        showStatus('No valid records in queue', 'error');
         showLoading(false);
         return;
     }
     
-    // Make sure config is loaded
+    // CRITICAL: Make sure config is loaded BEFORE generating PDF
+    console.log('Loading configuration before PDF generation...');
     if (typeof fetchAllConfigValues === 'function') {
         await fetchAllConfigValues();
+        console.log('Configuration loaded:', window.dbConfigValues);
+    } else {
+        console.error('fetchAllConfigValues not available');
     }
     
-    const pdfBlob = await generatePDF(selectedRecordsList);
+    // Verify config is loaded
+    if (!window.dbConfigValues || Object.keys(window.dbConfigValues).length === 0) {
+        showStatus('Configuration not loaded. Please refresh and try again.', 'error');
+        showLoading(false);
+        return;
+    }
     
-    // Download the PDF
-    const url = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `price_tags_${new Date().toISOString().slice(0, 10)}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    console.log('========== STARTING PDF GENERATION ==========');
+    console.log(`Generating PDF for ${selectedRecordsList.length} records`);
     
-    // Mark as recently printed
-    selectedRecordsList.forEach(record => {
-        window.recentlyPrintedIds.add(record.id.toString());
-    });
-    
-    // Clear selection
-    window.selectedRecords.clear();
-    
-    showStatus(`PDF generated for ${selectedRecordsList.length} records.`, 'success');
+    try {
+        const pdfBlob = await generatePDF(selectedRecordsList);
+        console.log('PDF generation complete, downloading...');
+        
+        // Download the PDF
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `price_tags_${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        // Mark as recently printed
+        selectedRecordsList.forEach(record => {
+            window.recentlyPrintedIds.add(record.id.toString());
+        });
+        
+        showStatus(`PDF generated for ${selectedRecordsList.length} records.`, 'success');
+    } catch (error) {
+        console.error('PDF generation failed:', error);
+        showStatus(`PDF generation failed: ${error.message}`, 'error');
+    }
     
     renderCurrentPage();
-    updateButtonStates();
-    
     showLoading(false);
 }
 
 function showMarkActiveConfirmation() {
-    const selectedIds = Array.from(window.selectedRecords);
-    if (selectedIds.length === 0) {
-        showStatus('No records selected', 'error');
+    if (window.printQueue.length === 0) {
+        showStatus('No records in queue', 'error');
         return;
     }
     
-    const selectedRecordsList = window.allRecords.filter(r => selectedIds.includes(r.id.toString()));
-    const newRecords = selectedRecordsList.filter(r => r.status_id === 1);
-    const activeRecords = selectedRecordsList.filter(r => r.status_id === 2);
-    const soldRecords = selectedRecordsList.filter(r => r.status_id === 3);
-    const removedRecords = selectedRecordsList.filter(r => r.status_id === 4);
+    const selectedRecordsList = window.printQueue.map(id => 
+        window.allRecords.find(r => r.id.toString() === id)
+    ).filter(r => r);
+    
+    const newRecords = selectedRecordsList.filter(r => r && r.status_id === 1);
+    const activeRecords = selectedRecordsList.filter(r => r && r.status_id === 2);
+    const soldRecords = selectedRecordsList.filter(r => r && r.status_id === 3);
+    const removedRecords = selectedRecordsList.filter(r => r && r.status_id === 4);
     
     const markActiveCountEl = document.getElementById('mark-active-count');
-    if (markActiveCountEl) markActiveCountEl.textContent = selectedRecordsList.length;
+    if (markActiveCountEl) markActiveCountEl.textContent = newRecords.length;
     
     const summaryList = document.getElementById('mark-active-summary-list');
     if (summaryList) {
-        summaryList.innerHTML = `
-            <li>Total selected: ${selectedRecordsList.length} records</li>
-            <li>New records: ${newRecords.length} (will be marked as Active)</li>
-            <li>Active records: ${activeRecords.length} (already active - no change)</li>
-            <li>Sold records: ${soldRecords.length} (won't be changed)</li>
-            <li>Removed records: ${removedRecords.length} (won't be changed)</li>
-        `;
+        summaryList.innerHTML = '';
+        
+        const total = document.createElement('div');
+        total.style.padding = '5px';
+        total.style.fontWeight = 'bold';
+        total.innerHTML = `Total in queue: ${selectedRecordsList.length} records`;
+        summaryList.appendChild(total);
+        
+        const newDiv = document.createElement('div');
+        newDiv.style.padding = '5px';
+        newDiv.style.color = newRecords.length > 0 ? '#28a745' : '#666';
+        newDiv.innerHTML = `✓ New records to mark as Active: ${newRecords.length}`;
+        summaryList.appendChild(newDiv);
+        
+        if (activeRecords.length > 0) {
+            const activeDiv = document.createElement('div');
+            activeDiv.style.padding = '5px';
+            activeDiv.style.color = '#666';
+            activeDiv.innerHTML = `ℹ Already active records: ${activeRecords.length} (no change)`;
+            summaryList.appendChild(activeDiv);
+        }
+        
+        if (soldRecords.length > 0) {
+            const soldDiv = document.createElement('div');
+            soldDiv.style.padding = '5px';
+            soldDiv.style.color = '#856404';
+            soldDiv.innerHTML = `⚠ Sold records: ${soldRecords.length} (won't be changed)`;
+            summaryList.appendChild(soldDiv);
+        }
+        
+        if (removedRecords.length > 0) {
+            const removedDiv = document.createElement('div');
+            removedDiv.style.padding = '5px';
+            removedDiv.style.color = '#721c24';
+            removedDiv.innerHTML = `⚠ Removed records: ${removedRecords.length} (won't be changed)`;
+            summaryList.appendChild(removedDiv);
+        }
+        
+        if (newRecords.length > 0) {
+            summaryList.appendChild(document.createElement('hr'));
+            newRecords.slice(0, 5).forEach((record, i) => {
+                const item = document.createElement('div');
+                item.style.padding = '3px 5px';
+                item.style.fontSize = '12px';
+                item.innerHTML = `${i + 1}. ${escapeHtml(record.artist || 'Unknown')} - ${escapeHtml(record.title || 'Unknown')}`;
+                summaryList.appendChild(item);
+            });
+            
+            if (newRecords.length > 5) {
+                const more = document.createElement('div');
+                more.style.padding = '3px 5px';
+                more.style.color = '#666';
+                more.style.fontStyle = 'italic';
+                more.textContent = `... and ${newRecords.length - 5} more`;
+                summaryList.appendChild(more);
+            }
+        }
     }
     
     const confirmCheck = document.getElementById('mark-active-confirmation-check');
@@ -709,7 +1081,6 @@ function showMarkActiveConfirmation() {
     
     // Add event listener to checkbox
     if (confirmCheck) {
-        // Remove existing listeners
         const newCheck = confirmCheck.cloneNode(true);
         confirmCheck.parentNode.replaceChild(newCheck, confirmCheck);
         
@@ -725,18 +1096,18 @@ function closeMarkActiveConfirmation() {
 }
 
 async function confirmMarkActive() {
-    const selectedIds = Array.from(window.selectedRecords);
+    const queueIds = window.printQueue;
     
     closeMarkActiveConfirmation();
     showLoading(true);
     
-    const newRecordIds = selectedIds.filter(id => {
+    const newRecordIds = queueIds.filter(id => {
         const record = window.allRecords.find(r => r.id.toString() === id);
         return record && record.status_id === 1;
     });
     
     if (newRecordIds.length === 0) {
-        showStatus('No new records to mark as active', 'info');
+        showStatus('No new records in queue to mark as active', 'info');
         showLoading(false);
         return;
     }
@@ -778,13 +1149,18 @@ async function confirmMarkActive() {
         }
     }
     
-    // Clear selection
-    window.selectedRecords.clear();
+    // Remove successfully marked records from queue
+    window.printQueue = window.printQueue.filter(id => {
+        const record = window.allRecords.find(r => r.id.toString() === id);
+        return record && record.status_id !== 2; // Keep if not marked as active
+    });
     
     // Remove from recently printed
     newRecordIds.forEach(id => {
         window.recentlyPrintedIds.delete(id);
     });
+    
+    updateQueueDisplay();
     
     // Reload records to get fresh data
     await loadRecordsForPriceTags();
@@ -798,85 +1174,115 @@ async function confirmMarkActive() {
     showLoading(false);
 }
 
-// PDF Generation
+// PDF Generation with extensive logging - NO DEFAULTS
 async function generatePDF(records) {
-    return new Promise(async (resolve) => {
+    return new Promise(async (resolve, reject) => {
         const { jsPDF } = window.jspdf;
         
-        // Get configuration values
-        const labelWidthMM = getConfigValue('LABEL_WIDTH_MM');
-        const labelHeightMM = getConfigValue('LABEL_HEIGHT_MM');
-        const leftMarginMM = getConfigValue('LEFT_MARGIN_MM');
-        const gutterSpacingMM = getConfigValue('GUTTER_SPACING_MM');
-        const topMarginMM = getConfigValue('TOP_MARGIN_MM');
-        const priceFontSize = getConfigValue('PRICE_FONT_SIZE');
-        const textFontSize = getConfigValue('TEXT_FONT_SIZE');
-        const artistLabelFontSize = getConfigValue('ARTIST_LABEL_FONT_SIZE');
-        const barcodeHeightMM = getConfigValue('BARCODE_HEIGHT');
-        const printBorders = getConfigValue('PRINT_BORDERS');
+        console.log('📄 PDF Generation Started');
+        console.log(`📊 Total records to process: ${records.length}`);
         
-        const priceYPos = getConfigValue('PRICE_Y_POS');
-        const barcodeYPos = getConfigValue('BARCODE_Y_POS');
-        const infoYPos = getConfigValue('INFO_Y_POS');
-        
-        // Convert mm to points (1 mm = 2.83465 points)
-        const mmToPt = 2.83465;
-        const labelWidthPt = labelWidthMM * mmToPt;
-        const labelHeightPt = labelHeightMM * mmToPt;
-        const leftMarginPt = leftMarginMM * mmToPt;
-        const gutterSpacingPt = gutterSpacingMM * mmToPt;
-        const topMarginPt = topMarginMM * mmToPt;
-        const barcodeHeightPt = barcodeHeightMM * mmToPt;
-        
-        const doc = new jsPDF({
-            unit: 'pt',
-            format: 'letter'
-        });
-        
-        // 15 rows, 4 columns = 60 labels per page
-        const rows = 15;
-        const cols = 4;
-        const labelsPerPage = rows * cols;
-        
-        let currentLabel = 0;
-        
-        // Check if these are artist labels (special case)
-        const isArtistLabels = records.length > 0 && records[0].title === 'ARTIST LABEL';
-        
-        for (const record of records) {
-            // Add new page if needed
-            if (currentLabel > 0 && currentLabel % labelsPerPage === 0) {
-                doc.addPage();
-            }
+        try {
+            // Get configuration values - these will throw if missing
+            const labelWidthMM = getConfigValue('LABEL_WIDTH_MM');
+            const labelHeightMM = getConfigValue('LABEL_HEIGHT_MM');
+            const leftMarginMM = getConfigValue('LEFT_MARGIN_MM');
+            const gutterSpacingMM = getConfigValue('GUTTER_SPACING_MM');
+            const topMarginMM = getConfigValue('TOP_MARGIN_MM');
+            const priceFontSize = getConfigValue('PRICE_FONT_SIZE');
+            const textFontSize = getConfigValue('TEXT_FONT_SIZE');
+            const barcodeHeightMM = getConfigValue('BARCODE_HEIGHT');
+            const printBorders = getConfigValue('PRINT_BORDERS');
+            const priceYPosMM = getConfigValue('PRICE_Y_POS');
+            const barcodeYPosMM = getConfigValue('BARCODE_Y_POS');
+            const infoYPosMM = getConfigValue('INFO_Y_POS');
             
-            // Calculate position on page
-            const pageIndex = currentLabel % labelsPerPage;
-            const row = Math.floor(pageIndex / cols);
-            const col = pageIndex % cols;
+            console.log('⚙️ Configuration values (mm):');
+            console.log(`   - Label: ${labelWidthMM}mm x ${labelHeightMM}mm`);
+            console.log(`   - Margins: Left=${leftMarginMM}mm, Top=${topMarginMM}mm, Gutter=${gutterSpacingMM}mm`);
+            console.log(`   - Y Positions (from top of label): Price=${priceYPosMM}mm, Info=${infoYPosMM}mm, Barcode=${barcodeYPosMM}mm`);
+            console.log(`   - Font Sizes: Price=${priceFontSize}pt, Info=${textFontSize}pt`);
+            console.log(`   - Print Borders: ${printBorders}`);
             
-            const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
-            const y = topMarginPt + (row * labelHeightPt);
+            // Convert mm to points (1 mm = 2.83465 points)
+            const mmToPt = 2.83465;
+            const labelWidthPt = labelWidthMM * mmToPt;
+            const labelHeightPt = labelHeightMM * mmToPt;
+            const leftMarginPt = leftMarginMM * mmToPt;
+            const gutterSpacingPt = gutterSpacingMM * mmToPt;
+            const topMarginPt = topMarginMM * mmToPt;
+            const barcodeHeightPt = barcodeHeightMM * mmToPt;
             
-            // Draw border if enabled
-            if (printBorders) {
-                doc.setDrawColor(0);
-                doc.setLineWidth(0.5);
-                doc.rect(x, y, labelWidthPt, labelHeightPt);
-            }
+            // Convert Y positions from mm to points
+            const priceYPosPt = priceYPosMM * mmToPt;
+            const barcodeYPosPt = barcodeYPosMM * mmToPt;
+            const infoYPosPt = infoYPosMM * mmToPt;
             
-            if (isArtistLabels) {
-                // Artist label mode
-                const artist = record.artist || 'Unknown';
+            console.log('📐 Converted to points:');
+            console.log(`   - Label: ${labelWidthPt.toFixed(2)}pt x ${labelHeightPt.toFixed(2)}pt`);
+            console.log(`   - Margins: Left=${leftMarginPt.toFixed(2)}pt, Top=${topMarginPt.toFixed(2)}pt, Gutter=${gutterSpacingPt.toFixed(2)}pt`);
+            console.log(`   - Y Positions (points from top of label): Price=${priceYPosPt.toFixed(2)}pt, Info=${infoYPosPt.toFixed(2)}pt, Barcode=${barcodeYPosPt.toFixed(2)}pt`);
+            
+            // Create PDF with letter size (612 x 792 points)
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'pt',
+                format: 'letter'
+            });
+            
+            console.log(`📄 PDF created - Page size: 612pt x 792pt`);
+            
+            // 15 rows, 4 columns = 60 labels per page
+            const rows = 15;
+            const cols = 4;
+            const labelsPerPage = rows * cols;
+            
+            console.log(`📊 Layout: ${rows} rows, ${cols} columns, ${labelsPerPage} labels per page`);
+            
+            let currentLabel = 0;
+            
+            for (const record of records) {
+                // Skip if record is undefined
+                if (!record) {
+                    console.warn('⚠️ Skipping undefined record');
+                    continue;
+                }
                 
-                doc.setFontSize(artistLabelFontSize);
-                doc.setFont('helvetica', 'bold');
+                // Skip sold records
+                if (record.status_id === 3) {
+                    console.log(`⚠️ Skipping sold record: ${record.artist} - ${record.title}`);
+                    continue;
+                }
                 
-                const textWidth = doc.getTextWidth(artist);
-                const textX = x + (labelWidthPt - textWidth) / 2;
-                const textY = y + (labelHeightPt / 2) + (artistLabelFontSize / 3);
+                // Add new page if needed
+                if (currentLabel > 0 && currentLabel % labelsPerPage === 0) {
+                    doc.addPage();
+                    console.log(`📄 Added new page ${Math.floor(currentLabel / labelsPerPage) + 1}`);
+                }
                 
-                doc.text(artist, textX, textY);
-            } else {
+                // Calculate position on page
+                const pageIndex = currentLabel % labelsPerPage;
+                const row = Math.floor(pageIndex / cols);
+                const col = pageIndex % cols;
+                
+                // Calculate exact position
+                const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
+                const y = topMarginPt + (row * labelHeightPt);
+                
+                console.log(`\n🏷️ Label #${currentLabel + 1}:`);
+                console.log(`   - Record: ${record.artist} - ${record.title} (ID: ${record.id})`);
+                console.log(`   - Position: Row ${row + 1}, Col ${col + 1}`);
+                console.log(`   - Label Top-Left: (${x.toFixed(2)}, ${y.toFixed(2)})`);
+                console.log(`   - Label Bottom-Right: (${(x + labelWidthPt).toFixed(2)}, ${(y + labelHeightPt).toFixed(2)})`);
+                
+                // Draw border if enabled
+                if (printBorders) {
+                    doc.setDrawColor(0);
+                    doc.setLineWidth(0.5);
+                    doc.rect(x, y, labelWidthPt, labelHeightPt);
+                    console.log(`   - Drew border at (${x.toFixed(2)}, ${y.toFixed(2)}) size ${labelWidthPt.toFixed(2)}x${labelHeightPt.toFixed(2)}`);
+                }
+                
                 // Regular price tag mode
                 const consignorId = record.consignor_id;
                 let consignorInitials = '';
@@ -885,7 +1291,35 @@ async function generatePDF(records) {
                     consignorInitials = consignorInfo.initials || '';
                 }
                 
-                // Print price
+                // Print info FIRST (at the top)
+                const artist = record.artist || 'Unknown';
+                const genre = record.genre_name || record.genre || 'Unknown';
+                
+                const initialsText = consignorInitials ? ` (${consignorInitials})` : '';
+                const infoText = `${genre} | ${artist}${initialsText}`;
+                
+                doc.setFontSize(textFontSize);
+                doc.setFont('helvetica', 'normal');
+                
+                // Truncate if too long
+                let displayText = infoText;
+                const maxWidth = labelWidthPt - 10;
+                if (doc.getTextWidth(displayText) > maxWidth) {
+                    console.log(`   ✂️ Text too long (${doc.getTextWidth(displayText).toFixed(2)}pt > ${maxWidth.toFixed(2)}pt), truncating...`);
+                    while (doc.getTextWidth(displayText + '…') > maxWidth && displayText.length > 0) {
+                        displayText = displayText.slice(0, -1);
+                    }
+                    displayText += '…';
+                }
+                
+                const infoWidth = doc.getTextWidth(displayText);
+                const infoX = x + (labelWidthPt - infoWidth) / 2;
+                const infoY = y + infoYPosPt;  // Converted from mm to points
+                
+                console.log(`   📝 Info: "${displayText}" at (${infoX.toFixed(2)}, ${infoY.toFixed(2)})`);
+                doc.text(displayText, infoX, infoY);
+                
+                // Print price (in the middle)
                 const price = record.store_price || 0;
                 const priceText = `$${price.toFixed(2)}`;
                 doc.setFontSize(priceFontSize);
@@ -893,75 +1327,64 @@ async function generatePDF(records) {
                 
                 const priceWidth = doc.getTextWidth(priceText);
                 const priceX = x + (labelWidthPt - priceWidth) / 2;
-                const priceY = y + (priceYPos * mmToPt);
+                const priceY = y + priceYPosPt;  // Converted from mm to points
                 
+                console.log(`   💰 Price: "${priceText}" at (${priceX.toFixed(2)}, ${priceY.toFixed(2)})`);
                 doc.text(priceText, priceX, priceY);
                 
-                // Print info (genre and artist)
-                const artist = record.artist || 'Unknown';
-                const genre = record.genre_name || record.genre || 'Unknown';
-                
-                const initialsText = consignorInitials ? ` | (${consignorInitials})` : '';
-                const maxInfoWidth = labelWidthPt - 10;
-                
-                let baseText = genre;
-                if (artist !== 'Unknown') {
-                    baseText += ` | ${artist}`;
-                }
-                
-                doc.setFontSize(textFontSize);
-                doc.setFont('helvetica', 'normal');
-                
-                // Calculate available width
-                const initialsWidth = initialsText ? doc.getTextWidth(initialsText) : 0;
-                const availableWidthForBase = maxInfoWidth - initialsWidth;
-                
-                // Truncate base text if needed
-                let displayBaseText = baseText;
-                if (doc.getTextWidth(baseText) > availableWidthForBase) {
-                    while (doc.getTextWidth(displayBaseText + '…') > availableWidthForBase && displayBaseText.length > 0) {
-                        displayBaseText = displayBaseText.slice(0, -1);
-                    }
-                    displayBaseText += '…';
-                }
-                
-                let infoText = displayBaseText + initialsText;
-                
-                const infoWidth = doc.getTextWidth(infoText);
-                const infoX = x + (labelWidthPt - infoWidth) / 2;
-                const infoY = y + (infoYPos * mmToPt);
-                
-                doc.text(infoText, infoX, infoY);
-                
-                // Print barcode
+                // Print barcode (at the bottom)
                 const barcodeNum = record.barcode;
                 if (barcodeNum) {
-                    const canvas = document.createElement('canvas');
-                    JsBarcode(canvas, barcodeNum, {
-                        format: "CODE128",
-                        displayValue: false,
-                        height: 20,
-                        margin: 0,
-                        width: 2
-                    });
-                    
-                    const barcodeData = canvas.toDataURL('image/png');
-                    const barcodeX = x + (labelWidthPt - (25 * mmToPt)) / 2;
-                    const barcodeY = y + (barcodeYPos * mmToPt);
-                    
-                    doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, 25 * mmToPt, barcodeHeightPt);
+                    try {
+                        console.log(`   🔳 Barcode: ${barcodeNum}`);
+                        
+                        // Create barcode canvas
+                        const canvas = document.createElement('canvas');
+                        JsBarcode(canvas, barcodeNum, {
+                            format: "CODE128",
+                            displayValue: false,
+                            height: 30,
+                            width: 2,
+                            margin: 0
+                        });
+                        
+                        const barcodeData = canvas.toDataURL('image/png');
+                        
+                        // Position barcode - 40pt wide, barcodeHeightPt tall
+                        const barcodeWidth = 40;
+                        const barcodeX = x + (labelWidthPt - barcodeWidth) / 2;
+                        const barcodeY = y + barcodeYPosPt;  // Converted from mm to points
+                        
+                        console.log(`   🔳 Barcode position: (${barcodeX.toFixed(2)}, ${barcodeY.toFixed(2)}) size ${barcodeWidth}pt x ${barcodeHeightPt.toFixed(2)}pt`);
+                        
+                        doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeightPt);
+                        console.log(`   ✅ Barcode added successfully`);
+                    } catch (barcodeError) {
+                        console.error(`   ❌ Error generating barcode:`, barcodeError);
+                    }
+                } else {
+                    console.log(`   ⚠️ No barcode for record ${record.id}`);
                 }
+                
+                currentLabel++;
             }
             
-            currentLabel++;
+            console.log(`\n✅ PDF Generation Complete - Total labels: ${currentLabel}`);
+            console.log(`========================================`);
+            
+            // Generate PDF blob
+            const pdfBlob = doc.output('blob');
+            resolve(pdfBlob);
+            
+        } catch (error) {
+            console.error('❌ PDF Generation failed:', error);
+            showStatus(`PDF Generation failed: ${error.message}`, 'error');
+            reject(error);
         }
-        
-        const pdfBlob = doc.output('blob');
-        resolve(pdfBlob);
     });
 }
 
-// Initialize when tab is activated - use a flag to prevent multiple initializations
+// Initialize when tab is activated
 if (!window.priceTagsModule.initialized) {
     document.addEventListener('tabChanged', function(e) {
         if (e.detail && e.detail.tabName === 'price-tags') {
@@ -971,14 +1394,22 @@ if (!window.priceTagsModule.initialized) {
         }
     });
     
-    // Also initialize if we're already on the tab when page loads
     document.addEventListener('DOMContentLoaded', function() {
-        // Check if price-tags tab is active
         const activeTab = document.querySelector('.tab-content.active');
         if (activeTab && activeTab.id === 'price-tags-tab') {
             console.log('Price tags tab is active on load, loading users and records...');
             loadConsignorsForPriceTags();
             loadRecordsForPriceTags();
+        }
+        
+        const searchInput = document.getElementById('record-locator-search');
+        if (searchInput) {
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    findNextMatch();
+                }
+            });
         }
     });
     
@@ -995,12 +1426,29 @@ window.goToPreviousPage = goToPreviousPage;
 window.goToNextPage = goToNextPage;
 window.goToLastPage = goToLastPage;
 window.changePageSize = changePageSize;
-window.selectRecentNewRecords = selectRecentNewRecords;
-window.selectAllOnPage = selectAllOnPage;
-window.clearSelection = clearSelection;
+
+// Queue functions
+window.addToQueue = addToQueue;
+window.removeFromQueue = removeFromQueue;
+window.clearQueue = clearQueue;
+window.moveQueueItem = moveQueueItem;
+window.addAllOnPageToQueue = addAllOnPageToQueue;
+
+// Range selection functions
+window.startRangeFrom = startRangeFrom;
+window.completeRangeTo = completeRangeTo;
+window.cancelRangeSelection = cancelRangeSelection;
+
+// Modal functions
 window.showPrintConfirmation = showPrintConfirmation;
 window.closePrintConfirmation = closePrintConfirmation;
 window.confirmPrint = confirmPrint;
 window.showMarkActiveConfirmation = showMarkActiveConfirmation;
 window.closeMarkActiveConfirmation = closeMarkActiveConfirmation;
 window.confirmMarkActive = confirmMarkActive;
+
+// Locator functions
+window.locateRecord = locateRecord;
+window.findNextMatch = findNextMatch;
+window.findPreviousMatch = findPreviousMatch;
+window.clearLocatorHighlight = clearLocatorHighlight;
