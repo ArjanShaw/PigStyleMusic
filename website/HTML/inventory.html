@@ -4,7 +4,7 @@
     <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
     <link rel="icon" href="/static/images/PigStyle.ico">
-    <title>Record Gallery - PigStyle Records</title>
+    <title>Inventory - PigStyle Records</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
@@ -36,6 +36,7 @@
             border-radius: 12px;
             font-size: 11px;
             font-weight: 600;
+            display: inline-block;
         }
         
         .price-range {
@@ -187,65 +188,36 @@
             font-weight: 500;
         }
 
-        /* Date filter styles */
-        .date-filter-group {
+        /* Simplified filter section - only date buttons */
+        .filter-section {
             display: flex;
             flex-direction: column;
-            gap: 5px;
-            min-width: 250px;
+            gap: 10px;
         }
 
-        .date-filter-group label {
+        .filter-label {
             font-weight: 600;
             color: #333;
-            font-size: 13px;
-            margin-bottom: 2px;
-        }
-
-        .date-inputs {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .date-input {
-            flex: 1;
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 13px;
-            color: #333;
-            background: white;
-        }
-
-        .date-input:focus {
-            outline: none;
-            border-color: #ff6b6b;
-            box-shadow: 0 0 0 2px rgba(255,107,107,0.1);
-        }
-
-        .date-separator {
-            color: #666;
-            font-weight: 600;
             font-size: 14px;
+            margin-bottom: 5px;
         }
 
         .date-presets {
             display: flex;
-            gap: 6px;
-            margin-top: 5px;
+            gap: 10px;
             flex-wrap: wrap;
         }
 
         .date-preset-btn {
-            padding: 4px 10px;
+            padding: 8px 16px;
             background: #f0f0f0;
             border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 11px;
+            border-radius: 6px;
+            font-size: 13px;
             cursor: pointer;
             color: #333;
             transition: all 0.2s;
+            font-weight: 500;
         }
 
         .date-preset-btn:hover {
@@ -258,43 +230,6 @@
             background: #ff6b6b;
             border-color: #ff6b6b;
             color: white;
-        }
-
-        .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .filter-row {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            align-items: flex-end;
-        }
-
-        .filter-select, .price-input {
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 13px;
-            color: #333;
-            background: white;
-        }
-
-        .price-filter-group {
-            min-width: 200px;
-        }
-
-        .price-inputs {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .price-separator {
-            color: #666;
-            font-weight: 600;
         }
 
         /* New arrivals badge */
@@ -316,6 +251,26 @@
 
         .card {
             position: relative;
+        }
+
+        /* Search box */
+        .search-wrapper {
+            margin-bottom: 20px;
+        }
+
+        #searchBox {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        #searchBox:focus {
+            outline: none;
+            border-color: #ff6b6b;
+            box-shadow: 0 0 0 2px rgba(255,107,107,0.1);
         }
     </style>
 </head>
@@ -344,56 +299,18 @@
     </div>
 
     <div class="header-section">
-        <div class='search-container'>
+        <div class='search-wrapper'>
             <input type='text' id='searchBox' placeholder='Search artist or record...'>
         </div>
         
-        <div class="filters-container">
-            <div class="filter-group">
-                <div class="filter-row">
-                    <select id="artistFilter" class="filter-select">
-                        <option value="">All Artists</option>
-                    </select>
-                    
-                    <select id="conditionFilter" class="filter-select">
-                        <option value="">All Conditions</option>
-                        <option value="Mint (M)">Mint (M)</option>
-                        <option value="Near Mint (NM or M-)">Near Mint (NM or M-)</option>
-                        <option value="Very Good Plus (VG+)">Very Good Plus (VG+)</option>
-                        <option value="Very Good (VG)">Very Good (VG)</option>
-                        <option value="Good Plus (G+)">Good Plus (G+)</option>
-                        <option value="Good (G)">Good (G)</option>
-                        <option value="Fair (F)">Fair (F)</option>
-                        <option value="Poor (P)">Poor (P)</option>
-                    </select>
-                    
-                    <div class="price-filter-group">
-                        <div class="price-inputs">
-                            <input type="number" id="minPrice" class="price-input" placeholder="Min Price" min="0" value="">
-                            <span class="price-separator">-</span>
-                            <input type="number" id="maxPrice" class="price-input" placeholder="Max Price" min="0" value="">
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- New Date Filter Row -->
-                <div class="filter-row">
-                    <div class="date-filter-group">
-                        <label><i class="far fa-calendar-alt"></i> Date Added to Database:</label>
-                        <div class="date-inputs">
-                            <input type="date" id="minDate" class="date-input" placeholder="From">
-                            <span class="date-separator">→</span>
-                            <input type="date" id="maxDate" class="date-input" placeholder="To">
-                        </div>
-                        <div class="date-presets">
-                            <button type="button" class="date-preset-btn" data-days="7">Last 7 days</button>
-                            <button type="button" class="date-preset-btn" data-days="30">Last 30 days</button>
-                            <button type="button" class="date-preset-btn" data-days="90">Last 90 days</button>
-                            <button type="button" class="date-preset-btn" data-days="365">Last year</button>
-                            <button type="button" class="date-preset-btn" id="clearDates">Clear</button>
-                        </div>
-                    </div>
-                </div>
+        <div class="filter-section">
+            <div class="filter-label"><i class="far fa-calendar-alt"></i> Date Added</div>
+            <div class="date-presets">
+                <button type="button" class="date-preset-btn active" data-days="7">Last 7 days</button>
+                <button type="button" class="date-preset-btn" data-days="30">Last 30 days</button>
+                <button type="button" class="date-preset-btn" data-days="90">Last 90 days</button>
+                <button type="button" class="date-preset-btn" data-days="365">Last year</button>
+                <button type="button" class="date-preset-btn" id="clearDates">Clear</button>
             </div>
         </div>
     </div>
@@ -406,7 +323,7 @@
                 <div></div>
                 <div></div>
             </div>
-            <p>Loading catalog...</p>
+            <p>Loading inventory...</p>
         </div>
     </div>
 
@@ -427,7 +344,6 @@
                     allReleases = data.groups || [];
                     console.log(`Loaded ${allReleases.length} unique releases with ${data.total_copies} total copies`);
                     displayReleases(allReleases);
-                    populateArtistFilter();
                 } else {
                     throw new Error('Invalid response from server');
                 }
@@ -443,7 +359,8 @@
         async function loadCatalogDataFallback() {
             try {
                 console.log('Falling back to original catalog endpoint...');
-                const response = await pigstyleAPI.loadCatalogGroupedRecords();
+                // Assuming pigstyleAPI is available from app-config.js
+                const response = await window.pigstyleAPI?.loadCatalogGroupedRecords?.() || [];
                 
                 let catalogData;
                 if (Array.isArray(response)) {
@@ -465,7 +382,6 @@
                 allReleases = grouped;
                 
                 displayReleases(grouped);
-                populateArtistFilter();
                 
             } catch (error) {
                 console.error('Error loading fallback data:', error);
@@ -571,9 +487,14 @@
             });
 
             container.appendChild(gallery);
+            
+            // Apply the default 7-day filter after loading
+            setTimeout(() => {
+                applyDateFilter(7);
+            }, 100);
         }
 
-        // Create a card for a release (keeps same visual style as original)
+        // Create a card for a release
         function createReleaseCard(release) {
             const card = document.createElement('div');
             card.className = 'card';
@@ -662,30 +583,32 @@
                 conditionsHtml += '</div>';
             }
             
-            // Copy count display
-            const copyCountText = release.total_copies === 1 
-                ? '1 copy' 
-                : `${release.total_copies} copies`;
+            // Copy count display - only show if more than 1 copy
+            let copyCountHtml = '';
+            if (release.total_copies > 1) {
+                const copyCountText = `${release.total_copies} copies`;
+                copyCountHtml = `<span class="copy-count">${copyCountText}</span>`;
+            }
             
-            card.innerHTML += `
+            card.innerHTML = `
                 <div class="card-image">
                     <img src="${imageUrl}" alt="${release.title}" onerror="this.src='/static/images/default-record.jpg'">
                 </div>
                 <div class="card-info">
-                    <h3>${pigstyleAPI.escapeHtml(release.title)}</h3>
-                    <p class="artist">${pigstyleAPI.escapeHtml(release.artist)}</p>
+                    <h3>${escapeHtml(release.title)}</h3>
+                    <p class="artist">${escapeHtml(release.artist)}</p>
                     
                     <div class="copy-info">
-                        <span class="copy-count">${copyCountText}</span>
+                        ${copyCountHtml}
                         <span class="price-range">${priceDisplay}</span>
                     </div>
                     
-                    <p class="genre">${pigstyleAPI.escapeHtml(genre)}</p>
+                    <p class="genre">${escapeHtml(genre)}</p>
                     
                     ${conditionsHtml}
                     
                     ${release.copies.some(c => c.youtube_url) ? `
-                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${pigstyleAPI.escapeHtml(release.artist)} - ${pigstyleAPI.escapeHtml(release.title)}'); return false;">
+                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">
                             🎵 Watch Video
                         </a>
                     ` : ''}
@@ -702,6 +625,14 @@
             });
             
             return card;
+        }
+
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Helper function to get CSS class for condition
@@ -756,7 +687,7 @@
             modal.innerHTML = `
                 <div class="copies-modal">
                     <div class="copies-modal-header">
-                        <h3>${pigstyleAPI.escapeHtml(release.artist)} - ${pigstyleAPI.escapeHtml(release.title)}</h3>
+                        <h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3>
                         <button class="copies-modal-close">&times;</button>
                     </div>
                     <div class="copies-list">
@@ -852,172 +783,35 @@
             return null;
         }
 
-        // Populate artist filter dropdown
-        function populateArtistFilter() {
-            const artistFilter = document.getElementById('artistFilter');
-            
-            const artists = new Set();
-            allReleases.forEach(release => {
-                if (release.artist && release.artist.trim() !== '') {
-                    artists.add(release.artist.trim());
-                }
-            });
-            
-            const sortedArtists = Array.from(artists).sort();
-            
-            // Clear existing options (keeping "All Artists")
-            while (artistFilter.options.length > 1) {
-                artistFilter.remove(1);
-            }
-            
-            sortedArtists.forEach(artist => {
-                const option = document.createElement('option');
-                option.value = artist;
-                option.textContent = artist;
-                artistFilter.appendChild(option);
-            });
-        }
-
-        // Initialize search and filter functionality
-        function initializeFilters() {
-            const searchBox = document.getElementById('searchBox');
-            const artistFilter = document.getElementById('artistFilter');
-            const conditionFilter = document.getElementById('conditionFilter');
-            const minPrice = document.getElementById('minPrice');
-            const maxPrice = document.getElementById('maxPrice');
-            const minDate = document.getElementById('minDate');
-            const maxDate = document.getElementById('maxDate');
-            
-            // Add event listeners for date filters
-            [searchBox, artistFilter, conditionFilter, minPrice, maxPrice, minDate, maxDate].forEach(element => {
-                if (element) {
-                    element.addEventListener('input', applyFilters);
-                    element.addEventListener('change', applyFilters);
-                }
-            });
-            
-            // Setup date preset buttons
-            document.querySelectorAll('.date-preset-btn[data-days]').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const days = parseInt(this.dataset.days);
-                    const endDate = new Date();
-                    const startDate = new Date();
-                    startDate.setDate(startDate.getDate() - days);
-                    
-                    // Format dates as YYYY-MM-DD for input fields
-                    const formatDate = (date) => {
-                        const year = date.getFullYear();
-                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                        const day = String(date.getDate()).padStart(2, '0');
-                        return `${year}-${month}-${day}`;
-                    };
-                    
-                    document.getElementById('minDate').value = formatDate(startDate);
-                    document.getElementById('maxDate').value = formatDate(endDate);
-                    
-                    // Remove active class from all preset buttons
-                    document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    applyFilters();
-                });
-            });
-            
-            // Clear dates button
-            document.getElementById('clearDates').addEventListener('click', function() {
-                document.getElementById('minDate').value = '';
-                document.getElementById('maxDate').value = '';
-                
-                // Remove active class from all preset buttons
-                document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
-                
-                applyFilters();
-            });
-        }
-
-        // Apply all filters
-        function applyFilters() {
-            const searchTerm = document.getElementById('searchBox').value.toLowerCase().trim();
-            const selectedArtist = document.getElementById('artistFilter').value;
-            const selectedCondition = document.getElementById('conditionFilter').value;
-            const minPriceValue = parseFloat(document.getElementById('minPrice').value) || 0;
-            const maxPriceValue = parseFloat(document.getElementById('maxPrice').value) || 99999;
-            
-            // Get date filter values
-            const minDateValue = document.getElementById('minDate').value;
-            const maxDateValue = document.getElementById('maxDate').value;
-            
+        // Apply date filter based on days
+        function applyDateFilter(days) {
             const container = document.getElementById('catalogContainer');
             const cards = container.querySelectorAll('.card');
+            
+            if (days === null || days === undefined) {
+                // Show all cards
+                cards.forEach(card => {
+                    card.style.display = 'block';
+                });
+                return;
+            }
+            
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+            cutoffDate.setHours(0, 0, 0, 0);
             
             let visibleCount = 0;
             
             cards.forEach(card => {
-                const artist = card.getAttribute('data-artist') || '';
-                const title = card.getAttribute('data-title') || '';
                 const createdDate = card.getAttribute('data-created');
                 
-                // Get condition indicators from card
-                const conditionSpans = card.querySelectorAll('.condition-indicator');
-                const cardConditions = Array.from(conditionSpans).map(span => span.textContent.trim().replace(/ \(\d+\)$/, '')); // Remove count for filtering
-                
-                // Get price range from card
-                const priceRangeText = card.querySelector('.price-range')?.textContent || '';
-                let cardMinPrice = 0;
-                let cardMaxPrice = 99999;
-                
-                if (priceRangeText.includes('-')) {
-                    const matches = priceRangeText.match(/\$([\d.]+)/g);
-                    if (matches && matches.length >= 2) {
-                        cardMinPrice = parseFloat(matches[0].replace('$', ''));
-                        cardMaxPrice = parseFloat(matches[1].replace('$', ''));
-                    }
-                } else if (priceRangeText.includes('$')) {
-                    const match = priceRangeText.match(/\$([\d.]+)/);
-                    if (match) {
-                        cardMinPrice = cardMaxPrice = parseFloat(match[1]);
-                    }
+                if (!createdDate) {
+                    card.style.display = 'none';
+                    return;
                 }
                 
-                // Check search term match
-                const searchMatch = !searchTerm || 
-                    artist.includes(searchTerm) || 
-                    title.includes(searchTerm);
-                
-                // Check artist filter match
-                const artistMatch = !selectedArtist || 
-                    artist === selectedArtist.toLowerCase();
-                
-                // Check condition filter match
-                const conditionMatch = !selectedCondition || 
-                    cardConditions.some(c => c.includes(selectedCondition));
-                
-                // Check price range overlap
-                const priceMatch = !(cardMaxPrice < minPriceValue || cardMinPrice > maxPriceValue);
-                
-                // Check date range match
-                let dateMatch = true;
-                if (createdDate && (minDateValue || maxDateValue)) {
-                    const cardDate = new Date(createdDate);
-                    
-                    if (minDateValue) {
-                        const minDate = new Date(minDateValue);
-                        minDate.setHours(0, 0, 0, 0);
-                        dateMatch = dateMatch && cardDate >= minDate;
-                    }
-                    
-                    if (maxDateValue) {
-                        const maxDate = new Date(maxDateValue);
-                        maxDate.setHours(23, 59, 59, 999);
-                        dateMatch = dateMatch && cardDate <= maxDate;
-                    }
-                } else if (!createdDate && (minDateValue || maxDateValue)) {
-                    // If card has no date but date filter is active, don't show it
-                    dateMatch = false;
-                }
-                
-                // Show card if it matches all active filters
-                const shouldShow = searchMatch && artistMatch && conditionMatch && priceMatch && dateMatch;
+                const cardDate = new Date(createdDate);
+                const shouldShow = cardDate >= cutoffDate;
                 
                 card.style.display = shouldShow ? 'block' : 'none';
                 if (shouldShow) visibleCount++;
@@ -1029,12 +823,98 @@
                 if (!existingNoResults) {
                     const noResultsDiv = document.createElement('div');
                     noResultsDiv.className = 'no-records';
-                    noResultsDiv.textContent = 'No records match your search criteria.';
+                    noResultsDiv.textContent = 'No records match the selected date range.';
                     container.appendChild(noResultsDiv);
                 }
             } else if (existingNoResults) {
                 existingNoResults.remove();
             }
+        }
+
+        // Initialize search and filter functionality
+        function initializeFilters() {
+            const searchBox = document.getElementById('searchBox');
+            
+            // Search functionality
+            searchBox.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                const container = document.getElementById('catalogContainer');
+                const cards = container.querySelectorAll('.card');
+                
+                // Get current active date filter
+                const activeDateBtn = document.querySelector('.date-preset-btn.active');
+                const activeDays = activeDateBtn && activeDateBtn.dataset.days ? parseInt(activeDateBtn.dataset.days) : null;
+                
+                let visibleCount = 0;
+                
+                cards.forEach(card => {
+                    const artist = card.getAttribute('data-artist') || '';
+                    const title = card.getAttribute('data-title') || '';
+                    const createdDate = card.getAttribute('data-created');
+                    
+                    // Check date filter first
+                    let dateMatch = true;
+                    if (activeDays !== null && createdDate) {
+                        const cutoffDate = new Date();
+                        cutoffDate.setDate(cutoffDate.getDate() - activeDays);
+                        cutoffDate.setHours(0, 0, 0, 0);
+                        const cardDate = new Date(createdDate);
+                        dateMatch = cardDate >= cutoffDate;
+                    }
+                    
+                    // Then check search
+                    const searchMatch = !searchTerm || 
+                        artist.includes(searchTerm) || 
+                        title.includes(searchTerm);
+                    
+                    const shouldShow = dateMatch && searchMatch;
+                    
+                    card.style.display = shouldShow ? 'block' : 'none';
+                    if (shouldShow) visibleCount++;
+                });
+                
+                // Show no results message if needed
+                const existingNoResults = container.querySelector('.no-records');
+                if (visibleCount === 0) {
+                    if (!existingNoResults) {
+                        const noResultsDiv = document.createElement('div');
+                        noResultsDiv.className = 'no-records';
+                        noResultsDiv.textContent = 'No records match your search criteria.';
+                        container.appendChild(noResultsDiv);
+                    }
+                } else if (existingNoResults) {
+                    existingNoResults.remove();
+                }
+            });
+            
+            // Setup date preset buttons
+            document.querySelectorAll('.date-preset-btn[data-days]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Remove active class from all preset buttons
+                    document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const days = parseInt(this.dataset.days);
+                    applyDateFilter(days);
+                    
+                    // Also trigger search filter to reapply with new date range
+                    const searchEvent = new Event('input');
+                    document.getElementById('searchBox').dispatchEvent(searchEvent);
+                });
+            });
+            
+            // Clear dates button
+            document.getElementById('clearDates').addEventListener('click', function() {
+                // Remove active class from all preset buttons
+                document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
+                
+                // Show all cards
+                applyDateFilter(null);
+                
+                // Trigger search filter
+                const searchEvent = new Event('input');
+                document.getElementById('searchBox').dispatchEvent(searchEvent);
+            });
         }
 
         // Load the catalog data when page loads
