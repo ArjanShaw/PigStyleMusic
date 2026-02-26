@@ -2728,3 +2728,36 @@ select.form-control option {
     font-style: italic;
     color: #666;
 }
+
+/* Locator highlight styles */
+.record-locator-match {
+    background-color: #fff3cd !important;
+    border-left: 4px solid #ffc107 !important;
+}
+
+.record-locator-current {
+    background-color: #cce5ff !important;
+    border-left: 4px solid #007bff !important;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+.record-locator-current td {
+    background-color: #cce5ff !important;
+}
+
+.record-locator-match td {
+    background-color: #fff3cd !important;
+}
+
+/* Locator search section */
+.locator-stats {
+    background: #e9ecef;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+}
+
+#record-locator-search:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+}
