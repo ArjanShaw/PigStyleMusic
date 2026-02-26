@@ -131,10 +131,13 @@ class AddEditDeleteManager {
         this.genres = [];
         this.conditions = [];
         this.statuses = ['new', 'active', 'sold', 'removed'];
+        this.consignors = [];
         this.genrePredictor = new GenrePredictor();
         this.barcodeGenerator = new BarcodeGenerator();
         this.commissionRate = 0.20;
         this.minimumPrice = 1.99;
+        this.selectedConsignorId = null;
+        this.selectedCommissionRate = 20.0; // Default 20%
         
         this.init();
     }
@@ -143,8 +146,158 @@ class AddEditDeleteManager {
         await this.loadMinimumPrice();
         await this.loadStats();
         await this.loadGenres();
+        await this.loadConsignors();
         this.loadConditions();
+        this.loadSavedSettings();
         this.setupEventListeners();
+        this.renderGlobalSettings();
+    }
+
+    loadSavedSettings() {
+        try {
+            const savedConsignor = localStorage.getItem('add_record_consignor_id');
+            if (savedConsignor) {
+                this.selectedConsignorId = parseInt(savedConsignor);
+            }
+            
+            const savedCommission = localStorage.getItem('add_record_commission_rate');
+            if (savedCommission) {
+                this.selectedCommissionRate = parseFloat(savedCommission);
+            }
+            
+            console.log('LOAD_SETTINGS: Loaded consignor ID:', this.selectedConsignorId);
+            console.log('LOAD_SETTINGS: Loaded commission rate:', this.selectedCommissionRate);
+        } catch (error) {
+            console.error('Error loading saved settings:', error);
+        }
+    }
+
+    saveSettings() {
+        try {
+            if (this.selectedConsignorId) {
+                localStorage.setItem('add_record_consignor_id', this.selectedConsignorId.toString());
+            } else {
+                localStorage.removeItem('add_record_consignor_id');
+            }
+            
+            localStorage.setItem('add_record_commission_rate', this.selectedCommissionRate.toString());
+            
+            console.log('SAVE_SETTINGS: Saved consignor ID:', this.selectedConsignorId);
+            console.log('SAVE_SETTINGS: Saved commission rate:', this.selectedCommissionRate);
+        } catch (error) {
+            console.error('Error saving settings:', error);
+        }
+    }
+
+    renderGlobalSettings() {
+        const searchSection = document.querySelector('.search-section');
+        if (!searchSection) return;
+        
+        // Check if global settings already exist
+        let globalSettings = document.getElementById('global-add-settings');
+        if (globalSettings) {
+            globalSettings.remove();
+        }
+        
+        // Create global settings div
+        globalSettings = document.createElement('div');
+        globalSettings.id = 'global-add-settings';
+        globalSettings.style.marginTop = '15px';
+        globalSettings.style.padding = '15px';
+        globalSettings.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        globalSettings.style.borderRadius = '8px';
+        globalSettings.style.color = 'white';
+        
+        // Generate consignor options
+        const consignorOptions = this.consignors.map(consignor => {
+            const selected = consignor.id === this.selectedConsignorId ? 'selected' : '';
+            return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
+        }).join('');
+        
+        globalSettings.innerHTML = `
+            <h4 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-cog"></i> Default Settings for New Records
+            </h4>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="global-consignor-select" style="display: block; margin-bottom: 5px; font-size: 0.9rem; opacity: 0.9;">
+                        <i class="fas fa-user"></i> Default Consignor
+                    </label>
+                    <select id="global-consignor-select" style="width: 100%; padding: 8px 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.95); color: #333;">
+                        <option value="">No default consignor</option>
+                        ${consignorOptions}
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 150px;">
+                    <label for="global-commission-input" style="display: block; margin-bottom: 5px; font-size: 0.9rem; opacity: 0.9;">
+                        <i class="fas fa-percentage"></i> Default Consignment Rate (%)
+                    </label>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="number" 
+                               id="global-commission-input" 
+                               value="${this.selectedCommissionRate}" 
+                               step="10" 
+                               min="0" 
+                               max="100"
+                               style="flex: 1; padding: 8px 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.95); color: #333;">
+                        <button class="btn btn-small" id="apply-commission-btn" style="background: #ffd700; color: #333; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
+                            <i class="fas fa-check"></i> Set
+                        </button>
+                    </div>
+                    <p style="margin-top: 5px; font-size: 0.8rem; opacity: 0.8;">
+                        <i class="fas fa-info-circle"></i> Step: 10% (use +/- buttons)
+                    </p>
+                </div>
+                <div style="flex: 0 0 auto;">
+                    <button class="btn btn-small" id="clear-defaults-btn" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 8px 15px; border-radius: 4px; cursor: pointer;">
+                        <i class="fas fa-undo"></i> Clear Defaults
+                    </button>
+                </div>
+            </div>
+            <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
+                <i class="fas fa-save"></i> These settings will be automatically applied to all new records until you change them
+            </p>
+        `;
+        
+        // Insert after the radio group but before the search row
+        const radioGroup = searchSection.querySelector('.radio-group');
+        if (radioGroup) {
+            radioGroup.after(globalSettings);
+        } else {
+            searchSection.appendChild(globalSettings);
+        }
+        
+        // Add event listeners
+        document.getElementById('global-consignor-select').addEventListener('change', (e) => {
+            const value = e.target.value;
+            this.selectedConsignorId = value ? parseInt(value) : null;
+            this.saveSettings();
+            showMessage(`Default consignor updated`, 'success');
+        });
+        
+        document.getElementById('apply-commission-btn').addEventListener('click', () => {
+            const input = document.getElementById('global-commission-input');
+            const value = parseFloat(input.value);
+            if (!isNaN(value) && value >= 0 && value <= 100) {
+                this.selectedCommissionRate = value;
+                this.saveSettings();
+                showMessage(`Default commission rate set to ${value}%`, 'success');
+            } else {
+                showMessage('Please enter a valid percentage (0-100)', 'error');
+            }
+        });
+        
+        document.getElementById('clear-defaults-btn').addEventListener('click', () => {
+            this.selectedConsignorId = null;
+            this.selectedCommissionRate = 20.0;
+            this.saveSettings();
+            
+            // Update UI
+            document.getElementById('global-consignor-select').value = '';
+            document.getElementById('global-commission-input').value = '20.0';
+            
+            showMessage('Default settings cleared (commission reset to 20%)', 'success');
+        });
     }
 
     async loadMinimumPrice() {
@@ -214,6 +367,28 @@ class AddEditDeleteManager {
         } catch (error) {
             console.error('Error loading genres:', error);
             this.genres = [];
+        }
+    }
+
+    async loadConsignors() {
+        console.log('LOAD_CONSIGNORS: Starting to load consignors from /users endpoint');
+        try {
+            const response = await APIUtils.get('/users');
+            console.log('LOAD_CONSIGNORS: Raw API response:', response);
+            
+            if (response && response.users) {
+                // Filter to only consignors and sort by username
+                this.consignors = response.users
+                    .filter(user => user.role === 'consignor')
+                    .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+                console.log('LOAD_CONSIGNORS: Consignors loaded successfully:', this.consignors);
+            } else {
+                console.error('LOAD_CONSIGNORS: Invalid response format:', response);
+                this.consignors = [];
+            }
+        } catch (error) {
+            console.error('Error loading consignors:', error);
+            this.consignors = [];
         }
     }
 
@@ -310,6 +485,7 @@ class AddEditDeleteManager {
         console.log('PERFORM_SEARCH: Search field:', this.currentSearchField);
         console.log('PERFORM_SEARCH: Current genres:', this.genres);
         console.log('PERFORM_SEARCH: Current conditions:', this.conditions);
+        console.log('PERFORM_SEARCH: Current consignors:', this.consignors);
 
         if (this.currentSearchType === 'add') {
             this.currentResults = await this.searchDiscogs(searchTerm);
@@ -437,6 +613,10 @@ class AddEditDeleteManager {
             return this.genres.findIndex(g => g.id == genreId);
         };
         
+        // Get current user from localStorage
+        const user = JSON.parse(localStorage.getItem('user')) || {};
+        const isAdmin = user.role === 'admin';
+        
         return `
             <h3>Search Results (${resultsCount})</h3>
             <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
@@ -446,6 +626,13 @@ class AddEditDeleteManager {
                     <div>• Prices are rounded according to store pricing rules</div>
                     <div>• <strong>Price step: $1.00</strong> - Use +/- buttons to adjust by whole dollars</div>
                 </div>
+            </div>
+            <div class="default-settings-indicator" style="margin-bottom: 15px; padding: 8px 12px; background: #e8f4fd; border-left: 4px solid #17a2b8; border-radius: 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <i class="fas fa-info-circle" style="color: #17a2b8;"></i>
+                <span>Using default settings: <strong>${this.selectedConsignorId ? this.consignors.find(c => c.id === this.selectedConsignorId)?.username || 'Unknown' : 'No consignor'}</strong> | <strong>${this.selectedCommissionRate}%</strong> commission</span>
+                <span style="margin-left: auto; font-size: 12px; color: #666;">
+                    <i class="fas fa-cog"></i> Change in the settings above
+                </span>
             </div>
             ${this.currentResults.map((record, index) => {
                 const hasPrediction = record.predicted_genre;
@@ -626,6 +813,11 @@ class AddEditDeleteManager {
             }).join('');
         };
         
+        // Generate consignor options for edit mode
+        const consignorOptions = this.consignors.map(consignor => {
+            return `<option value="${consignor.id}">${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
+        }).join('');
+        
         return `
             <h3>Database Results (${filteredResults.length})</h3>
             <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
@@ -640,6 +832,9 @@ class AddEditDeleteManager {
                 const statusName = (record.status_name || 'active').toLowerCase();
                 const statusClass = statusName.replace(/\s+/g, '-');
                 const displayStatus = record.status_name || 'Active';
+                
+                // Get current consignor for this record
+                const currentConsignorId = record.consignor_id || '';
                 
                 return `
                     <div class="record-card" data-record-id="${record.id}" data-index="${index}">
@@ -659,7 +854,7 @@ class AddEditDeleteManager {
                                     ${record.barcode ? `<p><strong>PigStyle Barcode:</strong> <span class="barcode-value">${record.barcode}</span></p>` : ''}
                                     ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
                                     <p><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</p>
-                                    <p><strong>Commission:</strong> ${(this.commissionRate * 100).toFixed(1)}%</p>
+                                    <p><strong>Commission:</strong> ${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}%</p>
                                     ${record.condition ? `<p><strong>Condition:</strong> ${record.condition}</p>` : ''}
                                     <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></p>
                                     ${record.consignor_name ? `<p><strong>Consignor:</strong> ${record.consignor_name}</p>` : ''}
@@ -701,6 +896,31 @@ class AddEditDeleteManager {
                                        placeholder="Min: $${this.minimumPrice.toFixed(2)}">
                                 <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                                     <i class="fas fa-plus-circle"></i> <i class="fas fa-minus-circle"></i> Use +/- buttons to adjust by $1.00
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Consignor</label>
+                                <select class="form-control edit-consignor-select" data-record-id="${record.id}">
+                                    <option value="">Select consignor (optional)</option>
+                                    ${consignorOptions.replace(`value="${currentConsignorId}"`, `value="${currentConsignorId}" selected`)}
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Consignment Rate (%)</label>
+                                <input type="number" 
+                                       class="form-control edit-commission-input" 
+                                       data-record-id="${record.id}"
+                                       value="${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}" 
+                                       step="10" 
+                                       min="0" 
+                                       max="100"
+                                       placeholder="Commission %">
+                                <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                    <i class="fas fa-info-circle"></i> Store's cut percentage (step: 10%)
                                 </div>
                             </div>
                         </div>
@@ -1145,6 +1365,10 @@ class AddEditDeleteManager {
         const condition = conditionSelect.value;
         const price = parseFloat(priceInput.value);
         
+        // Use global settings
+        const consignorId = this.selectedConsignorId;
+        const commissionRate = this.selectedCommissionRate / 100; // Convert percentage to decimal
+        
         const errors = [];
         if (!genreId) errors.push('Please select a genre');
         if (!condition) errors.push('Please select a condition');
@@ -1175,6 +1399,8 @@ class AddEditDeleteManager {
         console.log('Genre ID:', genreId);
         console.log('Condition:', condition);
         console.log('Final Price:', price);
+        console.log('Consignor ID (from global settings):', consignorId);
+        console.log('Commission Rate (from global settings):', commissionRate);
         
         const recordData = {
             artist: discogsRecord.artist,
@@ -1188,8 +1414,8 @@ class AddEditDeleteManager {
             condition: condition,
             store_price: price,
             youtube_url: '',
-            consignor_id: user.id || null,
-            commission_rate: this.commissionRate,
+            consignor_id: consignorId || user.id || null,
+            commission_rate: commissionRate,
             status_id: 1,
         };
         
@@ -1240,6 +1466,8 @@ class AddEditDeleteManager {
         const conditionSelect = card.querySelector('.edit-condition-select');
         const priceInput = card.querySelector('.edit-price-input');
         const statusSelect = card.querySelector('.edit-status-select');
+        const consignorSelect = card.querySelector('.edit-consignor-select');
+        const commissionInput = card.querySelector('.edit-commission-input');
         
         const updates = {};
         
@@ -1259,6 +1487,19 @@ class AddEditDeleteManager {
                     return;
                 }
                 updates.store_price = price;
+            }
+        }
+        
+        if (consignorSelect && consignorSelect.value) {
+            updates.consignor_id = parseInt(consignorSelect.value);
+        } else if (consignorSelect && consignorSelect.value === '') {
+            updates.consignor_id = null;
+        }
+        
+        if (commissionInput && commissionInput.value) {
+            const commissionRate = parseFloat(commissionInput.value) / 100;
+            if (!isNaN(commissionRate) && commissionRate >= 0 && commissionRate <= 1) {
+                updates.commission_rate = commissionRate;
             }
         }
         
