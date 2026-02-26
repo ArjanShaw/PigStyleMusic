@@ -1025,8 +1025,8 @@ async function updateCartDisplay() {
     
     const discountedSubtotal = calculateTotalsWithDiscount();
     
-    const taxEnabled = getConfigValue('TAX_ENABLED') === 'true';
-    const taxRate = taxEnabled ? (parseFloat(getConfigValue('TAX_RATE') || '0') / 100) : 0;
+    const taxEnabled = 'true';
+    const taxRate = 0.075;
     
     if (taxRateDisplay) taxRateDisplay.textContent = (taxRate * 100).toFixed(1);
     
