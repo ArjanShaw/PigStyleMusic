@@ -549,14 +549,6 @@
         <!-- Filters Section -->
         <div class="filters-section" id="filters-section">
             <div class="filters-row">
-                <!-- Consignor Filter (Admin Only) -->
-                <div id="consignor-filter-container" class="filter-group" style="display: none;">
-                    <label for="consignor-filter"><i class="fas fa-user"></i> Consignor:</label>
-                    <select id="consignor-filter">
-                        <option value="all">All Consignors</option>
-                    </select>
-                </div>
-                
                 <!-- Status Filters -->
                 <div class="filter-group">
                     <label><i class="fas fa-filter"></i> Status:</label>
@@ -962,8 +954,6 @@
                 this.statuses = ['new', 'active', 'sold', 'removed'];
                 this.selectedStatuses = ['new', 'active', 'sold', 'removed'];
                 this.commissionRate = 0.20;
-                this.consignors = [];
-                this.selectedConsignorId = 'all';
                 this.minimumPrice = 1.99;
                 this.allInventoryRecords = [];
                 this.filteredInventoryRecords = [];
@@ -989,7 +979,6 @@
                     await this.loadGenres();
                     this.loadConditions();
                     this.setupEventListeners();
-                    await this.loadConsignors();
                     await this.loadInventory();
                 } else {
                     console.log('INIT: User not authenticated, showing guest message');
@@ -1040,14 +1029,6 @@
                     document.getElementById('searchInput').value = '';
                     this.clearSearch();
                 });
-
-                const consignorFilter = document.getElementById('consignor-filter');
-                if (consignorFilter) {
-                    consignorFilter.addEventListener('change', (e) => {
-                        this.selectedConsignorId = e.target.value;
-                        this.loadInventory();
-                    });
-                }
 
                 // Status filter checkboxes
                 document.querySelectorAll('.status-filter-checkbox input').forEach(checkbox => {
@@ -1117,52 +1098,6 @@
                 }
             }
 
-            async loadConsignors() {
-                const user = window.Auth.getUser();
-                if (user.role === 'admin') {
-                    try {
-                        const response = await APIUtils.get('/api/consignor/records');
-                        console.log('LOAD_CONSIGNORS: Response from /api/consignor/records:', response);
-                        
-                        if (response && response.records) {
-                            const consignorMap = {};
-                            response.records.forEach(record => {
-                                if (record.consignor_id && record.consignor_name) {
-                                    if (!consignorMap[record.consignor_id]) {
-                                        consignorMap[record.consignor_id] = {
-                                            id: record.consignor_id,
-                                            name: record.consignor_name,
-                                            email: record.consignor_email || ''
-                                        };
-                                    }
-                                }
-                            });
-                            
-                            this.consignors = Object.values(consignorMap);
-                            
-                            const filterContainer = document.getElementById('consignor-filter-container');
-                            const filterSelect = document.getElementById('consignor-filter');
-                            
-                            if (this.consignors.length > 0) {
-                                filterContainer.style.display = 'flex';
-                                filterSelect.innerHTML = '<option value="all">All Consignors</option>' +
-                                    this.consignors.map(consignor => 
-                                        `<option value="${consignor.id}">${consignor.name}</option>`
-                                    ).join('');
-                            } else {
-                                filterContainer.style.display = 'none';
-                            }
-                        }
-                    } catch (error) {
-                        console.error('LOAD_CONSIGNORS: Error loading consignors:', error);
-                        document.getElementById('consignor-filter-container').style.display = 'none';
-                    }
-                } else {
-                    // Hide consignor filter for non-admin users
-                    document.getElementById('consignor-filter-container').style.display = 'none';
-                }
-            }
-
             async loadInventory() {
                 const user = window.Auth.getUser();
                 const loadingDiv = document.getElementById('inventory-loading');
@@ -1176,29 +1111,13 @@
                 if (searchStatus) searchStatus.style.display = 'none';
                 
                 try {
-                    if (user.role === 'admin') {
-                        if (this.selectedConsignorId !== 'all') {
-                            const allRecords = await APIUtils.get('/records', { 
-                                order_by: 'created_at', 
-                                order: 'desc' 
-                            });
-                            this.allInventoryRecords = allRecords.records ? allRecords.records.filter(record => 
-                                record.consignor_id == this.selectedConsignorId
-                            ) : [];
-                        } else {
-                            const response = await APIUtils.get('/records', { 
-                                order_by: 'created_at', 
-                                order: 'desc' 
-                            });
-                            this.allInventoryRecords = response.records || [];
-                        }
-                    } else {
-                        const response = await APIUtils.get(`/records/user/${user.id}`, {
-                            order_by: 'created_at',
-                            order: 'desc'
-                        });
-                        this.allInventoryRecords = response.records || [];
-                    }
+                    // Always load records for the logged-in user only
+                    const response = await APIUtils.get(`/records/user/${user.id}`, {
+                        order_by: 'created_at',
+                        order: 'desc'
+                    });
+                    
+                    this.allInventoryRecords = response.records || [];
                     
                     loadingDiv.style.display = 'none';
                     
@@ -1214,7 +1133,7 @@
                     // Apply status filter
                     this.filterInventoryByStatus();
                     
-                    console.log('INVENTORY: Loaded', this.allInventoryRecords.length, 'records');
+                    console.log('INVENTORY: Loaded', this.allInventoryRecords.length, 'records for user', user.id);
                 } catch (error) {
                     console.error('LOAD_INVENTORY: Error loading inventory:', error);
                     loadingDiv.style.display = 'none';
@@ -1247,12 +1166,9 @@
                     const user = window.Auth.getUser();
                     let params = { 
                         q: searchTerm,
-                        search_field: this.currentSearchField
+                        search_field: this.currentSearchField,
+                        user_id: user.id  // Always filter by current user
                     };
-                    
-                    if (user.role === 'consignor') {
-                        params.user_id = user.id;
-                    }
                     
                     const response = await APIUtils.get('/records/search', params);
                     
@@ -1415,22 +1331,18 @@
             async loadStats() {
                 const user = window.Auth.getUser();
                 
-                let recordsCount = 0;
-                if (user.role === 'admin') {
-                    const response = await APIUtils.get('/records/count');
-                    recordsCount = response.count || 0;
-                } else {
-                    const response = await APIUtils.get(`/records/user/${user.id}`);
-                    recordsCount = response.records ? response.records.length : 0;
-                }
+                // Get count for logged-in user only
+                const response = await APIUtils.get(`/records/user/${user.id}`);
+                const recordsCount = response.records ? response.records.length : 0;
                 
                 document.getElementById('total-records').textContent = recordsCount;
 
                 const commissionResponse = await APIUtils.get('/api/commission-rate');
                 this.commissionRate = commissionResponse.commission_rate / 100;
                 document.getElementById('commission-rate').textContent = 
-                    `${commissionResponse.commission_rate }%`;
+                    `${commissionResponse.commission_rate}%`;
 
+                // Only show store fill for admin users
                 if (user.role === 'admin') {
                     const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
                     const capacity = parseInt(configResponse.config_value);
@@ -1447,28 +1359,15 @@
                 const user = window.Auth.getUser();
                 let lastAdded = '--';
                 
-                if (user.role === 'admin') {
-                    const response = await APIUtils.get('/records', { 
-                        limit: 1, 
-                        order_by: 'created_at', 
-                        order: 'desc' 
-                    });
-                    
-                    if (response.records && response.records.length > 0) {
-                        const record = response.records[0];
-                        lastAdded = `${record.artist.substring(0, 15)}...`;
-                    }
-                } else {
-                    const response = await APIUtils.get(`/records/user/${user.id}`, {
-                        limit: 1,
-                        order_by: 'created_at',
-                        order: 'desc'
-                    });
-                    
-                    if (response.records && response.records.length > 0) {
-                        const record = response.records[0];
-                        lastAdded = `${record.artist.substring(0, 15)}...`;
-                    }
+                const response = await APIUtils.get(`/records/user/${user.id}`, {
+                    limit: 1,
+                    order_by: 'created_at',
+                    order: 'desc'
+                });
+                
+                if (response.records && response.records.length > 0) {
+                    const record = response.records[0];
+                    lastAdded = `${record.artist.substring(0, 15)}...`;
                 }
                 
                 document.getElementById('last-added').textContent = lastAdded;
