@@ -6,6 +6,8 @@
     <title>Dashboard - PigStyle Music</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="icon" href="/static/images/PigStyle.ico">
+
     <script src="/static/js/app-config.js"></script>
     <style>
         /* Status Badge Styles */
@@ -503,15 +505,17 @@
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">
-            <a href="/">PigStyle Music</a>
-        </div>
+        <a href="/" class="nav-brand">
+            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px; margin-right: 10px;">
+             
+        </a>
         <div class="nav-links">
-            <a href="/">Home</a>
-            <a href="/catalog">Catalog</a>
+            <a href="/inventory">Inventory</a>
             <a href="/streaming">Streaming</a>
             <a href="/consignment">Consignment</a>
-            <div id="auth-section">DASHBOARD</div>
+            <div id="auth-section">
+                <!-- Populated by app-config.js -->
+            </div>
         </div>
     </nav>
 
