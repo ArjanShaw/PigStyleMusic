@@ -333,31 +333,30 @@ window.testVCP8370Printer = async function() {
     const storePhone = await getConfigValue('STORE_PHONE');
     const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
     
-    const testReceipt = `
-${''.padEnd(charsPerLine, '=')}
-${centerText(storeName, charsPerLine)}
-${centerText(storeAddress, charsPerLine)}
-${centerText(storePhone, charsPerLine)}
-${''.padEnd(charsPerLine, '=')}
-
-Receipt #: TEST-${Date.now()}
-Date: ${new Date().toLocaleString()}
-Cashier: Test User
-Payment: TEST
-
-${''.padEnd(charsPerLine, '-')}
-TEST ITEM 1              $10.00
-TEST ITEM 2              $15.00
-${''.padEnd(charsPerLine, '-')}
-Subtotal:                $25.00
-Tax:                      $1.88
-${''.padEnd(charsPerLine, '=')}
-TOTAL:                   $26.88
-${''.padEnd(charsPerLine, '=')}
-
-${centerText('Thank you for testing!', charsPerLine)}
-${''.padEnd(charsPerLine, '=')}
-    `;
+    const testReceipt = 
+''.padEnd(charsPerLine, '=') + '\n' +
+centerText(storeName, charsPerLine) + '\n' +
+centerText(storeAddress, charsPerLine) + '\n' +
+centerText(storePhone, charsPerLine) + '\n' +
+''.padEnd(charsPerLine, '=') + '\n' +
+'\n' +
+`Receipt #: TEST-${Date.now()}\n` +
+`Date: ${new Date().toLocaleString()}\n` +
+`Cashier: Test User\n` +
+`Payment: TEST\n` +
+'\n' +
+''.padEnd(charsPerLine, '-') + '\n' +
+'TEST ITEM 1' + ' '.repeat(charsPerLine - 11 - 6) + '$10.00\n' +
+'TEST ITEM 2' + ' '.repeat(charsPerLine - 11 - 6) + '$15.00\n' +
+''.padEnd(charsPerLine, '-') + '\n' +
+'Subtotal:' + ' '.repeat(charsPerLine - 9 - 6) + '$25.00\n' +
+'Tax:' + ' '.repeat(charsPerLine - 4 - 6) + '$1.88\n' +
+''.padEnd(charsPerLine, '=') + '\n' +
+'TOTAL:' + ' '.repeat(charsPerLine - 6 - 6) + '$26.88\n' +
+''.padEnd(charsPerLine, '=') + '\n' +
+'\n' +
+centerText('Thank you for testing!', charsPerLine) + '\n' +
+''.padEnd(charsPerLine, '=') + '\n';
     
     showCheckoutStatus('Testing VCP-8370 printer...', 'info');
     try {
@@ -426,10 +425,18 @@ function showPrintableReceipt(receiptText) {
 
 function centerText(text, width) {
     if (!text) return ''.padEnd(width, ' ');
+    
+    text = String(text);
     const padding = Math.max(0, width - text.length);
     const leftPad = Math.floor(padding / 2);
     const rightPad = padding - leftPad;
-    return ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
+    const result = ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
+    
+    if (result.length !== width) {
+        return result.substring(0, width);
+    }
+    
+    return result;
 }
 
 // ============================================================================
@@ -2004,9 +2011,25 @@ async function formatReceiptForPrinter(transaction) {
     let receipt = '';
     
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
-    receipt += centerText(storeName, charsPerLine) + '\n';
-    if (storeAddress) receipt += centerText(storeAddress, charsPerLine) + '\n';
-    if (storePhone) receipt += centerText(storePhone, charsPerLine) + '\n';
+    
+    // Debug - log the values
+    console.log('Store Name:', storeName, 'Length:', storeName.length);
+    console.log('Store Address:', storeAddress, 'Length:', storeAddress.length);
+    console.log('Store Phone:', storePhone, 'Length:', storePhone.length);
+    
+    // Center each line individually
+    const nameLine = centerText(storeName, charsPerLine);
+    console.log('Name line:', `"${nameLine}"`, 'Length:', nameLine.length);
+    receipt += nameLine + '\n';
+    
+    const addressLine = centerText(storeAddress, charsPerLine);
+    console.log('Address line:', `"${addressLine}"`, 'Length:', addressLine.length);
+    receipt += addressLine + '\n';
+    
+    const phoneLine = centerText(storePhone, charsPerLine);
+    console.log('Phone line:', `"${phoneLine}"`, 'Length:', phoneLine.length);
+    receipt += phoneLine + '\n';
+    
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     receipt += '\n';
     
@@ -2089,7 +2112,7 @@ async function formatReceiptForPrinter(transaction) {
 // ============================================================================
 
 document.addEventListener('tabChanged', function(e) {
-    if (e.detail.tabName === 'check-out') {
+    if (e.detail && e.detail.tabName === 'check-out') {
         const searchResults = document.getElementById('search-results');
         if (searchResults && currentSearchResults.length === 0) {
             searchResults.innerHTML = `

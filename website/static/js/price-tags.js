@@ -82,14 +82,7 @@ function getStatusIdFromFilter(filter) {
     }
 }
 
-function getConfigValue(key) {
-    if (!window.dbConfigValues || !window.dbConfigValues[key]) {
-        throw new Error(`Required configuration value '${key}' not found in database`);
-    }
-    const value = window.dbConfigValues[key].value;
-    const num = parseFloat(value);
-    return isNaN(num) ? value : num;
-}
+// REMOVED - getConfigValue function - now using from config-value-manager.js
 
 // Show loading indicator
 function showLoading(show) {
@@ -952,12 +945,8 @@ async function confirmPrint() {
         console.error('fetchAllConfigValues not available');
     }
     
-    // Verify config is loaded
-    if (!window.dbConfigValues || Object.keys(window.dbConfigValues).length === 0) {
-        showStatus('Configuration not loaded. Please refresh and try again.', 'error');
-        showLoading(false);
-        return;
-    }
+    // Verify config is loaded - now using getConfigValue from config-value-manager.js
+    // We'll let the generatePDF function handle the config validation
     
     console.log('========== STARTING PDF GENERATION ==========');
     console.log(`Generating PDF for ${selectedRecordsList.length} records`);
@@ -1184,18 +1173,18 @@ async function generatePDF(records) {
         
         try {
             // Get configuration values - these will throw if missing
-            const labelWidthMM = getConfigValue('LABEL_WIDTH_MM');
-            const labelHeightMM = getConfigValue('LABEL_HEIGHT_MM');
-            const leftMarginMM = getConfigValue('LEFT_MARGIN_MM');
-            const gutterSpacingMM = getConfigValue('GUTTER_SPACING_MM');
-            const topMarginMM = getConfigValue('TOP_MARGIN_MM');
-            const priceFontSize = getConfigValue('PRICE_FONT_SIZE');
-            const textFontSize = getConfigValue('TEXT_FONT_SIZE');
-            const barcodeHeightMM = getConfigValue('BARCODE_HEIGHT');
-            const printBorders = getConfigValue('PRINT_BORDERS');
-            const priceYPosMM = getConfigValue('PRICE_Y_POS');
-            const barcodeYPosMM = getConfigValue('BARCODE_Y_POS');
-            const infoYPosMM = getConfigValue('INFO_Y_POS');
+            const labelWidthMM = await getConfigValue('LABEL_WIDTH_MM');
+            const labelHeightMM = await getConfigValue('LABEL_HEIGHT_MM');
+            const leftMarginMM = await getConfigValue('LEFT_MARGIN_MM');
+            const gutterSpacingMM = await getConfigValue('GUTTER_SPACING_MM');
+            const topMarginMM = await getConfigValue('TOP_MARGIN_MM');
+            const priceFontSize = await getConfigValue('PRICE_FONT_SIZE');
+            const textFontSize = await getConfigValue('TEXT_FONT_SIZE');
+            const barcodeHeightMM = await getConfigValue('BARCODE_HEIGHT');
+            const printBorders = await getConfigValue('PRINT_BORDERS');
+            const priceYPosMM = await getConfigValue('PRICE_Y_POS');
+            const barcodeYPosMM = await getConfigValue('BARCODE_Y_POS');
+            const infoYPosMM = await getConfigValue('INFO_Y_POS');
             
             console.log('⚙️ Configuration values (mm):');
             console.log(`   - Label: ${labelWidthMM}mm x ${labelHeightMM}mm`);
@@ -1276,7 +1265,7 @@ async function generatePDF(records) {
                 console.log(`   - Label Bottom-Right: (${(x + labelWidthPt).toFixed(2)}, ${(y + labelHeightPt).toFixed(2)})`);
                 
                 // Draw border if enabled
-                if (printBorders) {
+                if (printBorders === 'true' || printBorders === true) {
                     doc.setDrawColor(0);
                     doc.setLineWidth(0.5);
                     doc.rect(x, y, labelWidthPt, labelHeightPt);
@@ -1298,7 +1287,7 @@ async function generatePDF(records) {
                 const initialsText = consignorInitials ? ` (${consignorInitials})` : '';
                 const infoText = `${genre} | ${artist}${initialsText}`;
                 
-                doc.setFontSize(textFontSize);
+                doc.setFontSize(parseInt(textFontSize));
                 doc.setFont('helvetica', 'normal');
                 
                 // Truncate if too long
@@ -1322,7 +1311,7 @@ async function generatePDF(records) {
                 // Print price (in the middle)
                 const price = record.store_price || 0;
                 const priceText = `$${price.toFixed(2)}`;
-                doc.setFontSize(priceFontSize);
+                doc.setFontSize(parseInt(priceFontSize));
                 doc.setFont('helvetica', 'bold');
                 
                 const priceWidth = doc.getTextWidth(priceText);
