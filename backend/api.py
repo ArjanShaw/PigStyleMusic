@@ -102,6 +102,190 @@ def get_db():
     return conn
 
 # ==================== SQUARE API HELPER FUNCTIONS ====================
+@app.route('/api/checkout/process', methods=['POST'])
+def process_checkout():
+    """Create a Square payment link for the cart"""
+    try:
+        data = request.json
+        app.logger.info(f"Checkout request received: {data}")
+        
+        items = data.get('items', [])
+        total = data.get('total', 0)
+        
+        if not items or total <= 0:
+            return jsonify({
+                'status': 'error',
+                'error': 'Invalid cart data'
+            }), 400
+        
+        # Get Square credentials
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        location_id = os.environ.get('SQUARE_LOCATION_ID')
+        
+        if not access_token or not location_id:
+            app.logger.error("Square credentials not configured")
+            return jsonify({
+                'status': 'error',
+                'error': 'Payment system not configured'
+            }), 500
+        
+        # Verify items are available
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        unavailable_items = []
+        valid_items = []
+        for item in items:
+            copy_id = item.get('copy_id')
+            cursor.execute('''
+                SELECT id, status_id, artist, title, store_price 
+                FROM records WHERE id = ?
+            ''', (copy_id,))
+            result = cursor.fetchone()
+            
+            if not result or result['status_id'] not in [1, 2]:
+                unavailable_items.append(item.get('title', 'Unknown'))
+            else:
+                valid_items.append(item)
+        
+        if unavailable_items:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Items unavailable: {", ".join(unavailable_items)}'
+            }), 400
+        
+        # Create line items for Square
+        line_items = []
+        for item in valid_items:
+            line_items.append({
+                "name": f"{item.get('artist')} - {item.get('title')}",
+                "quantity": "1",
+                "base_price_money": {
+                    "amount": int(round(item.get('price', 0) * 100)),
+                    "currency": "USD"
+                }
+            })
+        
+        # Create payment link
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        payload = {
+            "idempotency_key": str(uuid.uuid4()),
+            "order": {
+                "location_id": location_id,
+                "line_items": line_items
+            }
+        }
+        
+        square_base_url = 'https://connect.squareup.com'
+        
+        response = requests.post(
+            f'{square_base_url}/v2/online-checkout/payment-links',
+            headers=headers,
+            json=payload
+        )
+        
+        if response.status_code != 200:
+            app.logger.error(f"Square API error: {response.text}")
+            return jsonify({
+                'status': 'error',
+                'error': 'Failed to create payment link'
+            }), 400
+        
+        result = response.json()
+        payment_link = result.get('payment_link', {})
+        checkout_url = payment_link.get('url')
+        
+        if not checkout_url:
+            return jsonify({
+                'status': 'error',
+                'error': 'No checkout URL returned'
+            }), 500
+        
+        # Store in database (optional)
+        cursor.execute('''
+            INSERT INTO checkout_sessions 
+            (idempotency_key, square_checkout_id, items, total, status, created_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (
+            str(uuid.uuid4()),
+            payment_link.get('id'),
+            json.dumps(valid_items),
+            total,
+            'pending'
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'checkout_url': checkout_url,
+            'order_id': payment_link.get('id')[:8],
+            'message': 'Checkout created successfully'
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Checkout error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': f'Server error: {str(e)}'
+        }), 500
+
+@app.route('/checkout/complete')
+def checkout_complete():
+    """Handle successful checkout return from Square"""
+    transaction_id = request.args.get('transactionId')
+    
+    app.logger.info(f"Checkout complete callback: transactionId={transaction_id}")
+    
+    # You could update the checkout session status here
+    if transaction_id:
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            
+            # Update status to completed
+            cursor.execute('''
+                UPDATE checkout_sessions 
+                SET status = 'completed', completed_at = CURRENT_TIMESTAMP
+                WHERE square_checkout_id = ?
+            ''', (transaction_id,))
+            
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            app.logger.error(f"Error updating checkout completion: {e}")
+    
+    # Redirect back to inventory with success message
+    return redirect('/inventory?payment=success')
+
+@app.route('/checkout/cancel')
+def checkout_cancel():
+    """Handle canceled checkout"""
+    transaction_id = request.args.get('transactionId')
+    
+    if transaction_id:
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE checkout_sessions 
+                SET status = 'canceled' 
+                WHERE square_checkout_id = ?
+            ''', (transaction_id,))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            app.logger.error(f"Error updating checkout cancellation: {e}")
+    
+    return redirect('/inventory?payment=canceled')
 
 def square_api_request(endpoint, method='GET', data=None):
     """Make direct request to Square API"""
