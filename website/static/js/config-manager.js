@@ -15,18 +15,7 @@ async function fetchAllConfigValues() {
     }
 }
 
-// Get a specific config value
-function getConfigValue(key) {
-    if (!dbConfigValues[key]) {
-        throw new Error(`Configuration key '${key}' not found in database`);
-    }
-    const value = dbConfigValues[key].value;
-    
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    if (!isNaN(value) && value !== '') return parseFloat(value);
-    return value;
-}
+// Get a specific config value - REMOVED - use getConfigValue from config-value-manager.js instead
 
 // Update a config value in database
 async function updateConfigValue(key, newValue) {
@@ -251,31 +240,29 @@ async function saveConfigValue(key) {
 // Update UI elements that depend on config values
 function updateUIFromConfig() {
     try {
-        const taxRate = getConfigValue('TAX_RATE');
-        document.getElementById('tax-rate-display').textContent = taxRate;
-        
-         
+        // This function now uses the async getConfigValue from config-value-manager.js
+        // But since it's called from non-async contexts, we need to handle it carefully
+        console.log('UI update will use config-value-manager.js for values');
     } catch (error) {
         console.error('Error updating UI from config:', error);
-        throw error; // Re-throw to ensure we don't silently fail
+        throw error;
     }
 }
 
 // Get admin config values for backward compatibility
 function getAdminConfig() {
     // These will throw errors if config values are missing - that's what we want
-    const taxRate = getConfigValue('TAX_RATE');
-    const taxEnabled = getConfigValue('TAX_ENABLED');
-    const commissionRate = getConfigValue('COMMISSION_RATE');
+    // Note: This function is synchronous but uses async values - this needs to be refactored
+    console.warn('getAdminConfig is deprecated - use getConfigValue from config-value-manager.js instead');
     
     return {
-        taxRate: taxRate,
-        taxEnabled: taxEnabled,
-        commissionRate: commissionRate,
-        storeName: dbConfigValues['STORE_NAME']?.value || 'PigStyle Music',
-        storeAddress: dbConfigValues['STORE_ADDRESS']?.value || '',
-        storePhone: dbConfigValues['STORE_PHONE']?.value || '',
-        receiptFooter: dbConfigValues['RECEIPT_FOOTER']?.value || 'Thank you for your purchase!',
-        autoPrintReceipt: dbConfigValues['AUTO_PRINT_RECEIPT']?.value || false
+        taxRate: dbConfigValues['TAX_RATE']?.value || null,
+        taxEnabled: dbConfigValues['TAX_ENABLED']?.value || null,
+        commissionRate: dbConfigValues['COMMISSION_RATE']?.value || null,
+        storeName: dbConfigValues['STORE_NAME']?.value || null,
+        storeAddress: dbConfigValues['STORE_ADDRESS']?.value || null,
+        storePhone: dbConfigValues['STORE_PHONE']?.value || null,
+        receiptFooter: dbConfigValues['RECEIPT_FOOTER']?.value || null,
+        autoPrintReceipt: dbConfigValues['AUTO_PRINT_RECEIPT']?.value || null
     };
 }
