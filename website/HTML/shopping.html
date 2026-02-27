@@ -550,6 +550,129 @@
         .add-to-cart-btn.in-cart:hover {
             background: #28a745;
         }
+
+        /* Checkout Modal */
+        .payment-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+        }
+
+        .payment-modal {
+            background: white;
+            border-radius: 8px;
+            width: 500px;
+            max-width: 90%;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .payment-modal h2 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .payment-modal p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .payment-status {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 16px;
+        }
+
+        .payment-status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .payment-status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .payment-status.processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .payment-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .payment-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .payment-btn-primary {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .payment-btn-primary:hover {
+            background: #ff5252;
+        }
+
+        .payment-btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .payment-btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .payment-btn-secondary:hover {
+            background: #ddd;
+        }
+
+        /* Loading spinner */
+        .loading-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,107,107,0.2);
+            border-radius: 50%;
+            border-top-color: #ff6b6b;
+            animation: spin 1s ease-in-out infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .fa-check-circle {
+            font-size: 64px;
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+
+        .fa-exclamation-circle {
+            font-size: 64px;
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -647,6 +770,15 @@
             total: 0
         };
 
+        // Debug mode
+        let debugMode = true;
+
+        // Add debug message
+        function addDebug(message, type = 'info') {
+            if (!debugMode) return;
+            console.log(`[Checkout Debug] ${message}`);
+        }
+
         // Load cart from localStorage on page load
         function loadCart() {
             const savedCart = localStorage.getItem('pigstyle_cart');
@@ -654,6 +786,7 @@
                 try {
                     cart = JSON.parse(savedCart);
                     updateCartDisplay();
+                    addDebug(`Loaded cart with ${cart.items.length} items`);
                 } catch (e) {
                     console.error('Error loading cart:', e);
                 }
@@ -1442,6 +1575,121 @@
             });
         }
 
+        // ==================== CHECKOUT FUNCTIONS ====================
+
+        // Process checkout (all Square handling happens on backend)
+        async function processCheckout() {
+            try {
+                // Close cart drawer
+                closeCartDrawer();
+                
+                // Show processing modal
+                const modal = document.createElement('div');
+                modal.className = 'payment-modal-overlay';
+                modal.innerHTML = `
+                    <div class="payment-modal">
+                        <div class="loading-spinner"></div>
+                        <h2>Processing Checkout...</h2>
+                        <p>Please wait while we prepare your payment.</p>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                
+                addDebug('Sending cart to backend for checkout...');
+                
+                // Send cart to backend
+                const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        items: cart.items.map(item => ({
+                            copy_id: item.copyId,
+                            title: item.title,
+                            artist: item.artist,
+                            condition: item.condition,
+                            price: item.price
+                        })),
+                        total: cart.total,
+                        currency: 'USD'
+                    })
+                });
+                
+                const data = await response.json();
+                addDebug(`Backend response: ${JSON.stringify(data)}`);
+                
+                if (data.status === 'success' && data.checkout_url) {
+                    // Redirect to Square checkout page
+                    addDebug(`Redirecting to Square checkout: ${data.checkout_url}`);
+                    window.location.href = data.checkout_url;
+                    
+                } else if (data.status === 'error') {
+                    // Payment failed
+                    modal.innerHTML = `
+                        <div class="payment-modal">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <h2>Checkout Failed</h2>
+                            <p>${data.error || 'An error occurred processing your checkout.'}</p>
+                            <button class="payment-btn payment-btn-primary" id="tryAgainBtn">
+                                Try Again
+                            </button>
+                            <button class="payment-btn payment-btn-secondary" id="closeErrorBtn" style="margin-top: 10px;">
+                                Cancel
+                            </button>
+                        </div>
+                    `;
+                    
+                    document.getElementById('tryAgainBtn').addEventListener('click', () => {
+                        modal.remove();
+                        processCheckout();
+                    });
+                    
+                    document.getElementById('closeErrorBtn').addEventListener('click', () => {
+                        modal.remove();
+                        openCartDrawer();
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Checkout error:', error);
+                addDebug(`Checkout error: ${error.message}`, 'error');
+                
+                // Remove any existing modal
+                const existingModal = document.querySelector('.payment-modal-overlay');
+                if (existingModal) {
+                    existingModal.remove();
+                }
+                
+                showNotification('Error processing checkout: ' + error.message, 'error');
+                openCartDrawer();
+            }
+        }
+
+        // Check checkout status when returning from Square
+        async function checkReturnStatus() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const transactionId = urlParams.get('transactionId');
+            const status = urlParams.get('status');
+            
+            if (transactionId) {
+                addDebug(`Returning from checkout: ${transactionId}, status: ${status}`);
+                
+                if (status === 'completed') {
+                    // Clear cart on successful payment
+                    cart.items = [];
+                    saveCart();
+                    
+                    // Show success message
+                    setTimeout(() => {
+                        showNotification('Payment successful! Thank you for your purchase.', 'success');
+                    }, 500);
+                } else if (status === 'canceled') {
+                    showNotification('Checkout was canceled.', 'error');
+                }
+            }
+        }
+
         // Initialize cart event listeners
         function initializeCart() {
             // Cart toggle click
@@ -1456,9 +1704,7 @@
             // Checkout button
             document.getElementById('checkoutBtn').addEventListener('click', function() {
                 if (cart.items.length > 0) {
-                    alert('Checkout functionality coming soon!');
-                    // In the future, this would redirect to checkout page
-                    // window.location.href = '/checkout';
+                    processCheckout();
                 }
             });
         }
@@ -1469,6 +1715,7 @@
             loadCatalogData();
             initializeFilters();
             initializeCart();
+            checkReturnStatus(); // Check if returning from Square checkout
             
             // Make removeFromCart function globally available
             window.removeFromCart = removeFromCart;
