@@ -75,35 +75,6 @@ window.getStatusText = function(statusId) {
     return statusMap[statusId] || 'Unknown';
 };
 
-// Updated getConfigValue to use global dbConfigValues
-window.getConfigValue = function(key) {
-    if (window.dbConfigValues && window.dbConfigValues[key]) {
-        const value = window.dbConfigValues[key].value;
-        if (value === 'true') return true;
-        if (value === 'false') return false;
-        if (!isNaN(value) && value !== '') return parseFloat(value);
-        return value;
-    }
-    
-    const defaults = {
-        'TAX_ENABLED': 'true',
-        'TAX_RATE': '7.5',
-        'STORE_NAME': 'PigStyle Music',
-        'STORE_ADDRESS': '',
-        'STORE_PHONE': '',
-        'RECEIPT_FOOTER': 'Thank you for your purchase!',
-        'PRINTER_TYPE': 'vcp8370',  // Default to vcp8370 now
-        'PRINTER_VENDOR_ID': '0416',
-        'PRINTER_PRODUCT_ID': '5011',
-        'PRINTER_PAPER_WIDTH': '58',
-        'PRINTER_CHARS_PER_LINE': '32',
-        'PRINTER_CUT_PAPER': 'true',
-        'PRINTER_OPEN_DRAWER': 'true'
-    };
-    
-    return defaults[key] || null;
-};
-
 // ============================================================================
 // VCP-8370 Thermal Printer Functions
 // ============================================================================
@@ -118,34 +89,30 @@ async function connectVCP8370() {
             throw new Error('WebUSB not supported. Use Chrome/Edge for thermal printing.');
         }
 
-        // Use configured vendor/product IDs or fallback to common ones
-        const vendorId = getConfigValue('PRINTER_VENDOR_ID');
-        const productId = getConfigValue('PRINTER_PRODUCT_ID');
+        const vendorId = await getConfigValue('PRINTER_VENDOR_ID');
+        const productId = await getConfigValue('PRINTER_PRODUCT_ID');
         
         let filters = [];
         
         if (vendorId && productId) {
-            // Use configured IDs
             filters.push({ 
                 vendorId: parseInt(vendorId, 16), 
                 productId: parseInt(productId, 16) 
             });
             console.log(`Using configured vendor ID: ${vendorId}, product ID: ${productId}`);
         } else {
-            // Common vendor IDs for thermal printers
             filters = [
-                { vendorId: 0x0416 }, // Winbond (your VCP-8370)
-                { vendorId: 0x067B }, // Prolific
-                { vendorId: 0x1A86 }, // QinHeng
-                { vendorId: 0x10C4 }, // Silicon Labs
-                { vendorId: 0x0403 }, // FTDI
-                { vendorId: 0x0557 }, // ATEN
+                { vendorId: 0x0416 },
+                { vendorId: 0x067B },
+                { vendorId: 0x1A86 },
+                { vendorId: 0x10C4 },
+                { vendorId: 0x0403 },
+                { vendorId: 0x0557 },
             ];
         }
 
         console.log('Requesting USB device with filters:', filters);
         
-        // This shows the browser's device selection dialog
         const device = await navigator.usb.requestDevice({ filters });
         
         console.log('Device selected:', {
@@ -174,7 +141,6 @@ async function connectVCP8370() {
             await device.selectConfiguration(1);
         }
         
-        // Find the first interface with an OUT endpoint
         let outEndpoint = null;
         let interfaceNumber = null;
         
@@ -227,28 +193,26 @@ async function connectVCP8370() {
     }
 }
 
-function formatReceiptAsESCPOS(receiptText) {
+async function formatReceiptAsESCPOS(receiptText) {
     const encoder = new TextEncoder('utf-8');
     let commands = [];
     
-    // Initialize printer
     commands.push(PrinterCommands.INIT);
-    
-    // Set line spacing
     commands.push(PrinterCommands.LINE_SPACING_30);
     
+    const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
+    const cutPaper = await getConfigValue('PRINTER_CUT_PAPER');
+    const openDrawer = await getConfigValue('PRINTER_OPEN_DRAWER');
+    
     const lines = receiptText.split('\n');
-    const charsPerLine = getConfigValue('PRINTER_CHARS_PER_LINE') || 32;
     
     for (const line of lines) {
-        // Skip empty lines
         if (!line.trim()) {
             commands.push(PrinterCommands.LF);
             continue;
         }
         
         if (line.startsWith('=') && line.length > 5) {
-            // Header/footer dividers - bold and center
             commands.push(PrinterCommands.ALIGN_CENTER);
             commands.push(PrinterCommands.BOLD_ON);
             commands.push(line.substring(0, charsPerLine));
@@ -256,13 +220,11 @@ function formatReceiptAsESCPOS(receiptText) {
             commands.push(PrinterCommands.LF);
         } 
         else if (line.startsWith('-')) {
-            // Item separators - left align
             commands.push(PrinterCommands.ALIGN_LEFT);
             commands.push(line.substring(0, charsPerLine));
             commands.push(PrinterCommands.LF);
         }
         else if (line.includes('TOTAL:')) {
-            // Total line - bold and center
             commands.push(PrinterCommands.ALIGN_CENTER);
             commands.push(PrinterCommands.BOLD_ON);
             commands.push(line.substring(0, charsPerLine));
@@ -270,41 +232,34 @@ function formatReceiptAsESCPOS(receiptText) {
             commands.push(PrinterCommands.LF);
         }
         else if (line.includes('THANK YOU') || line.includes('Thank you')) {
-            // Footer - center
             commands.push(PrinterCommands.ALIGN_CENTER);
             commands.push(line.substring(0, charsPerLine));
             commands.push(PrinterCommands.LF);
             commands.push(PrinterCommands.LF);
         }
         else if (line.includes('Receipt #:') || line.includes('Date:') || line.includes('Cashier:')) {
-            // Receipt info - left align
             commands.push(PrinterCommands.ALIGN_LEFT);
             commands.push(line.substring(0, charsPerLine));
             commands.push(PrinterCommands.LF);
         }
         else {
-            // Normal text - left align
             commands.push(PrinterCommands.ALIGN_LEFT);
             commands.push(line.substring(0, charsPerLine));
             commands.push(PrinterCommands.LF);
         }
     }
     
-    // Add extra line feeds
     commands.push(PrinterCommands.LF);
     commands.push(PrinterCommands.LF);
     
-    // Cut paper if configured
-    if (getConfigValue('PRINTER_CUT_PAPER') !== 'false') {
+    if (cutPaper !== 'false') {
         commands.push(PrinterCommands.CUT);
     }
     
-    // Open cash drawer if configured
-    if (getConfigValue('PRINTER_OPEN_DRAWER') !== 'false') {
+    if (openDrawer !== 'false') {
         commands.push(PrinterCommands.OPEN_DRAWER);
     }
     
-    // Join all commands and encode
     const commandString = commands.join('');
     return encoder.encode(commandString);
 }
@@ -320,7 +275,6 @@ window.printToVCP8370 = async function(receiptText) {
             statusEl.style.color = '#007bff';
         }
         
-        // Connect to printer
         const { device, endpointNumber } = await connectVCP8370();
         
         if (statusEl) {
@@ -328,31 +282,25 @@ window.printToVCP8370 = async function(receiptText) {
             statusEl.style.color = '#28a745';
         }
         
-        // Format receipt with proper ESC/POS commands
-        const escposData = formatReceiptAsESCPOS(receiptText);
+        const escposData = await formatReceiptAsESCPOS(receiptText);
         
         console.log('ESC/POS data size:', escposData.length, 'bytes');
         
-        // Send data in chunks
         const chunkSize = 64;
         for (let i = 0; i < escposData.length; i += chunkSize) {
             const chunk = escposData.slice(i, Math.min(i + chunkSize, escposData.length));
             await device.transferOut(endpointNumber, chunk);
             
-            // Small delay between chunks
             await new Promise(resolve => setTimeout(resolve, 20));
             
-            // Show progress
             if (statusEl && escposData.length > 256 && i % 256 === 0) {
                 const percent = Math.round((i / escposData.length) * 100);
                 statusEl.innerHTML = `✅ Printing... ${percent}%`;
             }
         }
         
-        // Wait for printing to complete
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Close connection
         await device.close();
         
         if (statusEl) {
@@ -375,15 +323,15 @@ window.printToVCP8370 = async function(receiptText) {
             statusEl.style.color = '#dc3545';
         }
         
-        return false;
+        throw error;
     }
 };
 
 window.testVCP8370Printer = async function() {
-    const storeName = getConfigValue('STORE_NAME') || 'PigStyle Music';
-    const storeAddress = getConfigValue('STORE_ADDRESS') || '123 Main Street';
-    const storePhone = getConfigValue('STORE_PHONE') || '(555) 555-5555';
-    const charsPerLine = getConfigValue('PRINTER_CHARS_PER_LINE') || 32;
+    const storeName = await getConfigValue('STORE_NAME');
+    const storeAddress = await getConfigValue('STORE_ADDRESS');
+    const storePhone = await getConfigValue('STORE_PHONE');
+    const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
     
     const testReceipt = `
 ${''.padEnd(charsPerLine, '=')}
@@ -402,7 +350,7 @@ TEST ITEM 1              $10.00
 TEST ITEM 2              $15.00
 ${''.padEnd(charsPerLine, '-')}
 Subtotal:                $25.00
-Tax (7.5%):               $1.88
+Tax:                      $1.88
 ${''.padEnd(charsPerLine, '=')}
 TOTAL:                   $26.88
 ${''.padEnd(charsPerLine, '=')}
@@ -412,30 +360,26 @@ ${''.padEnd(charsPerLine, '=')}
     `;
     
     showCheckoutStatus('Testing VCP-8370 printer...', 'info');
-    const thermalSuccess = await printToVCP8370(testReceipt);
-    
-    if (!thermalSuccess) {
-        showPrintableReceipt(testReceipt);
-        showCheckoutStatus('Thermal printer failed, showing browser print instead', 'warning');
-    } else {
+    try {
+        const thermalSuccess = await printToVCP8370(testReceipt);
         showCheckoutStatus('Test receipt sent to VCP-8370 printer!', 'success');
+    } catch (error) {
+        showCheckoutStatus(`Thermal printer failed: ${error.message}`, 'error');
     }
 };
 
 window.printToThermalPrinter = async function(receiptText) {
     console.log('printToThermalPrinter called with text length:', receiptText.length);
     
-    // Always try VCP-8370 first since we've fixed the permissions
-    console.log('Attempting to print to VCP-8370...');
-    const success = await printToVCP8370(receiptText);
-    
-    if (success) {
+    try {
+        console.log('Attempting to print to VCP-8370...');
+        const success = await printToVCP8370(receiptText);
         console.log('✅ Successfully printed to VCP-8370');
         return true;
-    } else {
-        console.log('⚠️ VCP-8370 failed, falling back to browser print');
+    } catch (error) {
+        console.log('⚠️ VCP-8370 failed:', error.message);
         showPrintableReceipt(receiptText);
-        return false;
+        throw error;
     }
 };
 
@@ -1025,8 +969,7 @@ async function updateCartDisplay() {
     
     const discountedSubtotal = calculateTotalsWithDiscount();
     
-    const taxEnabled = 'true';
-    const taxRate = 0.075;
+    const taxRate = parseFloat(await getConfigValue('TAX_RATE')) / 100;
     
     if (taxRateDisplay) taxRateDisplay.textContent = (taxRate * 100).toFixed(1);
     
@@ -1584,8 +1527,7 @@ async function processSquarePaymentSuccess() {
         
         const subtotal = pendingCartCheckout.items.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
         
-        const taxEnabled = getConfigValue('TAX_ENABLED') === 'true';
-        const taxRate = taxEnabled ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
+        const taxRate = parseFloat(await getConfigValue('TAX_RATE')) / 100;
         
         const discount = pendingCartCheckout.discount ? pendingCartCheckout.discount.value || 0 : 0;
         const discountedSubtotal = subtotal - discount;
@@ -1606,10 +1548,10 @@ async function processSquarePaymentSuccess() {
             total: total,
             paymentMethod: 'Square Terminal',
             cashier: cashierName,
-            storeName: getConfigValue('STORE_NAME') || 'PigStyle Music',
-            storeAddress: getConfigValue('STORE_ADDRESS') || '',
-            storePhone: getConfigValue('STORE_PHONE') || '',
-            footer: getConfigValue('RECEIPT_FOOTER') || 'Thank you for your purchase!',
+            storeName: await getConfigValue('STORE_NAME'),
+            storeAddress: await getConfigValue('STORE_ADDRESS'),
+            storePhone: await getConfigValue('STORE_PHONE'),
+            footer: await getConfigValue('RECEIPT_FOOTER'),
             consignorPayments: consignorPayments
         };
         
@@ -1617,7 +1559,7 @@ async function processSquarePaymentSuccess() {
             await window.saveReceipt(transaction);
         }
         
-        const receiptText = formatReceiptForPrinter(transaction);
+        const receiptText = await formatReceiptForPrinter(transaction);
         await window.printToThermalPrinter(receiptText);
         
         checkoutCart = [];
@@ -1812,10 +1754,6 @@ window.closeTenderModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// ============================================================================
-// FIXED: processCashPayment with proper receipt formatting
-// ============================================================================
-
 window.processCashPayment = async function() {
     const tendered = parseFloat(document.getElementById('tender-amount')?.value) || 0;
     const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
@@ -1960,8 +1898,7 @@ window.processCashPayment = async function() {
             
             const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
             
-            const taxEnabled = getConfigValue('TAX_ENABLED') === 'true';
-            const taxRate = taxEnabled ? (parseFloat(getConfigValue('TAX_RATE')) / 100) : 0;
+            const taxRate = parseFloat(await getConfigValue('TAX_RATE')) / 100;
             
             const discount = currentDiscount.value || 0;
             const discountedSubtotal = subtotal - discount;
@@ -1996,10 +1933,10 @@ window.processCashPayment = async function() {
                 change: parseFloat(change) || 0,
                 paymentMethod: 'Cash',
                 cashier: cashierName || 'Admin',
-                storeName: getConfigValue('STORE_NAME') || 'PigStyle Music',
-                storeAddress: getConfigValue('STORE_ADDRESS') || '',
-                storePhone: getConfigValue('STORE_PHONE') || '',
-                footer: getConfigValue('RECEIPT_FOOTER') || 'Thank you for your purchase!',
+                storeName: await getConfigValue('STORE_NAME'),
+                storeAddress: await getConfigValue('STORE_ADDRESS'),
+                storePhone: await getConfigValue('STORE_PHONE'),
+                footer: await getConfigValue('RECEIPT_FOOTER'),
                 consignorPayments: consignorPayments || {}
             };
             
@@ -2012,17 +1949,14 @@ window.processCashPayment = async function() {
             }
             
             console.log('📄 Formatting receipt for printing...');
-            const receiptText = formatReceiptForPrinter(transaction);
+            const receiptText = await formatReceiptForPrinter(transaction);
             console.log('Receipt formatted, length:', receiptText.length);
             
-            // Try to print with VCP-8370
             console.log('🖨️ Attempting to print to VCP-8370 from checkout...');
             
-            // Show status
             showCheckoutStatus('Sending to VCP-8370 printer...', 'info');
             
             try {
-                // Use the same function that works in receipts tab
                 const success = await window.printToVCP8370(receiptText);
                 
                 if (success) {
@@ -2060,20 +1994,15 @@ window.processCashPayment = async function() {
     }
 };
 
-// ============================================================================
-// FIXED: formatReceiptForPrinter with proper alignment and values
-// ============================================================================
-
-function formatReceiptForPrinter(transaction) {
-    const storeName = transaction.storeName || getConfigValue('STORE_NAME') || 'PigStyle Music';
-    const storeAddress = transaction.storeAddress || getConfigValue('STORE_ADDRESS') || '';
-    const storePhone = transaction.storePhone || getConfigValue('STORE_PHONE') || '';
-    const footer = transaction.footer || getConfigValue('RECEIPT_FOOTER') || 'Thank you for your purchase!';
-    const charsPerLine = getConfigValue('PRINTER_CHARS_PER_LINE') || 32;
+async function formatReceiptForPrinter(transaction) {
+    const storeName = transaction.storeName || await getConfigValue('STORE_NAME');
+    const storeAddress = transaction.storeAddress || await getConfigValue('STORE_ADDRESS');
+    const storePhone = transaction.storePhone || await getConfigValue('STORE_PHONE');
+    const footer = transaction.footer || await getConfigValue('RECEIPT_FOOTER');
+    const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
     
     let receipt = '';
     
-    // Header with proper centering
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     receipt += centerText(storeName, charsPerLine) + '\n';
     if (storeAddress) receipt += centerText(storeAddress, charsPerLine) + '\n';
@@ -2081,17 +2010,14 @@ function formatReceiptForPrinter(transaction) {
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     receipt += '\n';
     
-    // Receipt info - left aligned with proper spacing
     receipt += `Receipt #: ${transaction.id}\n`;
     receipt += `Date: ${new Date(transaction.date).toLocaleString()}\n`;
     receipt += `Cashier: ${transaction.cashier || 'Admin'}\n`;
     receipt += `Payment: ${transaction.paymentMethod || 'Cash'}\n`;
     receipt += '\n';
     
-    // Items header
     receipt += ''.padEnd(charsPerLine, '-') + '\n';
     
-    // Items - properly aligned with price column
     transaction.items.forEach(item => {
         let description = '';
         if (item.type === 'accessory') {
@@ -2105,21 +2031,18 @@ function formatReceiptForPrinter(transaction) {
         const price = item.store_price || 0;
         const priceStr = `$${price.toFixed(2)}`;
         
-        // Calculate available space for description
-        const maxDescLength = charsPerLine - priceStr.length - 1; // -1 for space
+        const maxDescLength = charsPerLine - priceStr.length - 1;
         let shortDesc = description;
         if (description.length > maxDescLength) {
             shortDesc = description.substring(0, maxDescLength - 3) + '...';
         }
         
-        // Pad description to align price
         const paddingNeeded = charsPerLine - shortDesc.length - priceStr.length;
         receipt += shortDesc + ' '.repeat(paddingNeeded) + priceStr + '\n';
     });
     
     receipt += ''.padEnd(charsPerLine, '-') + '\n';
     
-    // Totals with proper alignment
     const subtotalStr = `$${(transaction.subtotal || 0).toFixed(2)}`;
     receipt += `Subtotal:${' '.repeat(charsPerLine - 9 - subtotalStr.length)}${subtotalStr}\n`;
     
@@ -2135,14 +2058,12 @@ function formatReceiptForPrinter(transaction) {
     const taxStr = `$${(transaction.tax || 0).toFixed(2)}`;
     receipt += `Tax (${transaction.taxRate || 0}%):${' '.repeat(charsPerLine - 12 - taxStr.length)}${taxStr}\n`;
     
-    // Total line with equals signs
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     const totalStr = `$${(transaction.total || 0).toFixed(2)}`;
     receipt += `TOTAL:${' '.repeat(charsPerLine - 6 - totalStr.length)}${totalStr}\n`;
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     receipt += '\n';
     
-    // Cash payment details if applicable
     if (transaction.paymentMethod === 'Cash' && transaction.change > 0) {
         const tenderedStr = `$${(transaction.tendered || 0).toFixed(2)}`;
         receipt += `Tendered:${' '.repeat(charsPerLine - 9 - tenderedStr.length)}${tenderedStr}\n`;
@@ -2152,13 +2073,11 @@ function formatReceiptForPrinter(transaction) {
         receipt += '\n';
     }
     
-    // Square payment ID if applicable
     if (transaction.square_payment_id) {
         receipt += `Square ID: ${transaction.square_payment_id}\n`;
         receipt += '\n';
     }
     
-    // Footer with proper centering
     receipt += centerText(footer, charsPerLine) + '\n';
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     
@@ -2191,7 +2110,6 @@ document.addEventListener('keypress', function(e) {
     }
 });
 
-// Make sure functions are globally available
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
