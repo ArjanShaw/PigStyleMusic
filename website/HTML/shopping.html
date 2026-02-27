@@ -540,6 +540,16 @@
                 opacity: 0;
             }
         }
+
+        /* Disabled add to cart button when item is already in cart */
+        .add-to-cart-btn.in-cart {
+            background: #28a745;
+            cursor: default;
+        }
+
+        .add-to-cart-btn.in-cart:hover {
+            background: #28a745;
+        }
     </style>
 </head>
 <body>
@@ -660,9 +670,6 @@
         function updateCartDisplay() {
             const cartToggleContainer = document.getElementById('cartToggleContainer');
             const cartBadge = document.getElementById('cartBadge');
-            const cartFooter = document.getElementById('cartFooter');
-            const cartItems = document.getElementById('cartItems');
-            const cartTotal = document.getElementById('cartTotal');
             
             // Update badge count
             const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -723,30 +730,33 @@
             }
         }
 
+        // Check if a copy is already in cart
+        function isInCart(copyId) {
+            return cart.items.some(item => item.copyId === copyId);
+        }
+
         // Add item to cart
         function addToCart(copy, release) {
-            // Check if item already in cart
-            const existingItemIndex = cart.items.findIndex(item => item.copyId === copy.id);
-            
-            if (existingItemIndex >= 0) {
-                // Increment quantity if already in cart
-                cart.items[existingItemIndex].quantity += 1;
-                showNotification('Quantity updated in cart!', 'success');
-            } else {
-                // Add new item
-                cart.items.push({
-                    copyId: copy.id,
-                    title: release.title,
-                    artist: release.artist,
-                    condition: copy.condition,
-                    price: copy.store_price,
-                    image_url: release.image_url,
-                    quantity: 1
-                });
-                showNotification('Item added to cart!', 'success');
+            // Check if item is already in cart
+            if (isInCart(copy.id)) {
+                showNotification('This item is already in your cart!', 'error');
+                return false;
             }
             
+            // Add new item
+            cart.items.push({
+                copyId: copy.id,
+                title: release.title,
+                artist: release.artist,
+                condition: copy.condition,
+                price: copy.store_price,
+                image_url: release.image_url,
+                quantity: 1
+            });
+            
             saveCart();
+            showNotification('Item added to cart!', 'success');
+            return true;
         }
 
         // Remove item from cart
@@ -1178,6 +1188,7 @@
                         <div class="copies-list-with-image">
                             ${sortedCopies.map(copy => {
                                 const conditionClass = getConditionClass(copy.condition);
+                                const alreadyInCart = isInCart(copy.id);
                                 return `
                                     <div class="copy-item">
                                         <div class="copy-item-content">
@@ -1186,8 +1197,13 @@
                                             </span>
                                             <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
                                         </div>
-                                        <button class="add-to-cart-btn" data-copy-id="${copy.id}" data-copy-condition="${copy.condition}" data-copy-price="${copy.store_price}">
-                                            <i class="fas fa-cart-plus"></i> Add to Cart
+                                        <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" 
+                                                data-copy-id="${copy.id}" 
+                                                data-copy-condition="${copy.condition}" 
+                                                data-copy-price="${copy.store_price}"
+                                                ${alreadyInCart ? 'disabled' : ''}>
+                                            <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
+                                            ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
                                         </button>
                                     </div>
                                 `;
@@ -1212,22 +1228,22 @@
             });
             
             // Add event listeners for add to cart buttons
-            modal.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+            modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     
                     const copyId = btn.dataset.copyId;
-                    const copyCondition = btn.dataset.copyCondition;
-                    const copyPrice = parseFloat(btn.dataset.copyPrice);
                     
                     // Find the full copy object
                     const copy = release.copies.find(c => c.id == copyId);
                     
                     if (copy) {
-                        addToCart(copy, release);
+                        const added = addToCart(copy, release);
                         
-                        // Optionally close the modal after adding
-                        // modal.remove();
+                        if (added) {
+                            // Close the modal after adding to cart
+                            modal.remove();
+                        }
                     }
                 });
             });
