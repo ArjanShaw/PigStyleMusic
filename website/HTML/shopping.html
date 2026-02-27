@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <link rel="icon" href="/static/images/PigStyle.ico">
+    <title>Inventory - PigStyle Records</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <link rel="stylesheet" href="/static/css/catalog.css">
+    <script src="/static/js/app-config.js"></script>
+    
+    <style>
+        /* Additional styles for copy count and price range */
+        .copy-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 8px 0 5px 0;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .copy-count {
+            background: #ff6b6b;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .price-range {
+            font-weight: 600;
+            color: #28a745;
+            font-size: 13px;
+        }
+        
+        .condition-indicator {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-right: 4px;
+        }
+        
+        .condition-mint { background: #d4edda; color: #155724; }
+        .condition-near-mint { background: #cce5ff; color: #004085; }
+        .condition-very-good-plus { background: #d1ecf1; color: #0c5460; }
+        .condition-very-good { background: #fff3cd; color: #856404; }
+        .condition-good-plus { background: #f8d7da; color: #721c24; }
+        .condition-good { background: #f8d7da; color: #721c24; }
+        .condition-fair { background: #e2e3e5; color: #383d41; }
+        .condition-poor { background: #e2e3e5; color: #383d41; }
+        
+        .conditions-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 5px;
+        }
+        
+        .card:hover .conditions-list {
+            opacity: 1;
+        }
+        
+        /* Tooltip for additional copies */
+        .more-copies {
+            font-size: 11px;
+            color: #999;
+            margin-left: 4px;
+        }
+
+        /* Popup/Modal styles */
+        .copies-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .copies-modal {
+            background: white;
+            border-radius: 8px;
+            width: 500px;
+            max-width: 90%;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .copies-modal-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 2px solid #ff6b6b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .copies-modal-header h3 {
+            margin: 0;
+            color: #000000;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .copies-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #000000;
+            padding: 0;
+            line-height: 1;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .copies-modal-close:hover {
+            opacity: 1;
+            color: #ff6b6b;
+        }
+
+        .copies-list {
+            padding: 20px;
+            max-height: calc(80vh - 120px);
+            overflow-y: auto;
+            background: white;
+        }
+
+        .copy-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .copy-item:last-child {
+            border-bottom: none;
+        }
+
+        .copy-condition {
+            flex: 2;
+        }
+
+        .copy-price {
+            flex: 1;
+            text-align: right;
+            font-weight: 600;
+            color: #000000;
+            font-size: 16px;
+        }
+
+        .copies-modal-footer {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        .footer-total {
+            color: #000000;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        /* New styles for album image in popup */
+        .copies-modal-content {
+            display: flex;
+            flex-direction: row;
+            max-height: calc(80vh - 120px);
+        }
+
+        .modal-album-image {
+            width: 150px;
+            flex-shrink: 0;
+            padding: 20px 0 20px 20px;
+        }
+
+        .modal-album-image img {
+            width: 100%;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .copies-list-with-image {
+            flex: 1;
+            padding: 20px 20px 20px 10px;
+            max-height: calc(80vh - 120px);
+            overflow-y: auto;
+            background: white;
+        }
+
+        /* Simplified filter section - only date buttons */
+        .filter-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .filter-label {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .date-presets {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .date-preset-btn {
+            padding: 8px 16px;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            color: #333;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .date-preset-btn:hover {
+            background: #ff6b6b;
+            border-color: #ff6b6b;
+            color: white;
+        }
+
+        .date-preset-btn.active {
+            background: #ff6b6b;
+            border-color: #ff6b6b;
+            color: white;
+        }
+
+        /* New arrivals badge */
+        .new-arrival-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ff6b6b;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            z-index: 2;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .card {
+            position: relative;
+        }
+
+        /* Search box */
+        .search-wrapper {
+            margin-bottom: 20px;
+        }
+
+        #searchBox {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        #searchBox:focus {
+            outline: none;
+            border-color: #ff6b6b;
+            box-shadow: 0 0 0 2px rgba(255,107,107,0.1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
+        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
+            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+        </a>
+        <div style="display: flex; gap: 20px; align-items: center;">
+            <a href="/inventory" style="color: white; text-decoration: none;">Inventory</a>
+            <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
+            <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
+            <div id="auth-section">
+            </div>
+        </div>
+    </nav>
+
+    <!-- Add padding to account for fixed navbar -->
+    <div style="padding-top: 60px;"></div>
+
+    <!-- Background Image -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+
+    <div class="header-section">
+        <div class='search-wrapper'>
+            <input type='text' id='searchBox' placeholder='Search artist or record...'>
+        </div>
+        
+        <div class="filter-section">
+            <div class="filter-label"><i class="far fa-calendar-alt"></i> Date Added</div>
+            <div class="date-presets">
+                <button type="button" class="date-preset-btn active" data-days="7">Last 7 days</button>
+                <button type="button" class="date-preset-btn" data-days="30">Last 30 days</button>
+                <button type="button" class="date-preset-btn" data-days="90">Last 90 days</button>
+                <button type="button" class="date-preset-btn" data-days="365">Last year</button>
+                <button type="button" class="date-preset-btn" id="clearDates">Clear</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class='catalog-container' id='catalogContainer'>
+        <div id='loading'>
+            <div class="loading-dots">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <p>Loading inventory...</p>
+        </div>
+    </div>
+
+    <script>
+        // Store all releases globally
+        let allReleases = [];
+
+        // Load data from new grouped API endpoint
+        async function loadCatalogData() {
+            try {
+                console.log('Loading grouped catalog data from API...');
+                const response = await fetch(`${AppConfig.baseUrl}/catalog/grouped-by-release`);
+                const data = await response.json();
+                
+                console.log('API Response:', data);
+                
+                if (data.status === 'success') {
+                    allReleases = data.groups || [];
+                    console.log(`Loaded ${allReleases.length} unique releases with ${data.total_copies} total copies`);
+                    displayReleases(allReleases);
+                } else {
+                    throw new Error('Invalid response from server');
+                }
+                
+            } catch (error) {
+                console.error('Error loading catalog data:', error);
+                // Fallback to original endpoint if new one fails
+                loadCatalogDataFallback();
+            }
+        }
+
+        // Fallback to original endpoint
+        async function loadCatalogDataFallback() {
+            try {
+                console.log('Falling back to original catalog endpoint...');
+                // Assuming pigstyleAPI is available from app-config.js
+                const response = await window.pigstyleAPI?.loadCatalogGroupedRecords?.() || [];
+                
+                let catalogData;
+                if (Array.isArray(response)) {
+                    catalogData = {
+                        groups: [{
+                            label: 'All Records',
+                            records: response
+                        }]
+                    };
+                } else if (response && response.groups) {
+                    catalogData = response;
+                } else {
+                    throw new Error('Invalid response format');
+                }
+                
+                // Convert flat records to grouped format
+                const records = catalogData.groups.flatMap(g => g.records || []);
+                const grouped = groupRecordsByRelease(records);
+                allReleases = grouped;
+                
+                displayReleases(grouped);
+                
+            } catch (error) {
+                console.error('Error loading fallback data:', error);
+                document.getElementById('catalogContainer').innerHTML = 
+                    '<div class="error-message">Error loading catalog. Please try again later.<br>' + 
+                    error.message + '</div>';
+            }
+        }
+
+        // Helper function to group flat records by release
+        function groupRecordsByRelease(records) {
+            const groups = {};
+            const conditionOrder = {
+                'Mint (M)': 1,
+                'Near Mint (NM or M-)': 2,
+                'Very Good Plus (VG+)': 3,
+                'Very Good (VG)': 4,
+                'Good Plus (G+)': 5,
+                'Good (G)': 6,
+                'Fair (F)': 7,
+                'Poor (P)': 8
+            };
+            
+            records.forEach(record => {
+                const artist = (record.artist || '').trim();
+                const title = (record.title || '').trim();
+                const key = `${artist.toLowerCase()}|${title.toLowerCase()}`;
+                
+                if (!groups[key]) {
+                    groups[key] = {
+                        artist: artist,
+                        title: title,
+                        genre_name: record.genre_name,
+                        image_url: record.image_url,
+                        total_copies: 0,
+                        price_range: { min: Infinity, max: 0 },
+                        copies: [],
+                        // Track the earliest created_at date for this release
+                        created_at: record.created_at
+                    };
+                }
+                
+                const copy = {
+                    id: record.id,
+                    condition: record.condition,
+                    condition_rank: conditionOrder[record.condition] || 99,
+                    store_price: parseFloat(record.store_price) || 0,
+                    barcode: record.barcode,
+                    catalog_number: record.catalog_number,
+                    youtube_url: record.youtube_url,
+                    created_at: record.created_at
+                };
+                
+                groups[key].copies.push(copy);
+                groups[key].total_copies++;
+                
+                // Track the earliest creation date for the release
+                if (record.created_at && (!groups[key].created_at || record.created_at < groups[key].created_at)) {
+                    groups[key].created_at = record.created_at;
+                }
+                
+                if (copy.store_price > 0) {
+                    groups[key].price_range.min = Math.min(groups[key].price_range.min, copy.store_price);
+                    groups[key].price_range.max = Math.max(groups[key].price_range.max, copy.store_price);
+                }
+            });
+            
+            // Clean up price ranges
+            Object.values(groups).forEach(group => {
+                if (group.price_range.min === Infinity) {
+                    group.price_range = { min: 0, max: 0 };
+                }
+            });
+            
+            return Object.values(groups).sort((a, b) => 
+                (a.artist || '').localeCompare(b.artist || '')
+            );
+        }
+
+        // Display releases (keeps same tile layout)
+        function displayReleases(releases) {
+            const container = document.getElementById('catalogContainer');
+            container.innerHTML = ''; // Clear loading message
+
+            if (!releases || releases.length === 0) {
+                container.innerHTML = '<div class="no-records">No records found in the database.</div>';
+                return;
+            }
+
+            console.log(`Displaying ${releases.length} releases`);
+
+            // Create a gallery container to maintain same layout
+            const gallery = document.createElement('div');
+            gallery.className = 'group-gallery';
+            gallery.style.display = 'grid';
+            gallery.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
+            gallery.style.gap = '20px';
+            gallery.style.padding = '20px';
+
+            releases.forEach(release => {
+                const card = createReleaseCard(release);
+                gallery.appendChild(card);
+            });
+
+            container.appendChild(gallery);
+            
+            // Apply the default 7-day filter after loading
+            setTimeout(() => {
+                applyDateFilter(7);
+            }, 100);
+        }
+
+        // Create a card for a release
+        function createReleaseCard(release) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            
+            // Set data attributes for filtering
+            card.setAttribute('data-artist', (release.artist || '').toLowerCase());
+            card.setAttribute('data-title', (release.title || '').toLowerCase());
+            
+            // Set date attribute for filtering (earliest creation date)
+            if (release.created_at) {
+                card.setAttribute('data-created', release.created_at);
+                
+                // Add "New Arrival" badge for items added in the last 30 days
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                const createdDate = new Date(release.created_at);
+                
+                if (createdDate >= thirtyDaysAgo) {
+                    const badge = document.createElement('div');
+                    badge.className = 'new-arrival-badge';
+                    badge.textContent = 'NEW';
+                    card.appendChild(badge);
+                }
+            }
+            
+            // Get the best image (first copy with image, or default)
+            const imageUrl = release.image_url || '/static/images/default-record.jpg';
+            
+            // Get genre
+            const genre = release.genre_name || 'Unknown Genre';
+            
+            // Calculate price range display
+            const priceRange = release.price_range;
+            let priceDisplay = '';
+            if (priceRange.min > 0 && priceRange.max > 0) {
+                if (priceRange.min === priceRange.max) {
+                    priceDisplay = `$${priceRange.min.toFixed(2)}`;
+                } else {
+                    priceDisplay = `$${priceRange.min.toFixed(2)} - $${priceRange.max.toFixed(2)}`;
+                }
+            } else if (priceRange.min > 0) {
+                priceDisplay = `$${priceRange.min.toFixed(2)}`;
+            } else {
+                priceDisplay = 'Price varies';
+            }
+            
+            // Get all unique conditions from copies
+            const conditions = [...new Set(release.copies.map(c => c.condition).filter(Boolean))];
+            const conditionCounts = {};
+            release.copies.forEach(copy => {
+                if (copy.condition) {
+                    conditionCounts[copy.condition] = (conditionCounts[copy.condition] || 0) + 1;
+                }
+            });
+            
+            // Sort conditions by grade
+            const conditionOrder = {
+                'Mint (M)': 1,
+                'Near Mint (NM or M-)': 2,
+                'Very Good Plus (VG+)': 3,
+                'Very Good (VG)': 4,
+                'Good Plus (G+)': 5,
+                'Good (G)': 6,
+                'Fair (F)': 7,
+                'Poor (P)': 8
+            };
+            
+            const sortedConditions = conditions.sort((a, b) => 
+                (conditionOrder[a] || 99) - (conditionOrder[b] || 99)
+            );
+            
+            // Build conditions HTML
+            let conditionsHtml = '';
+            if (sortedConditions.length > 0) {
+                conditionsHtml = '<div class="conditions-list">';
+                sortedConditions.slice(0, 3).forEach(condition => {
+                    if (!condition) return;
+                    const conditionClass = getConditionClass(condition);
+                    const count = conditionCounts[condition] || '';
+                    const countDisplay = count > 1 ? ` (${count})` : '';
+                    conditionsHtml += `<span class="condition-indicator ${conditionClass}">${condition}${countDisplay}</span>`;
+                });
+                if (sortedConditions.length > 3) {
+                    conditionsHtml += `<span class="more-copies">+${sortedConditions.length - 3} more</span>`;
+                }
+                conditionsHtml += '</div>';
+            }
+            
+            // Copy count display - only show if more than 1 copy
+            let copyCountHtml = '';
+            if (release.total_copies > 1) {
+                const copyCountText = `${release.total_copies} copies`;
+                copyCountHtml = `<span class="copy-count">${copyCountText}</span>`;
+            }
+            
+            card.innerHTML = `
+                <div class="card-image">
+                    <img src="${imageUrl}" alt="${release.title}" onerror="this.src='/static/images/default-record.jpg'">
+                </div>
+                <div class="card-info">
+                    <h3>${escapeHtml(release.title)}</h3>
+                    <p class="artist">${escapeHtml(release.artist)}</p>
+                    
+                    <div class="copy-info">
+                        ${copyCountHtml}
+                        <span class="price-range">${priceDisplay}</span>
+                    </div>
+                    
+                    <p class="genre">${escapeHtml(genre)}</p>
+                    
+                    ${conditionsHtml}
+                    
+                    ${release.copies.some(c => c.youtube_url) ? `
+                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">
+                            🎵 Watch Video
+                        </a>
+                    ` : ''}
+                </div>
+            `;
+            
+            // Add click handler to show all copies popup
+            card.addEventListener('click', function(e) {
+                // Don't trigger if clicking on YouTube link
+                if (e.target.closest('.youtube-link')) return;
+                
+                // Show popup with all copies
+                showCopiesPopup(release);
+            });
+            
+            return card;
+        }
+
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Helper function to get CSS class for condition
+        function getConditionClass(condition) {
+            const conditionLower = (condition || '').toLowerCase();
+            if (conditionLower.includes('mint') && !conditionLower.includes('near')) {
+                return 'condition-mint';
+            } else if (conditionLower.includes('near mint')) {
+                return 'condition-near-mint';
+            } else if (conditionLower.includes('very good plus')) {
+                return 'condition-very-good-plus';
+            } else if (conditionLower.includes('very good')) {
+                return 'condition-very-good';
+            } else if (conditionLower.includes('good plus')) {
+                return 'condition-good-plus';
+            } else if (conditionLower.includes('good')) {
+                return 'condition-good';
+            } else if (conditionLower.includes('fair')) {
+                return 'condition-fair';
+            } else if (conditionLower.includes('poor')) {
+                return 'condition-poor';
+            }
+            return '';
+        }
+
+        // Show popup with all copies (with album image)
+        function showCopiesPopup(release) {
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.className = 'copies-modal-overlay';
+            
+            // Sort copies by condition (best first)
+            const conditionOrder = {
+                'Mint (M)': 1,
+                'Near Mint (NM or M-)': 2,
+                'Very Good Plus (VG+)': 3,
+                'Very Good (VG)': 4,
+                'Good Plus (G+)': 5,
+                'Good (G)': 6,
+                'Fair (F)': 7,
+                'Poor (P)': 8
+            };
+            
+            const sortedCopies = [...release.copies].sort((a, b) => {
+                const orderA = conditionOrder[a.condition] || 99;
+                const orderB = conditionOrder[b.condition] || 99;
+                if (orderA !== orderB) return orderA - orderB;
+                return b.store_price - a.store_price; // Higher price first for same condition
+            });
+            
+            // Get album image
+            const imageUrl = release.image_url || '/static/images/default-record.jpg';
+            
+            // Build footer HTML - only show if more than 1 copy
+            let footerHtml = '';
+            if (release.total_copies > 1) {
+                footerHtml = `
+                    <div class="copies-modal-footer">
+                        <span class="footer-total">Total Copies: ${release.total_copies}</span>
+                    </div>
+                `;
+            }
+            
+            // Create modal content with image
+            modal.innerHTML = `
+                <div class="copies-modal">
+                    <div class="copies-modal-header">
+                        <h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3>
+                        <button class="copies-modal-close">&times;</button>
+                    </div>
+                    <div class="copies-modal-content">
+                        <div class="modal-album-image">
+                            <img src="${imageUrl}" alt="${escapeHtml(release.title)}" onerror="this.src='/static/images/default-record.jpg'">
+                        </div>
+                        <div class="copies-list-with-image">
+                            ${sortedCopies.map(copy => {
+                                const conditionClass = getConditionClass(copy.condition);
+                                return `
+                                    <div class="copy-item">
+                                        <span class="copy-condition">
+                                            <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
+                                        </span>
+                                        <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    ${footerHtml}
+                </div>
+            `;
+            
+            // Add click handler to close button
+            const closeBtn = modal.querySelector('.copies-modal-close');
+            closeBtn.addEventListener('click', () => {
+                modal.remove();
+            });
+            
+            // Add click outside to close
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            document.body.appendChild(modal);
+        }
+
+        // Handle YouTube click
+        function handleYouTubeClick(youtubeUrl, title) {
+            const videoId = extractYouTubeId(youtubeUrl);
+            if (!videoId) {
+                alert('Invalid YouTube URL');
+                return;
+            }
+            
+            const modal = document.createElement('div');
+            modal.className = 'youtube-modal-overlay';
+            
+            modal.innerHTML = `
+                <div class="youtube-modal">
+                    <div class="youtube-modal-header">
+                        <h3>${title}</h3>
+                        <button class="youtube-modal-close" onclick="this.closest('.youtube-modal-overlay').remove()">×</button>
+                    </div>
+                    <div class="youtube-video-container">
+                        <iframe 
+                            src="https://www.youtube.com/embed/${videoId}?autoplay=1" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                </div>
+            `;
+            
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            document.body.appendChild(modal);
+        }
+
+        // Extract YouTube ID
+        function extractYouTubeId(url) {
+            if (!url) return null;
+            
+            const patterns = [
+                /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+                /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+                /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+                /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/
+            ];
+            
+            for (const pattern of patterns) {
+                const match = url.match(pattern);
+                if (match && match[1]) {
+                    return match[1];
+                }
+            }
+            
+            return null;
+        }
+
+        // Apply date filter based on days
+        function applyDateFilter(days) {
+            const container = document.getElementById('catalogContainer');
+            const cards = container.querySelectorAll('.card');
+            
+            if (days === null || days === undefined) {
+                // Show all cards
+                cards.forEach(card => {
+                    card.style.display = 'block';
+                });
+                return;
+            }
+            
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+            cutoffDate.setHours(0, 0, 0, 0);
+            
+            let visibleCount = 0;
+            
+            cards.forEach(card => {
+                const createdDate = card.getAttribute('data-created');
+                
+                if (!createdDate) {
+                    card.style.display = 'none';
+                    return;
+                }
+                
+                const cardDate = new Date(createdDate);
+                const shouldShow = cardDate >= cutoffDate;
+                
+                card.style.display = shouldShow ? 'block' : 'none';
+                if (shouldShow) visibleCount++;
+            });
+            
+            // Show no results message if needed
+            const existingNoResults = container.querySelector('.no-records');
+            if (visibleCount === 0) {
+                if (!existingNoResults) {
+                    const noResultsDiv = document.createElement('div');
+                    noResultsDiv.className = 'no-records';
+                    noResultsDiv.textContent = 'No records match the selected date range.';
+                    container.appendChild(noResultsDiv);
+                }
+            } else if (existingNoResults) {
+                existingNoResults.remove();
+            }
+        }
+
+        // Initialize search and filter functionality
+        function initializeFilters() {
+            const searchBox = document.getElementById('searchBox');
+            
+            // Search functionality
+            searchBox.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                const container = document.getElementById('catalogContainer');
+                const cards = container.querySelectorAll('.card');
+                
+                // Get current active date filter
+                const activeDateBtn = document.querySelector('.date-preset-btn.active');
+                const activeDays = activeDateBtn && activeDateBtn.dataset.days ? parseInt(activeDateBtn.dataset.days) : null;
+                
+                let visibleCount = 0;
+                
+                cards.forEach(card => {
+                    const artist = card.getAttribute('data-artist') || '';
+                    const title = card.getAttribute('data-title') || '';
+                    const createdDate = card.getAttribute('data-created');
+                    
+                    // Check date filter first
+                    let dateMatch = true;
+                    if (activeDays !== null && createdDate) {
+                        const cutoffDate = new Date();
+                        cutoffDate.setDate(cutoffDate.getDate() - activeDays);
+                        cutoffDate.setHours(0, 0, 0, 0);
+                        const cardDate = new Date(createdDate);
+                        dateMatch = cardDate >= cutoffDate;
+                    }
+                    
+                    // Then check search
+                    const searchMatch = !searchTerm || 
+                        artist.includes(searchTerm) || 
+                        title.includes(searchTerm);
+                    
+                    const shouldShow = dateMatch && searchMatch;
+                    
+                    card.style.display = shouldShow ? 'block' : 'none';
+                    if (shouldShow) visibleCount++;
+                });
+                
+                // Show no results message if needed
+                const existingNoResults = container.querySelector('.no-records');
+                if (visibleCount === 0) {
+                    if (!existingNoResults) {
+                        const noResultsDiv = document.createElement('div');
+                        noResultsDiv.className = 'no-records';
+                        noResultsDiv.textContent = 'No records match your search criteria.';
+                        container.appendChild(noResultsDiv);
+                    }
+                } else if (existingNoResults) {
+                    existingNoResults.remove();
+                }
+            });
+            
+            // Setup date preset buttons
+            document.querySelectorAll('.date-preset-btn[data-days]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Remove active class from all preset buttons
+                    document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const days = parseInt(this.dataset.days);
+                    applyDateFilter(days);
+                    
+                    // Also trigger search filter to reapply with new date range
+                    const searchEvent = new Event('input');
+                    document.getElementById('searchBox').dispatchEvent(searchEvent);
+                });
+            });
+            
+            // Clear dates button
+            document.getElementById('clearDates').addEventListener('click', function() {
+                // Remove active class from all preset buttons
+                document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
+                
+                // Show all cards
+                applyDateFilter(null);
+                
+                // Trigger search filter
+                const searchEvent = new Event('input');
+                document.getElementById('searchBox').dispatchEvent(searchEvent);
+            });
+        }
+
+        // Load the catalog data when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCatalogData();
+            initializeFilters();
+        });
+    </script>
+</body>
+</html>
