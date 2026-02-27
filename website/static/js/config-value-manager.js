@@ -1,6 +1,9 @@
 // ============================================================================
-// config-value-manager.js - Centralized configuration value fetcher
+// config-value-manager.js - Centralized configuration value fetcher with caching
 // ============================================================================
+
+// Cache object to store fetched configuration values
+const configCache = {};
 
 /**
  * Fetches a configuration value from the server by key
@@ -11,6 +14,12 @@
 async function getConfigValue(configKey) {
     if (!configKey || typeof configKey !== 'string') {
         throw new Error(`Invalid config key: ${configKey}`);
+    }
+
+    // Return cached value if available
+    if (configCache[configKey] !== undefined) {
+        console.log(`Returning cached value for "${configKey}":`, configCache[configKey]);
+        return configCache[configKey];
     }
 
     try {
@@ -37,6 +46,10 @@ async function getConfigValue(configKey) {
             throw new Error(`Configuration key "${configKey}" not found or returned null`);
         }
 
+        // Cache the value before returning
+        configCache[configKey] = data.config_value;
+        console.log(`Cached value for "${configKey}":`, data.config_value);
+        
         return data.config_value;
     } catch (error) {
         console.error(`Failed to fetch config value for "${configKey}":`, error);
