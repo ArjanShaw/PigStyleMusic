@@ -174,18 +174,42 @@
             padding: 15px 20px;
             border-top: 1px solid #dee2e6;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
         }
 
         .footer-total {
             color: #000000;
             font-weight: 500;
+            font-size: 14px;
         }
 
-        .footer-range {
-            color: #000000;
-            font-weight: 500;
+        /* New styles for album image in popup */
+        .copies-modal-content {
+            display: flex;
+            flex-direction: row;
+            max-height: calc(80vh - 120px);
+        }
+
+        .modal-album-image {
+            width: 150px;
+            flex-shrink: 0;
+            padding: 20px 0 20px 20px;
+        }
+
+        .modal-album-image img {
+            width: 100%;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .copies-list-with-image {
+            flex: 1;
+            padding: 20px 20px 20px 10px;
+            max-height: calc(80vh - 120px);
+            overflow-y: auto;
+            background: white;
         }
 
         /* Simplified filter section - only date buttons */
@@ -658,7 +682,7 @@
             return '';
         }
 
-        // Show popup with all copies (all text black)
+        // Show popup with all copies (with album image)
         function showCopiesPopup(release) {
             // Create modal overlay
             const modal = document.createElement('div');
@@ -683,30 +707,45 @@
                 return b.store_price - a.store_price; // Higher price first for same condition
             });
             
-            // Create modal content
+            // Get album image
+            const imageUrl = release.image_url || '/static/images/default-record.jpg';
+            
+            // Build footer HTML - only show if more than 1 copy
+            let footerHtml = '';
+            if (release.total_copies > 1) {
+                footerHtml = `
+                    <div class="copies-modal-footer">
+                        <span class="footer-total">Total Copies: ${release.total_copies}</span>
+                    </div>
+                `;
+            }
+            
+            // Create modal content with image
             modal.innerHTML = `
                 <div class="copies-modal">
                     <div class="copies-modal-header">
                         <h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3>
                         <button class="copies-modal-close">&times;</button>
                     </div>
-                    <div class="copies-list">
-                        ${sortedCopies.map(copy => {
-                            const conditionClass = getConditionClass(copy.condition);
-                            return `
-                                <div class="copy-item">
-                                    <span class="copy-condition">
-                                        <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
-                                    </span>
-                                    <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
-                                </div>
-                            `;
-                        }).join('')}
+                    <div class="copies-modal-content">
+                        <div class="modal-album-image">
+                            <img src="${imageUrl}" alt="${escapeHtml(release.title)}" onerror="this.src='/static/images/default-record.jpg'">
+                        </div>
+                        <div class="copies-list-with-image">
+                            ${sortedCopies.map(copy => {
+                                const conditionClass = getConditionClass(copy.condition);
+                                return `
+                                    <div class="copy-item">
+                                        <span class="copy-condition">
+                                            <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
+                                        </span>
+                                        <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
                     </div>
-                    <div class="copies-modal-footer">
-                        <span class="footer-total">Total Copies: ${release.total_copies}</span>
-                        <span class="footer-range">Price Range: $${release.price_range.min.toFixed(2)} - $${release.price_range.max.toFixed(2)}</span>
-                    </div>
+                    ${footerHtml}
                 </div>
             `;
             
