@@ -17,6 +17,20 @@
     
     <link rel="stylesheet" href="/static/css/consignment.css">
     <script src="/static/js/app-config.js"></script>
+    <style>
+        /* inline minor adjustments for clarity */
+        .portal-note .demo-highlight { background: #ffd966; padding: 2px 8px; border-radius: 16px; font-weight: 500; }
+        .policy-table { border-collapse: collapse; width: 100%; }
+        .process-step-row td { background-color: #3a2c2c; color: #ffb3b3; font-weight: bold; padding: 12px 15px; border-bottom: 1px solid #664444; }
+        .sub-item td { background-color: #2a1e1e; padding: 10px 20px 10px 35px; border-bottom: 1px solid #443333; }
+        .conditions-list { margin: 6px 0; padding-left: 20px; }
+        .conditions-list li { margin-bottom: 6px; color: #f0d5d5; }
+        .content-container { max-width: 1000px; margin: 0 auto; padding: 20px; position: relative; z-index: 2; }
+        .page-title h1 { color: #ffb3b3; border-bottom: 2px solid #b34646; padding-bottom: 10px; }
+        .portal-note { background: #2a1e1e; padding: 14px 18px; border-radius: 40px; margin: 20px 0 30px; border-left: 6px solid #ffa500; font-size: 1.1rem; }
+        .portal-link { color: #ffb3b3; text-decoration: underline; font-weight: bold; }
+        body { background-color: #1a0f0f; color: #f5e6e6; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    </style>
 </head>
 <body>
     <!-- Navbar -->
@@ -50,57 +64,55 @@
             <h1>Consignment Program</h1>
         </div>
 
-        <div class="portal-note">
-            <strong>Consignor Dashboard:</strong> <a href="https://pigstyle.streamlit.app/" target="_blank" class="portal-link">pigstyle.streamlit.app</a> • 
-            <span class="demo-highlight">Try the demo mode</span> to explore features without an account.
-        </div>
+        
 
         <div class="policy-content">
             <table class="policy-table">
                 <tbody>
+                    <!-- Step 1: Bring records to the shop (refined) -->
                     <tr class="process-step-row">
-                        <td colspan="2">Step 1: Portal Submission</td>
+                        <td colspan="2">Step 1: Bring records to the shop</td>
                     </tr>
                     <tr class="sub-item">
                         <td colspan="2">
                             <ul class="conditions-list">
-                                <li>Sign up and submit items via our portal</li>
-                                <li>Portal checks for duplicates automatically</li>
-                                <li>Store may reject items deemed unsellable (singles, counterfeits, etc.)</li>
-                                <li>Must certify legal ownership and keep contact info current</li>
+                                <li>Just bring your records during store hours</li>
+                                <li>We may decline items that are unsellable (e.g., damaged, counterfeits, common singles)</li>
+                                <li>You certify legal ownership and agree to keep your contact info current</li>
                             </ul>
                         </td>
                     </tr>
 
+                    <!-- Step 2 : In‑store intake & barcode -->
                     <tr class="process-step-row">
-                        <td colspan="2">Step 2: Pricing & Commission</td>
+                        <td colspan="2">Step 2: In‑store intake & barcode</td>
                     </tr>
                     <tr class="sub-item">
                         <td colspan="2">
                             <ul class="conditions-list">
-                                <li>Set your price or use the advised price based on discogs and ebay search results</li>
-                                <li>Commission: 10% at ≤60% capacity, increasing to 40% at 110% capacity</li>
-                                <li>Use your earnings as store credit and receive a 20% discount on store purchases</li>
+                                <li>Records should be reasonably clean</li>
+                                <li>The store inventory system assigns a barcode for tracking</li>
+                                <li>You’ll receive login details for the consignor dashboard to monitor your items</li>
                             </ul>
                         </td>
                     </tr>
 
+                    <!-- Step 3: Pricing & commission (updated: either party can set price) -->
                     <tr class="process-step-row">
-                        <td colspan="2">Step 3: In-Store Drop-off</td>
+                        <td colspan="2">Step 3: Pricing & commission</td>
                     </tr>
                     <tr class="sub-item">
                         <td colspan="2">
                             <ul class="conditions-list">
-                                <li>Bring records to store</li>
-                                <li>Records should be clean (cleaning service available at discount)</li>
-                                <li>Barcode assigned for tracking</li>
-                                <li>Items activated in your portal</li>
+                                <li>You can set your own price, or leave the pricing to the store (based on Discogs / eBay)</li>
+                                <li>Commission: 10% at ≤60% store capacity, scaling to 40% at 110% capacity</li>
                             </ul>
                         </td>
                     </tr>
 
+                    <!-- Step 4: Sales period (180 days) - email alerts removed -->
                     <tr class="process-step-row">
-                        <td colspan="2">Step 4: Sales Period (180 days)</td>
+                        <td colspan="2">Step 4: Sales period (180 days)</td>
                     </tr>
                     <tr class="sub-item">
                         <td colspan="2">
@@ -108,43 +120,43 @@
                                 <li>90 days at your price + 90 days with potential discounts</li>
                                 <li>After 90 days: items may be discounted up to 50% (you choose to pull or accept)</li>
                                 <li>Monitor sales real-time via portal</li>
-                                <li>Receive email alerts</li>
                             </ul>
                         </td>
                     </tr>
 
+                    <!-- Step 5: Payouts & returns (payout request, weekly reminders, credit discount removed) -->
                     <tr class="process-step-row">
-                        <td colspan="2">Step 5: Payouts & Returns</td>
+                        <td colspan="2">Step 5: Returns & pickup</td>
                     </tr>
                     <tr class="sub-item">
                         <td colspan="2">
                             <ul class="conditions-list">
-                                <li>Request payout via portal when balance ≥ $10 (max once/month)</li>
-                                <li>Remove items anytime via portal</li>
+                                <li>Remove items anytime via portal (or let us know in store)</li>
                                 <li>30-day pickup deadline after removal</li>
-                                <li>Weekly email reminders</li>
                                 <li>Unclaimed items become store property after 30 days</li>
-                                <li>Use earnings as store credit to receive 20% discount on purchases</li>
                             </ul>
                         </td>
                     </tr>
 
+                    <!-- Liability section: removed 'visible damage missed at intake' -->
                     <tr class="process-step-row">
-                        <td colspan="2">Liability & Responsibilities</td>
+                        <td colspan="2">Liability & responsibilities</td>
                     </tr>
                     <tr class="sub-item">
                         <td colspan="2">
                             <ul class="conditions-list">
-                                <li><strong>Store covers:</strong> Missing items, visible damage missed at intake, theft, disasters</li>
-                                <li><strong>Consignor responsible:</strong> Invisible defects (skips, etc.)</li>
+                                <li><strong>Store covers:</strong> missing items, theft, disasters</li>
+                                <li><strong>Consignor responsible:</strong> invisible defects (skips, etc.)</li>
                                 <li>Affected records returned as unsold</li>
-                                <li>Pick up unsold/returned items within 30-day deadline</li>
+                                <li>Pick up unsold/returned items within 30‑day deadline</li>
                             </ul>
                         </td>
                     </tr>
                 </tbody>
             </table>
         </div>
+
+        <!-- final note removed as requested -->
     </div>
 </body>
 </html>
