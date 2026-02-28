@@ -3714,6 +3714,20 @@ def get_artists_with_genres():
 
 # ==================== COMMISSION RATE ENDPOINT ====================
 
+@app.route('/commission-rate', methods=['GET'])
+def get_commission_rate_simple():
+    """Simple commission rate endpoint with default values"""
+    return jsonify({
+        'commission_rate': 25.0,
+        'commission_rate_percent': '25.0%',
+        'store_fill_percentage': 75.0,
+        'total_inventory': 5000,
+        'store_capacity': 10000,
+        'message': 'This is a test endpoint with default values'
+    })
+
+
+
 @app.route('/api/commission-rate', methods=['GET'])
 def get_commission_rate():
     """Calculate current consignment commission rate"""
@@ -3755,6 +3769,8 @@ def get_commission_rate():
         'total_inventory': total_inventory,
         'store_capacity': config['STORE_CAPACITY']
     })
+
+ 
 
 # ==================== BARCODE ASSIGNMENT ENDPOINT ====================
 
