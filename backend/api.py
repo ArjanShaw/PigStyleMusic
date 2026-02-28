@@ -3726,7 +3726,175 @@ def get_commission_rate_simple():
         'message': 'This is a test endpoint with default values'
     })
 
+# ==================== NEW DB QUERY ENDPOINTS ====================
+@app.route('/api/admin/db-schema')
+@login_required
+def get_db_schema():
+    """Get database schema information"""
+    # Check if user is admin
+    if session.get('role') != 'admin':
+        return jsonify({
+            'status': 'error', 
+            'message': 'Admin access required',
+            'debug': {
+                'role': session.get('role'),
+                'logged_in': session.get('logged_in'),
+                'session_keys': list(session.keys())
+            }
+        }), 403
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        tables = cursor.fetchall()
+        
+        schema = {'tables': {}}
+        
+        for table in tables:
+            table_name = table[0]
+            
+            # PRAGMA doesn't support parameters, so we need to use string formatting
+            # But we sanitize by only allowing alphanumeric and underscore
+            import re
+            if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
+                continue  # Skip invalid table names for security
+                
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+            
+            schema['tables'][table_name] = []
+            for col in columns:
+                schema['tables'][table_name].append({
+                    'column_name': col[1],
+                    'data_type': col[2],
+                    'is_nullable': 'YES' if col[3] == 0 else 'NO',
+                    'is_primary': col[5] == 1
+                })
+        
+        conn.close()
+        return jsonify({'status': 'success', 'schema': schema})
+        
+    except Exception as e:
+        print(f"Error in get_db_schema: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': str(e), 'traceback': traceback.format_exc()}), 500
 
+
+
+@app.route('/api/admin/execute-query', methods=['POST'])
+@login_required
+def execute_query():
+    """Execute a SQL query (admin only)"""
+    if session.get('role') != 'admin':
+        return jsonify({
+            'status': 'error', 
+            'message': 'Admin access required',
+            'debug': {
+                'role': session.get('role'),
+                'logged_in': session.get('logged_in')
+            }
+        }), 403
+    
+    data = request.get_json()
+    query = data.get('query', '').strip()
+    
+    if not query:
+        return jsonify({'status': 'error', 'message': 'No query provided'}), 400
+    
+    # Basic query validation - prevent multiple statements for safety
+    if ';' in query and query.count(';') > 1:
+        return jsonify({
+            'status': 'error', 
+            'message': 'Multiple SQL statements are not allowed for security reasons'
+        }), 400
+    
+    # Block dangerous commands
+    dangerous_keywords = ['DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'RENAME']
+    query_upper = query.upper()
+    for keyword in dangerous_keywords:
+        if keyword in query_upper:
+            return jsonify({
+                'status': 'error',
+                'message': f'{keyword} operations are not allowed in the query tool'
+            }), 400
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Determine query type
+        query_type = 'SELECT' if query_upper.lstrip().startswith('SELECT') else \
+                    'INSERT' if query_upper.lstrip().startswith('INSERT') else \
+                    'UPDATE' if query_upper.lstrip().startswith('UPDATE') else \
+                    'DELETE' if query_upper.lstrip().startswith('DELETE') else 'OTHER'
+        
+        import time
+        start_time = time.time()
+        
+        # Execute query
+        cursor.execute(query)
+        
+        execution_time = round((time.time() - start_time) * 1000, 2)  # in milliseconds
+        
+        if query_type == 'SELECT':
+            # For SQLite, fetchall returns rows that need conversion
+            rows = cursor.fetchall()
+            
+            # Get column names from cursor description
+            columns = [description[0] for description in cursor.description] if cursor.description else []
+            
+            # Convert rows to list of dicts
+            results = []
+            for row in rows:
+                row_dict = {}
+                for i, col in enumerate(columns):
+                    value = row[i]
+                    # Handle datetime objects if any
+                    if hasattr(value, 'isoformat'):
+                        value = value.isoformat()
+                    row_dict[col] = value
+                results.append(row_dict)
+            
+            conn.close()
+            
+            return jsonify({
+                'status': 'success',
+                'query_type': query_type,
+                'results': results,
+                'count': len(results),
+                'execution_time': execution_time
+            })
+            
+        else:
+            # For INSERT, UPDATE, DELETE
+            conn.commit()
+            affected_rows = cursor.rowcount
+            last_insert_id = cursor.lastrowid if query_type == 'INSERT' else None
+            
+            conn.close()
+            
+            return jsonify({
+                'status': 'success',
+                'query_type': query_type,
+                'message': 'Query executed successfully',
+                'affected_rows': affected_rows,
+                'last_insert_id': last_insert_id,
+                'execution_time': execution_time
+            })
+            
+    except Exception as e:
+        conn.rollback()
+        print(f"Error executing query: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
 
 @app.route('/api/commission-rate', methods=['GET'])
 def get_commission_rate():
