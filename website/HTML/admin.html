@@ -1443,9 +1443,6 @@
             <div class="tab" onclick="switchTab('artists')">
                 <i class="fas fa-music"></i> Artists
             </div>
-            <div class="tab" onclick="switchTab('genres')">
-                <i class="fas fa-tags"></i> Genres
-            </div>
             <div class="tab" onclick="switchTab('accessories')">
                 <i class="fas fa-headphones"></i> Accessories
             </div>
@@ -1985,125 +1982,6 @@
             <div class="loading" id="artists-loading" style="display:none;">
                 <div class="loading-spinner"></div>
                 <p>Loading artists...</p>
-            </div>
-        </div>
-        
-        <!-- Genres Tab -->
-        <div id="genres-tab" class="tab-content">
-            <h2><i class="fas fa-tags"></i> Genre Mismatches</h2>
-            
-            <div class="info-message" style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                <i class="fas fa-info-circle"></i> This tab shows artists where the genre in the artist_genre table doesn't match the genre in individual records. Click the edit button to update the expected genre.
-            </div>
-            
-            <div class="stats-grid" style="margin-bottom: 20px;">
-                <div class="stat-card">
-                    <h3>Total Artists with Mismatches</h3>
-                    <p class="stat-number" id="total-mismatch-artists">0</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Total Mismatched Records</h3>
-                    <p class="stat-number" id="total-mismatch-records">0</p>
-                </div>
-            </div>
-            
-            <div class="filter-controls" style="margin-bottom: 20px;">
-                <div class="filter-group">
-                    <label for="genre-mismatch-search"><i class="fas fa-search"></i> Search Artist:</label>
-                    <input type="text" id="genre-mismatch-search" class="filter-select" placeholder="Type to filter..." onkeyup="filterGenreMismatches()" style="width: 250px;">
-                </div>
-                <div class="filter-group">
-                    <label for="genre-filter-select"><i class="fas fa-filter"></i> Filter by Expected Genre:</label>
-                    <select id="genre-filter-select" class="filter-select" onchange="filterGenreMismatches()" style="width: 200px;">
-                        <option value="all">All Genres</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <button class="btn btn-secondary" onclick="loadGenreMismatches()">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-            </div>
-            
-            <div id="genre-edit-modal" class="modal-overlay" style="display:none;">
-                <div class="modal-content" style="max-width:500px;">
-                    <div class="modal-header">
-                        <h3 class="modal-title"><i class="fas fa-edit"></i> Edit Expected Genre</h3>
-                        <button class="modal-close" onclick="closeGenreEditModal()">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <p>Artist: <strong id="edit-artist-name"></strong></p>
-                        <div class="filter-group" style="margin-bottom: 15px;">
-                            <label for="edit-genre-select">Expected Genre:</label>
-                            <select id="edit-genre-select" class="filter-select" style="width: 100%;">
-                                <!-- Genres will be populated here -->
-                            </select>
-                        </div>
-                        <p class="info-message" style="background:#f8f9fa; padding:10px; border-radius:4px;">
-                            <i class="fas fa-info-circle"></i> This will update the genre in the artist_genre table for all records by this artist.
-                        </p>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="closeGenreEditModal()">Cancel</button>
-                        <button class="btn btn-success" onclick="saveGenreEdit()" id="save-genre-btn">
-                            <i class="fas fa-save"></i> Save Changes
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="records-table-container">
-                <table class="records-table" id="genre-mismatches-table">
-                    <thead>
-                        <tr>
-                            <th>Artist</th>
-                            <th>Expected Genre (from artist_genre)</th>
-                            <th>Records with Different Genres</th>
-                            <th>Count</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="genre-mismatches-body">
-                        <tr><td colspan="5" style="text-align:center; padding:40px;">
-                            <i class="fas fa-tags" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
-                            Loading genre mismatches...
-                        </td></tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="pagination" id="mismatches-pagination" style="margin-top: 20px;">
-                <button class="page-btn" onclick="goToMismatchesPage('first')" id="mismatches-first-btn" disabled>
-                    <i class="fas fa-angle-double-left"></i>
-                </button>
-                <button class="page-btn" onclick="goToMismatchesPage('prev')" id="mismatches-prev-btn" disabled>
-                    <i class="fas fa-angle-left"></i>
-                </button>
-                
-                <span class="pagination-info">
-                    Page <span id="mismatches-current-page">1</span> of <span id="mismatches-total-pages">1</span>
-                </span>
-                
-                <button class="page-btn" onclick="goToMismatchesPage('next')" id="mismatches-next-btn" disabled>
-                    <i class="fas fa-angle-right"></i>
-                </button>
-                <button class="page-btn" onclick="goToMismatchesPage('last')" id="mismatches-last-btn" disabled>
-                    <i class="fas fa-angle-double-right"></i>
-                </button>
-                
-                <div class="records-per-page">
-                    <span>Show:</span>
-                    <select id="mismatches-page-size" onchange="changeMismatchesPageSize(parseInt(this.value))">
-                        <option value="10">10</option>
-                        <option value="25" selected>25</option>
-                        <option value="50">50</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="loading" id="genres-loading" style="display:none;">
-                <div class="loading-spinner"></div>
-                <p>Loading genre mismatches...</p>
             </div>
         </div>
 
@@ -3160,7 +3038,6 @@
     <script src="/static/js/receipts.js"></script>
     <script src="/static/js/users.js"></script>
     <script src="/static/js/artists.js"></script>
-    <script src="/static/js/genres.js"></script>
     <script src="/static/js/accessories.js"></script>
     <script src="/static/js/refunds.js"></script>
     <script src="/static/js/youtube-linker.js"></script>
