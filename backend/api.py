@@ -71,6 +71,32 @@ user_tokens = {}
 background_jobs = {}
 square_payment_sessions = {}  # Store active payment sessions
 
+# Add this right after your CORS configuration (around line 65)
+@app.before_request
+def log_request_info():
+    app.logger.debug('Headers: %s', request.headers)
+    app.logger.debug('Method: %s', request.method)
+    app.logger.debug('URL: %s', request.url)
+
+@app.after_request
+def log_response_info(response):
+    app.logger.debug('Response Status: %s', response.status)
+    app.logger.debug('Response Headers: %s', response.headers)
+    return response
+
+# Add a catch-all OPTIONS handler for debugging
+@app.route('/api/admin/orders', methods=['OPTIONS'])
+@app.route('/api/admin/orders/stats', methods=['OPTIONS'])
+def handle_admin_options():
+    app.logger.info("=== ADMIN OPTIONS HIT ===")
+    response = jsonify({'status': 'ok'})
+    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.add('Access-Control-Max-Age', '3600')
+    return response, 200
+
 def setup_logging():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
     os.makedirs(logs_dir, exist_ok=True)
@@ -2313,6 +2339,108 @@ def delete_user(user_id):
         }), 500
     finally:
         conn.close()
+
+@app.route('/api/admin/orders', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_admin_orders():
+    """Get orders for admin panel"""
+    app.logger.info("=== ADMIN ORDERS GET HIT ===")
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check what tables exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cursor.fetchall()
+        app.logger.info(f"Available tables: {tables}")
+        
+        # Try to get orders - adjust this query based on your actual schema
+        cursor.execute('''
+            SELECT 
+                r.id,
+                r.artist,
+                r.title,
+                r.store_price,
+                r.date_sold,
+                r.status_id
+            FROM records r
+            WHERE r.status_id = 3
+            ORDER BY r.date_sold DESC
+            LIMIT 100
+        ''')
+        
+        orders = cursor.fetchall()
+        conn.close()
+        
+        orders_list = []
+        for order in orders:
+            orders_list.append({
+                'id': order['id'],
+                'artist': order['artist'],
+                'title': order['title'],
+                'amount': float(order['store_price']) if order['store_price'] else 0,
+                'date': order['date_sold'],
+                'status': 'completed'
+            })
+        
+        response = jsonify({
+            'status': 'success',
+            'orders': orders_list
+        })
+        
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching orders: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/admin/orders/stats', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_admin_order_stats():
+    """Get order statistics for admin panel"""
+    app.logger.info("=== ADMIN STATS GET HIT ===")
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_orders,
+                SUM(store_price) as total_revenue,
+                AVG(store_price) as avg_order_value,
+                COUNT(CASE WHEN date_sold >= DATE('now', '-7 days') THEN 1 END) as orders_last_7_days,
+                SUM(CASE WHEN date_sold >= DATE('now', '-7 days') THEN store_price ELSE 0 END) as revenue_last_7_days
+            FROM records
+            WHERE status_id = 3 AND date_sold IS NOT NULL
+        ''')
+        
+        stats = cursor.fetchone()
+        conn.close()
+        
+        response = jsonify({
+            'status': 'success',
+            'stats': {
+                'total_orders': stats['total_orders'] or 0,
+                'total_revenue': float(stats['total_revenue'] or 0),
+                'avg_order_value': float(stats['avg_order_value'] or 0),
+                'orders_last_7_days': stats['orders_last_7_days'] or 0,
+                'revenue_last_7_days': float(stats['revenue_last_7_days'] or 0)
+            }
+        })
+        
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching order stats: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/admin/users', methods=['GET'])
 @role_required(['admin'])
