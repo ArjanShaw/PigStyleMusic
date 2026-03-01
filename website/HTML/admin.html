@@ -910,51 +910,6 @@
             margin-bottom: 30px;
         }
 
-        /* YouTube Linker Styles */
-        .youtube-url-input {
-            width: 250px;
-            padding: 6px 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 12px;
-            transition: border-color 0.3s;
-        }
-
-        .youtube-url-input:focus {
-            outline: none;
-            border-color: #ff0000;
-        }
-
-        .selected-row {
-            background-color: #fff3cd !important;
-        }
-
-        .selected-row:hover {
-            background-color: #ffe69c !important;
-        }
-
-        #youtube-linker-table td {
-            vertical-align: middle;
-        }
-
-        .record-image-small {
-            width: 40px;
-            height: 40px;
-            object-fit: cover;
-            border-radius: 4px;
-        }
-
-        .save-indicator {
-            animation: fadeInOut 2s ease-in-out;
-        }
-
-        @keyframes fadeInOut {
-            0% { opacity: 0; transform: scale(0.8); }
-            20% { opacity: 1; transform: scale(1); }
-            80% { opacity: 1; transform: scale(1); }
-            100% { opacity: 0; transform: scale(0.8); }
-        }
-
         /* User Management Styles */
         .user-form-section {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1535,7 +1490,7 @@
             display: flex;
             flex-direction: column;
             gap: 20px;
-            min-width: 0; /* Important for flex children to respect overflow */
+            min-width: 0;
         }
 
         .db-query-editor {
@@ -1631,7 +1586,6 @@
             font-weight: bold;
         }
 
-        /* Fixed table container with horizontal scroll */
         .db-results-table-container {
             overflow-x: auto;
             overflow-y: auto;
@@ -1644,8 +1598,8 @@
         .db-results-table {
             border-collapse: collapse;
             font-size: 13px;
-            min-width: 100%; /* Ensures table fills container width */
-            width: max-content; /* Allows table to expand beyond container */
+            min-width: 100%;
+            width: max-content;
         }
 
         .db-results-table th {
@@ -1659,21 +1613,20 @@
             z-index: 10;
             font-weight: 600;
             color: #333;
-            white-space: nowrap; /* Prevents header text from wrapping */
+            white-space: nowrap;
         }
 
         .db-results-table td {
             padding: 10px 15px;
             border-bottom: 1px solid #eee;
             color: #333;
-            white-space: nowrap; /* Keeps data in one line for better scrolling */
-            min-width: 100px; /* Minimum width for columns */
+            white-space: nowrap;
+            min-width: 100px;
             max-width: 400px;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
-        /* Allow certain columns to wrap if needed */
         .db-results-table td.wrap-content {
             white-space: normal;
             min-width: 200px;
@@ -1815,9 +1768,6 @@
             </div>
             <div class="tab" onclick="switchTab('accessories')">
                 <i class="fas fa-headphones"></i> Accessories
-            </div>
-            <div class="tab" onclick="switchTab('youtube-linker')">
-                <i class="fab fa-youtube" style="color: #ff0000;"></i> YouTube Linker
             </div>
             <div class="tab" onclick="switchTab('price-checker')">
                 <i class="fas fa-chart-line"></i> Price Checker
@@ -2460,131 +2410,6 @@
             </div>
         </div>
 
-        <!-- YouTube Linker Tab -->
-        <div id="youtube-linker-tab" class="tab-content">
-            <h2><i class="fab fa-youtube" style="color: #ff0000;"></i> YouTube Linker</h2>
-            
-            <div class="info-message" style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                <i class="fas fa-info-circle"></i> This tab shows active records without YouTube links. Add YouTube URLs to enable streaming previews.
-            </div>
-            
-            <div class="stats-grid" style="margin-bottom: 20px;">
-                <div class="stat-card">
-                    <h3>Records Without YouTube</h3>
-                    <p class="stat-number" id="total-without-youtube">0</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Selected Records</h3>
-                    <p class="stat-number" id="selected-count">0</p>
-                </div>
-            </div>
-            
-            <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
-                <div class="filter-group" style="flex: 2;">
-                    <label for="youtube-linker-search"><i class="fas fa-search"></i> Search:</label>
-                    <input type="text" id="youtube-linker-search" class="filter-select" placeholder="Search by artist or title..." onkeyup="searchYoutubeLinkerRecords()" style="width: 100%;">
-                </div>
-                <div class="filter-group" style="flex: 1;">
-                    <label for="youtube-linker-filter"><i class="fas fa-filter"></i> Filter:</label>
-                    <select id="youtube-linker-filter" class="filter-select" onchange="filterYoutubeLinkerRecords()" style="width: 100%;">
-                        <option value="all">All Records</option>
-                        <option value="no-youtube">No YouTube URL</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="bulk-update-section" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                <h3 style="margin-bottom: 15px;"><i class="fas fa-layer-group"></i> Bulk Update</h3>
-                <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
-                    <div style="flex: 2;">
-                        <label for="bulk-youtube-url">YouTube URL:</label>
-                        <input type="text" id="bulk-youtube-url" class="filter-select" placeholder="Enter YouTube URL to apply to all selected records" style="width: 100%;">
-                    </div>
-                    <div style="flex: 0 0 auto;">
-                        <button class="btn btn-primary" onclick="bulkUpdateYoutubeUrls()">
-                            <i class="fas fa-check-double"></i> Apply to Selected
-                        </button>
-                    </div>
-                </div>
-                <p class="info-message" style="margin-top: 10px; font-size: 12px;">
-                    <i class="fas fa-info-circle"></i> Select records below, then enter a YouTube URL and click "Apply to Selected"
-                </p>
-            </div>
-            
-            <div class="records-table-container">
-                <table class="records-table" id="youtube-linker-table">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" id="select-all-youtube" onclick="selectAllYoutubeLinkerPage()"></th>
-                            <th>ID</th>
-                            <th>Image</th>
-                            <th>Artist</th>
-                            <th>Title</th>
-                            <th>Genre</th>
-                            <th>Price</th>
-                            <th>YouTube URL</th>
-                            <th>Preview</th>
-                        </tr>
-                    </thead>
-                    <tbody id="youtube-linker-body">
-                        <!-- Records will be loaded here -->
-                    </tbody>
-                </table>
-            </div>
-            
-            <div id="youtube-linker-empty" class="no-records" style="display: none;">
-                <i class="fas fa-check-circle" style="font-size: 48px; margin-bottom: 15px; color: #28a745;"></i>
-                <p>No records found without YouTube links!</p>
-                <p><small>All active records have YouTube URLs assigned.</small></p>
-            </div>
-            
-            <div class="pagination" id="youtube-linker-pagination" style="margin-top: 20px; display: none;">
-                <button class="page-btn" onclick="goToYoutubeLinkerFirstPage()" id="youtube-linker-first-btn" disabled>
-                    <i class="fas fa-angle-double-left"></i>
-                </button>
-                <button class="page-btn" onclick="goToYoutubeLinkerPrevPage()" id="youtube-linker-prev-btn" disabled>
-                    <i class="fas fa-angle-left"></i>
-                </button>
-                
-                <span class="pagination-info">
-                    Page <span id="youtube-linker-current-page">1</span> of <span id="youtube-linker-total-pages">1</span>
-                </span>
-                
-                <button class="page-btn" onclick="goToYoutubeLinkerNextPage()" id="youtube-linker-next-btn" disabled>
-                    <i class="fas fa-angle-right"></i>
-                </button>
-                <button class="page-btn" onclick="goToYoutubeLinkerLastPage()" id="youtube-linker-last-btn" disabled>
-                    <i class="fas fa-angle-double-right"></i>
-                </button>
-                
-                <div class="records-per-page">
-                    <span>Show:</span>
-                    <select id="youtube-linker-page-size" onchange="changeYoutubeLinkerPageSize(parseInt(this.value))">
-                        <option value="20">20</option>
-                        <option value="50" selected>50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="action-buttons" style="margin-top: 20px;">
-                <button class="btn btn-primary" onclick="loadYoutubeLinkerRecords()">
-                    <i class="fas fa-sync-alt"></i> Refresh
-                </button>
-                <button class="btn btn-secondary" onclick="selectAllYoutubeLinkerPage()">
-                    <i class="fas fa-check-double"></i> Select All on Page
-                </button>
-                <button class="btn btn-secondary" onclick="clearYoutubeLinkerSelection()">
-                    <i class="fas fa-times-circle"></i> Clear Selection
-                </button>
-            </div>
-            
-            <div class="loading" id="youtube-linker-loading" style="display: none;">
-                <div class="loading-spinner"></div>
-                <p>Loading records...</p>
-            </div>
-        </div>
-        
         <!-- Price Checker Tab -->
         <div id="price-checker-tab" class="tab-content">
             <h2><i class="fas fa-chart-line"></i> Price Checker</h2>
@@ -3126,8 +2951,6 @@
         <div id="db-query-tab" class="tab-content">
             <h2><i class="fas fa-database"></i> Database Query Tool</h2>
             
-            
-            
             <div class="db-query-container">
                 <!-- Database Tree Panel -->
                 <div class="db-tree-panel">
@@ -3520,7 +3343,6 @@
     <script src="/static/js/artists.js"></script>
     <script src="/static/js/accessories.js"></script>
     <script src="/static/js/refunds.js"></script>
-    <script src="/static/js/youtube-linker.js"></script>
     <script src="/static/js/price-checker.js"></script>
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/db-query.js"></script>
