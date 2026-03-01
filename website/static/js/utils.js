@@ -1,5 +1,5 @@
 // ============================================================================
-// utils.js - Shared Utilities and Core Functions
+// utils.js - Shared Utilities and Core Functions (CLEANED - NO TAB SWITCHING)
 // ============================================================================
 
 // API Utility
@@ -215,82 +215,6 @@ function getStatusIdFromFilter(filterValue) {
         default: return null;
     }
 }
- 
-// Tab Switching
-function switchTab(tabName) {
-    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    
-    const tab = document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`);
-    if (tab) tab.classList.add('active');
-    
-    const content = document.getElementById(`${tabName}-tab`);
-    if (content) content.classList.add('active');
-    
-    // Tab-specific initialization
-    if (tabName === 'add-edit-delete') {
-        if (typeof window.addEditDeleteManager === 'undefined' || !window.addEditDeleteManager) {
-            console.log('Add/Edit/Delete tab activated');
-        }
-    } else if (tabName === 'admin-config') {
-        if (typeof loadConfigTables === 'function') {
-            loadConfigTables();
-        } else {
-            console.error('loadConfigTables function not found');
-        }
-    } else if (tabName === 'check-out') {
-        const searchResults = document.getElementById('search-results');
-        if (searchResults && (!window.currentSearchResults || window.currentSearchResults.length === 0)) {
-            searchResults.innerHTML = `
-                <div style="text-align: center; padding: 40px; color: #666;">
-                    <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
-                    <p>Enter a search term to find records or accessories</p>
-                </div>
-            `;
-        }
-        if (typeof refreshTerminals === 'function') {
-            refreshTerminals();
-        }
-    } else if (tabName === 'receipts') {
-        if (typeof loadSavedReceipts === 'function' && typeof renderReceipts === 'function') {
-            const receipts = loadSavedReceipts();
-            renderReceipts(receipts);
-        }
-    } else if (tabName === 'consignors') {
-        if (typeof loadConsignors === 'function') {
-            loadConsignors();
-        }
-    } else if (tabName === 'artists') {
-        if (typeof loadArtists === 'function') {
-            loadArtists();
-        }
-    } else if (tabName === 'genres') {
-        if (typeof loadGenreMismatches === 'function') {
-            loadGenreMismatches();
-        }
-    } else if (tabName === 'accessories') {
-        if (typeof loadAccessories === 'function') {
-            loadAccessories();
-        }
-    } else if (tabName === 'price-tags') {
-        if (typeof loadRecords === 'function') {
-            loadRecords();
-        }
-    } else if (tabName === 'youtube-linker') {
-        if (typeof initYoutubeLinker === 'function') {
-            initYoutubeLinker();
-        } else {
-            console.error('initYoutubeLinker function not found');
-        }
-    } else if (tabName === 'users') {
-        if (typeof loadUsers === 'function') {
-            loadUsers();
-        }
-    }
-    // Dispatch custom event for tab change
-    const event = new CustomEvent('tabChanged', { detail: { tabName } });
-    document.dispatchEvent(event);
-}
 
 // Global Variables
 let consignorCache = {};
@@ -374,49 +298,64 @@ if (typeof window.Auth === 'undefined') {
     };
 }
 
-// Initialize
+// Initialize - ONLY load config, NO tab switching
 document.addEventListener('DOMContentLoaded', async function() {
+    console.log('🟢 utils.js: DOM loaded, checking authentication');
+     
     const userData = localStorage.getItem('user');
     if (userData) {
         try {
             const user = JSON.parse(userData);
             if (user.role !== 'admin' && user.role !== 'consignor' && user.role !== 'youtube_linker') {
+                alert('🔴 utils.js: Invalid user role, redirecting to home');
                 window.location.href = '/';
                 return;
             }
+            console.log('✅ utils.js: User authenticated:', user.username);
         } catch {
+            alert('🔴 utils.js: Error parsing user data, redirecting to home');
             window.location.href = '/';
             return;
         }
     } else {
+        alert('🔴 utils.js: No user data found, redirecting to home');
         window.location.href = '/';
         return;
     }
     
-    // Load configuration from database FIRST, before anything else
+    // Load configuration from database
     try {
+        console.log('🟡 utils.js: Loading configuration...');
+        
         if (typeof fetchAllConfigValues === 'function') {
             await fetchAllConfigValues();
-            console.log('✅ Configuration loaded successfully:', dbConfigValues);
-            
+            console.log('✅ utils.js: Configuration loaded successfully:', Object.keys(dbConfigValues).length, 'keys');
+             
             // Verify required config values exist
             const requiredConfigs = ['TAX_ENABLED', 'TAX_RATE', 'STORE_NAME'];
             const missingConfigs = requiredConfigs.filter(key => !dbConfigValues[key]);
             
             if (missingConfigs.length > 0) {
-                throw new Error(`Missing required configuration keys: ${missingConfigs.join(', ')}`);
+                console.warn('⚠️ utils.js: Missing config keys:', missingConfigs);
+                alert(`⚠️ utils.js: Missing config keys: ${missingConfigs.join(', ')}`);
+            } else {
+                console.log('✅ utils.js: All required configs present');
             }
-            
-            console.log('✅ TAX_ENABLED:', dbConfigValues['TAX_ENABLED'].value);
-            console.log('✅ TAX_RATE:', dbConfigValues['TAX_RATE'].value);
         } else {
             throw new Error('fetchAllConfigValues function not found');
         }
     } catch (error) {
-        console.error('❌ FATAL: Failed to load configuration:', error);
+        console.error('❌ utils.js: Failed to load configuration:', error);
+        alert(`❌ utils.js: FATAL ERROR - ${error.message}`);
         showMessage(`FATAL ERROR: ${error.message}. The application cannot continue.`, 'error');
         throw error;
     }
     
     window.selectedRecords = new Set();
+    console.log('✅ utils.js: Initialization complete');
+});
+
+// Listen for tab changes but DON'T initialize - just log
+document.addEventListener('tabChanged', function(e) {
+    console.log(`📢 utils.js: Tab changed event received: ${e.detail.tabName}`);
 });
