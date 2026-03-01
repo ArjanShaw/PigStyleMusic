@@ -1750,44 +1750,45 @@
     <div class="admin-container">
         <h1><i class="fas fa-cogs"></i> Admin Panel</h1>
         
+        <!-- Tabs with data-tab attributes (NO onclick) -->
         <div class="tab-container">
-            <div class="tab" onclick="switchTab('add-edit-delete')">
+            <div class="tab" data-tab="add-edit-delete">
                 <i class="fas fa-edit"></i> Add/Edit/Delete
             </div>
-            <div class="tab" onclick="switchTab('check-out')">
+            <div class="tab" data-tab="check-out">
                 <i class="fas fa-shopping-cart"></i> Check Out
             </div>
-            <div class="tab" onclick="switchTab('receipts')">
+            <div class="tab" data-tab="receipts">
                 <i class="fas fa-receipt"></i> Receipts
             </div>
-            <div class="tab" onclick="switchTab('users')">
+            <div class="tab" data-tab="users">
                 <i class="fas fa-users"></i> Users
             </div>
-            <div class="tab" onclick="switchTab('artists')">
+            <div class="tab" data-tab="artists">
                 <i class="fas fa-music"></i> Artists
             </div>
-            <div class="tab" onclick="switchTab('accessories')">
+            <div class="tab" data-tab="accessories">
                 <i class="fas fa-headphones"></i> Accessories
             </div>
-            <div class="tab" onclick="switchTab('price-checker')">
+            <div class="tab" data-tab="price-checker">
                 <i class="fas fa-chart-line"></i> Price Checker
             </div>
-            <div class="tab" onclick="switchTab('admin-config')">
+            <div class="tab" data-tab="admin-config">
                 <i class="fas fa-sliders-h"></i> Admin Config
             </div>
-            <div class="tab" onclick="switchTab('price-tags')">
+            <div class="tab" data-tab="price-tags">
                 <i class="fas fa-tags"></i> Print Price Tags
             </div>
-            <div class="tab" onclick="switchTab('orders')">
+            <div class="tab" data-tab="orders">
                 <i class="fas fa-shopping-bag"></i> Orders
             </div>
-            <div class="tab" onclick="switchTab('db-query')">
+            <div class="tab" data-tab="db-query">
                 <i class="fas fa-database"></i> DB Query
             </div>
         </div>
         
         <!-- Add/Edit/Delete Tab -->
-        <div id="add-edit-delete-tab" class="tab-content active">
+        <div id="add-edit-delete-tab" class="tab-content">
             <div class="inventory-container">
                 <div class="stats-row">
                     <div class="stat-card">
@@ -2087,7 +2088,7 @@
             </div>
         </div>
         
-        <!-- Users Tab (formerly Consignors) -->
+        <!-- Users Tab -->
         <div id="users-tab" class="tab-content">
             <h2><i class="fas fa-users"></i> User Management</h2>
             
@@ -3258,7 +3259,7 @@
         </div>
     </div>
 
-    <!-- Refund Modal (Enhanced) -->
+    <!-- Refund Modal -->
     <div id="refund-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
@@ -3331,10 +3332,16 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     
-    <!-- Admin JavaScript Modules -->
+    <!-- Admin JavaScript Modules - ORDER MATTERS! -->
+    <!-- Tab Manager MUST come first -->
+    <script src="/static/js/tab-manager.js"></script>
+    
+    <!-- Core Utilities -->
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/config-manager.js"></script>
     <script src="/static/js/config-value-manager.js"></script>
+    
+    <!-- Tab Modules -->
     <script src="/static/js/add-edit-delete-manager.js"></script>
     <script src="/static/js/price-tags.js"></script>
     <script src="/static/js/checkout.js"></script>
@@ -3431,6 +3438,20 @@
             console.error('❌ Failed to initialize configuration:', error);
         }
     })();
+
+    // Initialize TabManager after everything is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🟢 DOM fully loaded, initializing TabManager...');
+        setTimeout(function() {
+            if (window.TabManager) {
+                console.log('🚀 Starting TabManager initialization...');
+                window.TabManager.init();
+            } else {
+                console.error('❌ TabManager not found!');
+                alert('❌ ERROR: TabManager not loaded!');
+            }
+        }, 500); // Small delay to ensure all modules are loaded
+    });
 
     // Safety check
     document.addEventListener('DOMContentLoaded', function() {
