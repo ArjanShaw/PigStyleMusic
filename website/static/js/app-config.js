@@ -707,7 +707,7 @@ const Auth = {
                             <i class="fas fa-caret-down"></i>
                         </button>
                         <div class="dropdown-menu" id="dropdown-menu">
-                            ${this.role === 'youtube_linker' ? `
+                            ${this.role === 'youtube_linker' || this.role === 'admin' ? `
                             <a href="/youtube-linker" class="dropdown-item">
                                 <i class="fab fa-youtube"></i> YouTube Linker
                             </a>
