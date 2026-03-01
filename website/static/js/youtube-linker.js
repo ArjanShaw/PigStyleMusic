@@ -1,5 +1,5 @@
 // ============================================================================
-// youtube-linker.js - Complete YouTube Linker Application with Artist Filter
+// youtube-linker.js - Complete YouTube Linker Application with Edit Functionality
 // ============================================================================
 
 class YouTubeLinker {
@@ -8,7 +8,8 @@ class YouTubeLinker {
         
         // State management
         this.state = {
-            recordsWithoutLinks: [],
+            allRecords: [],           // All active records
+            filteredRecords: [],       // Currently filtered records
             currentSearchResults: null,
             currentSearchQuery: null,
             selectedRecord: null,
@@ -16,6 +17,7 @@ class YouTubeLinker {
             filteredOptions: [],
             lastSavedRecord: null,
             searchQuery: '',
+            filterType: 'without',     // 'without', 'with', or 'all'
             selectedArtist: 'All Artists',
             selectedGenre: 'All Genres',
             searchCache: new Map(),
@@ -26,11 +28,13 @@ class YouTubeLinker {
             quotaExceeded: false
         };
         
-        // Get DOM elements - these should all exist now
+        // Get DOM elements
         this.elements = {
             totalWithoutYoutube: document.getElementById('total-without-youtube'),
+            totalWithYoutube: document.getElementById('total-with-youtube'),
             totalActive: document.getElementById('total-active'),
             processedToday: document.getElementById('processed-today'),
+            filterType: document.getElementById('filter-type'),
             searchInput: document.getElementById('search-input'),
             artistFilter: document.getElementById('artist-filter'),
             genreFilter: document.getElementById('genre-filter'),
@@ -44,6 +48,9 @@ class YouTubeLinker {
             recordGenre: document.getElementById('record-genre'),
             recordCatalog: document.getElementById('record-catalog'),
             recordPrice: document.getElementById('record-price'),
+            currentYoutubeBadge: document.getElementById('current-youtube-badge'),
+            currentYoutubeLink: document.getElementById('current-youtube-link'),
+            removeLinkBtn: document.getElementById('remove-link-btn'),
             searchQuery: document.getElementById('search-query'),
             resultsGrid: document.getElementById('results-grid'),
             noResults: document.getElementById('no-results'),
@@ -69,12 +76,15 @@ class YouTubeLinker {
         // Bind methods
         this.init = this.init.bind(this);
         this.loadRecords = this.loadRecords.bind(this);
+        this.handleFilterType = this.handleFilterType.bind(this);
         this.handleSearch = this.handleSearch.bind(this);
         this.handleArtistFilter = this.handleArtistFilter.bind(this);
         this.handleGenreFilter = this.handleGenreFilter.bind(this);
         this.handleRecordSelect = this.handleRecordSelect.bind(this);
         this.searchYouTube = this.searchYouTube.bind(this);
         this.saveYouTubeLink = this.saveYouTubeLink.bind(this);
+        this.updateYouTubeLink = this.updateYouTubeLink.bind(this);
+        this.removeYouTubeLink = this.removeYouTubeLink.bind(this);
         this.updateStats = this.updateStats.bind(this);
         this.clearCache = this.clearCache.bind(this);
         this.refreshSearch = this.refreshSearch.bind(this);
@@ -87,6 +97,9 @@ class YouTubeLinker {
         await this._checkYouTubeConfig();
         
         // Setup event listeners
+        if (this.elements.filterType) {
+            this.elements.filterType.addEventListener('change', () => this.handleFilterType());
+        }
         if (this.elements.searchInput) {
             this.elements.searchInput.addEventListener('input', () => this.handleSearch());
         }
@@ -101,6 +114,9 @@ class YouTubeLinker {
         }
         if (this.elements.refreshSearch) {
             this.elements.refreshSearch.addEventListener('click', () => this.refreshSearch());
+        }
+        if (this.elements.removeLinkBtn) {
+            this.elements.removeLinkBtn.addEventListener('click', () => this.removeYouTubeLink());
         }
         
         // Load records
@@ -142,27 +158,15 @@ class YouTubeLinker {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             
             const data = await response.json();
-            const allRecords = data.records || [];
+            this.state.allRecords = data.records || [];
             
-            console.log(`Loaded ${allRecords.length} total active records`);
-            
-            // Update total active stat
-            if (this.elements.totalActive) {
-                this.elements.totalActive.textContent = allRecords.length;
-            }
-            
-            // Filter records without YouTube links
-            this.state.recordsWithoutLinks = allRecords.filter(record => 
-                !record.youtube_url || record.youtube_url.trim() === ''
-            );
-            
-            console.log(`Found ${this.state.recordsWithoutLinks.length} records without YouTube links`);
+            console.log(`Loaded ${this.state.allRecords.length} total active records`);
             
             // Update stats
             this.updateStats();
             
-            // Build dropdown options
-            this._buildDropdownOptions();
+            // Apply current filter
+            this._applyFilters();
             
         } catch (error) {
             console.error('Error loading records:', error);
@@ -170,8 +174,39 @@ class YouTubeLinker {
         }
     }
     
+    handleFilterType() {
+        if (!this.elements.filterType) return;
+        this.state.filterType = this.elements.filterType.value;
+        this._applyFilters();
+    }
+    
+    _applyFilters() {
+        // First filter by type (with/without youtube)
+        let filtered = [...this.state.allRecords];
+        
+        if (this.state.filterType === 'without') {
+            filtered = filtered.filter(record => 
+                !record.youtube_url || record.youtube_url.trim() === ''
+            );
+        } else if (this.state.filterType === 'with') {
+            filtered = filtered.filter(record => 
+                record.youtube_url && record.youtube_url.trim() !== ''
+            );
+        }
+        // 'all' shows everything
+        
+        // Then apply artist/genre/search filters
+        this.state.filteredRecords = filtered;
+        
+        // Build dropdown options
+        this._buildDropdownOptions();
+        
+        // Update stats display
+        this.updateStats();
+    }
+    
     _buildDropdownOptions() {
-        const records = this.state.recordsWithoutLinks;
+        const records = this.state.filteredRecords;
         
         if (records.length === 0) {
             if (this.elements.recordSelect) this.elements.recordSelect.style.display = 'none';
@@ -189,10 +224,11 @@ class YouTubeLinker {
             const title = record.title || 'Unknown Title';
             const catalog = record.catalog_number || '';
             const genre = record.genre_name || record.genre || 'Unknown';
+            const hasYoutube = record.youtube_url && record.youtube_url.trim() !== '';
             
             const displayText = catalog 
-                ? `${artist} - ${title} [${catalog}]`
-                : `${artist} - ${title}`;
+                ? `${artist} - ${title} [${catalog}] ${hasYoutube ? '📺' : ''}`
+                : `${artist} - ${title} ${hasYoutube ? '📺' : ''}`;
             
             const searchText = `${artist} ${title} ${catalog}`.toLowerCase();
             
@@ -203,6 +239,7 @@ class YouTubeLinker {
                 searchText: searchText,
                 artist: artist,
                 genre: genre,
+                hasYoutube: hasYoutube,
                 recordId: record.id
             };
         });
@@ -223,27 +260,11 @@ class YouTubeLinker {
         this._updateArtistFilter();
         this._updateGenreFilter();
         
-        // Apply initial filters
-        this._applyFilters();
+        // Apply search filter
+        this._applySearchFilter();
     }
     
-    _updateArtistFilter() {
-        if (!this.elements.artistFilter) return;
-        
-        this.elements.artistFilter.innerHTML = this.state.availableArtists.map(artist => 
-            `<option value="${artist}" ${artist === this.state.selectedArtist ? 'selected' : ''}>${escapeHtml(artist)}</option>`
-        ).join('');
-    }
-    
-    _updateGenreFilter() {
-        if (!this.elements.genreFilter) return;
-        
-        this.elements.genreFilter.innerHTML = this.state.availableGenres.map(genre => 
-            `<option value="${genre}" ${genre === this.state.selectedGenre ? 'selected' : ''}>${escapeHtml(genre)}</option>`
-        ).join('');
-    }
-    
-    _applyFilters() {
+    _applySearchFilter() {
         let filtered = [...this.state.dropdownOptions];
         
         // Apply artist filter
@@ -286,6 +307,22 @@ class YouTubeLinker {
         }
     }
     
+    _updateArtistFilter() {
+        if (!this.elements.artistFilter) return;
+        
+        this.elements.artistFilter.innerHTML = this.state.availableArtists.map(artist => 
+            `<option value="${artist}" ${artist === this.state.selectedArtist ? 'selected' : ''}>${this.escapeHtml(artist)}</option>`
+        ).join('');
+    }
+    
+    _updateGenreFilter() {
+        if (!this.elements.genreFilter) return;
+        
+        this.elements.genreFilter.innerHTML = this.state.availableGenres.map(genre => 
+            `<option value="${genre}" ${genre === this.state.selectedGenre ? 'selected' : ''}>${this.escapeHtml(genre)}</option>`
+        ).join('');
+    }
+    
     _updateSelectDropdown() {
         if (!this.elements.recordSelect) return;
         
@@ -295,26 +332,26 @@ class YouTubeLinker {
         }
         
         this.elements.recordSelect.innerHTML = this.state.filteredOptions.map(opt => 
-            `<option value="${opt.value}">${escapeHtml(opt.display)}</option>`
+            `<option value="${opt.value}">${this.escapeHtml(opt.display)}</option>`
         ).join('');
     }
     
     handleSearch() {
         if (!this.elements.searchInput) return;
         this.state.searchQuery = this.elements.searchInput.value;
-        this._applyFilters();
+        this._applySearchFilter();
     }
     
     handleArtistFilter() {
         if (!this.elements.artistFilter) return;
         this.state.selectedArtist = this.elements.artistFilter.value;
-        this._applyFilters();
+        this._applySearchFilter();
     }
     
     handleGenreFilter() {
         if (!this.elements.genreFilter) return;
         this.state.selectedGenre = this.elements.genreFilter.value;
-        this._applyFilters();
+        this._applySearchFilter();
     }
     
     handleRecordSelect(event) {
@@ -345,6 +382,21 @@ class YouTubeLinker {
         }
         if (this.elements.recordPrice) {
             this.elements.recordPrice.textContent = (record.store_price || 0).toFixed(2);
+        }
+        
+        // Show/hide current YouTube badge
+        const hasYoutube = record.youtube_url && record.youtube_url.trim() !== '';
+        if (hasYoutube && this.elements.currentYoutubeBadge && this.elements.currentYoutubeLink) {
+            this.elements.currentYoutubeBadge.style.display = 'flex';
+            this.elements.currentYoutubeLink.href = record.youtube_url;
+            this.elements.currentYoutubeLink.textContent = this._extractYouTubeId(record.youtube_url) || 'View';
+        } else if (this.elements.currentYoutubeBadge) {
+            this.elements.currentYoutubeBadge.style.display = 'none';
+        }
+        
+        // Show/hide remove button
+        if (this.elements.removeLinkBtn) {
+            this.elements.removeLinkBtn.style.display = hasYoutube ? 'inline-block' : 'none';
         }
         
         this.elements.recordDetails.style.display = 'block';
@@ -462,12 +514,19 @@ class YouTubeLinker {
             this.elements.resultsCount.textContent = `(${results.length} results)`;
         }
         
-        // Attach event listeners to save buttons
+        // Attach event listeners to buttons
         results.forEach((result, index) => {
-            const btn = document.getElementById(`save-btn-${index}`);
-            if (btn) {
-                btn.addEventListener('click', () => {
+            const saveBtn = document.getElementById(`save-btn-${index}`);
+            if (saveBtn) {
+                saveBtn.addEventListener('click', () => {
                     this.saveYouTubeLink(result, index);
+                });
+            }
+            
+            const updateBtn = document.getElementById(`update-btn-${index}`);
+            if (updateBtn) {
+                updateBtn.addEventListener('click', () => {
+                    this.updateYouTubeLink(result, index);
                 });
             }
         });
@@ -483,11 +542,28 @@ class YouTubeLinker {
         
         const sessionKey = `saved_${this.state.selectedRecord.id}_${index}`;
         const isSaved = localStorage.getItem(sessionKey) === 'true';
+        const isCurrentLink = this.state.selectedRecord.youtube_url === result.url;
+        
+        const hasExistingLink = this.state.selectedRecord.youtube_url && 
+                                this.state.selectedRecord.youtube_url.trim() !== '';
+        
+        let buttonHtml = '';
+        if (isCurrentLink) {
+            buttonHtml = `<button class="btn-save" disabled><i class="fas fa-check"></i> Current Link</button>`;
+        } else if (hasExistingLink) {
+            buttonHtml = `<button class="btn-update" id="update-btn-${index}"><i class="fas fa-sync-alt"></i> Update to This</button>`;
+        } else {
+            buttonHtml = `<button class="btn-save" id="save-btn-${index}" ${isSaved ? 'disabled' : ''}>
+                <i class="fas fa-${isSaved ? 'check' : 'save'}"></i>
+                ${isSaved ? 'Saved!' : 'Save This Clip'}
+            </button>`;
+        }
         
         return `
-            <div class="video-card">
-                <h5>${escapeHtml(displayTitle)}</h5>
-                <p><i class="fas fa-user"></i> ${escapeHtml(result.channel || 'Unknown')}</p>
+            <div class="video-card ${isCurrentLink ? 'current-link' : ''}">
+                ${isCurrentLink ? '<span class="current-badge">CURRENT</span>' : ''}
+                <h5>${this.escapeHtml(displayTitle)}</h5>
+                <p><i class="fas fa-user"></i> ${this.escapeHtml(result.channel || 'Unknown')}</p>
                 
                 <div class="video-container">
                     <iframe 
@@ -496,10 +572,7 @@ class YouTubeLinker {
                     </iframe>
                 </div>
                 
-                <button class="btn-save" id="save-btn-${index}" ${isSaved ? 'disabled' : ''}>
-                    <i class="fas fa-${isSaved ? 'check' : 'save'}"></i>
-                    ${isSaved ? 'Saved!' : 'Save This Clip'}
-                </button>
+                ${buttonHtml}
             </div>
         `;
     }
@@ -550,14 +623,24 @@ class YouTubeLinker {
                     btn.disabled = true;
                 }
                 
+                // Update record in state
+                this.state.selectedRecord.youtube_url = youtubeUrl;
+                
+                // Update the record in allRecords
+                const recordIndex = this.state.allRecords.findIndex(r => r.id === recordId);
+                if (recordIndex !== -1) {
+                    this.state.allRecords[recordIndex].youtube_url = youtubeUrl;
+                }
+                
                 // Increment processed today
                 this._incrementProcessedToday();
                 
                 this._showMessage('✅ YouTube link saved successfully!', 'success');
                 
-                // Remove record from list after a short delay
+                // Refresh the display
                 setTimeout(() => {
-                    this._removeRecordFromList(recordId);
+                    this._displayRecordDetails(this.state.selectedRecord);
+                    this._applyFilters();
                 }, 1500);
                 
             } else {
@@ -570,46 +653,112 @@ class YouTubeLinker {
         }
     }
     
-    _removeRecordFromList(recordId) {
-        // Remove from dropdown options
-        this.state.dropdownOptions = this.state.dropdownOptions.filter(
-            opt => opt.recordId !== recordId
-        );
+    async updateYouTubeLink(result, index) {
+        if (!this.state.selectedRecord) return;
         
-        // Remove from records without links
-        this.state.recordsWithoutLinks = this.state.recordsWithoutLinks.filter(
-            record => record.id !== recordId
-        );
+        if (!confirm('Are you sure you want to update the YouTube link for this record?')) {
+            return;
+        }
         
-        // Clear from cache
-        this.state.searchCache.delete(recordId);
+        const recordId = this.state.selectedRecord.id;
+        const youtubeUrl = result.url;
         
-        // Rebuild artists and genres if needed
-        const artists = new Set(['All Artists']);
-        const genres = new Set(['All Genres']);
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ youtube_url: youtubeUrl })
+            });
+            
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Update record in state
+                this.state.selectedRecord.youtube_url = youtubeUrl;
+                
+                // Update the record in allRecords
+                const recordIndex = this.state.allRecords.findIndex(r => r.id === recordId);
+                if (recordIndex !== -1) {
+                    this.state.allRecords[recordIndex].youtube_url = youtubeUrl;
+                }
+                
+                // Clear cache for this record
+                this.state.searchCache.delete(recordId);
+                
+                this._showMessage('✅ YouTube link updated successfully!', 'success');
+                
+                // Refresh the display
+                setTimeout(() => {
+                    this._displayRecordDetails(this.state.selectedRecord);
+                    this._applyFilters();
+                }, 1500);
+                
+            } else {
+                throw new Error(data.error || 'Failed to update');
+            }
+            
+        } catch (error) {
+            console.error('Error updating YouTube link:', error);
+            this._showMessage(`Failed to update: ${error.message}`, 'error');
+        }
+    }
+    
+    async removeYouTubeLink() {
+        if (!this.state.selectedRecord) return;
         
-        this.state.dropdownOptions.forEach(opt => {
-            if (opt.artist) artists.add(opt.artist);
-            if (opt.genre) genres.add(opt.genre);
-        });
+        if (!confirm('Are you sure you want to remove the YouTube link from this record?')) {
+            return;
+        }
         
-        this.state.availableArtists = Array.from(artists).sort();
-        this.state.availableGenres = Array.from(genres).sort();
+        const recordId = this.state.selectedRecord.id;
         
-        this._updateArtistFilter();
-        this._updateGenreFilter();
-        
-        // Update stats
-        this.updateStats();
-        
-        // Reapply filters
-        this._applyFilters();
-        
-        // If no records left, show all done message
-        if (this.state.dropdownOptions.length === 0) {
-            if (this.elements.recordSelect) this.elements.recordSelect.style.display = 'none';
-            if (this.elements.recordDetails) this.elements.recordDetails.style.display = 'none';
-            if (this.elements.noRecordsMessage) this.elements.noRecordsMessage.style.display = 'block';
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ youtube_url: '' })
+            });
+            
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Update record in state
+                this.state.selectedRecord.youtube_url = '';
+                
+                // Update the record in allRecords
+                const recordIndex = this.state.allRecords.findIndex(r => r.id === recordId);
+                if (recordIndex !== -1) {
+                    this.state.allRecords[recordIndex].youtube_url = '';
+                }
+                
+                // Clear cache for this record
+                this.state.searchCache.delete(recordId);
+                
+                this._showMessage('✅ YouTube link removed successfully!', 'success');
+                
+                // Refresh the display
+                setTimeout(() => {
+                    this._displayRecordDetails(this.state.selectedRecord);
+                    this._applyFilters();
+                }, 1500);
+                
+            } else {
+                throw new Error(data.error || 'Failed to remove');
+            }
+            
+        } catch (error) {
+            console.error('Error removing YouTube link:', error);
+            this._showMessage(`Failed to remove: ${error.message}`, 'error');
         }
     }
     
@@ -624,8 +773,18 @@ class YouTubeLinker {
     }
     
     updateStats() {
+        const totalActive = this.state.allRecords.length;
+        const withoutYoutube = this.state.allRecords.filter(r => !r.youtube_url || r.youtube_url.trim() === '').length;
+        const withYoutube = totalActive - withoutYoutube;
+        
         if (this.elements.totalWithoutYoutube) {
-            this.elements.totalWithoutYoutube.textContent = this.state.recordsWithoutLinks.length;
+            this.elements.totalWithoutYoutube.textContent = withoutYoutube;
+        }
+        if (this.elements.totalWithYoutube) {
+            this.elements.totalWithYoutube.textContent = withYoutube;
+        }
+        if (this.elements.totalActive) {
+            this.elements.totalActive.textContent = totalActive;
         }
     }
     
@@ -681,7 +840,9 @@ class YouTubeLinker {
         const messageDiv = document.createElement('div');
         messageDiv.className = `${type}-message`;
         messageDiv.innerHTML = `
-            <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+            <i class="fas fa-${type === 'success' ? 'check-circle' : 
+                                type === 'warning' ? 'exclamation-triangle' : 
+                                'exclamation-circle'}"></i>
             <span>${message}</span>
         `;
         
@@ -692,6 +853,13 @@ class YouTubeLinker {
                 messageDiv.remove();
             }
         }, 5000);
+    }
+    
+    escapeHtml(text) {
+        if (!text) return text;
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 }
 
