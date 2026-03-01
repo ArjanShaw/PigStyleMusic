@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+admin.html => <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -808,6 +808,10 @@
 
         .table-scroll-container {
             overflow-x: auto;
+            overflow-y: visible;
+            max-width: 100%;
+            border: 1px solid #eee;
+            border-radius: 4px;
         }
 
         .ebay-listings-table {
@@ -1531,6 +1535,7 @@
             display: flex;
             flex-direction: column;
             gap: 20px;
+            min-width: 0; /* Important for flex children to respect overflow */
         }
 
         .db-query-editor {
@@ -1603,6 +1608,7 @@
             border: 1px solid #ddd;
             border-radius: 8px;
             overflow: hidden;
+            width: 100%;
         }
 
         .db-results-header {
@@ -1625,21 +1631,26 @@
             font-weight: bold;
         }
 
+        /* Fixed table container with horizontal scroll */
         .db-results-table-container {
             overflow-x: auto;
-            max-height: 500px;
             overflow-y: auto;
+            max-height: 500px;
+            width: 100%;
+            border: 1px solid #eee;
+            border-radius: 4px;
         }
 
         .db-results-table {
-            width: 100%;
             border-collapse: collapse;
             font-size: 13px;
+            min-width: 100%; /* Ensures table fills container width */
+            width: max-content; /* Allows table to expand beyond container */
         }
 
         .db-results-table th {
             background: #f8f9fa;
-            padding: 12px;
+            padding: 12px 15px;
             text-align: left;
             border-bottom: 2px solid #ddd;
             position: sticky;
@@ -1648,16 +1659,24 @@
             z-index: 10;
             font-weight: 600;
             color: #333;
+            white-space: nowrap; /* Prevents header text from wrapping */
         }
 
         .db-results-table td {
-            padding: 10px 12px;
+            padding: 10px 15px;
             border-bottom: 1px solid #eee;
             color: #333;
+            white-space: nowrap; /* Keeps data in one line for better scrolling */
+            min-width: 100px; /* Minimum width for columns */
             max-width: 400px;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap;
+        }
+
+        /* Allow certain columns to wrap if needed */
+        .db-results-table td.wrap-content {
+            white-space: normal;
+            min-width: 200px;
         }
 
         .db-results-table tr:hover {
@@ -1757,6 +1776,8 @@
             font-size: 12px;
             margin-top: 10px;
             color: #333;
+            white-space: pre-wrap;
+            word-break: break-all;
         }
     </style>
 </head>
