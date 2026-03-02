@@ -1,5 +1,5 @@
 // ============================================================================
-// utils.js - Shared Utilities and Core Functions (CLEANED - NO TAB SWITCHING)
+// utils.js - Shared Utilities and Core Functions (UPDATED - NO fetchAllConfigValues)
 // ============================================================================
 
 // API Utility
@@ -223,7 +223,10 @@ let filteredRecords = [];
 let currentPage = 1;
 let pageSize = 100;
 let totalPages = 1;
-let dbConfigValues = {};
+
+// REMOVED: dbConfigValues global - no longer used
+// let dbConfigValues = {};
+
 let recentlyPrintedIds = new Set();
 let savedReceipts = [];
 
@@ -298,57 +301,106 @@ if (typeof window.Auth === 'undefined') {
     };
 }
 
-// Initialize - ONLY load config, NO tab switching
+/**
+ * Verify that required configuration values are available
+ * @returns {Promise<boolean>} True if all required configs are available
+ */
+async function verifyRequiredConfigs() {
+    console.log('🟡 utils.js: Verifying required configuration values...');
+    
+    const requiredConfigs = ['TAX_ENABLED', 'TAX_RATE', 'STORE_NAME'];
+    const missingConfigs = [];
+    const configValues = {};
+    
+    for (const key of requiredConfigs) {
+        try {
+            // Try to use getConfigValue from config-value-manager.js
+            if (typeof window.getConfigValue === 'function') {
+                const value = await window.getConfigValue(key);
+                if (value !== null && value !== undefined) {
+                    configValues[key] = value;
+                    console.log(`✅ Config ${key}:`, value);
+                } else {
+                    console.warn(`⚠️ Config ${key} returned null/undefined`);
+                    missingConfigs.push(key);
+                }
+            } 
+            // Fallback to direct API call if getConfigValue not available
+            else {
+                const baseUrl = window.AppConfig?.baseUrl || '';
+                const response = await fetch(`${baseUrl}/config/${key}`, {
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success' && data.config_value !== null) {
+                        configValues[key] = data.config_value;
+                        console.log(`✅ Config ${key} (direct):`, data.config_value);
+                    } else {
+                        missingConfigs.push(key);
+                    }
+                } else {
+                    missingConfigs.push(key);
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Failed to load ${key}:`, error);
+            missingConfigs.push(key);
+        }
+    }
+    
+    if (missingConfigs.length > 0) {
+        console.warn('⚠️ utils.js: Missing config keys:', missingConfigs);
+        showMessage(`⚠️ Some configuration values are missing: ${missingConfigs.join(', ')}. Some features may not work correctly.`, 'warning');
+        return false;
+    } else {
+        console.log('✅ utils.js: All required configs loaded successfully');
+        return true;
+    }
+}
+
+// Initialize
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('🟢 utils.js: DOM loaded, checking authentication');
-     
-    const userData = localStorage.getItem('user');
-    if (userData) {
-        try {
-            const user = JSON.parse(userData);
-            if (user.role !== 'admin' && user.role !== 'consignor' && user.role !== 'youtube_linker') {
-                alert('🔴 utils.js: Invalid user role, redirecting to home');
+    
+    // Check if we're on a page that requires authentication
+    const currentPath = window.location.pathname;
+    const protectedPaths = ['/admin', '/dashboard', '/youtube-linker'];
+    
+    if (protectedPaths.some(path => currentPath.startsWith(path))) {
+        const userData = localStorage.getItem('user');
+        if (userData) {
+            try {
+                const user = JSON.parse(userData);
+                if (user.role !== 'admin' && user.role !== 'consignor' && user.role !== 'youtube_linker') {
+                    console.error('🔴 utils.js: Invalid user role, redirecting to home');
+                    window.location.href = '/';
+                    return;
+                }
+                console.log('✅ utils.js: User authenticated:', user.username);
+            } catch {
+                console.error('🔴 utils.js: Error parsing user data, redirecting to home');
                 window.location.href = '/';
                 return;
             }
-            console.log('✅ utils.js: User authenticated:', user.username);
-        } catch {
-            alert('🔴 utils.js: Error parsing user data, redirecting to home');
-            window.location.href = '/';
-            return;
+        } else {
+            // Don't redirect if we're on a page that might not require auth
+            // Let individual pages handle their own auth checks
+            console.log('🟡 utils.js: No user data found, but page may not require auth');
         }
-    } else {
-        alert('🔴 utils.js: No user data found, redirecting to home');
-        window.location.href = '/';
-        return;
     }
     
-    // Load configuration from database
+    // Verify required configuration values (non-critical, just for logging)
     try {
-        console.log('🟡 utils.js: Loading configuration...');
-        
-        if (typeof fetchAllConfigValues === 'function') {
-            await fetchAllConfigValues();
-            console.log('✅ utils.js: Configuration loaded successfully:', Object.keys(dbConfigValues).length, 'keys');
-             
-            // Verify required config values exist
-            const requiredConfigs = ['TAX_ENABLED', 'TAX_RATE', 'STORE_NAME'];
-            const missingConfigs = requiredConfigs.filter(key => !dbConfigValues[key]);
-            
-            if (missingConfigs.length > 0) {
-                console.warn('⚠️ utils.js: Missing config keys:', missingConfigs);
-                alert(`⚠️ utils.js: Missing config keys: ${missingConfigs.join(', ')}`);
-            } else {
-                console.log('✅ utils.js: All required configs present');
-            }
-        } else {
-            throw new Error('fetchAllConfigValues function not found');
-        }
+        await verifyRequiredConfigs();
     } catch (error) {
-        console.error('❌ utils.js: Failed to load configuration:', error);
-        alert(`❌ utils.js: FATAL ERROR - ${error.message}`);
-        showMessage(`FATAL ERROR: ${error.message}. The application cannot continue.`, 'error');
-        throw error;
+        console.error('❌ utils.js: Failed to verify configuration:', error);
+        // Don't show fatal error - let the app continue with defaults
     }
     
     window.selectedRecords = new Set();
