@@ -82,8 +82,6 @@ function getStatusIdFromFilter(filter) {
     }
 }
 
-// REMOVED - getConfigValue function - now using from config-value-manager.js
-
 // Show loading indicator
 function showLoading(show) {
     const loadingEl = document.getElementById('loading');
@@ -936,17 +934,8 @@ async function confirmPrint() {
         return;
     }
     
-    // CRITICAL: Make sure config is loaded BEFORE generating PDF
-    console.log('Loading configuration before PDF generation...');
-    if (typeof fetchAllConfigValues === 'function') {
-        await fetchAllConfigValues();
-        console.log('Configuration loaded:', window.dbConfigValues);
-    } else {
-        console.error('fetchAllConfigValues not available');
-    }
-    
-    // Verify config is loaded - now using getConfigValue from config-value-manager.js
-    // We'll let the generatePDF function handle the config validation
+    // REMOVED: fetchAllConfigValues call - now handled by getConfigValue in generatePDF
+    console.log('Configuration will be loaded on-demand via getConfigValue() in generatePDF');
     
     console.log('========== STARTING PDF GENERATION ==========');
     console.log(`Generating PDF for ${selectedRecordsList.length} records`);
@@ -1173,18 +1162,23 @@ async function generatePDF(records) {
         
         try {
             // Get configuration values - these will throw if missing
-            const labelWidthMM = await getConfigValue('LABEL_WIDTH_MM');
-            const labelHeightMM = await getConfigValue('LABEL_HEIGHT_MM');
-            const leftMarginMM = await getConfigValue('LEFT_MARGIN_MM');
-            const gutterSpacingMM = await getConfigValue('GUTTER_SPACING_MM');
-            const topMarginMM = await getConfigValue('TOP_MARGIN_MM');
-            const priceFontSize = await getConfigValue('PRICE_FONT_SIZE');
-            const textFontSize = await getConfigValue('TEXT_FONT_SIZE');
-            const barcodeHeightMM = await getConfigValue('BARCODE_HEIGHT');
-            const printBorders = await getConfigValue('PRINT_BORDERS');
-            const priceYPosMM = await getConfigValue('PRICE_Y_POS');
-            const barcodeYPosMM = await getConfigValue('BARCODE_Y_POS');
-            const infoYPosMM = await getConfigValue('INFO_Y_POS');
+            // But we'll use getConfigValue which will handle caching
+            if (typeof window.getConfigValue !== 'function') {
+                throw new Error('getConfigValue function not available. Make sure config-value-manager.js is loaded.');
+            }
+            
+            const labelWidthMM = await window.getConfigValue('LABEL_WIDTH_MM');
+            const labelHeightMM = await window.getConfigValue('LABEL_HEIGHT_MM');
+            const leftMarginMM = await window.getConfigValue('LEFT_MARGIN_MM');
+            const gutterSpacingMM = await window.getConfigValue('GUTTER_SPACING_MM');
+            const topMarginMM = await window.getConfigValue('TOP_MARGIN_MM');
+            const priceFontSize = await window.getConfigValue('PRICE_FONT_SIZE');
+            const textFontSize = await window.getConfigValue('TEXT_FONT_SIZE');
+            const barcodeHeightMM = await window.getConfigValue('BARCODE_HEIGHT');
+            const printBorders = await window.getConfigValue('PRINT_BORDERS');
+            const priceYPosMM = await window.getConfigValue('PRICE_Y_POS');
+            const barcodeYPosMM = await window.getConfigValue('BARCODE_Y_POS');
+            const infoYPosMM = await window.getConfigValue('INFO_Y_POS');
             
             console.log('⚙️ Configuration values (mm):');
             console.log(`   - Label: ${labelWidthMM}mm x ${labelHeightMM}mm`);
@@ -1195,17 +1189,17 @@ async function generatePDF(records) {
             
             // Convert mm to points (1 mm = 2.83465 points)
             const mmToPt = 2.83465;
-            const labelWidthPt = labelWidthMM * mmToPt;
-            const labelHeightPt = labelHeightMM * mmToPt;
-            const leftMarginPt = leftMarginMM * mmToPt;
-            const gutterSpacingPt = gutterSpacingMM * mmToPt;
-            const topMarginPt = topMarginMM * mmToPt;
-            const barcodeHeightPt = barcodeHeightMM * mmToPt;
+            const labelWidthPt = parseFloat(labelWidthMM) * mmToPt;
+            const labelHeightPt = parseFloat(labelHeightMM) * mmToPt;
+            const leftMarginPt = parseFloat(leftMarginMM) * mmToPt;
+            const gutterSpacingPt = parseFloat(gutterSpacingMM) * mmToPt;
+            const topMarginPt = parseFloat(topMarginMM) * mmToPt;
+            const barcodeHeightPt = parseFloat(barcodeHeightMM) * mmToPt;
             
             // Convert Y positions from mm to points
-            const priceYPosPt = priceYPosMM * mmToPt;
-            const barcodeYPosPt = barcodeYPosMM * mmToPt;
-            const infoYPosPt = infoYPosMM * mmToPt;
+            const priceYPosPt = parseFloat(priceYPosMM) * mmToPt;
+            const barcodeYPosPt = parseFloat(barcodeYPosMM) * mmToPt;
+            const infoYPosPt = parseFloat(infoYPosMM) * mmToPt;
             
             console.log('📐 Converted to points:');
             console.log(`   - Label: ${labelWidthPt.toFixed(2)}pt x ${labelHeightPt.toFixed(2)}pt`);
