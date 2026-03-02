@@ -3354,7 +3354,7 @@
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/db-query.js"></script>
     
-    <!-- Config Initializer - Loads database config for all tabs -->
+    <!-- Config Initializer - Uses getConfigValues for all needed configs -->
     <script>
     // Initialize global config object
     window.dbConfigValues = window.dbConfigValues || {};
@@ -3369,20 +3369,81 @@
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
             
+            // Make sure config-value-manager is loaded
+            if (typeof getConfigValue === 'undefined' && typeof getConfigValues === 'undefined') {
+                console.error('config-value-manager.js not loaded yet, waiting...');
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            // Define the config keys needed for initial admin panel display
+            const requiredConfigKeys = [
+                'MIN_STORE_PRICE',
+                'STORE_CAPACITY',
+                'TAX_RATE',
+                'STORE_NAME',
+                'STORE_ADDRESS',
+                'STORE_PHONE',
+                'RECEIPT_FOOTER',
+                'LABEL_WIDTH_MM',
+                'LABEL_HEIGHT_MM',
+                'LEFT_MARGIN_MM',
+                'GUTTER_SPACING_MM',
+                'TOP_MARGIN_MM',
+                'PRICE_FONT_SIZE',
+                'TEXT_FONT_SIZE',
+                'BARCODE_HEIGHT',
+                'PRINT_BORDERS',
+                'PRICE_Y_POS',
+                'BARCODE_Y_POS',
+                'INFO_Y_POS'
+            ];
+            
             let configLoaded = false;
             
-            // Try fetchAllConfigValues if available
-            if (typeof fetchAllConfigValues === 'function') {
-                console.log('Loading config via fetchAllConfigValues()...');
-                const config = await fetchAllConfigValues();
-                if (config && Object.keys(config).length > 0) {
-                    window.dbConfigValues = config;
-                    configLoaded = true;
-                    console.log('✅ Config loaded via fetchAllConfigValues, keys:', Object.keys(window.dbConfigValues));
+            // Try using batch endpoint if getConfigValues exists (preferred)
+            if (typeof getConfigValues === 'function') {
+                console.log('Loading config via getConfigValues()...');
+                try {
+                    const configs = await getConfigValues(requiredConfigKeys);
+                    if (configs && Object.keys(configs).length > 0) {
+                        // Store in global object for backward compatibility
+                        Object.keys(configs).forEach(key => {
+                            window.dbConfigValues[key] = { 
+                                value: configs[key],
+                                description: '' // Descriptions not returned by batch endpoint
+                            };
+                        });
+                        configLoaded = true;
+                        console.log('✅ Config loaded via getConfigValues, keys:', Object.keys(window.dbConfigValues));
+                    }
+                } catch (batchError) {
+                    console.error('Batch config load failed:', batchError);
                 }
             } 
             
-            // If not loaded, try direct API call
+            // If batch failed or not available, try individual fetches
+            if (!configLoaded && typeof getConfigValue === 'function') {
+                console.log('Loading config via individual getConfigValue() calls...');
+                
+                // Load each required config individually
+                for (const key of requiredConfigKeys) {
+                    try {
+                        const value = await getConfigValue(key);
+                        window.dbConfigValues[key] = { 
+                            value: value,
+                            description: '' // Descriptions not available via this method
+                        };
+                    } catch (keyError) {
+                        console.warn(`Could not load config key "${key}":`, keyError.message);
+                        // Continue loading other keys even if one fails
+                    }
+                }
+                
+                configLoaded = true;
+                console.log('✅ Config loaded via individual getConfigValue calls, keys:', Object.keys(window.dbConfigValues));
+            }
+            
+            // If neither method worked, try direct API call as last resort
             if (!configLoaded) {
                 console.log('Making direct API call to /config...');
                 try {
@@ -3398,8 +3459,6 @@
                         const data = await response.json();
                         
                         if (data.status === 'success') {
-                            window.dbConfigValues = {};
-                            
                             if (data.configs) {
                                 Object.keys(data.configs).forEach(key => {
                                     window.dbConfigValues[key] = data.configs[key];
@@ -3431,11 +3490,27 @@
                     detail: { config: window.dbConfigValues }
                 }));
             } else {
-                console.warn('⚠️ Could not load configuration.');
+                console.warn('⚠️ Could not load configuration. Some features may not work correctly.');
+                
+                // Show a warning message to the user
+                const statusEl = document.getElementById('checkout-status-message');
+                if (statusEl) {
+                    statusEl.textContent = 'Warning: Could not load configuration. Some features may be unavailable.';
+                    statusEl.className = 'status-message status-warning';
+                    statusEl.style.display = 'block';
+                }
             }
             
         } catch (error) {
             console.error('❌ Failed to initialize configuration:', error);
+            
+            // Show error message
+            const statusEl = document.getElementById('checkout-status-message');
+            if (statusEl) {
+                statusEl.textContent = `Error loading configuration: ${error.message}`;
+                statusEl.className = 'status-message status-error';
+                statusEl.style.display = 'block';
+            }
         }
     })();
 
@@ -3459,12 +3534,18 @@
         setTimeout(function() {
             if (!window.dbConfigValues || Object.keys(window.dbConfigValues).length === 0) {
                 console.warn('Config still not loaded, attempting final reload...');
-                if (typeof fetchAllConfigValues === 'function') {
-                    fetchAllConfigValues().then(config => {
-                        if (config) {
-                            window.dbConfigValues = config;
-                            console.log('✅ Config loaded on safety check, keys:', Object.keys(window.dbConfigValues));
-                        }
+                if (typeof getConfigValue === 'function') {
+                    // Try to load at least the most critical configs
+                    const criticalKeys = ['MIN_STORE_PRICE', 'STORE_CAPACITY'];
+                    Promise.all(criticalKeys.map(key => 
+                        getConfigValue(key).catch(() => null)
+                    )).then(values => {
+                        criticalKeys.forEach((key, index) => {
+                            if (values[index] !== null) {
+                                window.dbConfigValues[key] = { value: values[index] };
+                            }
+                        });
+                        console.log('✅ Critical configs loaded on safety check:', Object.keys(window.dbConfigValues));
                     }).catch(err => {
                         console.error('Safety check config load failed:', err);
                     });
