@@ -3530,17 +3530,17 @@ def get_catalog_grouped_records():
     conn = get_db()
     cursor = conn.cursor()
 
+    # Get price weighting from config - will raise exception if not found
     cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'CATALOG_PRICE_WEIGHTING'")
     weighting_result = cursor.fetchone()
+    
+    if not weighting_result:
+        raise Exception("CATALOG_PRICE_WEIGHTING not found in app_config table")
+    
+    price_weighting = float(weighting_result[0])
+    price_weighting = max(0.0, min(1.0, price_weighting))
 
-    price_weighting = 0.3
-    if weighting_result:
-        try:
-            price_weighting = float(weighting_result[0])
-            price_weighting = max(0.0, min(1.0, price_weighting))
-        except (ValueError, TypeError):
-            price_weighting = 0.3
-
+    # Only get records with status_id = 2 (active/inventory)
     cursor.execute('''
         SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
                s.status_name
@@ -3550,7 +3550,7 @@ def get_catalog_grouped_records():
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
         AND r.artist != '' AND r.title != ''
         AND r.store_price IS NOT NULL
-        AND r.status_id IN (1, 2)
+        AND r.status_id = 2
     ''')
 
     records = cursor.fetchall()
@@ -3560,26 +3560,20 @@ def get_catalog_grouped_records():
     for record in records:
         record_dict = dict(record)
         if 'store_price' in record_dict:
-            try:
-                record_dict['store_price'] = float(record_dict['store_price'])
-            except (ValueError, TypeError):
-                record_dict['store_price'] = 0
+            record_dict['store_price'] = float(record_dict['store_price'])
         records_list.append(record_dict)
 
-    valid_price_records = [r for r in records_list if isinstance(r.get('store_price'), (int, float))]
-    no_price_records = [r for r in records_list if not isinstance(r.get('store_price'), (int, float))]
-
+    # Filter records with valid prices (should all have prices but check anyway)
+    valid_price_records = [r for r in records_list if isinstance(r.get('store_price'), (int, float)) and r['store_price'] > 0]
+    
     if not valid_price_records:
-        random.shuffle(records_list)
         return jsonify({
             'status': 'success',
-            'count': len(records_list),
-            'groups': [{
-                'label': 'All Records',
-                'min': None,
-                'max': None,
-                'records': records_list
-            }]
+            'count': 0,
+            'price_weighting': price_weighting,
+            'min_price': None,
+            'max_price': None,
+            'groups': []
         })
 
     max_price = max(r['store_price'] for r in valid_price_records)
@@ -3610,19 +3604,18 @@ def get_catalog_grouped_records():
     scored_records.sort(key=lambda x: x['score'], reverse=True)
 
     sorted_records = [item['record'] for item in scored_records]
-    all_records = sorted_records + no_price_records
 
     result_group = {
         'label': '',
         'min': min_price,
         'max': max_price,
         'price_weighting': price_weighting,
-        'records': all_records
+        'records': sorted_records
     }
 
     return jsonify({
         'status': 'success',
-        'count': len(records_list),
+        'count': len(sorted_records),
         'price_weighting': price_weighting,
         'min_price': min_price,
         'max_price': max_price,
