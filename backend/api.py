@@ -2675,7 +2675,7 @@ def get_admin_orders():
         if 'conn' in locals():
             conn.close()
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 @app.route('/api/admin/orders/<int:order_id>/refresh-payment', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -2688,6 +2688,7 @@ def refresh_order_payment(order_id):
         # Get order details
         cursor.execute('''
             SELECT o.id, o.order_number, o.total, o.payment_status, 
+                   o.created_at,
                    oi.record_id, oi.record_title, oi.record_artist
             FROM orders o
             LEFT JOIN order_items oi ON o.id = oi.order_id
@@ -2708,6 +2709,7 @@ def refresh_order_payment(order_id):
             return jsonify({
                 'status': 'success', 
                 'message': 'Order already marked as paid',
+                'payment_found': True,
                 'payment_status': 'paid'
             })
         
@@ -2717,13 +2719,14 @@ def refresh_order_payment(order_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Square access token not configured'}), 500
         
-        # Calculate amount in cents (Square uses cents)
+        # Calculate amount in cents
         amount_cents = int(round(order['total'] * 100))
         
-        # Search for payments around this amount from last 24 hours
+        # Only look for payments created AFTER the order was created
         from datetime import datetime, timedelta
-        end_time = datetime.now().isoformat()
-        start_time = (datetime.now() - timedelta(days=1)).isoformat()
+        order_time = datetime.strptime(order['created_at'], '%Y-%m-%d %H:%M:%S')
+        start_time = order_time.isoformat()
+        end_time = (datetime.now() + timedelta(hours=1)).isoformat()
         
         headers = {
             'Authorization': f'Bearer {access_token}',
@@ -2731,7 +2734,7 @@ def refresh_order_payment(order_id):
             'Content-Type': 'application/json'
         }
         
-        # First try: search by amount
+        # Search for payments
         response = requests.get(
             f'https://connect.squareup.com/v2/payments',
             headers=headers,
@@ -2748,22 +2751,34 @@ def refresh_order_payment(order_id):
         
         payments = response.json().get('payments', [])
         
-        # Find matching payment
+        # Find matching payment - MUST match ALL criteria
         matching_payment = None
         for payment in payments:
             payment_amount = payment.get('amount_money', {}).get('amount', 0)
             payment_status = payment.get('status')
+            payment_time = payment.get('created_at')
             
-            # Check if amount matches (within 1 cent tolerance)
-            if abs(payment_amount - amount_cents) <= 1 and payment_status == 'COMPLETED':
-                # Check metadata for order_id if available
-                metadata = payment.get('metadata', {})
-                if metadata.get('order_id') == str(order_id) or metadata.get('order_number') == order.get('order_number'):
-                    matching_payment = payment
-                    break
-                # If no metadata match but amount matches, use it
-                elif not matching_payment:
-                    matching_payment = payment
+            # Log for debugging
+            app.logger.info(f"Checking payment {payment.get('id')}: amount={payment_amount}, status={payment_status}")
+            
+            # Check exact amount match (must be identical)
+            if payment_amount != amount_cents:
+                continue
+                
+            # Must be completed
+            if payment_status != 'COMPLETED':
+                continue
+            
+            # Check metadata for order_id or order_number
+            metadata = payment.get('metadata', {})
+            metadata_order_id = metadata.get('order_id')
+            metadata_order_number = metadata.get('order_number')
+            
+            # STRICT matching - must have matching metadata
+            if (metadata_order_id == str(order_id) or 
+                metadata_order_number == order.get('order_number')):
+                matching_payment = payment
+                break
         
         if matching_payment:
             # Update order
@@ -2809,7 +2824,6 @@ def refresh_order_payment(order_id):
         app.logger.error(f"Error refreshing order payment: {e}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 
 @app.route('/api/admin/orders/stats', methods=['GET'])
