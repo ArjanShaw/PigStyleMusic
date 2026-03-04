@@ -2676,6 +2676,142 @@ def get_admin_orders():
             conn.close()
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/admin/orders/<int:order_id>/refresh-payment', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def refresh_order_payment(order_id):
+    """Manually check Square for payment status and update order"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get order details
+        cursor.execute('''
+            SELECT o.id, o.order_number, o.total, o.payment_status, 
+                   oi.record_id, oi.record_title, oi.record_artist
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            WHERE o.id = ?
+        ''', (order_id,))
+        
+        rows = cursor.fetchall()
+        if not rows:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        order = dict(rows[0])
+        record_ids = [row['record_id'] for row in rows if row['record_id']]
+        
+        # If already paid, no need to check
+        if order['payment_status'] == 'paid':
+            conn.close()
+            return jsonify({
+                'status': 'success', 
+                'message': 'Order already marked as paid',
+                'payment_status': 'paid'
+            })
+        
+        # Query Square for recent payments
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Square access token not configured'}), 500
+        
+        # Calculate amount in cents (Square uses cents)
+        amount_cents = int(round(order['total'] * 100))
+        
+        # Search for payments around this amount from last 24 hours
+        from datetime import datetime, timedelta
+        end_time = datetime.now().isoformat()
+        start_time = (datetime.now() - timedelta(days=1)).isoformat()
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Square-Version': '2026-01-22',
+            'Content-Type': 'application/json'
+        }
+        
+        # First try: search by amount
+        response = requests.get(
+            f'https://connect.squareup.com/v2/payments',
+            headers=headers,
+            params={
+                'limit': 100,
+                'begin_time': start_time,
+                'end_time': end_time
+            }
+        )
+        
+        if response.status_code != 200:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Failed to query Square'}), 400
+        
+        payments = response.json().get('payments', [])
+        
+        # Find matching payment
+        matching_payment = None
+        for payment in payments:
+            payment_amount = payment.get('amount_money', {}).get('amount', 0)
+            payment_status = payment.get('status')
+            
+            # Check if amount matches (within 1 cent tolerance)
+            if abs(payment_amount - amount_cents) <= 1 and payment_status == 'COMPLETED':
+                # Check metadata for order_id if available
+                metadata = payment.get('metadata', {})
+                if metadata.get('order_id') == str(order_id) or metadata.get('order_number') == order.get('order_number'):
+                    matching_payment = payment
+                    break
+                # If no metadata match but amount matches, use it
+                elif not matching_payment:
+                    matching_payment = payment
+        
+        if matching_payment:
+            # Update order
+            cursor.execute('''
+                UPDATE orders 
+                SET payment_status = 'paid', 
+                    order_status = 'confirmed',
+                    square_payment_id = ?,
+                    square_order_id = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND payment_status != 'paid'
+            ''', (
+                matching_payment.get('id'),
+                matching_payment.get('order_id'),
+                order_id
+            ))
+            
+            if cursor.rowcount > 0 and record_ids:
+                # Mark records as sold
+                placeholders = ','.join('?' for _ in record_ids)
+                cursor.execute(f'''
+                    UPDATE records
+                    SET status_id = 3, date_sold = CURRENT_DATE
+                    WHERE id IN ({placeholders})
+                ''', record_ids)
+            
+            conn.commit()
+            message = f"Order #{order_id} marked as paid (Square payment: {matching_payment.get('id')})"
+            app.logger.info(message)
+        else:
+            message = f"No matching payment found for Order #{order_id}"
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': message,
+            'payment_found': bool(matching_payment),
+            'payment_status': 'paid' if matching_payment else 'pending'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error refreshing order payment: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+
 @app.route('/api/admin/orders/stats', methods=['GET'])
 @login_required
 @role_required(['admin'])
