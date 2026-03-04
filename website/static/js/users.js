@@ -1,4 +1,4 @@
-// users.js - Clean version with flag color support
+// users.js - Clean version with flag color support and Seller type
 
 // ============================================================================
 // users.js - Users Tab Functionality
@@ -39,6 +39,55 @@ const UsersModule = (function() {
         document.getElementById('new-role').value = 'consignor';
         document.getElementById('new-flag-color').value = '';
         document.getElementById('password-strength').innerHTML = '';
+        
+        // Show/hide fields based on role
+        toggleSellerFields('consignor');
+    };
+    
+    // New function to toggle field requirements based on role
+    window.toggleSellerFields = function(role) {
+        const emailField = document.getElementById('new-email');
+        const passwordField = document.getElementById('new-password');
+        const emailLabel = document.querySelector('label[for="new-email"]');
+        const passwordLabel = document.querySelector('label[for="new-password"]');
+        
+        if (role === 'seller') {
+            // For sellers, only username is mandatory, others are optional
+            if (emailField) {
+                emailField.required = false;
+                emailField.placeholder = 'Email (optional for sellers)';
+            }
+            if (passwordField) {
+                passwordField.required = false;
+                passwordField.placeholder = 'Password (optional for sellers)';
+            }
+            
+            // Add visual indicator to labels
+            if (emailLabel && !emailLabel.innerHTML.includes('(optional)')) {
+                emailLabel.innerHTML = emailLabel.innerHTML.replace(' *', ' <span class="optional-badge" style="font-size: 11px; color: #ffd700; font-weight: normal;">(optional)</span>');
+            }
+            if (passwordLabel && !passwordLabel.innerHTML.includes('(optional)')) {
+                passwordLabel.innerHTML = passwordLabel.innerHTML.replace(' *', ' <span class="optional-badge" style="font-size: 11px; color: #ffd700; font-weight: normal;">(optional)</span>');
+            }
+        } else {
+            // For other roles, restore normal requirements
+            if (emailField) {
+                emailField.required = true;
+                emailField.placeholder = 'Enter email';
+            }
+            if (passwordField) {
+                passwordField.required = true;
+                passwordField.placeholder = 'Enter password';
+            }
+            
+            // Restore asterisks
+            if (emailLabel) {
+                emailLabel.innerHTML = emailLabel.innerHTML.replace(/ <span class="optional-badge".*<\/span>/, '') + ' *';
+            }
+            if (passwordLabel) {
+                passwordLabel.innerHTML = passwordLabel.innerHTML.replace(/ <span class="optional-badge".*<\/span>/, '') + ' *';
+            }
+        }
     };
     
     window.createUser = async function() {
@@ -50,17 +99,31 @@ const UsersModule = (function() {
         const role = document.getElementById('new-role').value;
         const flagColor = document.getElementById('new-flag-color').value.trim();
         
-        if (!username || !email || !password) {
-            alert('Username, email, and password are required');
+        if (!username) {
+            alert('Username is required');
             return;
         }
         
-        if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+        // Validation based on role
+        if (role !== 'seller') {
+            if (!email) {
+                alert('Email is required for this role');
+                return;
+            }
+            if (!password) {
+                alert('Password is required for this role');
+                return;
+            }
+        }
+        
+        // Email validation only if email is provided
+        if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
             alert('Please enter a valid email address');
             return;
         }
         
-        if (password.length < 8) {
+        // Password validation only if password is provided
+        if (password && password.length < 8) {
             alert('Password must be at least 8 characters long');
             return;
         }
@@ -69,27 +132,31 @@ const UsersModule = (function() {
         loading.style.display = 'block';
         
         try {
+            const userData = {
+                username: username,
+                role: role,
+                flag_color: flagColor || null
+            };
+            
+            // Only add optional fields if they have values
+            if (email) userData.email = email;
+            if (password) userData.password = password;
+            if (fullName) userData.full_name = fullName;
+            if (initials) userData.initials = initials;
+            
             const response = await fetch(`${AppConfig.baseUrl}/users`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    username: username,
-                    email: email,
-                    password: password,
-                    role: role,
-                    full_name: fullName,
-                    initials: initials,
-                    flag_color: flagColor || null
-                })
+                body: JSON.stringify(userData)
             });
             
             const data = await response.json();
             
             if (data.status === 'success') {
-                alert(`User created successfully!`);
+                alert(`Seller "${username}" created successfully!`);
                 window.clearUserForm();
                 window.loadUsers();
             } else {
@@ -268,6 +335,7 @@ const UsersModule = (function() {
         
         return colorMap[color.toLowerCase()] || `background-color: ${color}; color: white; border: 1px solid #666;`;
     }
+    
     function renderUsers(users) {
         const tbody = document.getElementById('users-body');
         if (!users.length) {
@@ -277,17 +345,21 @@ const UsersModule = (function() {
         
         let html = '';
         users.forEach(u => {
-            const roleClass = u.role === 'admin' ? 'admin' : (u.role === 'youtube_linker' ? 'youtube_linker' : 'consignor');
+            let roleClass = '';
+            if (u.role === 'admin') roleClass = 'admin';
+            else if (u.role === 'youtube_linker') roleClass = 'youtube_linker';
+            else if (u.role === 'seller') roleClass = 'seller';
+            else roleClass = 'consignor';
             
             html += `<tr>
                 <td>${u.id}</td>
                 <td>${escapeHtml(u.username)}</td>
-                <td>${escapeHtml(u.email)}</td>
-                <td>${escapeHtml(u.full_name)}</td>
-                <td>${escapeHtml(u.initials)}</td>
+                <td>${escapeHtml(u.email) || '<span style="color: #999;">—</span>'}</td>
+                <td>${escapeHtml(u.full_name) || '<span style="color: #999;">—</span>'}</td>
+                <td>${escapeHtml(u.initials) || '<span style="color: #999;">—</span>'}</td>
                 <td><span class="role-badge ${roleClass}">${u.role.replace('_', ' ')}</span></td>
                 <td>
-                    ${escapeHtml(u.flag_color)}
+                    ${u.flag_color ? `<span class="flag-badge" style="${getFlagColorStyle(u.flag_color)}">${u.flag_color}</span>` : '<span style="color: #999;">—</span>'}
                 </td>
                 <td>$${u.owed.toFixed(2)}</td>
                 <td>${u.recordsSold}</td>
@@ -371,7 +443,7 @@ const UsersModule = (function() {
                                 <input type="text" id="edit-username" value="${escapeHtml(user.username)}" placeholder="Enter username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
                             </div>
                             <div class="user-form-group">
-                                <label for="edit-email" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Email *</label>
+                                <label for="edit-email" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Email ${user.role === 'seller' ? '<span class="optional-badge" style="font-size: 11px; color: #666; font-weight: normal;">(optional)</span>' : '*'}</label>
                                 <input type="email" id="edit-email" value="${escapeHtml(user.email)}" placeholder="Enter email" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
                             </div>
                             <div class="user-form-group">
@@ -384,8 +456,9 @@ const UsersModule = (function() {
                             </div>
                             <div class="user-form-group">
                                 <label for="edit-role" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Role *</label>
-                                <select id="edit-role" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                                <select id="edit-role" onchange="toggleEditSellerFields(this.value)" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
                                     <option value="consignor" ${user.role === 'consignor' ? 'selected' : ''}>Consignor</option>
+                                    <option value="seller" ${user.role === 'seller' ? 'selected' : ''}>Seller</option>
                                     <option value="youtube_linker" ${user.role === 'youtube_linker' ? 'selected' : ''}>YouTube Linker</option>
                                     <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
                                 </select>
@@ -394,12 +467,12 @@ const UsersModule = (function() {
                                 <label for="edit-flag-color" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Flag Color</label>
                                 <input type="text" id="edit-flag-color" value="${escapeHtml(user.flag_color)}" placeholder="e.g., blue, #ff0000, white_yellow" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
                                 <p class="hint" style="font-size: 12px; color: #666; margin-top: 5px;">
-                                    <i class="fas fa-info-circle"></i> Enter any color name or hex code (e.g., blue, #ff0000, white_yellow)
+                                    <i class="fas fa-info-circle"></i> Enter any color name or hex code
                                 </p>
                             </div>
                             <div class="user-form-group">
-                                <label for="edit-password" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">New Password (leave blank to keep current)</label>
-                                <input type="password" id="edit-password" placeholder="Enter new password" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                                <label for="edit-password" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">New Password ${user.role === 'seller' ? '<span class="optional-badge" style="font-size: 11px; color: #666; font-weight: normal;">(optional)</span>' : ''}</label>
+                                <input type="password" id="edit-password" placeholder="Enter new password (leave blank to keep current)" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
                                 <div id="edit-password-strength" class="password-strength" style="color: #666;"></div>
                             </div>
                         </div>
@@ -446,6 +519,41 @@ const UsersModule = (function() {
             strengthDiv.innerHTML = strengthMessages[index];
             strengthDiv.className = `password-strength ${strengthClasses[index]}`;
         });
+        
+        // Initial toggle for edit modal
+        toggleEditSellerFields(user.role);
+    };
+    
+    window.toggleEditSellerFields = function(role) {
+        const emailField = document.getElementById('edit-email');
+        const passwordField = document.getElementById('edit-password');
+        const emailLabel = document.querySelector('label[for="edit-email"]');
+        
+        if (role === 'seller') {
+            if (emailField) {
+                emailField.required = false;
+                emailField.placeholder = 'Email (optional for sellers)';
+            }
+            if (passwordField) {
+                passwordField.required = false;
+                passwordField.placeholder = 'New password (optional for sellers)';
+            }
+            if (emailLabel && !emailLabel.innerHTML.includes('(optional)')) {
+                emailLabel.innerHTML = emailLabel.innerHTML.replace('*', '<span class="optional-badge" style="font-size: 11px; color: #666; font-weight: normal;">(optional)</span>');
+            }
+        } else {
+            if (emailField) {
+                emailField.required = true;
+                emailField.placeholder = 'Enter email';
+            }
+            if (passwordField) {
+                passwordField.required = false; // Password is always optional in edit
+                passwordField.placeholder = 'Enter new password (leave blank to keep current)';
+            }
+            if (emailLabel) {
+                emailLabel.innerHTML = emailLabel.innerHTML.replace(/<span class="optional-badge".*<\/span>/, '*');
+            }
+        }
     };
     
     window.closeEditUserModal = function() {
@@ -462,16 +570,18 @@ const UsersModule = (function() {
         const flagColor = document.getElementById('edit-flag-color').value.trim();
         const password = document.getElementById('edit-password').value;
         
-        if (!username || !email) {
-            alert('Username and email are required');
+        if (!username) {
+            alert('Username is required');
             return;
         }
         
-        if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+        // Email validation only if email is provided and role requires it
+        if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
             alert('Please enter a valid email address');
             return;
         }
         
+        // Password validation only if password is provided
         if (password && password.length < 8) {
             alert('Password must be at least 8 characters long if changing');
             return;
@@ -483,16 +593,15 @@ const UsersModule = (function() {
         try {
             const updateData = {
                 username: username,
-                email: email,
                 role: role,
-                full_name: fullName,
-                initials: initials,
                 flag_color: flagColor || null
             };
             
-            if (password) {
-                updateData.password = password;
-            }
+            // Only add optional fields if they have values
+            if (email) updateData.email = email;
+            if (fullName) updateData.full_name = fullName;
+            if (initials) updateData.initials = initials;
+            if (password) updateData.password = password;
             
             const response = await fetch(`${AppConfig.baseUrl}/users/${userId}`, {
                 method: 'PUT',
@@ -649,7 +758,24 @@ const UsersModule = (function() {
     
     return {
         init: function() {
-            // Silent init
+            console.log('UsersModule initialized with Seller support');
+            
+            // Add role change listener to the new role select
+            const roleSelect = document.getElementById('new-role');
+            if (roleSelect) {
+                // Add seller option if not present
+                let sellerOption = roleSelect.querySelector('option[value="seller"]');
+                if (!sellerOption) {
+                    const option = document.createElement('option');
+                    option.value = 'seller';
+                    option.textContent = 'Seller';
+                    roleSelect.appendChild(option);
+                }
+                
+                roleSelect.addEventListener('change', function() {
+                    window.toggleSellerFields(this.value);
+                });
+            }
         }
     };
 })();
