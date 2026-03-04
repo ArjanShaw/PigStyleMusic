@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+shopping.html => <!DOCTYPE html>
 <html lang='en'>
 <head>
     <meta charset='UTF-8'>
@@ -672,6 +672,131 @@
             font-size: 64px;
             color: #dc3545;
             margin-bottom: 20px;
+        }
+
+        /* Shipping options modal styles */
+        .shipping-modal {
+            max-width: 450px;
+            text-align: left;
+        }
+
+        .shipping-option {
+            display: block;
+            margin-bottom: 15px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .shipping-option:hover {
+            border-color: #ff6b6b;
+            background: #fff9f9;
+        }
+
+        .shipping-option.selected {
+            border-color: #ff6b6b;
+            background: #fff0f0;
+        }
+
+        .shipping-option input[type="radio"] {
+            margin-right: 10px;
+            accent-color: #ff6b6b;
+        }
+
+        .shipping-option label {
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .shipping-form {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .shipping-form h4 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+            font-size: 13px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #ff6b6b;
+            box-shadow: 0 0 0 2px rgba(255,107,107,0.1);
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .modal-actions button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .modal-actions .cancel-btn {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .modal-actions .cancel-btn:hover {
+            background: #ddd;
+        }
+
+        .modal-actions .continue-btn {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .modal-actions .continue-btn:hover {
+            background: #ff5252;
+        }
+
+        .modal-actions .continue-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
     </style>
 </head>
@@ -1577,11 +1702,189 @@
 
         // ==================== CHECKOUT FUNCTIONS ====================
 
+        // Show shipping/pickup options modal
+        function showShippingOptions() {
+            return new Promise((resolve) => {
+                // Create modal overlay
+                const modal = document.createElement('div');
+                modal.className = 'payment-modal-overlay';
+                modal.style.zIndex = '4000'; // Higher than other modals
+                
+                modal.innerHTML = `
+                    <div class="payment-modal shipping-modal">
+                        <h2 style="margin-bottom: 20px; color: #333; text-align: center;">Shipping Options</h2>
+                        
+                        <div class="shipping-option" id="pickupOption">
+                            <input type="radio" name="shippingOption" id="pickupRadio" value="pickup" checked>
+                            <label for="pickupRadio">Pick up in store</label>
+                            <p style="margin: 5px 0 0 25px; font-size: 13px; color: #666;">Free - Available during business hours</p>
+                        </div>
+                        
+                        <div class="shipping-option" id="shipOption">
+                            <input type="radio" name="shippingOption" id="shipRadio" value="ship">
+                            <label for="shipRadio">Ship my order</label>
+                            <p style="margin: 5px 0 0 25px; font-size: 13px; color: #666;">Shipping costs calculated at checkout</p>
+                        </div>
+                        
+                        <div id="shippingFormContainer" style="display: none;">
+                            <div class="shipping-form">
+                                <h4>Shipping Information</h4>
+                                <div class="form-group">
+                                    <label for="fullName">Full Name *</label>
+                                    <input type="text" id="fullName" placeholder="John Doe">
+                                </div>
+                                <div class="form-group">
+                                    <label for="address">Street Address *</label>
+                                    <input type="text" id="address" placeholder="123 Main St">
+                                </div>
+                                <div class="form-group">
+                                    <label for="apt">Apartment/Suite (optional)</label>
+                                    <input type="text" id="apt" placeholder="Apt 4B">
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="city">City *</label>
+                                        <input type="text" id="city" placeholder="New York">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="state">State *</label>
+                                        <input type="text" id="state" placeholder="NY">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="zip">ZIP Code *</label>
+                                        <input type="text" id="zip" placeholder="10001">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="country">Country *</label>
+                                        <input type="text" id="country" placeholder="USA" value="USA">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="email">Email *</label>
+                                    <input type="email" id="email" placeholder="john@example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label for="phone">Phone (optional)</label>
+                                    <input type="tel" id="phone" placeholder="(555) 123-4567">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-actions">
+                            <button class="cancel-btn" id="cancelShipping">Cancel</button>
+                            <button class="continue-btn" id="continueShipping">Continue to Payment</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                // Get elements
+                const pickupOption = document.getElementById('pickupOption');
+                const shipOption = document.getElementById('shipOption');
+                const pickupRadio = document.getElementById('pickupRadio');
+                const shipRadio = document.getElementById('shipRadio');
+                const shippingFormContainer = document.getElementById('shippingFormContainer');
+                const continueBtn = document.getElementById('continueShipping');
+                const cancelBtn = document.getElementById('cancelShipping');
+                
+                // Handle option selection
+                pickupOption.addEventListener('click', () => {
+                    pickupRadio.checked = true;
+                    shipRadio.checked = false;
+                    shippingFormContainer.style.display = 'none';
+                    pickupOption.classList.add('selected');
+                    shipOption.classList.remove('selected');
+                });
+                
+                shipOption.addEventListener('click', () => {
+                    shipRadio.checked = true;
+                    pickupRadio.checked = false;
+                    shippingFormContainer.style.display = 'block';
+                    shipOption.classList.add('selected');
+                    pickupOption.classList.remove('selected');
+                });
+                
+                // Handle continue button
+                continueBtn.addEventListener('click', () => {
+                    const isShip = shipRadio.checked;
+                    
+                    if (isShip) {
+                        // Validate shipping form
+                        const fullName = document.getElementById('fullName')?.value.trim();
+                        const address = document.getElementById('address')?.value.trim();
+                        const city = document.getElementById('city')?.value.trim();
+                        const state = document.getElementById('state')?.value.trim();
+                        const zip = document.getElementById('zip')?.value.trim();
+                        const country = document.getElementById('country')?.value.trim();
+                        const email = document.getElementById('email')?.value.trim();
+                        
+                        if (!fullName || !address || !city || !state || !zip || !country || !email) {
+                            showNotification('Please fill in all required fields', 'error');
+                            return;
+                        }
+                        
+                        if (!email.includes('@') || !email.includes('.')) {
+                            showNotification('Please enter a valid email address', 'error');
+                            return;
+                        }
+                    }
+                    
+                    // Collect shipping data (but don't do anything with it)
+                    const shippingData = {
+                        method: isShip ? 'ship' : 'pickup',
+                        ...(isShip && {
+                            fullName: document.getElementById('fullName')?.value.trim(),
+                            address: document.getElementById('address')?.value.trim(),
+                            apt: document.getElementById('apt')?.value.trim(),
+                            city: document.getElementById('city')?.value.trim(),
+                            state: document.getElementById('state')?.value.trim(),
+                            zip: document.getElementById('zip')?.value.trim(),
+                            country: document.getElementById('country')?.value.trim(),
+                            email: document.getElementById('email')?.value.trim(),
+                            phone: document.getElementById('phone')?.value.trim()
+                        })
+                    };
+                    
+                    console.log('Shipping data collected:', shippingData); // For debugging
+                    
+                    // Close modal and continue
+                    modal.remove();
+                    resolve(shippingData);
+                });
+                
+                // Handle cancel button
+                cancelBtn.addEventListener('click', () => {
+                    modal.remove();
+                    resolve(null); // Cancelled
+                });
+                
+                // Handle click outside
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        modal.remove();
+                        resolve(null);
+                    }
+                });
+            });
+        }
+
         // Process checkout (all Square handling happens on backend)
         async function processCheckout() {
             try {
                 // Close cart drawer
                 closeCartDrawer();
+                
+                // Show shipping options modal
+                const shippingData = await showShippingOptions();
+                
+                // If user cancelled, stop checkout
+                if (!shippingData) {
+                    openCartDrawer(); // Reopen cart
+                    return;
+                }
                 
                 // Show processing modal
                 const modal = document.createElement('div');
@@ -1596,6 +1899,7 @@
                 document.body.appendChild(modal);
                 
                 addDebug('Sending cart to backend for checkout...');
+                addDebug('Shipping data:', shippingData);
                 
                 // Send cart to backend
                 const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
@@ -1612,7 +1916,8 @@
                             price: item.price
                         })),
                         total: cart.total,
-                        currency: 'USD'
+                        currency: 'USD',
+                        shipping: shippingData // Include shipping data (but not used)
                     })
                 });
                 
