@@ -17,6 +17,7 @@ shopping.html => <!DOCTYPE html>
     
     <link rel="stylesheet" href="/static/css/catalog.css">
     <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/config-value-manager.js"></script>
     
     <style>
         /* Additional styles for copy count and price range */
@@ -798,6 +799,13 @@ shopping.html => <!DOCTYPE html>
             background: #ccc;
             cursor: not-allowed;
         }
+
+        .shipping-cost-display {
+            margin: 10px 0 0 25px;
+            font-size: 14px;
+            color: #28a745;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -895,6 +903,9 @@ shopping.html => <!DOCTYPE html>
             total: 0
         };
 
+        // Shipping cost - will be set from config
+        let shippingCost = 0;
+
         // Debug mode
         let debugMode = true;
 
@@ -959,7 +970,7 @@ shopping.html => <!DOCTYPE html>
                 `;
                 cartFooter.style.display = 'none';
             } else {
-                // Calculate total
+                // Calculate total (subtotal only, shipping added later)
                 cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                 
                 // Build items HTML
@@ -1724,6 +1735,7 @@ shopping.html => <!DOCTYPE html>
                             <input type="radio" name="shippingOption" id="shipRadio" value="ship">
                             <label for="shipRadio">Ship my order</label>
                             <p style="margin: 5px 0 0 25px; font-size: 13px; color: #666;">Shipping costs calculated at checkout</p>
+                            <div class="shipping-cost-display">+ $${shippingCost.toFixed(2)} shipping</div>
                         </div>
                         
                         <div id="shippingFormContainer" style="display: none;">
@@ -1832,9 +1844,10 @@ shopping.html => <!DOCTYPE html>
                         }
                     }
                     
-                    // Collect shipping data (but don't do anything with it)
+                    // Collect shipping data
                     const shippingData = {
                         method: isShip ? 'ship' : 'pickup',
+                        cost: isShip ? shippingCost : 0,
                         ...(isShip && {
                             fullName: document.getElementById('fullName')?.value.trim(),
                             address: document.getElementById('address')?.value.trim(),
@@ -1901,6 +1914,9 @@ shopping.html => <!DOCTYPE html>
                 addDebug('Sending cart to backend for checkout...');
                 addDebug('Shipping data:', shippingData);
                 
+                // Calculate total with shipping
+                const totalWithShipping = cart.total + (shippingData.cost || 0);
+                
                 // Send cart to backend
                 const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
                     method: 'POST',
@@ -1915,9 +1931,10 @@ shopping.html => <!DOCTYPE html>
                             condition: item.condition,
                             price: item.price
                         })),
-                        total: cart.total,
-                        currency: 'USD',
-                        shipping: shippingData // Include shipping data (but not used)
+                        subtotal: cart.total,
+                        total: totalWithShipping,
+                        shipping: shippingData,
+                        currency: 'USD'
                     })
                 });
                 
@@ -2015,8 +2032,13 @@ shopping.html => <!DOCTYPE html>
         }
 
         // Load the catalog data when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            loadCart(); // Load cart from localStorage first
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Load shipping cost directly from config
+            const cost = await getConfigValue('SHIPPING_COST');
+            shippingCost = parseFloat(cost);
+            console.log('Shipping cost set to:', shippingCost);
+            
+            loadCart(); // Load cart from localStorage
             loadCatalogData();
             initializeFilters();
             initializeCart();
