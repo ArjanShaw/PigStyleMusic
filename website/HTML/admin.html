@@ -2884,6 +2884,7 @@
                     </thead>
                     <tbody id="orders-body">
                         <!-- Orders will be loaded here -->
+                        <tr><td colspan="9" style="text-align:center; padding:40px;">Loading orders...</td></tr>
                     </tbody>
                 </table>
                 <div id="orders-empty" style="display: none; text-align: center; padding: 40px;">
@@ -2893,7 +2894,7 @@
             </div>
             
             <!-- Pagination -->
-            <div class="pagination" style="margin-top: 20px;">
+            <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button class="page-btn" onclick="goToOrdersPage(1)" id="orders-first-btn" disabled>
                     <i class="fas fa-angle-double-left"></i>
                 </button>
@@ -2903,8 +2904,8 @@
                 
                 <span class="pagination-info">
                     Page <input type="number" class="page-input" id="orders-current-page" min="1" value="1" 
-                           onchange="goToOrdersPage(parseInt(this.value))" onblur="goToOrdersPage(parseInt(this.value))" 
-                           style="width: 50px; text-align: center;"> 
+                        onchange="goToOrdersPage(parseInt(this.value))" onblur="goToOrdersPage(parseInt(this.value))" 
+                        style="width: 50px; text-align: center;"> 
                     of <span id="orders-total-pages">1</span>
                 </span>
                 
@@ -2915,7 +2916,7 @@
                     <i class="fas fa-angle-double-right"></i>
                 </button>
                 
-                <div class="records-per-page">
+                <div class="records-per-page" style="margin-left: auto;">
                     <span>Show:</span>
                     <select id="orders-page-size" onchange="changeOrdersPageSize(parseInt(this.value))">
                         <option value="10">10</option>
