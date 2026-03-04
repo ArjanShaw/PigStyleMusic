@@ -307,6 +307,110 @@ def insert_order():
             'error': f'Server error: {str(e)}'
         }), 500
 
+@app.route('/api/square-webhook', methods=['POST'])
+def square_webhook():
+    """Handle Square webhook events for payment confirmation"""
+    try:
+        # Get the Square signature header for verification
+        signature = request.headers.get('x-square-hmacsha256-signature', '')
+        
+        # Verify webhook signature (security)
+        if not verify_square_webhook(signature, request.data):
+            app.logger.warning('Invalid webhook signature')
+            return jsonify({'status': 'error', 'message': 'Invalid signature'}), 401
+        
+        # Parse webhook data
+        webhook_data = request.json
+        event_type = webhook_data.get('type')
+        
+        app.logger.info(f"Received Square webhook: {event_type}")
+        
+        # Handle payment completed event
+        if event_type == 'payment.updated':
+            payment_data = webhook_data.get('data', {}).get('object', {}).get('payment', {})
+            payment_status = payment_data.get('status')
+            payment_id = payment_data.get('id')
+            
+            # Look for order_id in metadata (you need to include this when creating checkout)
+            metadata = payment_data.get('metadata', {})
+            order_id = metadata.get('order_id')
+            
+            if not order_id:
+                app.logger.warning(f"No order_id in payment metadata for payment {payment_id}")
+                return jsonify({'status': 'success'}), 200
+            
+            conn = get_db()
+            cursor = conn.cursor()
+            
+            if payment_status == 'COMPLETED':
+                # Update order to paid
+                cursor.execute('''
+                    UPDATE orders 
+                    SET payment_status = 'paid', 
+                        order_status = 'confirmed',
+                        square_payment_id = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND payment_status = 'pending'
+                ''', (payment_id, order_id))
+                
+                if cursor.rowcount > 0:
+                    app.logger.info(f"Order {order_id} marked as paid")
+                    
+                    # Get record IDs from order_items
+                    cursor.execute('''
+                        SELECT record_id FROM order_items WHERE order_id = ?
+                    ''', (order_id,))
+                    
+                    record_ids = [row['record_id'] for row in cursor.fetchall()]
+                    
+                    if record_ids:
+                        # Mark records as sold
+                        placeholders = ','.join('?' for _ in record_ids)
+                        cursor.execute(f'''
+                            UPDATE records
+                            SET status_id = 3, date_sold = CURRENT_DATE
+                            WHERE id IN ({placeholders})
+                        ''', record_ids)
+                        app.logger.info(f"Marked {len(record_ids)} records as sold")
+                
+                elif payment_status == 'FAILED':
+                    cursor.execute('''
+                        UPDATE orders 
+                        SET payment_status = 'failed',
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    ''', (order_id,))
+                    app.logger.info(f"Order {order_id} marked as failed")
+            
+            conn.commit()
+            conn.close()
+        
+        return jsonify({'status': 'success'}), 200
+        
+    except Exception as e:
+        app.logger.error(f"Webhook error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+def verify_square_webhook(signature, body):
+    """Verify Square webhook signature"""
+    webhook_signature_key = os.environ.get('SQUARE_WEBHOOK_SIGNATURE_KEY')
+    
+    if not webhook_signature_key:
+        app.logger.warning("SQUARE_WEBHOOK_SIGNATURE_KEY not set")
+        return False
+    
+    import hmac
+    import hashlib
+    
+    # Create expected signature
+    expected_signature = hmac.new(
+        key=webhook_signature_key.encode('utf-8'),
+        msg=body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    
+    return hmac.compare_digest(expected_signature, signature)
 
 @app.route('/api/checkout/process', methods=['POST'])
 def process_checkout():
@@ -319,6 +423,8 @@ def process_checkout():
         shipping = data.get('shipping')  # Get shipping data
         subtotal = data.get('subtotal', 0)
         total = data.get('total', 0)
+        order_id = data.get('order_id')  # Get order_id from frontend
+        order_number = data.get('order_number')  # Get order_number from frontend
         
         if not items or total <= 0:
             return jsonify({
@@ -386,19 +492,28 @@ def process_checkout():
                 }
             })
         
-        # Create payment link
+        # Create payment link with metadata
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
             'Square-Version': '2026-01-22'
         }
         
+        # Prepare metadata for webhook tracking
+        metadata = {}
+        if order_id:
+            metadata['order_id'] = str(order_id)
+        if order_number:
+            metadata['order_number'] = order_number
+        
         payload = {
             "idempotency_key": str(uuid.uuid4()),
             "order": {
                 "location_id": location_id,
                 "line_items": line_items
-            }
+            },
+            "metadata": metadata,  # Include metadata for webhook
+            "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id={order_id}" if order_id else None
         }
         
         square_base_url = 'https://connect.squareup.com'
@@ -426,17 +541,18 @@ def process_checkout():
                 'error': 'No checkout URL returned'
             }), 500
         
-        # Store in database (optional)
+        # Store in checkout_sessions (optional)
         cursor.execute('''
             INSERT INTO checkout_sessions 
-            (idempotency_key, square_checkout_id, items, total, status, created_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            (idempotency_key, square_checkout_id, items, total, status, order_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ''', (
             str(uuid.uuid4()),
             payment_link.get('id'),
             json.dumps(valid_items),
             total,
-            'pending'
+            'pending',
+            order_id
         ))
         
         conn.commit()
@@ -445,7 +561,8 @@ def process_checkout():
         return jsonify({
             'status': 'success',
             'checkout_url': checkout_url,
-            'order_id': payment_link.get('id')[:8],
+            'order_id': order_id,
+            'order_number': order_number,
             'message': 'Checkout created successfully'
         }), 200
         
@@ -456,7 +573,6 @@ def process_checkout():
             'status': 'error',
             'error': f'Server error: {str(e)}'
         }), 500
-
 
 @app.route('/checkout/complete')
 def checkout_complete():
@@ -1350,68 +1466,6 @@ def api_get_payment(payment_id):
         
     except Exception as e:
         app.logger.error(f"Error in api_get_payment: {e}")
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
-
-@app.route('/api/square/webhook', methods=['POST'])
-def square_webhook():
-    """Handle Square webhook events"""
-    try:
-        # Get signature from headers
-        signature = request.headers.get('x-square-hmacsha256-signature', '')
-        
-        # Verify webhook signature
-        if not verify_square_webhook(signature, request.data):
-            app.logger.warning('Invalid webhook signature')
-            return jsonify({'status': 'error', 'message': 'Invalid signature'}), 401
-        
-        # Parse webhook data
-        webhook_data = request.json
-        event_type = webhook_data.get('type')
-        data = webhook_data.get('data', {})
-        
-        app.logger.info(f"Received Square webhook: {event_type}")
-        
-        # Handle different event types
-        if event_type == 'terminal.checkout.updated':
-            checkout = data.get('object', {}).get('checkout', {})
-            checkout_id = checkout.get('id')
-            status = checkout.get('status')
-            
-            if checkout_id in square_payment_sessions:
-                square_payment_sessions[checkout_id]['status'] = status
-                
-                if status == 'COMPLETED':
-                    payment_id = checkout.get('payment_ids', [None])[0]
-                    if payment_id:
-                        square_payment_sessions[checkout_id]['payment_id'] = payment_id
-                        app.logger.info(f"Stored payment_id {payment_id} for checkout {checkout_id}")
-                        
-                        # Auto-process the sale
-                        record_ids = square_payment_sessions[checkout_id].get('record_ids', [])
-                        if record_ids:
-                            conn = get_db()
-                            cursor = conn.cursor()
-                            today = datetime.now().date().isoformat()
-                            placeholders = ','.join('?' for _ in record_ids)
-                            
-                            cursor.execute(f'''
-                                UPDATE records
-                                SET status_id = 3, date_sold = ?
-                                WHERE id IN ({placeholders})
-                            ''', [today] + record_ids)
-                            
-                            conn.commit()
-                            conn.close()
-                            
-                            app.logger.info(f"Auto-processed {len(record_ids)} records for checkout {checkout_id}")
-        
-        return jsonify({'status': 'success'}), 200
-        
-    except Exception as e:
-        app.logger.error(f"Error in square_webhook: {e}")
         return jsonify({
             'status': 'error',
             'message': str(e)
