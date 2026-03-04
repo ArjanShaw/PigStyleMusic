@@ -128,6 +128,186 @@ def get_db():
     return conn
 
 # ==================== SQUARE API HELPER FUNCTIONS ====================
+
+@app.route('/api/insert-order', methods=['POST', 'OPTIONS'])
+def insert_order():
+    """Create a pending order and order items from cart"""
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        # Validate required fields
+        required_fields = ['items', 'shipping_method', 'subtotal', 'total']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'status': 'error', 'error': f'{field} required'}), 400
+        
+        items = data.get('items', [])
+        if not items:
+            return jsonify({'status': 'error', 'error': 'No items in order'}), 400
+        
+        shipping_method = data.get('shipping_method')
+        shipping_cost = float(data.get('shipping_cost', 0))
+        subtotal = float(data.get('subtotal'))
+        tax = float(data.get('tax', 0))
+        total = float(data.get('total'))
+        
+        # Shipping address fields (only required if shipping_method is 'ship')
+        shipping_address = {}
+        if shipping_method == 'ship':
+            required_shipping = ['fullName', 'address', 'city', 'state', 'zip', 'country', 'email']
+            for field in required_shipping:
+                if field not in data:
+                    return jsonify({'status': 'error', 'error': f'{field} required for shipping'}), 400
+            
+            shipping_address = {
+                'line1': data.get('address'),
+                'line2': data.get('apt', ''),
+                'city': data.get('city'),
+                'state': data.get('state'),
+                'zip': data.get('zip'),
+                'country': data.get('country', 'USA')
+            }
+        
+        # Generate order number (format: PS-YYYYMMDD-XXXX)
+        import random
+        import string
+        from datetime import datetime
+        
+        date_str = datetime.now().strftime('%Y%m%d')
+        random_chars = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        order_number = f"PS-{date_str}-{random_chars}"
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Begin transaction
+        cursor.execute("BEGIN TRANSACTION")
+        
+        try:
+            # 1. Insert into orders table
+            cursor.execute('''
+                INSERT INTO orders (
+                    order_number,
+                    customer_name,
+                    customer_email,
+                    shipping_method,
+                    shipping_address_line1,
+                    shipping_address_line2,
+                    shipping_city,
+                    shipping_state,
+                    shipping_zip,
+                    shipping_country,
+                    shipping_cost,
+                    subtotal,
+                    tax,
+                    total,
+                    payment_status,
+                    order_status,
+                    notes,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ''', (
+                order_number,
+                data.get('customer_name', 'Walk-in Customer'),
+                data.get('customer_email', '') if shipping_method == 'ship' else '',
+                shipping_method,
+                shipping_address.get('line1', ''),
+                shipping_address.get('line2', ''),
+                shipping_address.get('city', ''),
+                shipping_address.get('state', ''),
+                shipping_address.get('zip', ''),
+                shipping_address.get('country', 'USA'),
+                shipping_cost,
+                subtotal,
+                tax,
+                total,
+                'pending',  # payment_status
+                'pending',   # order_status
+                data.get('notes', '')
+            ))
+            
+            order_id = cursor.lastrowid
+            
+            # 2. Insert into order_items table for each item
+            for item in items:
+                # Verify the record exists and is available
+                cursor.execute('''
+                    SELECT id, artist, title, condition, store_price, status_id
+                    FROM records 
+                    WHERE id = ?
+                ''', (item.get('copy_id'),))
+                
+                record = cursor.fetchone()
+                if not record:
+                    raise Exception(f"Record ID {item.get('copy_id')} not found")
+                
+                if record['status_id'] != 2:  # Not available
+                    raise Exception(f"Record {record['title']} is not available for purchase")
+                
+                cursor.execute('''
+                    INSERT INTO order_items (
+                        order_id,
+                        record_id,
+                        record_title,
+                        record_artist,
+                        record_condition,
+                        price_at_time,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (
+                    order_id,
+                    item.get('copy_id'),
+                    record['title'],
+                    record['artist'],
+                    record['condition'],
+                    float(item.get('price', record['store_price']))
+                ))
+            
+            # Commit transaction
+            conn.commit()
+            
+            app.logger.info(f"Order created successfully: {order_number} (ID: {order_id})")
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Order created successfully',
+                'order_id': order_id,
+                'order_number': order_number,
+                'payment_status': 'pending'
+            }), 200
+            
+        except Exception as e:
+            # Rollback transaction on error
+            conn.rollback()
+            app.logger.error(f"Error creating order: {str(e)}")
+            return jsonify({
+                'status': 'error',
+                'error': f'Failed to create order: {str(e)}'
+            }), 500
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        app.logger.error(f"Insert order error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': f'Server error: {str(e)}'
+        }), 500
+
+
 @app.route('/api/checkout/process', methods=['POST'])
 def process_checkout():
     """Create a Square payment link for the cart"""
@@ -136,6 +316,8 @@ def process_checkout():
         app.logger.info(f"Checkout request received: {data}")
         
         items = data.get('items', [])
+        shipping = data.get('shipping')  # Get shipping data
+        subtotal = data.get('subtotal', 0)
         total = data.get('total', 0)
         
         if not items or total <= 0:
@@ -186,9 +368,20 @@ def process_checkout():
         for item in valid_items:
             line_items.append({
                 "name": f"{item.get('artist')} - {item.get('title')}",
-                "quantity": "1",
+                "quantity": str(item.get('quantity', 1)),
                 "base_price_money": {
                     "amount": int(round(item.get('price', 0) * 100)),
+                    "currency": "USD"
+                }
+            })
+        
+        # Add shipping as a line item if present
+        if shipping and shipping.get('amount', 0) > 0:
+            line_items.append({
+                "name": "Shipping",
+                "quantity": "1",
+                "base_price_money": {
+                    "amount": int(round(shipping.get('amount', 0) * 100)),
                     "currency": "USD"
                 }
             })
@@ -263,6 +456,7 @@ def process_checkout():
             'status': 'error',
             'error': f'Server error: {str(e)}'
         }), 500
+
 
 @app.route('/checkout/complete')
 def checkout_complete():
@@ -2042,57 +2236,108 @@ def create_user():
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
 
-    required_fields = ['username', 'email', 'password', 'role']
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'status': 'error', 'error': f'{field} required'}), 400
+    # Basic required fields - username and role are always required
+    if 'username' not in data:
+        return jsonify({'status': 'error', 'error': 'username required'}), 400
+    if 'role' not in data:
+        return jsonify({'status': 'error', 'error': 'role required'}), 400
 
     username = data['username']
-    email = data['email']
-    password = data['password']
     role = data['role']
-    full_name = data.get('full_name', '')
-    initials = data.get('initials', '')
-
-    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-        return jsonify({'status': 'error', 'error': 'Invalid email format'}), 400
-
-    # Update this line to include 'youtube_linker'
-    if role not in ['admin', 'consignor', 'youtube_linker']:
+    
+    # Update valid roles to include 'seller'
+    if role not in ['admin', 'consignor', 'youtube_linker', 'seller']:
         return jsonify({'status': 'error', 'error': 'Invalid role'}), 400
 
-    if len(password) < 8:
-        return jsonify({'status': 'error', 'error': 'Password must be at least 8 characters long'}), 400
+    # For non-seller roles, validate email and password
+    if role != 'seller':
+        if 'email' not in data:
+            return jsonify({'status': 'error', 'error': 'email required for this role'}), 400
+        if 'password' not in data:
+            return jsonify({'status': 'error', 'error': 'password required for this role'}), 400
+        
+        email = data['email']
+        password = data['password']
+        
+        # Email format validation
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'status': 'error', 'error': 'Invalid email format'}), 400
+        
+        # Password validation
+        if len(password) < 8:
+            return jsonify({'status': 'error', 'error': 'Password must be at least 8 characters long'}), 400
+        
+        if not re.search(r'[A-Z]', password):
+            return jsonify({'status': 'error', 'error': 'Password must contain at least one uppercase letter'}), 400
+        
+        if not re.search(r'[a-z]', password):
+            return jsonify({'status': 'error', 'error': 'Password must contain at least one lowercase letter'}), 400
+        
+        if not re.search(r'[0-9]', password):
+            return jsonify({'status': 'error', 'error': 'Password must contain at least one number'}), 400
+        
+        # Check if email already exists
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Email already exists'}), 400
+    else:
+        # For sellers, email and password are optional
+        email = data.get('email', '')
+        password = data.get('password', '')
+        
+        # If email is provided for seller, validate it
+        if email and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'status': 'error', 'error': 'Invalid email format'}), 400
+        
+        # If password is provided for seller, validate it
+        if password:
+            if len(password) < 8:
+                return jsonify({'status': 'error', 'error': 'Password must be at least 8 characters long'}), 400
+            
+            if not re.search(r'[A-Z]', password):
+                return jsonify({'status': 'error', 'error': 'Password must contain at least one uppercase letter'}), 400
+            
+            if not re.search(r'[a-z]', password):
+                return jsonify({'status': 'error', 'error': 'Password must contain at least one lowercase letter'}), 400
+            
+            if not re.search(r'[0-9]', password):
+                return jsonify({'status': 'error', 'error': 'Password must contain at least one number'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Only check email uniqueness if email is provided
+        if email:
+            cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Email already exists'}), 400
 
-    if not re.search(r'[A-Z]', password):
-        return jsonify({'status': 'error', 'error': 'Password must contain at least one uppercase letter'}), 400
-
-    if not re.search(r'[a-z]', password):
-        return jsonify({'status': 'error', 'error': 'Password must contain at least one lowercase letter'}), 400
-
-    if not re.search(r'[0-9]', password):
-        return jsonify({'status': 'error', 'error': 'Password must contain at least one number'}), 400
-
-    conn = get_db()
-    cursor = conn.cursor()
-
+    # Check if username already exists (always required)
     cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
     if cursor.fetchone():
         conn.close()
         return jsonify({'status': 'error', 'error': 'Username already exists'}), 400
 
-    cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Email already exists'}), 400
+    full_name = data.get('full_name', '')
+    initials = data.get('initials', '')
+    flag_color = data.get('flag_color', '')  # Add flag_color support
 
-    salt = secrets.token_hex(16)
-    password_hash = f"{salt}${hashlib.sha256((salt + password).encode()).hexdigest()}"
+    # Only hash password if it's provided
+    if password:
+        salt = secrets.token_hex(16)
+        password_hash = f"{salt}${hashlib.sha256((salt + password).encode()).hexdigest()}"
+    else:
+        password_hash = None
 
+    # Insert user - note that email and password_hash can be NULL for sellers
     cursor.execute('''
-        INSERT INTO users (username, email, password_hash, role, full_name, initials, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ''', (username, email, password_hash, role, full_name, initials))
+        INSERT INTO users (username, email, password_hash, role, full_name, initials, flag_color, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ''', (username, email if email else None, password_hash, role, full_name, initials, flag_color if flag_color else None))
 
     user_id = cursor.lastrowid
     conn.commit()
