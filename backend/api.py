@@ -343,6 +343,7 @@ def verify_square_webhook(signature, body):
     
     return hmac.compare_digest(expected_signature, signature)
 
+
 @app.route('/api/checkout/process', methods=['POST'])
 def process_checkout():
     """Create a Square payment link for the cart"""
@@ -436,18 +437,24 @@ def process_checkout():
             metadata['order_id'] = str(order_id)
         if order_number:
             metadata['order_number'] = order_number
+        if valid_items:
+            # Store record IDs in metadata for easy lookup
+            metadata['record_ids'] = json.dumps([item.get('copy_id') for item in valid_items])
         
         payload = {
             "idempotency_key": str(uuid.uuid4()),
             "order": {
                 "location_id": location_id,
-                "line_items": line_items
+                "line_items": line_items,
+                "reference_id": str(order_id) if order_id else None  # ADD THIS LINE
             },
             "metadata": metadata,  # Include metadata for webhook
             "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id={order_id}" if order_id else None
         }
         
         square_base_url = 'https://connect.squareup.com'
+        
+        app.logger.info(f"Sending to Square with reference_id: {order_id}")
         
         response = requests.post(
             f'{square_base_url}/v2/online-checkout/payment-links',
@@ -2675,7 +2682,7 @@ def get_admin_orders():
         if 'conn' in locals():
             conn.close()
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
+  
 @app.route('/api/admin/orders/<int:order_id>/refresh-payment', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -2719,22 +2726,17 @@ def refresh_order_payment(order_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Square access token not configured'}), 500
         
-        # Calculate amount in cents
-        amount_cents = int(round(order['total'] * 100))
-        
-        # Only look for payments created AFTER the order was created
-        from datetime import datetime, timedelta
-        order_time = datetime.strptime(order['created_at'], '%Y-%m-%d %H:%M:%S')
-        start_time = order_time.isoformat()
-        end_time = (datetime.now() + timedelta(hours=1)).isoformat()
-        
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Square-Version': '2026-01-22',
             'Content-Type': 'application/json'
         }
         
-        # Search for payments
+        # Get all payments from last 7 days
+        from datetime import datetime, timedelta
+        end_time = datetime.now().isoformat()
+        start_time = (datetime.now() - timedelta(days=7)).isoformat()
+        
         response = requests.get(
             f'https://connect.squareup.com/v2/payments',
             headers=headers,
@@ -2751,32 +2753,15 @@ def refresh_order_payment(order_id):
         
         payments = response.json().get('payments', [])
         
-        # Find matching payment - MUST match ALL criteria
+        # Find payment that has our order_id in metadata
         matching_payment = None
         for payment in payments:
-            payment_amount = payment.get('amount_money', {}).get('amount', 0)
-            payment_status = payment.get('status')
-            payment_time = payment.get('created_at')
-            
-            # Log for debugging
-            app.logger.info(f"Checking payment {payment.get('id')}: amount={payment_amount}, status={payment_status}")
-            
-            # Check exact amount match (must be identical)
-            if payment_amount != amount_cents:
+            if payment.get('status') != 'COMPLETED':
                 continue
                 
-            # Must be completed
-            if payment_status != 'COMPLETED':
-                continue
-            
-            # Check metadata for order_id or order_number
+            # Check metadata for order_id
             metadata = payment.get('metadata', {})
-            metadata_order_id = metadata.get('order_id')
-            metadata_order_number = metadata.get('order_number')
-            
-            # STRICT matching - must have matching metadata
-            if (metadata_order_id == str(order_id) or 
-                metadata_order_number == order.get('order_number')):
+            if metadata.get('order_id') == str(order_id):
                 matching_payment = payment
                 break
         
