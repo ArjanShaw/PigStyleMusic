@@ -77,23 +77,19 @@ function updateStatsDisplay(stats) {
     const paidOrders = document.getElementById('paid-orders');
     
     if (totalOrders) {
-        const total = stats.status_stats?.reduce((sum, s) => sum + s.count, 0) || 0;
-        totalOrders.textContent = total;
+        totalOrders.textContent = stats.stats?.total_orders || 0;
     }
     
     if (totalRevenue) {
-        const revenue = stats.status_stats?.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0) || 0;
-        totalRevenue.textContent = formatCurrency(revenue);
+        totalRevenue.textContent = formatCurrency(stats.stats?.total_revenue || 0);
     }
     
     if (pendingOrders) {
-        const pending = stats.status_stats?.find(s => s.status === 'pending')?.count || 0;
-        pendingOrders.textContent = pending;
+        pendingOrders.textContent = stats.status_stats?.find(s => s.status === 'pending')?.count || 0;
     }
     
     if (paidOrders) {
-        const paid = stats.status_stats?.find(s => s.status === 'paid')?.count || 0;
-        paidOrders.textContent = paid;
+        paidOrders.textContent = stats.status_stats?.find(s => s.status === 'paid')?.count || 0;
     }
 }
 
@@ -128,6 +124,9 @@ function applyOrdersFilters() {
         } else if (ordersSortField === 'created_at') {
             aVal = new Date(aVal).getTime();
             bVal = new Date(bVal).getTime();
+        } else if (ordersSortField === 'customer_email' || ordersSortField === 'customer_name') {
+            aVal = (aVal || '').toLowerCase();
+            bVal = (bVal || '').toLowerCase();
         }
         
         if (ordersSortDirection === 'asc') {
@@ -158,7 +157,7 @@ function renderOrdersTable() {
             emptyEl.style.display = 'block';
             tableBody.innerHTML = '';
         } else {
-            tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">No orders found</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px;">No orders found</td></tr>';
         }
         updatePaginationInfo(0, 0, 0);
         return;
@@ -167,15 +166,18 @@ function renderOrdersTable() {
     if (emptyEl) emptyEl.style.display = 'none';
     
     let html = '';
-    pageOrders.forEach((order, index) => {
-        const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-        const itemCount = items?.length || 0;
-        const itemPreview = items?.slice(0, 2).map(item => 
+    pageOrders.forEach((order) => {
+        const items = order.items || [];
+        const itemCount = items.length;
+        const itemPreview = items.slice(0, 2).map(item => 
             `${item.artist || ''} - ${item.title || ''}`
-        ).join('<br>') + (items?.length > 2 ? `<br>... and ${items.length - 2} more` : '');
+        ).join('<br>') + (items.length > 2 ? `<br>... and ${items.length - 2} more` : '');
         
         const statusClass = order.status === 'paid' ? 'status-paid' : 
                            order.status === 'cancelled' ? 'status-cancelled' : 'status-pending';
+        
+        // Determine if we should show refresh button (only for pending orders)
+        const showRefresh = order.status === 'pending';
         
         html += `
             <tr>
@@ -187,10 +189,15 @@ function renderOrdersTable() {
                 <td>${itemPreview}</td>
                 <td>${formatCurrency(order.total)}</td>
                 <td><span class="status-badge ${statusClass}">${order.status || 'pending'}</span></td>
-                <td>
+                <td class="table-actions">
                     <button class="btn-small btn-info" onclick="viewOrderDetails(${order.id})" title="View Details">
                         <i class="fas fa-eye"></i>
                     </button>
+                    ${showRefresh ? `
+                        <button class="btn-small btn-warning" onclick="refreshOrderPayment(${order.id})" title="Check Square for Payment">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    ` : ''}
                 </td>
             </tr>
         `;
@@ -216,7 +223,10 @@ function updateOrdersPagination() {
     if (prevBtn) prevBtn.disabled = currentPage === 1;
     if (nextBtn) nextBtn.disabled = currentPage === totalPages || totalPages === 0;
     if (lastBtn) lastBtn.disabled = currentPage === totalPages || totalPages === 0;
-    if (pageInfo) pageInfo.value = currentPage;
+    if (pageInfo) {
+        pageInfo.value = currentPage;
+        pageInfo.max = totalPages || 1;
+    }
     if (totalPagesSpan) totalPagesSpan.textContent = totalPages || 1;
 }
 
@@ -320,7 +330,7 @@ async function viewOrderDetails(orderId) {
 
 // Show order details modal
 function showOrderDetailsModal(order) {
-    const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    const items = order.items || [];
     
     let itemsHtml = '';
     items.forEach(item => {
@@ -329,7 +339,7 @@ function showOrderDetailsModal(order) {
                 <td>${item.artist || ''}</td>
                 <td>${item.title || ''}</td>
                 <td>${item.condition || ''}</td>
-                <td>${formatCurrency(item.price)}</td>
+                <td>${formatCurrency(item.price || 0)}</td>
             </tr>
         `;
     });
@@ -347,8 +357,9 @@ function showOrderDetailsModal(order) {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                     <div>
                         <h4>Order Information</h4>
-                        <p><strong>Order ID:</strong> ${order.square_order_id || 'N/A'}</p>
-                        <p><strong>Payment ID:</strong> ${order.square_payment_id || 'N/A'}</p>
+                        <p><strong>Order #:</strong> ${order.order_number || 'N/A'}</p>
+                        <p><strong>Square Order ID:</strong> ${order.square_order_id || 'N/A'}</p>
+                        <p><strong>Square Payment ID:</strong> ${order.square_payment_id || 'N/A'}</p>
                         <p><strong>Date:</strong> ${formatDate(order.created_at)}</p>
                         <p><strong>Status:</strong> <span class="status-badge status-${order.status}">${order.status}</span></p>
                     </div>
@@ -356,7 +367,12 @@ function showOrderDetailsModal(order) {
                         <h4>Customer Information</h4>
                         <p><strong>Name:</strong> ${order.customer_name || 'N/A'}</p>
                         <p><strong>Email:</strong> ${order.customer_email || 'N/A'}</p>
-                        <p><strong>Payment Status:</strong> ${order.payment_status || 'N/A'}</p>
+                        <p><strong>Shipping Method:</strong> ${order.shipping_method || 'N/A'}</p>
+                        ${order.shipping_method === 'ship' ? `
+                            <p><strong>Address:</strong> ${order.shipping_address_line1 || ''} ${order.shipping_address_line2 || ''}</p>
+                            <p><strong>City/State/Zip:</strong> ${order.shipping_city || ''}, ${order.shipping_state || ''} ${order.shipping_zip || ''}</p>
+                            <p><strong>Country:</strong> ${order.shipping_country || ''}</p>
+                        ` : ''}
                     </div>
                 </div>
                 
@@ -372,16 +388,35 @@ function showOrderDetailsModal(order) {
                             </tr>
                         </thead>
                         <tbody>
-                            ${itemsHtml}
+                            ${itemsHtml || '<tr><td colspan="4" style="text-align:center;">No items found</td></tr>'}
                         </tbody>
                         <tfoot>
                             <tr>
+                                <td colspan="3" style="text-align: right;"><strong>Subtotal:</strong></td>
+                                <td>${formatCurrency(order.subtotal || 0)}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="3" style="text-align: right;"><strong>Shipping:</strong></td>
+                                <td>${formatCurrency(order.shipping_cost || 0)}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="3" style="text-align: right;"><strong>Tax:</strong></td>
+                                <td>${formatCurrency(order.tax || 0)}</td>
+                            </tr>
+                            <tr>
                                 <td colspan="3" style="text-align: right;"><strong>Total:</strong></td>
-                                <td><strong>${formatCurrency(order.total)}</strong></td>
+                                <td><strong>${formatCurrency(order.total || 0)}</strong></td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
+                
+                ${order.notes ? `
+                    <div style="margin-top: 20px;">
+                        <h4>Notes</h4>
+                        <p style="background: #f8f9fa; padding: 10px; border-radius: 4px;">${order.notes}</p>
+                    </div>
+                ` : ''}
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeOrderDetailsModal()">Close</button>
@@ -396,6 +431,88 @@ function showOrderDetailsModal(order) {
 function closeOrderDetailsModal() {
     const modal = document.getElementById('order-details-modal');
     if (modal) modal.remove();
+}
+
+// Refresh order payment status from Square
+async function refreshOrderPayment(orderId) {
+    if (!confirm(`Check Square for payment status of Order #${orderId}?`)) {
+        return;
+    }
+    
+    // Find the button that was clicked
+    const button = event.target.closest('button');
+    const originalHtml = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    button.disabled = true;
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/admin/orders/${orderId}/refresh-payment`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            if (data.payment_found) {
+                showNotification(`✅ Payment found! Order #${orderId} marked as paid.`, 'success');
+                // Refresh the orders list
+                await loadOrders();
+                await loadOrderStats();
+            } else {
+                showNotification(`❌ No matching payment found for Order #${orderId}`, 'warning');
+            }
+        } else {
+            showNotification(`Error: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error refreshing payment:', error);
+        showNotification(`Error: ${error.message}`, 'error');
+    } finally {
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+    }
+}
+
+// Show notification
+function showNotification(message, type = 'info') {
+    // Remove any existing notification
+    const existing = document.querySelector('.order-notification');
+    if (existing) existing.remove();
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `order-notification ${type}`;
+    notification.innerHTML = message;
+    notification.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        background: ${type === 'success' ? '#28a745' : type === 'warning' ? '#ffc107' : '#dc3545'};
+        color: ${type === 'warning' ? '#333' : 'white'};
+        border-radius: 4px;
+        z-index: 9999;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        animation: slideIn 0.3s ease;
+        font-weight: 500;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => {
+                if (notification.parentNode) notification.remove();
+            }, 300);
+        }
+    }, 5000);
 }
 
 // Update orders stats
@@ -429,7 +546,7 @@ function updateOrdersStats() {
 function showOrdersError(message) {
     const tableBody = document.getElementById('orders-body');
     if (tableBody) {
-        tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">${message}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">${message}</td></tr>`;
     }
 }
 
@@ -454,6 +571,52 @@ function refreshOrders() {
     loadOrderStats();
 }
 
+// Export to CSV
+function exportOrdersToCSV() {
+    if (filteredOrders.length === 0) {
+        alert('No orders to export');
+        return;
+    }
+    
+    const headers = ['ID', 'Order Number', 'Square Order ID', 'Date', 'Customer Email', 'Customer Name', 'Items', 'Subtotal', 'Shipping', 'Tax', 'Total', 'Status', 'Payment Status'];
+    const csvRows = [];
+    
+    csvRows.push(headers.join(','));
+    
+    filteredOrders.forEach(order => {
+        const items = order.items || [];
+        const itemCount = items.length;
+        const itemPreview = items.map(item => `${item.artist} - ${item.title}`).join('; ').substring(0, 100);
+        
+        const row = [
+            order.id,
+            order.order_number || '',
+            order.square_order_id || '',
+            formatDate(order.created_at),
+            order.customer_email || '',
+            order.customer_name || '',
+            `"${itemCount} items: ${itemPreview}"`,
+            order.subtotal || 0,
+            order.shipping_cost || 0,
+            order.tax || 0,
+            order.total || 0,
+            order.status || 'pending',
+            order.payment_status || 'pending'
+        ];
+        
+        csvRows.push(row.join(','));
+    });
+    
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `orders_export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
 // Initialize orders tab
 function initOrdersTab() {
     console.log('Initializing Orders tab...');
@@ -476,51 +639,42 @@ function initOrdersTab() {
     }
 }
 
-// Export to CSV
-function exportOrdersToCSV() {
-    if (filteredOrders.length === 0) {
-        alert('No orders to export');
-        return;
-    }
-    
-    const headers = ['ID', 'Order ID', 'Date', 'Customer Email', 'Customer Name', 'Items', 'Total', 'Status'];
-    const csvRows = [];
-    
-    csvRows.push(headers.join(','));
-    
-    filteredOrders.forEach(order => {
-        const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-        const itemCount = items?.length || 0;
-        const itemPreview = items?.map(item => `${item.artist} - ${item.title}`).join('; ').substring(0, 100);
-        
-        const row = [
-            order.id,
-            order.square_order_id || '',
-            formatDate(order.created_at),
-            order.customer_email || '',
-            order.customer_name || '',
-            `"${itemCount} items: ${itemPreview}"`,
-            order.total,
-            order.status || 'pending'
-        ];
-        
-        csvRows.push(row.join(','));
-    });
-    
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `orders_export_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-}
-
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', function() {
-    // Check if we're on the admin page
+    // Check if we're on the admin page and orders tab exists
     if (document.getElementById('orders-tab')) {
-        initOrdersTab();
+        // Wait for tab manager to initialize
+        setTimeout(initOrdersTab, 500);
     }
 });
+
+// Add animation keyframes
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    @keyframes slideOut {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
+    
+    .order-notification {
+        transition: all 0.3s ease;
+    }
+`;
+document.head.appendChild(style);
