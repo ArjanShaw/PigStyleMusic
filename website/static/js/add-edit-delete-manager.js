@@ -531,7 +531,7 @@ class AddEditDeleteManager {
                 search_field: this.currentSearchField
             };
             
-            const response = await APIUtils.get('/search', params);
+            const response = await APIUtils.get('/records/search', params);
             
             if (response.status === 'success' && response.records) {
                 return response.records;
