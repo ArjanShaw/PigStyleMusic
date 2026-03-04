@@ -307,89 +307,20 @@ def insert_order():
             'error': f'Server error: {str(e)}'
         }), 500
 
+
 @app.route('/api/square-webhook', methods=['POST'])
 def square_webhook():
-    """Handle Square webhook events for payment confirmation"""
+    """Handle Square webhook events - simplified version"""
     try:
-        # Get the Square signature header for verification
-        signature = request.headers.get('x-square-hmacsha256-signature', '')
-        
-        # Verify webhook signature (security)
-        if not verify_square_webhook(signature, request.data):
-            app.logger.warning('Invalid webhook signature')
-            return jsonify({'status': 'error', 'message': 'Invalid signature'}), 401
-        
-        # Parse webhook data
+        # Log the entire webhook payload
         webhook_data = request.json
-        event_type = webhook_data.get('type')
+        app.logger.info(f"🔔 Square webhook received: {json.dumps(webhook_data, indent=2)}")
         
-        app.logger.info(f"Received Square webhook: {event_type}")
-        
-        # Handle payment completed event
-        if event_type == 'payment.updated':
-            payment_data = webhook_data.get('data', {}).get('object', {}).get('payment', {})
-            payment_status = payment_data.get('status')
-            payment_id = payment_data.get('id')
-            
-            # Look for order_id in metadata (you need to include this when creating checkout)
-            metadata = payment_data.get('metadata', {})
-            order_id = metadata.get('order_id')
-            
-            if not order_id:
-                app.logger.warning(f"No order_id in payment metadata for payment {payment_id}")
-                return jsonify({'status': 'success'}), 200
-            
-            conn = get_db()
-            cursor = conn.cursor()
-            
-            if payment_status == 'COMPLETED':
-                # Update order to paid
-                cursor.execute('''
-                    UPDATE orders 
-                    SET payment_status = 'paid', 
-                        order_status = 'confirmed',
-                        square_payment_id = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND payment_status = 'pending'
-                ''', (payment_id, order_id))
-                
-                if cursor.rowcount > 0:
-                    app.logger.info(f"Order {order_id} marked as paid")
-                    
-                    # Get record IDs from order_items
-                    cursor.execute('''
-                        SELECT record_id FROM order_items WHERE order_id = ?
-                    ''', (order_id,))
-                    
-                    record_ids = [row['record_id'] for row in cursor.fetchall()]
-                    
-                    if record_ids:
-                        # Mark records as sold
-                        placeholders = ','.join('?' for _ in record_ids)
-                        cursor.execute(f'''
-                            UPDATE records
-                            SET status_id = 3, date_sold = CURRENT_DATE
-                            WHERE id IN ({placeholders})
-                        ''', record_ids)
-                        app.logger.info(f"Marked {len(record_ids)} records as sold")
-                
-                elif payment_status == 'FAILED':
-                    cursor.execute('''
-                        UPDATE orders 
-                        SET payment_status = 'failed',
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                    ''', (order_id,))
-                    app.logger.info(f"Order {order_id} marked as failed")
-            
-            conn.commit()
-            conn.close()
-        
-        return jsonify({'status': 'success'}), 200
+        # Always return success to acknowledge receipt
+        return jsonify({'status': 'success', 'message': 'Webhook received'}), 200
         
     except Exception as e:
         app.logger.error(f"Webhook error: {str(e)}")
-        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 def verify_square_webhook(signature, body):
