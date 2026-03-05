@@ -633,7 +633,7 @@ def process_checkout():
             'status': 'error',
             'error': f'Server error: {str(e)}'
         }), 500
-
+ 
 @app.route('/api/order/complete', methods=['POST'])
 def order_complete():
     """Update order status and mark records as sold after successful payment"""
@@ -654,19 +654,52 @@ def order_complete():
         cursor.execute("BEGIN TRANSACTION")
         
         try:
-            # Update order status
-            cursor.execute('''
-                UPDATE orders 
-                SET square_payment_id = ?,
-                    payment_status = 'paid',
-                    order_status = 'confirmed',
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND payment_status = 'pending'
-            ''', (transaction_id, order_id))
+            # Get the payment details from Square to verify amounts
+            access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+            headers = {
+                'Authorization': f'Bearer {access_token}',
+                'Square-Version': '2026-01-22'
+            }
             
-            if cursor.rowcount == 0:
-                app.logger.warning(f"No pending order found with id: {order_id}")
-                # Still return success as this might be a duplicate callback
+            # Fetch payment details from Square
+            payment_response = requests.get(
+                f'https://connect.squareup.com/v2/payments/{transaction_id}',
+                headers=headers
+            )
+            
+            if payment_response.status_code == 200:
+                payment_data = payment_response.json()
+                payment = payment_data.get('payment', {})
+                
+                # Get the actual amounts from Square
+                square_total = float(payment.get('amount_money', {}).get('amount', 0)) / 100
+                square_subtotal = square_total  # You may need to calculate this based on line items
+                square_tax = float(payment.get('tax_money', {}).get('amount', 0)) / 100 if payment.get('tax_money') else 0
+                
+                app.logger.info(f"Square amounts - Total: {square_total}, Tax: {square_tax}")
+                
+                # Update order with correct amounts from Square
+                cursor.execute('''
+                    UPDATE orders 
+                    SET square_payment_id = ?,
+                        payment_status = 'paid',
+                        order_status = 'confirmed',
+                        total = ?,
+                        tax = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND payment_status = 'pending'
+                ''', (transaction_id, square_total, square_tax, order_id))
+            else:
+                # If can't fetch from Square, at least mark as paid
+                app.logger.warning(f"Could not fetch payment details from Square: {payment_response.status_code}")
+                cursor.execute('''
+                    UPDATE orders 
+                    SET square_payment_id = ?,
+                        payment_status = 'paid',
+                        order_status = 'confirmed',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND payment_status = 'pending'
+                ''', (transaction_id, order_id))
             
             # Get all record IDs from this order
             cursor.execute('''
