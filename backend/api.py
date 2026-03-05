@@ -422,26 +422,21 @@ def process_checkout():
         }
         
         # Prepare metadata for webhook tracking
-        metadata = {}
-        if order_id:
-            metadata['order_id'] = str(order_id)  # UUID as string
-        if order_number:
-            metadata['order_number'] = order_number
-        if valid_items:
-            # Store record IDs in metadata for easy lookup
-            metadata['record_ids'] = json.dumps([item.get('copy_id') for item in valid_items])
-        
-        # IMPORTANT: reference_id can be up to 40 characters - UUID fits perfectly
+        metadata = {
+            'order_id': 'test-metadata-123',
+            'order_number': 'TEST-ORDER-456',
+            'record_ids': '[693]'  # Hardcoded test record ID
+        }
+
         payload = {
             "idempotency_key": str(uuid.uuid4()),
             "order": {
                 "location_id": location_id,
                 "line_items": line_items,
-                "reference_id": 'Fuck deepseek'
-                  
+                "reference_id": "test-reference-789"  # Hardcoded test value
             },
             "metadata": metadata,
-            "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id={order_id}" if order_id else None
+            "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id=test-order-123" if order_id else None
         }
         
         square_base_url = 'https://connect.squareup.com'
