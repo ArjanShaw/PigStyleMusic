@@ -1869,16 +1869,8 @@
                     // Close modal
                     modal.remove();
                     
-                    // Step 1: Create order in database
-                    const orderResult = await createOrder(shippingData);
-                    
-                    if (orderResult && orderResult.status === 'success') {
-                        // Step 2: Process payment with Square - PASS shippingData to processCheckout
-                        await processCheckout(orderResult, shippingData);
-                    } else {
-                        showNotification('Failed to create order. Please try again.', 'error');
-                        openCartDrawer();
-                    }
+                    // SINGLE STEP: Process checkout with Square (order creation happens on backend)
+                    await processCheckout(shippingData);
                 });
                 
                 // Handle cancel button
@@ -1897,73 +1889,8 @@
             });
         }
 
-        // Create order in database
-        async function createOrder(shippingData) {
-            try {
-                addDebug('Creating order in database...');
-                
-                // Prepare order data - matching backend expectations
-                const orderData = {
-                    items: cart.items.map(item => ({
-                        copy_id: item.copyId,
-                        title: item.title,
-                        artist: item.artist,
-                        condition: item.condition,
-                        price: item.price,
-                        quantity: item.quantity || 1
-                    })),
-                    shipping_method: shippingData.method,
-                    shipping_cost: shippingData.cost,
-                    subtotal: cart.total,
-                    tax: 0,
-                    total: cart.total + shippingData.cost,
-                    notes: 'Order from online checkout'
-                };
-                
-                // Add shipping fields if applicable (using field names backend expects)
-                if (shippingData.method === 'ship') {
-                    Object.assign(orderData, {
-                        fullName: shippingData.fullName,
-                        email: shippingData.email,
-                        address: shippingData.address,
-                        apt: shippingData.apt,
-                        city: shippingData.city,
-                        state: shippingData.state,
-                        zip: shippingData.zip,
-                        country: shippingData.country,
-                        phone: shippingData.phone || ''
-                    });
-                }
-                
-                const response = await fetch(`${AppConfig.baseUrl}/api/insert-order`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(orderData)
-                });
-                
-                const result = await response.json();
-                addDebug(`Order creation result: ${JSON.stringify(result)}`);
-                
-                if (result.status === 'success') {
-                    currentOrder = result;
-                    showNotification(`Order #${result.order_number} created`, 'success');
-                    return result;
-                } else {
-                    addDebug(`Order creation failed: ${result.error}`, 'error');
-                    return null;
-                }
-                
-            } catch (error) {
-                console.error('Error creating order:', error);
-                addDebug(`Order creation error: ${error.message}`, 'error');
-                return null;
-            }
-        }
-
-        // Process checkout with Square
-        async function processCheckout(orderResult, shippingData) {
+        // Process checkout with Square (order creation happens on backend)
+        async function processCheckout(shippingData) {
             try {
                 // Close cart drawer
                 closeCartDrawer();
@@ -1975,7 +1902,6 @@
                     <div class="payment-modal">
                         <div class="loading-spinner"></div>
                         <h2>Processing Checkout...</h2>
-                        <p>Order #${orderResult.order_number}</p>
                         <p>Please wait while we prepare your payment.</p>
                     </div>
                 `;
@@ -1996,30 +1922,51 @@
                     quantity: item.quantity || 1
                 }));
                 
-                // Send to checkout endpoint with order reference
+                // Prepare customer/shipping data
+                const requestData = {
+                    items: items,
+                    shipping: shippingData.method === 'ship' ? {
+                        amount: shippingData.cost,
+                        name: 'Shipping'
+                    } : null,
+                    subtotal: cart.total,
+                    total: totalWithShipping,
+                    currency: 'USD'
+                };
+                
+                // Add customer info if shipping
+                if (shippingData.method === 'ship') {
+                    Object.assign(requestData, {
+                        customer_name: shippingData.fullName,
+                        customer_email: shippingData.email,
+                        address: shippingData.address,
+                        apt: shippingData.apt,
+                        city: shippingData.city,
+                        state: shippingData.state,
+                        zip: shippingData.zip,
+                        country: shippingData.country
+                    });
+                }
+                
+                // Send to checkout endpoint (backend creates order after Square success)
                 const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        order_id: orderResult.order_id,
-                        order_number: orderResult.order_number,
-                        items: items,
-                        shipping: shippingData.method === 'ship' ? {
-                            amount: shippingData.cost,
-                            name: 'Shipping'
-                        } : null,
-                        subtotal: cart.total,
-                        total: totalWithShipping,
-                        currency: 'USD'
-                    })
+                    body: JSON.stringify(requestData)
                 });
                 
                 const data = await response.json();
                 addDebug(`Backend response: ${JSON.stringify(data)}`);
                 
                 if (data.status === 'success' && data.checkout_url) {
+                    // Store order info for reference
+                    currentOrder = {
+                        order_id: data.order_id,
+                        order_number: data.order_number
+                    };
+                    
                     // Redirect to Square checkout page
                     addDebug(`Redirecting to Square checkout: ${data.checkout_url}`);
                     window.location.href = data.checkout_url;
@@ -2031,7 +1978,6 @@
                             <i class="fas fa-exclamation-circle"></i>
                             <h2>Checkout Failed</h2>
                             <p>${data.error || 'An error occurred processing your checkout.'}</p>
-                            <p><small>Order #${orderResult.order_number} has been saved.</small></p>
                             <button class="payment-btn payment-btn-primary" id="tryAgainBtn">
                                 Try Again
                             </button>
@@ -2043,7 +1989,7 @@
                     
                     document.getElementById('tryAgainBtn').addEventListener('click', () => {
                         modal.remove();
-                        processCheckout(orderResult, shippingData);
+                        processCheckout(shippingData);
                     });
                     
                     document.getElementById('closeErrorBtn').addEventListener('click', () => {
