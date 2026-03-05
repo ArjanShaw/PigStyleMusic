@@ -244,7 +244,7 @@
                                 <div class="cart-item-price">$${item.price.toFixed(2)}</div>
                             </td>
                             <td class="item-action-cell">
-                                <button class="cart-item-remove" onclick="removeFromCart(${index})" title="Remove item">
+                                <button class="cart-item-remove-btn" onclick="removeFromCart(${index})" title="Remove item">
                                     <i class="fas fa-times"></i>
                                 </button>
                             </td>
@@ -266,10 +266,6 @@
                             <tr class="subtotal-row">
                                 <td class="label">Subtotal:</td>
                                 <td class="amount">$${subtotal.toFixed(2)}</td>
-                            </tr>
-                            <tr class="shipping-row" id="shipping-row" style="display: none;">
-                                <td class="label">Shipping:</td>
-                                <td class="amount" id="shipping-amount">$0.00</td>
                             </tr>
                             <tr class="tax-row">
                                 <td class="label">Tax (${currentTaxRate}%):</td>
