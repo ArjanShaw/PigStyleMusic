@@ -445,7 +445,7 @@ def process_checkout():
             },
             "payment_note": f"PigStyle Order {order_number}",
             "metadata": metadata,
-            "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id={order_id}"
+            "redirect_url": "http://localhost:8000/shopping.html?status=completed&order_id={order_id}"
         }
         
         square_base_url = 'https://connect.squareup.com'
