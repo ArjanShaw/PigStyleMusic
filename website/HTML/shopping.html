@@ -203,54 +203,84 @@
                     }
                 }
                 
-                // Calculate tax (always show, even if 0)
+                // Calculate tax
                 const taxAmount = subtotal * (currentTaxRate / 100);
                 const totalWithTax = subtotal + taxAmount;
                 
-                // Build items HTML
-                let itemsHtml = '';
+                // Build items HTML with table layout
+                let itemsHtml = `
+                    <table class="cart-items-table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th class="price-column">Price</th>
+                                <th class="action-column"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
                 cart.items.forEach((item, index) => {
                     const conditionClass = getConditionClass(item.condition);
                     
-                    // Handle image display - use CSS background if no image
+                    // Handle image display
                     const imageHtml = item.image_url ? 
                         `<img src="${item.image_url}" alt="${item.title}" class="cart-item-image" onerror="this.parentElement.innerHTML='<div class=\'cart-item-image default-record-bg\'></div>'">` : 
                         `<div class="cart-item-image default-record-bg"></div>`;
                     
                     itemsHtml += `
-                        <div class="cart-item" data-cart-index="${index}">
-                            ${imageHtml}
-                            <div class="cart-item-details">
-                                <div class="cart-item-title">${escapeHtml(item.title)}</div>
-                                <div class="cart-item-artist">${escapeHtml(item.artist)}</div>
-                                <span class="cart-item-condition ${conditionClass}">${item.condition || 'Unknown'}</span>
+                        <tr class="cart-item-row" data-cart-index="${index}">
+                            <td class="item-info-cell">
+                                <div class="cart-item-info">
+                                    ${imageHtml}
+                                    <div class="cart-item-details">
+                                        <div class="cart-item-title">${escapeHtml(item.title)}</div>
+                                        <div class="cart-item-artist">${escapeHtml(item.artist)}</div>
+                                        <span class="cart-item-condition ${conditionClass}">${item.condition || 'Unknown'}</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="item-price-cell">
                                 <div class="cart-item-price">$${item.price.toFixed(2)}</div>
-                            </div>
-                            <button class="cart-item-remove" onclick="removeFromCart(${index})">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
+                            </td>
+                            <td class="item-action-cell">
+                                <button class="cart-item-remove" onclick="removeFromCart(${index})" title="Remove item">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+                        </tr>
                     `;
                 });
                 
+                itemsHtml += `
+                        </tbody>
+                    </table>
+                `;
+                
                 cartItems.innerHTML = itemsHtml;
                 
-                // Update footer with tax breakdown
+                // Update footer with table layout for totals
                 cartFooter.innerHTML = `
-                    <div class="cart-summary">
-                        <div class="summary-row">
-                            <span>Subtotal:</span>
-                            <span>$${subtotal.toFixed(2)}</span>
-                        </div>
-                        <div class="summary-row">
-                            <span>Tax (${currentTaxRate}%):</span>
-                            <span>$${taxAmount.toFixed(2)}</span>
-                        </div>
-                        <div class="summary-row total">
-                            <span>Total:</span>
-                            <span>$${totalWithTax.toFixed(2)}</span>
-                        </div>
-                    </div>
+                    <table class="cart-totals-table">
+                        <tbody>
+                            <tr class="subtotal-row">
+                                <td class="label">Subtotal:</td>
+                                <td class="amount">$${subtotal.toFixed(2)}</td>
+                            </tr>
+                            <tr class="shipping-row" id="shipping-row" style="display: none;">
+                                <td class="label">Shipping:</td>
+                                <td class="amount" id="shipping-amount">$0.00</td>
+                            </tr>
+                            <tr class="tax-row">
+                                <td class="label">Tax (${currentTaxRate}%):</td>
+                                <td class="amount">$${taxAmount.toFixed(2)}</td>
+                            </tr>
+                            <tr class="total-row">
+                                <td class="label">Total:</td>
+                                <td class="amount total-amount">$${totalWithTax.toFixed(2)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                     <button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button>
                 `;
                 
