@@ -1087,25 +1087,10 @@
                 
                 addDebug('Sending cart to backend for checkout...');
                 
-                // Get tax rate (use stored value or fetch)
-                let currentTaxRate = taxRate;
-                if (currentTaxRate === 0) {
-                    try {
-                        currentTaxRate = await getConfigValue('TAX_RATE') || 0;
-                    } catch (e) {
-                        console.warn('Could not fetch tax rate, using 0');
-                        currentTaxRate = 0;
-                    }
-                }
-                
-                // Calculate tax
+                // Calculate tax (use stored taxRate)
                 const taxableAmount = cart.total + (shippingData?.cost || 0);
-                const taxAmount = taxableAmount * (currentTaxRate / 100);
-                
-                // Calculate total with tax
+                const taxAmount = taxableAmount * (taxRate / 100);
                 const totalWithTax = taxableAmount + taxAmount;
-                
-                addDebug(`Tax calculation: rate=${currentTaxRate}%, amount=$${taxAmount.toFixed(2)}`);
                 
                 // Prepare items array
                 const items = cart.items.map(item => ({
@@ -1144,7 +1129,7 @@
                     });
                 }
                 
-                // Send to checkout endpoint (backend creates order after Square success)
+                // Send to checkout endpoint
                 const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
                     method: 'POST',
                     headers: {
@@ -1154,7 +1139,6 @@
                 });
                 
                 const data = await response.json();
-                addDebug(`Backend response: ${JSON.stringify(data)}`);
                 
                 if (data.status === 'success' && data.checkout_url) {
                     // Store order info for reference
@@ -1162,6 +1146,22 @@
                         order_id: data.order_id,
                         order_number: data.order_number
                     };
+                    
+                    // 🔴 SHOW ALERT WITH TAX INFO BEFORE REDIRECT
+        //             alert(`
+        // 🔴 CHECKOUT DATA CHECK:
+        // -------------------
+        // Subtotal: $${cart.total.toFixed(2)}
+        // Shipping: $${(shippingData?.cost || 0).toFixed(2)}
+        // Tax Rate: ${taxRate}%
+        // Tax Amount: $${taxAmount.toFixed(2)}
+        // Total with Tax: $${totalWithTax.toFixed(2)}
+
+        // ✅ Tax field in request: ${requestData.tax === taxAmount ? 'YES' : 'NO'}
+        // ✅ Total field in request: $${requestData.total.toFixed(2)}
+
+        // Click OK to proceed to Square checkout.
+        //             `);
                     
                     // Redirect to Square checkout page
                     addDebug(`Redirecting to Square checkout: ${data.checkout_url}`);
