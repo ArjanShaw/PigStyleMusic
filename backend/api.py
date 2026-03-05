@@ -438,10 +438,15 @@ def process_checkout():
         
         env = os.getenv("ENV", "production")
 
+        # if env == "development":
+        #     redirect_url = "http://localhost:8000/shop?status=completed"
+        # else:
+        #     redirect_url = "https://www.pigstylemusic.com/shop?status=completed"
+
         if env == "development":
-            redirect_url = "http://localhost:8000/shop?status=completed"
+            redirect_url = f"http://localhost:8000/shop?status=completed&order_id={order_id}"
         else:
-            redirect_url = "https://www.pigstylemusic.com/shop?status=completed"
+            redirect_url = f"https://www.pigstylemusic.com/shop?status=completed&order_id={order_id}"
 
         payload = {
             "idempotency_key": str(uuid.uuid4()),
@@ -615,6 +620,83 @@ def process_checkout():
         
     except Exception as e:
         app.logger.error(f"Checkout error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': f'Server error: {str(e)}'
+        }), 500
+
+@app.route('/api/order/complete', methods=['POST'])
+def order_complete():
+    """Update order status and mark records as sold after successful payment"""
+    try:
+        data = request.json
+        transaction_id = data.get('transaction_id')
+        order_id = data.get('order_id')
+        
+        if not transaction_id or not order_id:
+            return jsonify({'status': 'error', 'error': 'Missing transaction_id or order_id'}), 400
+        
+        app.logger.info(f"Completing order: {order_id} with transaction: {transaction_id}")
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Begin transaction
+        cursor.execute("BEGIN TRANSACTION")
+        
+        try:
+            # Update order status
+            cursor.execute('''
+                UPDATE orders 
+                SET square_payment_id = ?,
+                    payment_status = 'paid',
+                    order_status = 'confirmed',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND payment_status = 'pending'
+            ''', (transaction_id, order_id))
+            
+            if cursor.rowcount == 0:
+                app.logger.warning(f"No pending order found with id: {order_id}")
+                # Still return success as this might be a duplicate callback
+            
+            # Get all record IDs from this order
+            cursor.execute('''
+                SELECT record_id FROM order_items WHERE order_id = ?
+            ''', (order_id,))
+            
+            record_ids = [row['record_id'] for row in cursor.fetchall()]
+            app.logger.info(f"Found {len(record_ids)} records in order {order_id}")
+            
+            # Update each record's status to sold (status_id = 3)
+            if record_ids:
+                placeholders = ','.join('?' for _ in record_ids)
+                cursor.execute(f'''
+                    UPDATE records 
+                    SET status_id = 3, 
+                        date_sold = CURRENT_DATE
+                    WHERE id IN ({placeholders})
+                ''', record_ids)
+                
+                app.logger.info(f"Updated {cursor.rowcount} records to sold status")
+            
+            conn.commit()
+            app.logger.info(f"Order {order_id} completed successfully")
+            
+            return jsonify({
+                'status': 'success',
+                'message': f'Order completed, {len(record_ids)} records marked as sold'
+            })
+            
+        except Exception as e:
+            conn.rollback()
+            app.logger.error(f"Error in order completion transaction: {e}")
+            raise
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        app.logger.error(f"Order complete error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({
             'status': 'error',

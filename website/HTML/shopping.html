@@ -1156,12 +1156,35 @@
             const urlParams = new URLSearchParams(window.location.search);
             const transactionId = urlParams.get('transactionId');
             const status = urlParams.get('status');
+            const orderId = urlParams.get('order_id');  // Get order_id from URL
             
-            if (transactionId) {
-                addDebug(`Returning from checkout: ${transactionId}, status: ${status}`);
-                
-                if (status === 'completed') {
-                    // Clear cart on successful payment
+            addDebug(`Returning from checkout: transactionId=${transactionId}, status=${status}, orderId=${orderId}`);
+            
+            if (transactionId && status === 'completed' && orderId) {
+                try {
+                    // Call backend to update record statuses
+                    const response = await fetch(`${AppConfig.baseUrl}/api/order/complete`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            transaction_id: transactionId,
+                            order_id: orderId
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        addDebug('Order status updated successfully');
+                    } else {
+                        addDebug(`Failed to update order: ${data.error}`, 'error');
+                    }
+                } catch (error) {
+                    addDebug(`Error calling order complete endpoint: ${error.message}`, 'error');
+                } finally {
+                    // Clear cart on successful payment (regardless of API call outcome)
                     cart.items = [];
                     saveCart();
                     
@@ -1169,9 +1192,14 @@
                     setTimeout(() => {
                         showNotification('Payment successful! Thank you for your purchase.', 'success');
                     }, 500);
-                } else if (status === 'canceled') {
-                    showNotification('Checkout was canceled.', 'error');
+                    
+                    // Optional: Remove the query parameters from URL without refreshing
+                    window.history.replaceState({}, document.title, '/shop');
                 }
+            } else if (status === 'canceled') {
+                showNotification('Checkout was canceled.', 'error');
+                // Optional: Remove the query parameters
+                window.history.replaceState({}, document.title, '/shop');
             }
         }
 
