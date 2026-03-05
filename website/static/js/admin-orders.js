@@ -304,7 +304,9 @@ function clearOrdersSearch() {
     applyOrdersFilters();
 }
 
-// View order details
+// ==================== ENHANCED PRINTABLE ORDER DETAILS ====================
+
+// Enhanced view order details with printable layout
 async function viewOrderDetails(orderId) {
     try {
         const response = await fetch(`${AppConfig.baseUrl}/api/admin/orders/${orderId}`, {
@@ -318,7 +320,7 @@ async function viewOrderDetails(orderId) {
         const data = await response.json();
         
         if (data.status === 'success') {
-            showOrderDetailsModal(data.order);
+            showPrintableOrderModal(data.order);
         } else {
             alert('Failed to load order details');
         }
@@ -328,98 +330,183 @@ async function viewOrderDetails(orderId) {
     }
 }
 
-// Show order details modal
-function showOrderDetailsModal(order) {
+// Show printable order modal
+function showPrintableOrderModal(order) {
     const items = order.items || [];
     
+    // FIX: Check for shipping address presence instead of relying on shipping_method
+    const hasShippingAddress = order.shipping_address_line1 && 
+                              order.shipping_address_line1.trim() !== '';
+    
+    // Calculate totals
+    const subtotal = parseFloat(order.subtotal) || 0;
+    const shipping = parseFloat(order.shipping_cost) || 0;
+    const tax = parseFloat(order.tax) || 0;
+    const total = parseFloat(order.total) || 0;
+    
+    // Format date
+    const orderDate = new Date(order.created_at);
+    const formattedDate = orderDate.toLocaleDateString() + ' ' + orderDate.toLocaleTimeString();
+    
+    // Build items HTML
     let itemsHtml = '';
     items.forEach(item => {
         itemsHtml += `
             <tr>
-                <td>${item.artist || ''}</td>
-                <td>${item.title || ''}</td>
-                <td>${item.condition || ''}</td>
-                <td>${formatCurrency(item.price || 0)}</td>
+                <td class="item-id">${item.record_id || 'N/A'}</td>
+                <td class="item-artist">${escapeHtml(item.artist || '')}</td>
+                <td class="item-title">${escapeHtml(item.title || '')}</td>
+                <td class="item-condition">${escapeHtml(item.condition || '')}</td>
+                <td class="item-price">$${(parseFloat(item.price) || 0).toFixed(2)}</td>
             </tr>
         `;
     });
     
+    // Status color class
+    const statusClass = order.status === 'paid' ? 'status-paid' : 
+                       order.status === 'cancelled' ? 'status-cancelled' : 'status-pending';
+    
+    // Status icon
+    const statusIcon = order.status === 'paid' ? '✅' : 
+                      order.status === 'cancelled' ? '❌' : '⏳';
+    
+    // Create modal
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'order-printable-modal';
     modal.id = 'order-details-modal';
     modal.innerHTML = `
-        <div class="modal-content" style="max-width: 700px;">
-            <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-receipt"></i> Order Details #${order.id}</h3>
-                <button class="modal-close" onclick="closeOrderDetailsModal()">&times;</button>
+        <div class="order-printable-content">
+            <div class="printable-header">
+                <h2><i class="fas fa-receipt"></i> Order Details</h2>
+                <button class="modal-close-btn" onclick="closeOrderDetailsModal()">&times;</button>
             </div>
-            <div class="modal-body">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                    <div>
-                        <h4>Order Information</h4>
-                        <p><strong>Order #:</strong> ${order.order_number || 'N/A'}</p>
-                        <p><strong>Square Order ID:</strong> ${order.square_order_id || 'N/A'}</p>
-                        <p><strong>Square Payment ID:</strong> ${order.square_payment_id || 'N/A'}</p>
-                        <p><strong>Date:</strong> ${formatDate(order.created_at)}</p>
-                        <p><strong>Status:</strong> <span class="status-badge status-${order.status}">${order.status}</span></p>
+            
+            <div class="printable-body" id="printable-order-content">
+                <!-- Status Card -->
+                <div class="status-card">
+                    <div class="status-badge-large ${statusClass}">
+                        ${statusIcon} ${(order.status || 'pending').toUpperCase()}
                     </div>
-                    <div>
-                        <h4>Customer Information</h4>
-                        <p><strong>Name:</strong> ${order.customer_name || 'N/A'}</p>
-                        <p><strong>Email:</strong> ${order.customer_email || 'N/A'}</p>
-                        <p><strong>Shipping Method:</strong> ${order.shipping_method || 'N/A'}</p>
-                        ${order.shipping_method === 'ship' ? `
-                            <p><strong>Address:</strong> ${order.shipping_address_line1 || ''} ${order.shipping_address_line2 || ''}</p>
-                            <p><strong>City/State/Zip:</strong> ${order.shipping_city || ''}, ${order.shipping_state || ''} ${order.shipping_zip || ''}</p>
-                            <p><strong>Country:</strong> ${order.shipping_country || ''}</p>
-                        ` : ''}
+                    <div class="order-date">
+                        <i class="far fa-calendar-alt"></i> ${formattedDate}
                     </div>
                 </div>
                 
-                <h4>Items (${items.length})</h4>
-                <div style="overflow-x: auto;">
-                    <table class="records-table">
-                        <thead>
-                            <tr>
-                                <th>Artist</th>
-                                <th>Title</th>
-                                <th>Condition</th>
-                                <th>Price</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${itemsHtml || '<tr><td colspan="4" style="text-align:center;">No items found</td></tr>'}
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="3" style="text-align: right;"><strong>Subtotal:</strong></td>
-                                <td>${formatCurrency(order.subtotal || 0)}</td>
-                            </tr>
-                            <tr>
-                                <td colspan="3" style="text-align: right;"><strong>Shipping:</strong></td>
-                                <td>${formatCurrency(order.shipping_cost || 0)}</td>
-                            </tr>
-                            <tr>
-                                <td colspan="3" style="text-align: right;"><strong>Tax:</strong></td>
-                                <td>${formatCurrency(order.tax || 0)}</td>
-                            </tr>
-                            <tr>
-                                <td colspan="3" style="text-align: right;"><strong>Total:</strong></td>
-                                <td><strong>${formatCurrency(order.total || 0)}</strong></td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                <!-- Order Info Card -->
+                <div class="info-card">
+                    <h3><i class="fas fa-hashtag"></i> Order Information</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Order #:</span>
+                            <span class="info-value">${order.order_number || 'N/A'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Square Order ID:</span>
+                            <span class="info-value mono">${order.square_order_id || 'N/A'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Square Payment ID:</span>
+                            <span class="info-value mono">${order.square_payment_id || 'N/A'}</span>
+                        </div>
+                    </div>
                 </div>
                 
+                <!-- Customer Card -->
+                <div class="info-card">
+                    <h3><i class="fas fa-user"></i> Customer Information</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Name:</span>
+                            <span class="info-value">${escapeHtml(order.customer_name || 'N/A')}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Email:</span>
+                            <span class="info-value">${escapeHtml(order.customer_email || 'N/A')}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Shipping/Pickup Card - FIXED: Now checks for shipping address presence -->
+                <div class="info-card ${hasShippingAddress ? '' : 'pickup-only'}">
+                    <h3><i class="fas ${hasShippingAddress ? 'fa-truck' : 'fa-store'}"></i> 
+                        ${hasShippingAddress ? 'Shipping Information' : 'Pickup Information'}
+                    </h3>
+                    ${hasShippingAddress ? `
+                        <div class="info-grid">
+                            <div class="info-item full-width">
+                                <span class="info-label">Address:</span>
+                                <span class="info-value" style="color: #333 !important;">
+                                    ${escapeHtml(order.shipping_address_line1 || '')}<br>
+                                    ${order.shipping_address_line2 ? escapeHtml(order.shipping_address_line2) + '<br>' : ''}
+                                    ${escapeHtml(order.shipping_city || '')}, ${escapeHtml(order.shipping_state || '')} ${escapeHtml(order.shipping_zip || '')}<br>
+                                    ${escapeHtml(order.shipping_country || 'USA')}
+                                </span>
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="pickup-message">
+                            <i class="fas fa-check-circle"></i> Customer will pick up in store
+                        </div>
+                    `}
+                </div>
+                
+                <!-- Items Card -->
+                <div class="items-card">
+                    <h3><i class="fas fa-compact-disc"></i> Items (${items.length})</h3>
+                    <div class="items-table-container">
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Artist</th>
+                                    <th>Title</th>
+                                    <th>Condition</th>
+                                    <th>Price</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${itemsHtml || '<tr><td colspan="5" class="no-items">No items found</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Totals - FIXED: Added explicit black text color -->
+                    <div class="totals-section" style="color: #333 !important;">
+                        <div class="total-row" style="color: #333 !important;">
+                            <span style="color: #333 !important;">Subtotal:</span>
+                            <span style="color: #333 !important;">$${subtotal.toFixed(2)}</span>
+                        </div>
+                        <div class="total-row" style="color: #333 !important;">
+                            <span style="color: #333 !important;">Shipping:</span>
+                            <span style="color: #333 !important;">$${shipping.toFixed(2)}</span>
+                        </div>
+                        <div class="total-row" style="color: #333 !important;">
+                            <span style="color: #333 !important;">Tax:</span>
+                            <span style="color: #333 !important;">$${tax.toFixed(2)}</span>
+                        </div>
+                        <div class="total-row grand-total" style="color: #333 !important;">
+                            <span style="color: #333 !important;">TOTAL:</span>
+                            <span style="color: #28a745 !important; font-weight: bold;">$${total.toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Notes if any -->
                 ${order.notes ? `
-                    <div style="margin-top: 20px;">
-                        <h4>Notes</h4>
-                        <p style="background: #f8f9fa; padding: 10px; border-radius: 4px;">${order.notes}</p>
+                    <div class="notes-card">
+                        <h3><i class="fas fa-sticky-note"></i> Notes</h3>
+                        <p>${escapeHtml(order.notes)}</p>
                     </div>
                 ` : ''}
             </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeOrderDetailsModal()">Close</button>
+            
+            <div class="printable-footer">
+                <button class="btn btn-secondary" onclick="closeOrderDetailsModal()">
+                    <i class="fas fa-times"></i> Close
+                </button>
+                <button class="btn btn-primary" onclick="printOrderDetails()">
+                    <i class="fas fa-print"></i> Print Order
+                </button>
             </div>
         </div>
     `;
@@ -427,11 +514,200 @@ function showOrderDetailsModal(order) {
     document.body.appendChild(modal);
 }
 
-// Close order details modal
+// Print order details
+function printOrderDetails() {
+    const content = document.getElementById('printable-order-content');
+    if (!content) return;
+    
+    // Clone the content for printing
+    const printContent = content.cloneNode(true);
+    
+    // Create print styles - FIXED: Added black text colors
+    const styles = `
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #000 !important; }
+            * { color: #000 !important; }
+            .status-card { 
+                background: #f8f9fa; 
+                padding: 15px; 
+                border-radius: 8px; 
+                margin-bottom: 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border: 1px solid #ddd;
+            }
+            .status-badge-large { 
+                padding: 8px 16px; 
+                border-radius: 20px; 
+                font-weight: bold;
+                font-size: 16px;
+            }
+            .status-paid { background: #d4edda; color: #155724 !important; border: 1px solid #c3e6cb; }
+            .status-pending { background: #fff3cd; color: #856404 !important; border: 1px solid #ffeeba; }
+            .status-cancelled { background: #f8d7da; color: #721c24 !important; border: 1px solid #f5c6cb; }
+            .order-date { color: #000 !important; font-size: 14px; }
+            .info-card { 
+                background: white; 
+                border: 1px solid #ddd; 
+                border-radius: 8px; 
+                padding: 15px; 
+                margin-bottom: 20px;
+            }
+            .info-card h3 { 
+                margin: 0 0 15px 0; 
+                color: #000 !important; 
+                font-size: 16px;
+                border-bottom: 2px solid #007bff;
+                padding-bottom: 8px;
+            }
+            .info-grid { 
+                display: grid; 
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 15px;
+            }
+            .info-item { line-height: 1.6; }
+            .info-item.full-width { grid-column: 1 / -1; }
+            .info-label { 
+                font-weight: bold; 
+                color: #000 !important; 
+                display: inline-block;
+                width: 100px;
+            }
+            .info-value { color: #000 !important; }
+            .mono { font-family: monospace; font-size: 12px; }
+            .pickup-message {
+                background: #e3f2fd;
+                padding: 15px;
+                border-radius: 4px;
+                color: #0d47a1 !important;
+                font-weight: 500;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .items-card { 
+                background: white; 
+                border: 1px solid #ddd; 
+                border-radius: 8px; 
+                padding: 15px; 
+                margin-bottom: 20px;
+            }
+            .items-card h3 { 
+                margin: 0 0 15px 0; 
+                color: #000 !important; 
+                font-size: 16px;
+                border-bottom: 2px solid #28a745;
+                padding-bottom: 8px;
+            }
+            .items-table-container { overflow-x: auto; }
+            .items-table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                font-size: 14px;
+            }
+            .items-table th {
+                background: #f8f9fa;
+                padding: 12px;
+                text-align: left;
+                border-bottom: 2px solid #ddd;
+                color: #000 !important;
+            }
+            .items-table td {
+                padding: 10px 12px;
+                border-bottom: 1px solid #eee;
+                color: #000 !important;
+            }
+            .items-table .item-id { 
+                font-family: monospace; 
+                font-weight: bold;
+                color: #007bff !important;
+            }
+            .items-table .item-price { 
+                font-weight: bold; 
+                color: #28a745 !important;
+            }
+            .totals-section {
+                margin-top: 20px;
+                padding-top: 15px;
+                border-top: 2px solid #333;
+                text-align: right;
+                color: #000 !important;
+            }
+            .total-row {
+                display: flex;
+                justify-content: flex-end;
+                gap: 30px;
+                margin-bottom: 8px;
+                font-size: 15px;
+                color: #000 !important;
+            }
+            .total-row span {
+                color: #000 !important;
+            }
+            .grand-total {
+                font-size: 18px;
+                font-weight: bold;
+                color: #000 !important;
+                border-top: 1px solid #ddd;
+                padding-top: 8px;
+                margin-top: 8px;
+            }
+            .grand-total span:last-child {
+                color: #28a745 !important;
+            }
+            .notes-card {
+                background: #fff3cd;
+                border: 1px solid #ffeeba;
+                border-radius: 8px;
+                padding: 15px;
+                margin-top: 20px;
+            }
+            .notes-card h3 {
+                margin: 0 0 10px 0;
+                color: #856404 !important;
+                font-size: 16px;
+            }
+            .notes-card p {
+                margin: 0;
+                color: #856404 !important;
+            }
+            @media print {
+                .modal-close-btn, .printable-footer { display: none; }
+                body { padding: 0; }
+                .info-card, .items-card, .status-card { break-inside: avoid; }
+            }
+        </style>
+    `;
+    
+    // Create print window
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Order Details - ${order?.order_number || 'Order'}</title>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+            ${styles}
+        </head>
+        <body>
+            ${printContent.outerHTML}
+            <script>
+                window.onload = function() { window.print(); window.close(); }
+            <\/script>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+}
+
+// Close modal
 function closeOrderDetailsModal() {
     const modal = document.getElementById('order-details-modal');
     if (modal) modal.remove();
 }
+
+// ==================== END ENHANCED ORDER DETAILS ====================
 
 // Refresh order payment status from Square
 async function refreshOrderPayment(orderId) {
@@ -615,6 +891,14 @@ function exportOrdersToCSV() {
     a.download = `orders_export_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Initialize orders tab
