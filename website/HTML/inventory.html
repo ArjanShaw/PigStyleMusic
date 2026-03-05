@@ -204,12 +204,32 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
+        .modal-album-image.default-record-bg {
+            background-image: url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'150\' height=\'150\' viewBox=\'0 0 150 150\'%3E%3Crect width=\'150\' height=\'150\' fill=\'%23f8f9fa\'/%3E%3Ccircle cx=\'75\' cy=\'75\' r=\'65\' fill=\'%23333\' stroke=\'%23666\' stroke-width=\'3\'/%3E%3Ccircle cx=\'75\' cy=\'75\' r=\'45\' fill=\'%23222\' stroke=\'%23444\' stroke-width=\'2\'/%3E%3Ccircle cx=\'75\' cy=\'75\' r=\'25\' fill=\'%23ff6b6b\' stroke=\'%23cc5555\' stroke-width=\'2\'/%3E%3Ccircle cx=\'75\' cy=\'75\' r=\'7\' fill=\'%23111\'/%3E%3C/svg%3E');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            width: 150px;
+            height: 150px;
+            border-radius: 4px;
+        }
+
         .copies-list-with-image {
             flex: 1;
             padding: 20px 20px 20px 10px;
             max-height: calc(80vh - 120px);
             overflow-y: auto;
             background: white;
+        }
+
+        /* Default image for cards */
+        .card-image.default-record-bg {
+            background-image: url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\' viewBox=\'0 0 200 200\'%3E%3Crect width=\'200\' height=\'200\' fill=\'%23f8f9fa\'/%3E%3Ccircle cx=\'100\' cy=\'100\' r=\'85\' fill=\'%23333\' stroke=\'%23666\' stroke-width=\'3\'/%3E%3Ccircle cx=\'100\' cy=\'100\' r=\'60\' fill=\'%23222\' stroke=\'%23444\' stroke-width=\'2\'/%3E%3Ccircle cx=\'100\' cy=\'100\' r=\'35\' fill=\'%23ff6b6b\' stroke=\'%23cc5555\' stroke-width=\'2\'/%3E%3Ccircle cx=\'100\' cy=\'100\' r=\'10\' fill=\'%23111\'/%3E%3C/svg%3E');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            width: 100%;
+            aspect-ratio: 1;
         }
 
         /* Simplified filter section - only date buttons */
@@ -544,9 +564,6 @@
                 }
             }
             
-            // Get the best image (first copy with image, or default)
-            const imageUrl = release.image_url || '/static/images/default-record.jpg';
-            
             // Get genre
             const genre = release.genre_name || 'Unknown Genre';
             
@@ -614,9 +631,14 @@
                 copyCountHtml = `<span class="copy-count">${copyCountText}</span>`;
             }
             
+            // Handle image display - use CSS background if no image
+            const imageHtml = release.image_url ? 
+                `<img src="${release.image_url}" alt="${release.title}" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
+                '';
+            
             card.innerHTML = `
-                <div class="card-image">
-                    <img src="${imageUrl}" alt="${release.title}" onerror="this.src='/static/images/default-record.jpg'">
+                <div class="card-image ${!release.image_url ? 'default-record-bg' : ''}">
+                    ${imageHtml}
                 </div>
                 <div class="card-info">
                     <h3>${escapeHtml(release.title)}</h3>
@@ -707,8 +729,10 @@
                 return b.store_price - a.store_price; // Higher price first for same condition
             });
             
-            // Get album image
-            const imageUrl = release.image_url || '/static/images/default-record.jpg';
+            // Handle image display - use CSS background if no image
+            const imageHtml = release.image_url ? 
+                `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
+                '';
             
             // Build footer HTML - only show if more than 1 copy
             let footerHtml = '';
@@ -728,8 +752,8 @@
                         <button class="copies-modal-close">&times;</button>
                     </div>
                     <div class="copies-modal-content">
-                        <div class="modal-album-image">
-                            <img src="${imageUrl}" alt="${escapeHtml(release.title)}" onerror="this.src='/static/images/default-record.jpg'">
+                        <div class="modal-album-image ${!release.image_url ? 'default-record-bg' : ''}">
+                            ${imageHtml}
                         </div>
                         <div class="copies-list-with-image">
                             ${sortedCopies.map(copy => {
