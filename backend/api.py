@@ -423,6 +423,19 @@ def process_checkout():
                 }
             })
         
+        # 🔴 FIX: Add tax as a line item if present
+        tax_amount = data.get('tax', 0)
+        if tax_amount and float(tax_amount) > 0:
+            line_items.append({
+                "name": "Sales Tax",
+                "quantity": "1",
+                "base_price_money": {
+                    "amount": int(round(float(tax_amount) * 100)),
+                    "currency": "USD"
+                }
+            })
+            app.logger.info(f"✅ Added tax line item: ${tax_amount}")
+        
         # Prepare metadata
         metadata = {}
         metadata['order_id'] = str(order_id)
@@ -437,11 +450,6 @@ def process_checkout():
         }
         
         env = os.getenv("ENV", "production")
-
-        # if env == "development":
-        #     redirect_url = "http://localhost:8000/shop?status=completed"
-        # else:
-        #     redirect_url = "https://www.pigstylemusic.com/shop?status=completed"
 
         if env == "development":
             redirect_url = f"http://localhost:8000/shop?status=completed&order_id={order_id}"
