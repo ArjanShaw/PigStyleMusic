@@ -190,11 +190,11 @@ function renderOrdersTable() {
                 <td>${formatCurrency(order.total)}</td>
                 <td><span class="status-badge ${statusClass}">${order.status || 'pending'}</span></td>
                 <td class="table-actions">
-                    <button class="btn-small btn-info" onclick="viewOrderDetails(${order.id})" title="View Details">
+                    <button class="btn-small btn-info" onclick="viewOrderDetails('${order.id}')" title="View Details">
                         <i class="fas fa-eye"></i>
                     </button>
                     ${showRefresh ? `
-                        <button class="btn-small btn-warning" onclick="refreshOrderPayment(${order.id})" title="Check Square for Payment">
+                        <button class="btn-small btn-warning" onclick="refreshOrderPayment('${order.id}')" title="Check Square for Payment">
                             <i class="fas fa-sync-alt"></i>
                         </button>
                     ` : ''}
