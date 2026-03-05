@@ -2852,6 +2852,184 @@ def get_admin_orders():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/admin/orders/<string:order_id>/refresh-payment', methods=['POST', 'OPTIONS'])
+@login_required
+@role_required(['admin'])
+def refresh_order_payment(order_id):
+    """Manually check Square for payment status using UUID"""
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'https://www.pigstylemusic.com')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+    
+    try:
+        app.logger.info(f"Refreshing payment for order: {order_id}")
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get order details
+        cursor.execute('''
+            SELECT o.id, o.order_number, o.total, o.payment_status, 
+                   o.created_at,
+                   oi.record_id, oi.record_title, oi.record_artist
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            WHERE o.id = ?
+        ''', (order_id,))
+        
+        rows = cursor.fetchall()
+        if not rows:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        order = dict(rows[0])
+        record_ids = [row['record_id'] for row in rows if row['record_id']]
+        
+        # If already paid, no need to check
+        if order['payment_status'] == 'paid':
+            conn.close()
+            return jsonify({
+                'status': 'success', 
+                'message': 'Order already marked as paid',
+                'payment_found': True,
+                'payment_status': 'paid'
+            })
+        
+        # Query Square for recent payments
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Square access token not configured'}), 500
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Square-Version': '2026-01-22',
+            'Content-Type': 'application/json'
+        }
+        
+        # Get all payments from last 7 days
+        from datetime import datetime, timedelta
+        end_time = datetime.now().isoformat()
+        start_time = (datetime.now() - timedelta(days=7)).isoformat()
+        
+        response = requests.get(
+            f'https://connect.squareup.com/v2/payments',
+            headers=headers,
+            params={
+                'limit': 100,
+                'begin_time': start_time,
+                'end_time': end_time
+            }
+        )
+        
+        if response.status_code != 200:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Failed to query Square'}), 400
+        
+        payments = response.json().get('payments', [])
+        
+        # Find payment that has our UUID in reference_id or metadata
+        matching_payment = None
+        
+        # Priority 1: Match by reference_id (exact match)
+        for payment in payments:
+            if payment.get('status') != 'COMPLETED':
+                continue
+            
+            if payment.get('reference_id') == order_id:
+                matching_payment = payment
+                app.logger.info(f"Found payment by reference_id: {payment.get('id')}")
+                break
+        
+        # Priority 2: Match by metadata.order_id
+        if not matching_payment:
+            for payment in payments:
+                if payment.get('status') != 'COMPLETED':
+                    continue
+                
+                metadata = payment.get('metadata', {})
+                if metadata.get('order_id') == order_id:
+                    matching_payment = payment
+                    app.logger.info(f"Found payment by metadata.order_id: {payment.get('id')}")
+                    break
+        
+        # Priority 3: Match by amount AND time (fallback)
+        if not matching_payment:
+            amount_cents = int(round(order['total'] * 100))
+            order_time = datetime.strptime(order['created_at'], '%Y-%m-%d %H:%M:%S')
+            
+            for payment in payments:
+                if payment.get('status') != 'COMPLETED':
+                    continue
+                
+                payment_amount = payment.get('amount_money', {}).get('amount', 0)
+                payment_time = datetime.fromisoformat(payment.get('created_at', '').replace('Z', '+00:00'))
+                
+                # Match amount AND time within 5 minutes
+                time_diff = abs((payment_time - order_time).total_seconds())
+                if payment_amount == amount_cents and time_diff < 300:
+                    matching_payment = payment
+                    app.logger.info(f"Found payment by amount+time fallback: {payment.get('id')}")
+                    break
+        
+        if matching_payment:
+            # Update order
+            cursor.execute('''
+                UPDATE orders 
+                SET payment_status = 'paid', 
+                    order_status = 'confirmed',
+                    square_payment_id = ?,
+                    square_order_id = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND payment_status != 'paid'
+            ''', (
+                matching_payment.get('id'),
+                matching_payment.get('order_id'),
+                order_id
+            ))
+            
+            if cursor.rowcount > 0 and record_ids:
+                # Mark records as sold
+                placeholders = ','.join('?' for _ in record_ids)
+                cursor.execute(f'''
+                    UPDATE records
+                    SET status_id = 3, date_sold = CURRENT_DATE
+                    WHERE id IN ({placeholders})
+                ''', record_ids)
+            
+            conn.commit()
+            message = f"Order {order_id} marked as paid"
+            app.logger.info(message)
+        else:
+            message = f"No matching payment found for Order {order_id}"
+        
+        conn.close()
+        
+        response = jsonify({
+            'status': 'success',
+            'message': message,
+            'payment_found': bool(matching_payment),
+            'payment_status': 'paid' if matching_payment else 'pending'
+        })
+        
+        response.headers.add('Access-Control-Allow-Origin', 'https://www.pigstylemusic.com')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+        
+    except Exception as e:
+        app.logger.error(f"Error refreshing order payment: {e}")
+        app.logger.error(traceback.format_exc())
+        
+        response = jsonify({'status': 'error', 'error': str(e)})
+        response.headers.add('Access-Control-Allow-Origin', 'https://www.pigstylemusic.com')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
+
 @app.route('/records', methods=['POST'])
 def create_record():
     """Create a new record in the database"""
