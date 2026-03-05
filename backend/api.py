@@ -439,9 +439,9 @@ def process_checkout():
         env = os.getenv("ENV", "production")
 
         if env == "development":
-            redirect_url = "http://localhost:8000/shop"
+            redirect_url = "http://localhost:8000/shop?status=completed"
         else:
-            redirect_url = "https://www.pigstylemusic.com/shop"
+            redirect_url = "https://www.pigstylemusic.com/shop?status=completed"
 
         payload = {
             "idempotency_key": str(uuid.uuid4()),
