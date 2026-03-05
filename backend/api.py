@@ -84,99 +84,6 @@ def log_response_info(response):
     app.logger.debug('Response Headers: %s', response.headers)
     return response
 
-@app.route('/api/admin/orders', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_admin_orders():
-    """Get orders for admin panel with UUID support"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Get orders with their items
-        cursor.execute('''
-            SELECT 
-                o.*,
-                GROUP_CONCAT(
-                    json_object(
-                        'record_id', oi.record_id,
-                        'artist', oi.record_artist,
-                        'title', oi.record_title,
-                        'condition', oi.record_condition,
-                        'price', oi.price_at_time
-                    )
-                ) as items_json
-            FROM orders o
-            LEFT JOIN order_items oi ON o.id = oi.order_id
-            GROUP BY o.id
-            ORDER BY o.created_at DESC
-        ''')
-        
-        orders = cursor.fetchall()
-        
-        # Get stats
-        cursor.execute('''
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END) as pending,
-                SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) as paid,
-                SUM(total) as revenue
-            FROM orders
-        ''')
-        
-        stats = cursor.fetchone()
-        conn.close()
-        
-        # Process orders
-        orders_list = []
-        for order in orders:
-            order_dict = dict(order)
-            
-            # Combine payment_status and order_status into a single status field
-            if order_dict['payment_status'] == 'paid' and order_dict['order_status'] == 'confirmed':
-                order_dict['status'] = 'paid'
-            elif order_dict['payment_status'] == 'failed' or order_dict['order_status'] == 'cancelled':
-                order_dict['status'] = 'cancelled'
-            elif order_dict['payment_status'] == 'pending':
-                order_dict['status'] = 'pending'
-            else:
-                order_dict['status'] = order_dict['order_status'] or 'pending'
-            
-            # Parse items JSON
-            try:
-                if order_dict['items_json']:
-                    items_json = '[' + order_dict['items_json'] + ']'
-                    order_dict['items'] = json.loads(items_json)
-                else:
-                    order_dict['items'] = []
-            except Exception as e:
-                app.logger.error(f"Error parsing items JSON: {e}")
-                order_dict['items'] = []
-            
-            # Remove the raw JSON field
-            if 'items_json' in order_dict:
-                del order_dict['items_json']
-            
-            orders_list.append(order_dict)
-        
-        # Format stats
-        stats_dict = {
-            'total': stats['total'] if stats and stats['total'] else 0,
-            'pending': stats['pending'] if stats and stats['pending'] else 0,
-            'paid': stats['paid'] if stats and stats['paid'] else 0,
-            'revenue': float(stats['revenue']) if stats and stats['revenue'] else 0
-        }
-        
-        return jsonify({
-            'status': 'success',
-            'orders': orders_list,
-            'stats': stats_dict
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error fetching orders: {e}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
  
 def setup_logging():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -2660,112 +2567,7 @@ def delete_user(user_id):
         }), 500
     finally:
         conn.close()
-
-@app.route('/api/admin/orders', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_admin_orders():
-    """Get orders for admin panel"""
-    app.logger.info("=== ADMIN ORDERS GET HIT ===")
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Get orders with their items
-        cursor.execute('''
-            SELECT 
-                o.*,
-                GROUP_CONCAT(
-                    json_object(
-                        'record_id', oi.record_id,
-                        'artist', oi.record_artist,
-                        'title', oi.record_title,
-                        'condition', oi.record_condition,
-                        'price', oi.price_at_time
-                    )
-                ) as items_json
-            FROM orders o
-            LEFT JOIN order_items oi ON o.id = oi.order_id
-            GROUP BY o.id
-            ORDER BY o.created_at DESC
-        ''')
-        
-        orders = cursor.fetchall()
-        
-        # Get stats
-        cursor.execute('''
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END) as pending,
-                SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) as paid,
-                SUM(total) as revenue
-            FROM orders
-        ''')
-        
-        stats = cursor.fetchone()
-        
-        # Process orders
-        orders_list = []
-        for order in orders:
-            order_dict = dict(order)
-            
-            # Combine payment_status and order_status into a single status field
-            if order_dict['payment_status'] == 'paid' and order_dict['order_status'] == 'confirmed':
-                order_dict['status'] = 'paid'
-            elif order_dict['payment_status'] == 'failed' or order_dict['order_status'] == 'cancelled':
-                order_dict['status'] = 'cancelled'
-            elif order_dict['payment_status'] == 'pending':
-                order_dict['status'] = 'pending'
-            else:
-                order_dict['status'] = order_dict['order_status'] or 'pending'
-            
-            # Parse items JSON
-            try:
-                if order_dict['items_json']:
-                    # SQLite's GROUP_CONCAT returns a comma-separated list of JSON objects
-                    # We need to wrap it in a JSON array format
-                    items_json = '[' + order_dict['items_json'] + ']'
-                    order_dict['items'] = json.loads(items_json)
-                else:
-                    order_dict['items'] = []
-            except Exception as e:
-                app.logger.error(f"Error parsing items JSON: {e}")
-                order_dict['items'] = []
-            
-            # Remove the raw JSON field
-            if 'items_json' in order_dict:
-                del order_dict['items_json']
-            
-            orders_list.append(order_dict)
-        
-        # Format stats
-        stats_dict = {
-            'total': stats['total'] if stats and stats['total'] else 0,
-            'pending': stats['pending'] if stats and stats['pending'] else 0,
-            'paid': stats['paid'] if stats and stats['paid'] else 0,
-            'revenue': float(stats['revenue']) if stats and stats['revenue'] else 0
-        }
-        
-        # Close connection AFTER all data is fetched
-        conn.close()
-        
-        response = jsonify({
-            'status': 'success',
-            'orders': orders_list,
-            'stats': stats_dict
-        })
-        
-        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response
-        
-    except Exception as e:
-        app.logger.error(f"Error fetching orders: {e}")
-        app.logger.error(traceback.format_exc())
-        # Make sure to close connection even on error
-        if 'conn' in locals():
-            conn.close()
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
 
 @app.route('/api/admin/orders/<string:order_id>', methods=['GET'])
 @login_required
@@ -2955,6 +2757,100 @@ def verify_login(user_id):
     })
 
 # ==================== RECORDS ENDPOINTS ====================
+
+@app.route('/api/admin/orders', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_admin_orders():
+    """Get orders for admin panel with UUID support"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get orders with their items
+        cursor.execute('''
+            SELECT 
+                o.*,
+                GROUP_CONCAT(
+                    json_object(
+                        'record_id', oi.record_id,
+                        'artist', oi.record_artist,
+                        'title', oi.record_title,
+                        'condition', oi.record_condition,
+                        'price', oi.price_at_time
+                    )
+                ) as items_json
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            GROUP BY o.id
+            ORDER BY o.created_at DESC
+        ''')
+        
+        orders = cursor.fetchall()
+        
+        # Get stats
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) as paid,
+                SUM(total) as revenue
+            FROM orders
+        ''')
+        
+        stats = cursor.fetchone()
+        conn.close()
+        
+        # Process orders
+        orders_list = []
+        for order in orders:
+            order_dict = dict(order)
+            
+            # Combine payment_status and order_status into a single status field
+            if order_dict['payment_status'] == 'paid' and order_dict['order_status'] == 'confirmed':
+                order_dict['status'] = 'paid'
+            elif order_dict['payment_status'] == 'failed' or order_dict['order_status'] == 'cancelled':
+                order_dict['status'] = 'cancelled'
+            elif order_dict['payment_status'] == 'pending':
+                order_dict['status'] = 'pending'
+            else:
+                order_dict['status'] = order_dict['order_status'] or 'pending'
+            
+            # Parse items JSON
+            try:
+                if order_dict['items_json']:
+                    items_json = '[' + order_dict['items_json'] + ']'
+                    order_dict['items'] = json.loads(items_json)
+                else:
+                    order_dict['items'] = []
+            except Exception as e:
+                app.logger.error(f"Error parsing items JSON: {e}")
+                order_dict['items'] = []
+            
+            # Remove the raw JSON field
+            if 'items_json' in order_dict:
+                del order_dict['items_json']
+            
+            orders_list.append(order_dict)
+        
+        # Format stats
+        stats_dict = {
+            'total': stats['total'] if stats and stats['total'] else 0,
+            'pending': stats['pending'] if stats and stats['pending'] else 0,
+            'paid': stats['paid'] if stats and stats['paid'] else 0,
+            'revenue': float(stats['revenue']) if stats and stats['revenue'] else 0
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'orders': orders_list,
+            'stats': stats_dict
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching orders: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/records', methods=['POST'])
 def create_record():
