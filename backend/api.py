@@ -336,17 +336,26 @@ def verify_square_webhook(signature, body):
 
 @app.route('/api/checkout/process', methods=['POST'])
 def process_checkout():
-    """Create a Square payment link for the cart with UUID reference"""
+    """Create a Square payment link AND insert order after success"""
     try:
         data = request.json
         app.logger.info(f"Checkout request received: {data}")
         
         items = data.get('items', [])
-        shipping = data.get('shipping')  # Get shipping data
+        shipping = data.get('shipping')
         subtotal = data.get('subtotal', 0)
         total = data.get('total', 0)
-        order_id = data.get('order_id')  # Get UUID from frontend
-        order_number = data.get('order_number')  # Get order_number from frontend
+        
+        # Generate UUID and order number FIRST (before Square call)
+        import uuid
+        import random
+        import string
+        from datetime import datetime
+        
+        order_id = str(uuid.uuid4())
+        date_str = datetime.now().strftime('%Y%m%d')
+        random_chars = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        order_number = f"PS-{date_str}-{random_chars}"
         
         if not items or total <= 0:
             return jsonify({
@@ -414,42 +423,49 @@ def process_checkout():
                 }
             })
         
-        # Create payment link with metadata
+        # Prepare metadata
+        metadata = {}
+        metadata['order_id'] = str(order_id)
+        metadata['order_number'] = order_number
+        metadata['record_ids'] = json.dumps([item.get('copy_id') for item in valid_items])
+        
+        # Build Square payload
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
             'Square-Version': '2026-01-22'
         }
         
-        # Prepare metadata for webhook tracking
-        metadata = {
-            'order_id': 'test-metadata-123',
-            'order_number': 'TEST-ORDER-456',
-            'record_ids': '[693]'  # Hardcoded test record ID
-        }
-
-        # IMPORTANT: reference_id at TOP LEVEL (matches terminal payment structure)
         payload = {
             "idempotency_key": str(uuid.uuid4()),
-            "reference_id": "test-reference-789",  # ← MOVED TO TOP LEVEL!
             "order": {
                 "location_id": location_id,
-                "line_items": line_items
+                "line_items": line_items,
+                "reference_id": str(order_id)
             },
+            "payment_note": f"PigStyle Order {order_number}",
             "metadata": metadata,
-            "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id=test-order-123" if order_id else None
+            "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id={order_id}"
         }
         
         square_base_url = 'https://connect.squareup.com'
         
-        app.logger.info(f"Sending to Square with reference_id: test-reference-789")
-        app.logger.info(f"Full payload: {json.dumps(payload, indent=2)}")
+        app.logger.info(f"Sending to Square with reference_id: {order_id}")
+        app.logger.info(f"Request payload: {json.dumps(payload, indent=2)}")
         
+        # STEP 1: CALL SQUARE
         response = requests.post(
             f'{square_base_url}/v2/online-checkout/payment-links',
             headers=headers,
             json=payload
         )
+        
+        # LOG THE ENTIRE SQUARE RESPONSE
+        app.logger.info("=== SQUARE API RESPONSE ===")
+        app.logger.info(f"Status Code: {response.status_code}")
+        app.logger.info(f"Response Headers: {dict(response.headers)}")
+        app.logger.info(f"Response Body: {response.text}")
+        app.logger.info("=== END SQUARE RESPONSE ===")
         
         if response.status_code != 200:
             app.logger.error(f"Square API error: {response.text}")
@@ -461,35 +477,130 @@ def process_checkout():
         result = response.json()
         payment_link = result.get('payment_link', {})
         checkout_url = payment_link.get('url')
+        square_order_id = payment_link.get('order_id')  # ← SQUARE'S ORDER ID!
         
+        if not square_order_id:
+            return jsonify({
+                'status': 'error',
+                'error': 'No square_order_id returned'
+            }), 500
+
         if not checkout_url:
             return jsonify({
                 'status': 'error',
                 'error': 'No checkout URL returned'
             }), 500
         
-        # Store in checkout_sessions (optional)
-        cursor.execute('''
-            INSERT INTO checkout_sessions 
-            (idempotency_key, square_checkout_id, items, total, status, order_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (
-            str(uuid.uuid4()),
-            payment_link.get('id'),
-            json.dumps(valid_items),
-            total,
-            'pending',
-            order_id  # UUID as string
-        ))
+        # STEP 2: INSERT ORDER INTO DATABASE (with Square's order_id)
+        shipping_method = shipping.get('method', 'pickup') if shipping else 'pickup'
+        shipping_cost = float(shipping.get('amount', 0)) if shipping else 0
         
-        conn.commit()
-        conn.close()
+        # Log the data we're about to insert
+        app.logger.info("=== ORDER INSERT DATA ===")
+        app.logger.info(f"order_id: {order_id}")
+        app.logger.info(f"order_number: {order_number}")
+        app.logger.info(f"customer_name: {data.get('customer_name', 'Walk-in Customer')}")
+        app.logger.info(f"customer_email: {data.get('customer_email', '')}")
+        app.logger.info(f"shipping_method: {shipping_method}")
+        app.logger.info(f"address: {data.get('address', '')}")
+        app.logger.info(f"apt: {data.get('apt', '')}")
+        app.logger.info(f"city: {data.get('city', '')}")
+        app.logger.info(f"state: {data.get('state', '')}")
+        app.logger.info(f"zip: {data.get('zip', '')}")
+        app.logger.info(f"country: {data.get('country', 'USA')}")
+        app.logger.info(f"shipping_cost: {shipping_cost}")
+        app.logger.info(f"subtotal: {subtotal}")
+        app.logger.info(f"tax: {data.get('tax', 0)}")
+        app.logger.info(f"total: {total}")
+        app.logger.info(f"square_checkout_id: {payment_link.get('id')}")
+        app.logger.info(f"square_order_id: {square_order_id}")
+        app.logger.info("=== END ORDER INSERT DATA ===")
+        
+        # Begin transaction
+        cursor.execute("BEGIN TRANSACTION")
+        
+        try:
+            # Log the exact SQL we're about to execute
+            insert_sql = '''
+                INSERT INTO orders (
+                    id, order_number, customer_name, customer_email,
+                    shipping_method, shipping_address_line1, shipping_address_line2,
+                    shipping_city, shipping_state, shipping_zip, shipping_country,
+                    shipping_cost, subtotal, tax, total,
+                    square_checkout_id, square_order_id,
+                    payment_status, order_status, notes,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            '''
+            app.logger.info(f"SQL Query: {insert_sql}")
+            app.logger.info(f"SQL Parameters: {[order_id, order_number, data.get('customer_name', 'Walk-in Customer'), data.get('customer_email', ''), shipping_method, data.get('address', ''), data.get('apt', ''), data.get('city', ''), data.get('state', ''), data.get('zip', ''), data.get('country', 'USA'), shipping_cost, subtotal, data.get('tax', 0), total, payment_link.get('id'), square_order_id, 'pending', 'pending', data.get('notes', '')]}")
+            
+            # Insert into orders table with Square's order_id
+            cursor.execute(insert_sql, (
+                order_id,
+                order_number,
+                data.get('customer_name', 'Walk-in Customer'),
+                data.get('customer_email', ''),
+                shipping_method,
+                data.get('address', ''),
+                data.get('apt', ''),
+                data.get('city', ''),
+                data.get('state', ''),
+                data.get('zip', ''),
+                data.get('country', 'USA'),
+                shipping_cost,
+                subtotal,
+                data.get('tax', 0),
+                total,
+                payment_link.get('id'),      # square_checkout_id
+                square_order_id,              # ← SQUARE'S ORDER ID STORED HERE!
+                'pending',
+                'pending',
+                data.get('notes', '')
+            ))
+            
+            # Insert order items
+            for item in valid_items:
+                item_sql = '''
+                    INSERT INTO order_items (
+                        order_id, record_id, record_title, record_artist,
+                        record_condition, price_at_time, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                '''
+                app.logger.info(f"Item SQL: {item_sql}")
+                app.logger.info(f"Item Parameters: {[order_id, item.get('copy_id'), item.get('title'), item.get('artist'), item.get('condition'), float(item.get('price'))]}")
+                
+                cursor.execute(item_sql, (
+                    order_id,
+                    item.get('copy_id'),
+                    item.get('title'),
+                    item.get('artist'),
+                    item.get('condition'),
+                    float(item.get('price'))
+                ))
+            
+            conn.commit()
+            app.logger.info(f"Order created successfully: {order_number} with Square order_id: {square_order_id}")
+            
+        except Exception as e:
+            conn.rollback()
+            app.logger.error(f"Error creating order: {str(e)}")
+            app.logger.error(traceback.format_exc())
+            # Note: Square payment link was already created, but order insert failed
+            # You may want to handle this edge case
+            return jsonify({
+                'status': 'error',
+                'error': 'Order creation failed after Square call'
+            }), 500
+        finally:
+            conn.close()
         
         return jsonify({
             'status': 'success',
             'checkout_url': checkout_url,
-            'order_id': order_id,  # Return UUID to frontend
+            'order_id': order_id,
             'order_number': order_number,
+            'square_order_id': square_order_id,  # Return to frontend if needed
             'message': 'Checkout created successfully'
         }), 200
         
@@ -500,7 +611,7 @@ def process_checkout():
             'status': 'error',
             'error': f'Server error: {str(e)}'
         }), 500
- 
+
 @app.route('/checkout/complete')
 def checkout_complete():
     """Handle successful checkout return from Square"""
@@ -2850,165 +2961,163 @@ def get_admin_orders():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-@app.route('/api/admin/orders/<string:order_id>/refresh-payment', methods=['POST', 'OPTIONS'])
-@login_required
-@role_required(['admin'])
+
+@app.route('/api/admin/orders/<string:order_id>/refresh-payment', methods=['POST','OPTIONS'])
 def refresh_order_payment(order_id):
-    """Manually check Square for payment status using UUID - NO FALLBACK"""
-    # Handle CORS preflight
+    """Check Square for payment status using stored square_order_id"""
+
+    # CORS preflight
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
-        response.headers.add('Access-Control-Allow-Origin', 'https://www.pigstylemusic.com')
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 200
-    
+
     try:
         app.logger.info(f"Refreshing payment for order: {order_id}")
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
-        # Get order details
+
+        # Get order from local DB
         cursor.execute('''
-            SELECT o.id, o.order_number, o.total, o.payment_status, 
-                   o.created_at,
-                   oi.record_id, oi.record_title, oi.record_artist
+            SELECT o.id, o.square_order_id, o.payment_status,
+                   oi.record_id
             FROM orders o
             LEFT JOIN order_items oi ON o.id = oi.order_id
             WHERE o.id = ?
         ''', (order_id,))
-        
         rows = cursor.fetchall()
+
         if not rows:
             conn.close()
-            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
-        
+            return jsonify({'status':'error','error':'Order not found'}), 404
+
         order = dict(rows[0])
-        record_ids = [row['record_id'] for row in rows if row['record_id']]
-        
-        # If already paid, no need to check
+        record_ids = [r['record_id'] for r in rows if r['record_id']]
+        square_order_id = order.get('square_order_id')
+
         if order['payment_status'] == 'paid':
             conn.close()
             return jsonify({
-                'status': 'success', 
-                'message': 'Order already marked as paid',
+                'status':'success',
+                'message':'Order already paid',
                 'payment_found': True,
-                'payment_status': 'paid'
+                'payment_status':'paid'
             })
-        
-        # Query Square for recent payments
+
+        if not square_order_id:
+            conn.close()
+            return jsonify({
+                'status':'error',
+                'error':'No Square order ID found'
+            }), 400
+
         access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
         if not access_token:
             conn.close()
-            return jsonify({'status': 'error', 'error': 'Square access token not configured'}), 500
-        
+            return jsonify({'status':'error','error':'Square access token not configured'}), 500
+
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Square-Version': '2026-01-22',
             'Content-Type': 'application/json'
         }
-        
-        # Get all payments from last 7 days
-        from datetime import datetime, timedelta
-        end_time = datetime.now().isoformat()
-        start_time = (datetime.now() - timedelta(days=7)).isoformat()
-        
-        response = requests.get(
-            f'https://connect.squareup.com/v2/payments',
-            headers=headers,
-            params={
-                'limit': 100,
-                'begin_time': start_time,
-                'end_time': end_time
-            }
-        )
-        
-        if response.status_code != 200:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Failed to query Square'}), 400
-        
-        payments = response.json().get('payments', [])
-        
-        # Find payment that has our UUID in reference_id or metadata
+
+        # 📅 Define the last week time range
+        end_time = datetime.utcnow().isoformat() + "Z"
+        begin_time = (datetime.utcnow() - timedelta(days=7)).isoformat() + "Z"
+
+        cursor_token = None
         matching_payment = None
-        
-        # Priority 1: Match by reference_id (exact match)
-        for payment in payments:
-            if payment.get('status') != 'COMPLETED':
-                continue
-            
-            if payment.get('reference_id') == order_id:
-                matching_payment = payment
-                app.logger.info(f"Found payment by reference_id: {payment.get('id')}")
+
+        # ⚠️ We must page through payments for the last week
+        while True:
+            params = {
+                'begin_time': begin_time,
+                'end_time': end_time,
+                'sort_order': 'DESC',
+                'limit': 100
+            }
+            if cursor_token:
+                params['cursor'] = cursor_token
+
+            response = requests.get(
+                'https://connect.squareup.com/v2/payments',
+                headers=headers,
+                params=params,
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                app.logger.error(f"Square payments list failed: {response.text}")
                 break
-        
-        # Priority 2: Match by metadata.order_id (if reference_id wasn't set)
-        if not matching_payment:
+
+            data = response.json()
+            payments = data.get('payments', [])
+
+            # 🔍 Find one that matches both status AND order_id
             for payment in payments:
-                if payment.get('status') != 'COMPLETED':
-                    continue
-                
-                metadata = payment.get('metadata', {})
-                if metadata.get('order_id') == order_id:
+                if (payment.get('status') == 'COMPLETED' and
+                    payment.get('order_id') == square_order_id):
                     matching_payment = payment
-                    app.logger.info(f"Found payment by metadata.order_id: {payment.get('id')}")
                     break
-        
+
+            if matching_payment:
+                break
+
+            cursor_token = data.get('cursor')
+            if not cursor_token:
+                break
+
+        # If we found it, update local DB
         if matching_payment:
-            # Update order
             cursor.execute('''
-                UPDATE orders 
-                SET payment_status = 'paid', 
+                UPDATE orders
+                SET payment_status = 'paid',
                     order_status = 'confirmed',
                     square_payment_id = ?,
-                    square_order_id = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND payment_status != 'paid'
-            ''', (
-                matching_payment.get('id'),
-                matching_payment.get('order_id'),
-                order_id
-            ))
-            
+            ''', (matching_payment['id'], order_id))
+
             if cursor.rowcount > 0 and record_ids:
-                # Mark records as sold
                 placeholders = ','.join('?' for _ in record_ids)
                 cursor.execute(f'''
                     UPDATE records
                     SET status_id = 3, date_sold = CURRENT_DATE
                     WHERE id IN ({placeholders})
                 ''', record_ids)
-            
+
             conn.commit()
             message = f"Order {order_id} marked as paid"
             app.logger.info(message)
         else:
-            message = f"No matching payment found for Order {order_id} (no reference_id or metadata match)"
-        
+            message = f"No completed payment found for Order {order_id}"
+
         conn.close()
-        
+
         response = jsonify({
-            'status': 'success',
+            'status':'success',
             'message': message,
             'payment_found': bool(matching_payment),
-            'payment_status': 'paid' if matching_payment else 'pending'
+            'payment_status':'paid' if matching_payment else 'pending'
         })
-        
-        response.headers.add('Access-Control-Allow-Origin', 'https://www.pigstylemusic.com')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Allow-Origin','http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials','true')
         return response
-        
-    except Exception as e:
-        app.logger.error(f"Error refreshing order payment: {e}")
-        app.logger.error(traceback.format_exc())
-        
-        response = jsonify({'status': 'error', 'error': str(e)})
-        response.headers.add('Access-Control-Allow-Origin', 'https://www.pigstylemusic.com')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 500
 
+    except Exception as e:
+        app.logger.error(f"Error: {e}")
+        app.logger.error(traceback.format_exc())
+        conn.close()
+        response = jsonify({'status':'error','error':str(e)})
+        response.headers.add('Access-Control-Allow-Origin','http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials','true')
+        return response, 500
+ 
 @app.route('/records', methods=['POST'])
 def create_record():
     """Create a new record in the database"""
