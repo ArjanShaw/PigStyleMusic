@@ -84,19 +84,100 @@ def log_response_info(response):
     app.logger.debug('Response Headers: %s', response.headers)
     return response
 
-# Add a catch-all OPTIONS handler for debugging
-@app.route('/api/admin/orders', methods=['OPTIONS'])
-@app.route('/api/admin/orders/stats', methods=['OPTIONS'])
-def handle_admin_options():
-    app.logger.info("=== ADMIN OPTIONS HIT ===")
-    response = jsonify({'status': 'ok'})
-    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    response.headers.add('Access-Control-Max-Age', '3600')
-    return response, 200
-
+@app.route('/api/admin/orders', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_admin_orders():
+    """Get orders for admin panel with UUID support"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get orders with their items
+        cursor.execute('''
+            SELECT 
+                o.*,
+                GROUP_CONCAT(
+                    json_object(
+                        'record_id', oi.record_id,
+                        'artist', oi.record_artist,
+                        'title', oi.record_title,
+                        'condition', oi.record_condition,
+                        'price', oi.price_at_time
+                    )
+                ) as items_json
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            GROUP BY o.id
+            ORDER BY o.created_at DESC
+        ''')
+        
+        orders = cursor.fetchall()
+        
+        # Get stats
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) as paid,
+                SUM(total) as revenue
+            FROM orders
+        ''')
+        
+        stats = cursor.fetchone()
+        conn.close()
+        
+        # Process orders
+        orders_list = []
+        for order in orders:
+            order_dict = dict(order)
+            
+            # Combine payment_status and order_status into a single status field
+            if order_dict['payment_status'] == 'paid' and order_dict['order_status'] == 'confirmed':
+                order_dict['status'] = 'paid'
+            elif order_dict['payment_status'] == 'failed' or order_dict['order_status'] == 'cancelled':
+                order_dict['status'] = 'cancelled'
+            elif order_dict['payment_status'] == 'pending':
+                order_dict['status'] = 'pending'
+            else:
+                order_dict['status'] = order_dict['order_status'] or 'pending'
+            
+            # Parse items JSON
+            try:
+                if order_dict['items_json']:
+                    items_json = '[' + order_dict['items_json'] + ']'
+                    order_dict['items'] = json.loads(items_json)
+                else:
+                    order_dict['items'] = []
+            except Exception as e:
+                app.logger.error(f"Error parsing items JSON: {e}")
+                order_dict['items'] = []
+            
+            # Remove the raw JSON field
+            if 'items_json' in order_dict:
+                del order_dict['items_json']
+            
+            orders_list.append(order_dict)
+        
+        # Format stats
+        stats_dict = {
+            'total': stats['total'] if stats and stats['total'] else 0,
+            'pending': stats['pending'] if stats and stats['pending'] else 0,
+            'paid': stats['paid'] if stats and stats['paid'] else 0,
+            'revenue': float(stats['revenue']) if stats and stats['revenue'] else 0
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'orders': orders_list,
+            'stats': stats_dict
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching orders: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
 def setup_logging():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
     os.makedirs(logs_dir, exist_ok=True)
@@ -128,10 +209,9 @@ def get_db():
     return conn
 
 # ==================== SQUARE API HELPER FUNCTIONS ====================
-
 @app.route('/api/insert-order', methods=['POST', 'OPTIONS'])
 def insert_order():
-    """Create a pending order and order items from cart"""
+    """Create a pending order and order items from cart with UUID"""
     # Handle CORS preflight
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
@@ -179,7 +259,11 @@ def insert_order():
                 'country': data.get('country', 'USA')
             }
         
-        # Generate order number (format: PS-YYYYMMDD-XXXX)
+        # Generate UUID for order ID
+        import uuid
+        order_id = str(uuid.uuid4())  # Format: "123e4567-e89b-12d3-a456-426614174000"
+        
+        # Generate human-readable order number (keep this for receipts)
         import random
         import string
         from datetime import datetime
@@ -195,9 +279,10 @@ def insert_order():
         cursor.execute("BEGIN TRANSACTION")
         
         try:
-            # 1. Insert into orders table
+            # 1. Insert into orders table with UUID
             cursor.execute('''
                 INSERT INTO orders (
+                    id,
                     order_number,
                     customer_name,
                     customer_email,
@@ -217,8 +302,9 @@ def insert_order():
                     notes,
                     created_at,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ''', (
+                order_id,  # UUID as primary key
                 order_number,
                 data.get('customer_name', 'Walk-in Customer'),
                 data.get('customer_email', '') if shipping_method == 'ship' else '',
@@ -237,8 +323,6 @@ def insert_order():
                 'pending',   # order_status
                 data.get('notes', '')
             ))
-            
-            order_id = cursor.lastrowid
             
             # 2. Insert into order_items table for each item
             for item in items:
@@ -267,7 +351,7 @@ def insert_order():
                         created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ''', (
-                    order_id,
+                    order_id,  # UUID foreign key
                     item.get('copy_id'),
                     record['title'],
                     record['artist'],
@@ -278,12 +362,12 @@ def insert_order():
             # Commit transaction
             conn.commit()
             
-            app.logger.info(f"Order created successfully: {order_number} (ID: {order_id})")
+            app.logger.info(f"Order created successfully: {order_number} (UUID: {order_id})")
             
             return jsonify({
                 'status': 'success',
                 'message': 'Order created successfully',
-                'order_id': order_id,
+                'order_id': order_id,  # Return UUID to frontend
                 'order_number': order_number,
                 'payment_status': 'pending'
             }), 200
@@ -343,10 +427,9 @@ def verify_square_webhook(signature, body):
     
     return hmac.compare_digest(expected_signature, signature)
 
-
 @app.route('/api/checkout/process', methods=['POST'])
 def process_checkout():
-    """Create a Square payment link for the cart"""
+    """Create a Square payment link for the cart with UUID reference"""
     try:
         data = request.json
         app.logger.info(f"Checkout request received: {data}")
@@ -355,7 +438,7 @@ def process_checkout():
         shipping = data.get('shipping')  # Get shipping data
         subtotal = data.get('subtotal', 0)
         total = data.get('total', 0)
-        order_id = data.get('order_id')  # Get order_id from frontend
+        order_id = data.get('order_id')  # Get UUID from frontend
         order_number = data.get('order_number')  # Get order_number from frontend
         
         if not items or total <= 0:
@@ -434,21 +517,22 @@ def process_checkout():
         # Prepare metadata for webhook tracking
         metadata = {}
         if order_id:
-            metadata['order_id'] = str(order_id)
+            metadata['order_id'] = str(order_id)  # UUID as string
         if order_number:
             metadata['order_number'] = order_number
         if valid_items:
             # Store record IDs in metadata for easy lookup
             metadata['record_ids'] = json.dumps([item.get('copy_id') for item in valid_items])
         
+        # IMPORTANT: reference_id can be up to 40 characters - UUID fits perfectly
         payload = {
             "idempotency_key": str(uuid.uuid4()),
             "order": {
                 "location_id": location_id,
                 "line_items": line_items,
-                "reference_id": str(order_id) if order_id else None  # ADD THIS LINE
+                "reference_id": str(order_id) if order_id else None  # UUID as reference
             },
-            "metadata": metadata,  # Include metadata for webhook
+            "metadata": metadata,
             "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id={order_id}" if order_id else None
         }
         
@@ -490,7 +574,7 @@ def process_checkout():
             json.dumps(valid_items),
             total,
             'pending',
-            order_id
+            order_id  # UUID as string
         ))
         
         conn.commit()
@@ -499,7 +583,7 @@ def process_checkout():
         return jsonify({
             'status': 'success',
             'checkout_url': checkout_url,
-            'order_id': order_id,
+            'order_id': order_id,  # Return UUID to frontend
             'order_number': order_number,
             'message': 'Checkout created successfully'
         }), 200
@@ -2682,132 +2766,72 @@ def get_admin_orders():
         if 'conn' in locals():
             conn.close()
         return jsonify({'status': 'error', 'error': str(e)}), 500
-  
-@app.route('/api/admin/orders/<int:order_id>/refresh-payment', methods=['POST'])
+
+@app.route('/api/admin/orders/<string:order_id>', methods=['GET'])
 @login_required
 @role_required(['admin'])
-def refresh_order_payment(order_id):
-    """Manually check Square for payment status and update order"""
+def get_admin_order(order_id):
+    """Get single order by UUID"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get order details
         cursor.execute('''
-            SELECT o.id, o.order_number, o.total, o.payment_status, 
-                   o.created_at,
-                   oi.record_id, oi.record_title, oi.record_artist
+            SELECT o.*,
+                   GROUP_CONCAT(
+                       json_object(
+                           'record_id', oi.record_id,
+                           'artist', oi.record_artist,
+                           'title', oi.record_title,
+                           'condition', oi.record_condition,
+                           'price', oi.price_at_time
+                       )
+                   ) as items_json
             FROM orders o
             LEFT JOIN order_items oi ON o.id = oi.order_id
             WHERE o.id = ?
+            GROUP BY o.id
         ''', (order_id,))
         
-        rows = cursor.fetchall()
-        if not rows:
-            conn.close()
+        order = cursor.fetchone()
+        conn.close()
+        
+        if not order:
             return jsonify({'status': 'error', 'error': 'Order not found'}), 404
         
-        order = dict(rows[0])
-        record_ids = [row['record_id'] for row in rows if row['record_id']]
+        order_dict = dict(order)
         
-        # If already paid, no need to check
-        if order['payment_status'] == 'paid':
-            conn.close()
-            return jsonify({
-                'status': 'success', 
-                'message': 'Order already marked as paid',
-                'payment_found': True,
-                'payment_status': 'paid'
-            })
-        
-        # Query Square for recent payments
-        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
-        if not access_token:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Square access token not configured'}), 500
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Square-Version': '2026-01-22',
-            'Content-Type': 'application/json'
-        }
-        
-        # Get all payments from last 7 days
-        from datetime import datetime, timedelta
-        end_time = datetime.now().isoformat()
-        start_time = (datetime.now() - timedelta(days=7)).isoformat()
-        
-        response = requests.get(
-            f'https://connect.squareup.com/v2/payments',
-            headers=headers,
-            params={
-                'limit': 100,
-                'begin_time': start_time,
-                'end_time': end_time
-            }
-        )
-        
-        if response.status_code != 200:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Failed to query Square'}), 400
-        
-        payments = response.json().get('payments', [])
-        
-        # Find payment that has our order_id in metadata
-        matching_payment = None
-        for payment in payments:
-            if payment.get('status') != 'COMPLETED':
-                continue
-                
-            # Check metadata for order_id
-            metadata = payment.get('metadata', {})
-            if metadata.get('order_id') == str(order_id):
-                matching_payment = payment
-                break
-        
-        if matching_payment:
-            # Update order
-            cursor.execute('''
-                UPDATE orders 
-                SET payment_status = 'paid', 
-                    order_status = 'confirmed',
-                    square_payment_id = ?,
-                    square_order_id = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND payment_status != 'paid'
-            ''', (
-                matching_payment.get('id'),
-                matching_payment.get('order_id'),
-                order_id
-            ))
-            
-            if cursor.rowcount > 0 and record_ids:
-                # Mark records as sold
-                placeholders = ','.join('?' for _ in record_ids)
-                cursor.execute(f'''
-                    UPDATE records
-                    SET status_id = 3, date_sold = CURRENT_DATE
-                    WHERE id IN ({placeholders})
-                ''', record_ids)
-            
-            conn.commit()
-            message = f"Order #{order_id} marked as paid (Square payment: {matching_payment.get('id')})"
-            app.logger.info(message)
+        # Combine payment_status and order_status
+        if order_dict['payment_status'] == 'paid' and order_dict['order_status'] == 'confirmed':
+            order_dict['status'] = 'paid'
+        elif order_dict['payment_status'] == 'failed' or order_dict['order_status'] == 'cancelled':
+            order_dict['status'] = 'cancelled'
+        elif order_dict['payment_status'] == 'pending':
+            order_dict['status'] = 'pending'
         else:
-            message = f"No matching payment found for Order #{order_id}"
+            order_dict['status'] = order_dict['order_status'] or 'pending'
         
-        conn.close()
+        # Parse items JSON
+        try:
+            if order_dict['items_json']:
+                items_json = '[' + order_dict['items_json'] + ']'
+                order_dict['items'] = json.loads(items_json)
+            else:
+                order_dict['items'] = []
+        except Exception as e:
+            app.logger.error(f"Error parsing items JSON: {e}")
+            order_dict['items'] = []
+        
+        if 'items_json' in order_dict:
+            del order_dict['items_json']
         
         return jsonify({
             'status': 'success',
-            'message': message,
-            'payment_found': bool(matching_payment),
-            'payment_status': 'paid' if matching_payment else 'pending'
+            'order': order_dict
         })
         
     except Exception as e:
-        app.logger.error(f"Error refreshing order payment: {e}")
-        app.logger.error(traceback.format_exc())
+        app.logger.error(f"Error fetching order: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
