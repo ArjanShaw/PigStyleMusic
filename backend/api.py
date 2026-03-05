@@ -4123,6 +4123,146 @@ def get_dropoff_records():
     return jsonify({'status': 'success', 'records': records_list})
 
 # ==================== CATALOG ENDPOINTS ====================
+@app.route('/catalog/grouped-by-release', methods=['GET'])
+def get_catalog_grouped_by_release():
+    """
+    Returns catalog data grouped by unique releases (artist + title combination)
+    Each group contains all copies of that release with their details
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Only get records with status_id = 2 (active/inventory)
+    cursor.execute('''
+        SELECT 
+            r.id,
+            r.artist,
+            r.title,
+            COALESCE(r.image_url, '') as image_url,
+            COALESCE(g.genre_name, 'Unknown') as genre_name,
+            r.condition,
+            r.store_price,
+            r.barcode,
+            r.catalog_number,
+            r.youtube_url,
+            r.created_at,
+            s.status_name
+        FROM records r
+        LEFT JOIN genres g ON r.genre_id = g.id
+        LEFT JOIN d_status s ON r.status_id = s.id
+        WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
+        AND r.artist != '' AND r.title != ''
+        AND r.store_price IS NOT NULL
+        AND r.status_id = 2
+        ORDER BY r.created_at DESC
+    ''')
+
+    records = cursor.fetchall()
+    conn.close()
+
+    # Group records by artist + title combination
+    groups = {}
+    condition_order = {
+        'Mint (M)': 1,
+        'Near Mint (NM or M-)': 2,
+        'Very Good Plus (VG+)': 3,
+        'Very Good (VG)': 4,
+        'Good Plus (G+)': 5,
+        'Good (G)': 6,
+        'Fair (F)': 7,
+        'Poor (P)': 8
+    }
+
+    total_copies = 0
+    unique_releases = 0
+
+    for record in records:
+        record_dict = dict(record)
+        artist = (record_dict.get('artist') or '').strip()
+        title = (record_dict.get('title') or '').strip()
+        
+        # Skip if missing critical data
+        if not artist or not title:
+            continue
+            
+        # Create unique key for this release
+        key = f"{artist.lower()}|{title.lower()}"
+        
+        # Convert store_price to float
+        if 'store_price' in record_dict and record_dict['store_price'] is not None:
+            record_dict['store_price'] = float(record_dict['store_price'])
+        
+        if key not in groups:
+            unique_releases += 1
+            groups[key] = {
+                'artist': artist,
+                'title': title,
+                'genre_name': record_dict.get('genre_name', 'Unknown'),
+                'image_url': record_dict.get('image_url', ''),
+                'total_copies': 0,
+                'price_range': {
+                    'min': float('inf'),
+                    'max': 0
+                },
+                'copies': [],
+                'created_at': record_dict.get('created_at')  # Track earliest creation date
+            }
+        
+        # Add this copy to the group
+        copy_data = {
+            'id': record_dict['id'],
+            'condition': record_dict.get('condition', 'Unknown'),
+            'condition_rank': condition_order.get(record_dict.get('condition'), 99),
+            'store_price': record_dict['store_price'],
+            'barcode': record_dict.get('barcode', ''),
+            'catalog_number': record_dict.get('catalog_number', ''),
+            'youtube_url': record_dict.get('youtube_url', ''),
+            'created_at': record_dict.get('created_at')
+        }
+        
+        groups[key]['copies'].append(copy_data)
+        groups[key]['total_copies'] += 1
+        total_copies += 1
+        
+        # Update price range
+        price = record_dict['store_price']
+        if price > 0:
+            groups[key]['price_range']['min'] = min(groups[key]['price_range']['min'], price)
+            groups[key]['price_range']['max'] = max(groups[key]['price_range']['max'], price)
+        
+        # Track the earliest creation date for the release
+        if record_dict.get('created_at') and (
+            not groups[key]['created_at'] or 
+            record_dict['created_at'] < groups[key]['created_at']
+        ):
+            groups[key]['created_at'] = record_dict['created_at']
+    
+    # Convert groups to list and sort copies within each group by condition
+    result = []
+    for group in groups.values():
+        # Clean up price range (if no valid prices)
+        if group['price_range']['min'] == float('inf'):
+            group['price_range'] = {'min': 0, 'max': 0}
+        
+        # Sort copies by condition (best first) then price (highest first)
+        group['copies'].sort(key=lambda x: (x['condition_rank'], -x['store_price']))
+        
+        # Remove condition_rank from copies before sending (not needed in frontend)
+        for copy in group['copies']:
+            del copy['condition_rank']
+        
+        result.append(group)
+    
+    # Sort releases by artist name
+    result.sort(key=lambda x: (x['artist'] or '').lower())
+
+    return jsonify({
+        'status': 'success',
+        'total_unique_releases': unique_releases,
+        'total_copies': total_copies,
+        'groups': result
+    })
+
 
 @app.route('/catalog/grouped-records', methods=['GET'])
 def get_catalog_grouped_records():
