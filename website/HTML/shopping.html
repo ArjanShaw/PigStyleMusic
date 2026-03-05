@@ -806,6 +806,61 @@
             color: #28a745;
             font-weight: 600;
         }
+
+        /* Error message styles */
+        .error-message {
+            text-align: center;
+            padding: 60px 20px;
+            color: #ff6b6b;
+            font-size: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .error-message i {
+            font-size: 48px;
+            margin-bottom: 20px;
+            display: block;
+        }
+        
+        .error-message h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .error-message p {
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+        
+        .error-message .error-details {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+            margin: 20px 0;
+            word-break: break-all;
+        }
+        
+        .retry-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 16px;
+            display: inline-block;
+        }
+        
+        .retry-btn:hover {
+            background: #ff5252;
+        }
     </style>
 </head>
 <body>
@@ -1081,11 +1136,16 @@
             document.getElementById('cartOverlay').classList.remove('active');
         }
 
-        // Load data from new grouped API endpoint
+        // Load data from grouped API endpoint
         async function loadCatalogData() {
             try {
                 console.log('Loading grouped catalog data from API...');
                 const response = await fetch(`${AppConfig.baseUrl}/catalog/grouped-by-release`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                }
+                
                 const data = await response.json();
                 
                 console.log('API Response:', data);
@@ -1095,120 +1155,30 @@
                     console.log(`Loaded ${allReleases.length} unique releases with ${data.total_copies} total copies`);
                     displayReleases(allReleases);
                 } else {
-                    throw new Error('Invalid response from server');
+                    throw new Error('Invalid response from server: ' + JSON.stringify(data));
                 }
                 
             } catch (error) {
-                console.error('Error loading catalog data:', error);
-                // Fallback to original endpoint if new one fails
-                loadCatalogDataFallback();
+                console.error('CRITICAL ERROR: Failed to load grouped catalog data:', error);
+                
+                // Show error message to user with details
+                document.getElementById('catalogContainer').innerHTML = `
+                    <div class="error-message">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h2>Failed to Load Catalog</h2>
+                        <p>Unable to retrieve inventory data from the server. Please try again or contact support if the problem persists.</p>
+                        <div class="error-details">
+                            <strong>Error:</strong> ${escapeHtml(error.message)}
+                        </div>
+                        <button class="retry-btn" onclick="window.location.reload()">
+                            <i class="fas fa-sync-alt"></i> Retry
+                        </button>
+                    </div>
+                `;
+                
+                // Re-throw the error to ensure it's not silently handled
+                throw error;
             }
-        }
-
-        // Fallback to original endpoint
-        async function loadCatalogDataFallback() {
-            try {
-                console.log('Falling back to original catalog endpoint...');
-                // Assuming pigstyleAPI is available from app-config.js
-                const response = await window.pigstyleAPI?.loadCatalogGroupedRecords?.() || [];
-                
-                let catalogData;
-                if (Array.isArray(response)) {
-                    catalogData = {
-                        groups: [{
-                            label: 'All Records',
-                            records: response
-                        }]
-                    };
-                } else if (response && response.groups) {
-                    catalogData = response;
-                } else {
-                    throw new Error('Invalid response format');
-                }
-                
-                // Convert flat records to grouped format
-                const records = catalogData.groups.flatMap(g => g.records || []);
-                const grouped = groupRecordsByRelease(records);
-                allReleases = grouped;
-                
-                displayReleases(grouped);
-                
-            } catch (error) {
-                console.error('Error loading fallback data:', error);
-                document.getElementById('catalogContainer').innerHTML = 
-                    '<div class="error-message">Error loading catalog. Please try again later.<br>' + 
-                    error.message + '</div>';
-            }
-        }
-
-        // Helper function to group flat records by release
-        function groupRecordsByRelease(records) {
-            const groups = {};
-            const conditionOrder = {
-                'Mint (M)': 1,
-                'Near Mint (NM or M-)': 2,
-                'Very Good Plus (VG+)': 3,
-                'Very Good (VG)': 4,
-                'Good Plus (G+)': 5,
-                'Good (G)': 6,
-                'Fair (F)': 7,
-                'Poor (P)': 8
-            };
-            
-            records.forEach(record => {
-                const artist = (record.artist || '').trim();
-                const title = (record.title || '').trim();
-                const key = `${artist.toLowerCase()}|${title.toLowerCase()}`;
-                
-                if (!groups[key]) {
-                    groups[key] = {
-                        artist: artist,
-                        title: title,
-                        genre_name: record.genre_name,
-                        image_url: record.image_url,
-                        total_copies: 0,
-                        price_range: { min: Infinity, max: 0 },
-                        copies: [],
-                        // Track the earliest created_at date for this release
-                        created_at: record.created_at
-                    };
-                }
-                
-                const copy = {
-                    id: record.id,
-                    condition: record.condition,
-                    condition_rank: conditionOrder[record.condition] || 99,
-                    store_price: parseFloat(record.store_price) || 0,
-                    barcode: record.barcode,
-                    catalog_number: record.catalog_number,
-                    youtube_url: record.youtube_url,
-                    created_at: record.created_at
-                };
-                
-                groups[key].copies.push(copy);
-                groups[key].total_copies++;
-                
-                // Track the earliest creation date for the release
-                if (record.created_at && (!groups[key].created_at || record.created_at < groups[key].created_at)) {
-                    groups[key].created_at = record.created_at;
-                }
-                
-                if (copy.store_price > 0) {
-                    groups[key].price_range.min = Math.min(groups[key].price_range.min, copy.store_price);
-                    groups[key].price_range.max = Math.max(groups[key].price_range.max, copy.store_price);
-                }
-            });
-            
-            // Clean up price ranges
-            Object.values(groups).forEach(group => {
-                if (group.price_range.min === Infinity) {
-                    group.price_range = { min: 0, max: 0 };
-                }
-            });
-            
-            return Object.values(groups).sort((a, b) => 
-                (a.artist || '').localeCompare(b.artist || '')
-            );
         }
 
         // Display releases (keeps same tile layout)
@@ -2058,19 +2028,25 @@
 
         // Load the catalog data when page loads
         document.addEventListener('DOMContentLoaded', async function() {
-            // Load shipping cost directly from config
-            const cost = await getConfigValue('SHIPPING_COST');
-            shippingCost = parseFloat(cost);
-            console.log('Shipping cost set to:', shippingCost);
-            
-            loadCart(); // Load cart from localStorage
-            loadCatalogData();
-            initializeFilters();
-            initializeCart();
-            checkReturnStatus(); // Check if returning from Square checkout
-            
-            // Make removeFromCart function globally available
-            window.removeFromCart = removeFromCart;
+            try {
+                // Load shipping cost directly from config
+                const cost = await getConfigValue('SHIPPING_COST');
+                shippingCost = parseFloat(cost);
+                console.log('Shipping cost set to:', shippingCost);
+                
+                loadCart(); // Load cart from localStorage
+                await loadCatalogData(); // This will throw if it fails
+                initializeFilters();
+                initializeCart();
+                checkReturnStatus(); // Check if returning from Square checkout
+                
+                // Make removeFromCart function globally available
+                window.removeFromCart = removeFromCart;
+                
+            } catch (error) {
+                console.error('Failed to initialize page:', error);
+                // Error is already handled in loadCatalogData
+            }
         });
     </script>
 </body>
