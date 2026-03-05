@@ -1174,20 +1174,20 @@
                     };
                     
                     // 🔴 SHOW ALERT WITH TAX INFO BEFORE REDIRECT
-        //             alert(`
-        // 🔴 CHECKOUT DATA CHECK:
-        // -------------------
-        // Subtotal: $${cart.total.toFixed(2)}
-        // Shipping: $${(shippingData?.cost || 0).toFixed(2)}
-        // Tax Rate: ${taxRate}%
-        // Tax Amount: $${taxAmount.toFixed(2)}
-        // Total with Tax: $${totalWithTax.toFixed(2)}
+                    alert(`
+        🔴 CHECKOUT DATA CHECK:
+        -------------------
+        Subtotal: $${cart.total.toFixed(2)}
+        Shipping: $${(shippingData?.cost || 0).toFixed(2)}
+        Tax Rate: ${taxRate}%
+        Tax Amount: $${taxAmount.toFixed(2)}
+        Total with Tax: $${totalWithTax.toFixed(2)}
 
-        // ✅ Tax field in request: ${requestData.tax === taxAmount ? 'YES' : 'NO'}
-        // ✅ Total field in request: $${requestData.total.toFixed(2)}
+        ✅ Tax field in request: ${requestData.tax === taxAmount ? 'YES' : 'NO'}
+        ✅ Total field in request: $${requestData.total.toFixed(2)}
 
-        // Click OK to proceed to Square checkout.
-        //             `);
+        Click OK to proceed to Square checkout.
+                    `);
                     
                     // Redirect to Square checkout page
                     addDebug(`Redirecting to Square checkout: ${data.checkout_url}`);
