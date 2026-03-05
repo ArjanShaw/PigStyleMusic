@@ -428,12 +428,13 @@ def process_checkout():
             'record_ids': '[693]'  # Hardcoded test record ID
         }
 
+        # IMPORTANT: reference_id at TOP LEVEL (matches terminal payment structure)
         payload = {
             "idempotency_key": str(uuid.uuid4()),
+            "reference_id": "test-reference-789",  # ← MOVED TO TOP LEVEL!
             "order": {
                 "location_id": location_id,
-                "line_items": line_items,
-                "reference_id": "test-reference-789"  # Hardcoded test value
+                "line_items": line_items
             },
             "metadata": metadata,
             "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id=test-order-123" if order_id else None
@@ -441,7 +442,8 @@ def process_checkout():
         
         square_base_url = 'https://connect.squareup.com'
         
-        app.logger.info(f"Sending to Square with reference_id: {order_id}")
+        app.logger.info(f"Sending to Square with reference_id: test-reference-789")
+        app.logger.info(f"Full payload: {json.dumps(payload, indent=2)}")
         
         response = requests.post(
             f'{square_base_url}/v2/online-checkout/payment-links',
@@ -498,7 +500,7 @@ def process_checkout():
             'status': 'error',
             'error': f'Server error: {str(e)}'
         }), 500
-
+ 
 @app.route('/checkout/complete')
 def checkout_complete():
     """Handle successful checkout return from Square"""
