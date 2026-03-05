@@ -240,38 +240,6 @@
         </div>
     </div>
 
-    <script>
-        // Update dashboard link visibility based on user role
-        function updateDashboardLink() {
-            const userData = localStorage.getItem('user');
-            const dashboardLink = document.getElementById('dashboard-nav-link');
-            
-            if (userData) {
-                try {
-                    const user = JSON.parse(userData);
-                    if (user.role === 'admin' || user.role === 'consignor') {
-                        dashboardLink.style.display = 'inline-block';
-                    } else {
-                        dashboardLink.style.display = 'none';
-                    }
-                } catch (e) {
-                    console.error('Error parsing user data:', e);
-                    dashboardLink.style.display = 'none';
-                }
-            } else {
-                dashboardLink.style.display = 'none';
-            }
-        }
-
-        // Run on page load
-        document.addEventListener('DOMContentLoaded', updateDashboardLink);
-        
-        // Also run when localStorage changes (e.g., after login)
-        window.addEventListener('storage', function(e) {
-            if (e.key === 'user') {
-                updateDashboardLink();
-            }
-        });
-    </script>
+     
 </body>
 </html>

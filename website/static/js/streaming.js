@@ -645,7 +645,7 @@ function loadRecordInfo() {
     
     const artist = record.artist || 'Unknown Artist';
     const title = record.title || 'Unknown Title';
-    const imageUrl = record.image_url || '/static/images/default-record.jpg';
+    const imageUrl = record.image_url || ''; // Empty string triggers default CSS background
     const genre = record.genre_name || 'Unknown Genre';
     const price = record.store_price ? `$${parseFloat(record.store_price).toFixed(2)}` : 'Price N/A';
     const condition = record.condition || '';
@@ -678,10 +678,15 @@ function loadRecordInfo() {
         return div.innerHTML;
     };
     
+    // Handle image display - use CSS background if no image
+    const imageHtml = imageUrl ? 
+        `<img src="${imageUrl}" alt="${escapeHtml(title)}" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
+        '';
+    
     container.innerHTML = `
         <div class="record-info-card">
-            <div class="record-info-image">
-                <img src="${imageUrl}" alt="${escapeHtml(title)}" onerror="this.src='/static/images/default-record.jpg'">
+            <div class="record-info-image ${!imageUrl ? 'default-record-bg' : ''}">
+                ${imageHtml}
             </div>
             <div class="record-info-details">
                 <h3>${escapeHtml(title)}</h3>
