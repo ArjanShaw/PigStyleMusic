@@ -437,7 +437,8 @@ def process_checkout():
             "order": {
                 "location_id": location_id,
                 "line_items": line_items,
-                "reference_id": str(order_id) if order_id else None  # UUID as reference
+                "reference_id": 'Fuck deepseek'
+                  
             },
             "metadata": metadata,
             "redirect_url": f"{request.host_url.rstrip('/')}/checkout/complete?order_id={order_id}" if order_id else None
