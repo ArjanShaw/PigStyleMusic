@@ -2856,7 +2856,7 @@ def get_admin_orders():
 @login_required
 @role_required(['admin'])
 def refresh_order_payment(order_id):
-    """Manually check Square for payment status using UUID"""
+    """Manually check Square for payment status using UUID - NO FALLBACK"""
     # Handle CORS preflight
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
@@ -2946,7 +2946,7 @@ def refresh_order_payment(order_id):
                 app.logger.info(f"Found payment by reference_id: {payment.get('id')}")
                 break
         
-        # Priority 2: Match by metadata.order_id
+        # Priority 2: Match by metadata.order_id (if reference_id wasn't set)
         if not matching_payment:
             for payment in payments:
                 if payment.get('status') != 'COMPLETED':
@@ -2956,25 +2956,6 @@ def refresh_order_payment(order_id):
                 if metadata.get('order_id') == order_id:
                     matching_payment = payment
                     app.logger.info(f"Found payment by metadata.order_id: {payment.get('id')}")
-                    break
-        
-        # Priority 3: Match by amount AND time (fallback)
-        if not matching_payment:
-            amount_cents = int(round(order['total'] * 100))
-            order_time = datetime.strptime(order['created_at'], '%Y-%m-%d %H:%M:%S')
-            
-            for payment in payments:
-                if payment.get('status') != 'COMPLETED':
-                    continue
-                
-                payment_amount = payment.get('amount_money', {}).get('amount', 0)
-                payment_time = datetime.fromisoformat(payment.get('created_at', '').replace('Z', '+00:00'))
-                
-                # Match amount AND time within 5 minutes
-                time_diff = abs((payment_time - order_time).total_seconds())
-                if payment_amount == amount_cents and time_diff < 300:
-                    matching_payment = payment
-                    app.logger.info(f"Found payment by amount+time fallback: {payment.get('id')}")
                     break
         
         if matching_payment:
@@ -3006,7 +2987,7 @@ def refresh_order_payment(order_id):
             message = f"Order {order_id} marked as paid"
             app.logger.info(message)
         else:
-            message = f"No matching payment found for Order {order_id}"
+            message = f"No matching payment found for Order {order_id} (no reference_id or metadata match)"
         
         conn.close()
         
