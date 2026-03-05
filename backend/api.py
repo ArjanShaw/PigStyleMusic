@@ -436,6 +436,13 @@ def process_checkout():
             'Square-Version': '2026-01-22'
         }
         
+        env = os.getenv("ENV", "production")
+
+        if env == "development":
+            redirect_url = "http://localhost:8000/shop"
+        else:
+            redirect_url = "https://www.pigstylemusic.com/shop"
+
         payload = {
             "idempotency_key": str(uuid.uuid4()),
             "order": {
@@ -445,7 +452,9 @@ def process_checkout():
             },
             "payment_note": f"PigStyle Order {order_number}",
             "metadata": metadata,
-            "redirect_url": "http://localhost:8000/shopping.html?status=completed&order_id={order_id}"
+            "checkout_options": {
+                "redirect_url": redirect_url
+            }
         }
         
         square_base_url = 'https://connect.squareup.com'
