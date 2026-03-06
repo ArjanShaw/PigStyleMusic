@@ -304,6 +304,12 @@
                 return false;
             }
             
+            // Show alert before adding
+            alert(`🔴 BEFORE ADDING:
+        Current cart items: ${cart.items.length}
+        Current cart total: $${cart.total.toFixed(2)}
+        Adding item: ${release.title} at $${copy.store_price.toFixed(2)}`);
+            
             // Add new item
             cart.items.push({
                 copyId: copy.id,
@@ -314,6 +320,14 @@
                 image_url: release.image_url,
                 quantity: 1
             });
+            
+            // Recalculate total
+            const newTotal = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            alert(`🔴 AFTER ADDING:
+        Items now: ${cart.items.length}
+        New total: $${newTotal.toFixed(2)}
+        cart.total variable: $${cart.total.toFixed(2)}`);
             
             saveCart();
             showNotification('Item added to cart!', 'success');
