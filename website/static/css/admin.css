@@ -1171,15 +1171,17 @@ select.form-control option {
 }
 
 /* === CONDITION BADGES === */
+ 
+
 .condition-badge {
-    display: inline-block;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 11px;
-    font-weight: bold;
-    text-transform: uppercase;
-    color: #ffffff !important;
-}
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            color: #333;
+        }
 
 .condition-mint { background: #4CAF50; }
 .condition-nm { background: #8BC34A; }

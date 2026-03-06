@@ -1,4 +1,4 @@
-// discogs.js - Fixed version with backend API integration
+// discogs.js - Complete version with database-driven condition filtering
 
 /**
  * Discogs Inventory Management Module
@@ -19,6 +19,15 @@ let discConditionFilter = '';
 let listingStatusFilter = 'all';
 let searchFilter = '';
 
+// Conditions data from database
+let conditionsMap = {
+    byId: {},           // id -> condition object
+    byName: {},         // condition_name -> condition object
+    byDisplayName: {},  // display_name -> condition object
+    byAbbreviation: {}, // abbreviation -> condition object
+    qualityIndexMap: {} // Maps condition identifiers to quality_index
+};
+
 // Make functions globally available
 window.loadDiscogsInventory = loadDiscogsInventory;
 window.filterDiscogsInventory = filterDiscogsInventory;
@@ -32,6 +41,115 @@ window.deselectAllDiscogsRecords = deselectAllDiscogsRecords;
 window.submitToDiscogs = submitToDiscogs;
 window.syncDiscogsListings = syncDiscogsListings;
 window.viewDiscogsMatch = viewDiscogsMatch;
+window.populateConditionDropdowns = populateConditionDropdowns;
+
+/**
+ * Load conditions from database and populate dropdowns
+ */
+function loadConditions() {
+    console.log('📀 Loading conditions from database...');
+    
+    return fetch(`${window.AppConfig.baseUrl}/api/conditions`, {
+        credentials: 'include',
+        headers: window.AppConfig.getHeaders()
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success' && data.conditions) {
+            // Create maps for quick lookup
+            conditionsMap = {
+                byId: {},
+                byName: {},
+                byDisplayName: {},
+                byAbbreviation: {},
+                qualityIndexMap: {}
+            };
+            
+            data.conditions.forEach(condition => {
+                // Store by ID
+                conditionsMap.byId[condition.id] = condition;
+                
+                // Store by condition_name
+                conditionsMap.byName[condition.condition_name] = condition;
+                
+                // Store by display_name (what users see)
+                conditionsMap.byDisplayName[condition.display_name] = condition;
+                
+                // Store by abbreviation if available
+                if (condition.abbreviation) {
+                    conditionsMap.byAbbreviation[condition.abbreviation] = condition;
+                }
+                
+                // Store quality index by various identifiers for easy lookup
+                conditionsMap.qualityIndexMap[condition.id] = condition.quality_index;
+                conditionsMap.qualityIndexMap[condition.condition_name] = condition.quality_index;
+                conditionsMap.qualityIndexMap[condition.display_name] = condition.quality_index;
+                if (condition.abbreviation) {
+                    conditionsMap.qualityIndexMap[condition.abbreviation] = condition.quality_index;
+                }
+            });
+            
+            console.log('📀 Conditions loaded:', conditionsMap);
+            
+            // Populate the dropdowns with conditions from database
+            populateConditionDropdowns(data.conditions);
+            
+            return conditionsMap;
+        } else {
+            throw new Error('Failed to load conditions');
+        }
+    })
+    .catch(error => {
+        console.error('Error loading conditions:', error);
+        return null;
+    });
+}
+
+/**
+ * Populate condition dropdowns with data from database
+ */
+function populateConditionDropdowns(conditions) {
+    console.log('📀 Populating condition dropdowns with', conditions.length, 'conditions');
+    
+    // Sort conditions by quality_index (best to worst)
+    const sortedConditions = [...conditions].sort((a, b) => a.quality_index - b.quality_index);
+    
+    // Get both dropdown elements
+    const sleeveDropdown = document.getElementById('sleeve-condition-filter');
+    const discDropdown = document.getElementById('disc-condition-filter');
+    
+    if (!sleeveDropdown || !discDropdown) {
+        console.error('Dropdown elements not found');
+        return;
+    }
+    
+    // Clear existing options (except the first "All Conditions" option)
+    sleeveDropdown.innerHTML = '<option value="">All Conditions</option>';
+    discDropdown.innerHTML = '<option value="">All Conditions</option>';
+    
+    // Add options from database
+    sortedConditions.forEach(condition => {
+        // Use display_name for what users see
+        const displayText = condition.display_name || condition.condition_name;
+        
+        // Use the condition_name as the value (since we have mapping)
+        // This ensures backward compatibility with existing code
+        const optionValue = condition.condition_name;
+        
+        // Create option elements
+        const sleeveOption = document.createElement('option');
+        sleeveOption.value = optionValue;
+        sleeveOption.textContent = displayText;
+        sleeveDropdown.appendChild(sleeveOption);
+        
+        const discOption = document.createElement('option');
+        discOption.value = optionValue;
+        discOption.textContent = displayText;
+        discDropdown.appendChild(discOption);
+    });
+    
+    console.log('📀 Dropdowns populated successfully');
+}
 
 /**
  * Load inventory for Discogs tab
@@ -50,30 +168,34 @@ function loadDiscogsInventory() {
         tableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i><p>Loading inventory...</p></td></tr>';
     }
     
-    // First, check Discogs authentication status
-    fetch(`${window.AppConfig.baseUrl}/api/discogs/check-auth`, {
-        credentials: 'include',
-        headers: window.AppConfig.getHeaders()
-    })
-    .then(response => response.json())
-    .then(authData => {
-        console.log('📀 Discogs auth status:', authData);
-        
-        // Load local records regardless of auth status
-        return loadLocalInventory();
-    })
-    .catch(error => {
-        console.error('📀 Error checking Discogs auth:', error);
-        // Still try to load local records
-        return loadLocalInventory();
-    });
+    // First load conditions and populate dropdowns
+    loadConditions()
+        .then(() => {
+            // Then check Discogs authentication status
+            return fetch(`${window.AppConfig.baseUrl}/api/discogs/check-auth`, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders()
+            });
+        })
+        .then(response => response.json())
+        .then(authData => {
+            console.log('📀 Discogs auth status:', authData);
+            // Load local records
+            return loadLocalInventory();
+        })
+        .catch(error => {
+            console.error('📀 Error in initialization:', error);
+            // Still try to load local records
+            return loadLocalInventory();
+        });
 }
 
 /**
  * Load local inventory from database
  */
 function loadLocalInventory() {
-    return fetch(`${window.AppConfig.baseUrl}/records?status=active&limit=1000`, {
+    // Load up to 10000 records (adjust as needed)
+    return fetch(`${window.AppConfig.baseUrl}/records?status=active&limit=10000`, {
         credentials: 'include',
         headers: window.AppConfig.getHeaders()
     })
@@ -170,9 +292,9 @@ function checkDiscogsListings() {
                 };
             });
             
-            // Update local inventory with listing status
-            // This would require matching logic - you might need to store discogs_release_id in your records
-            // For now, we'll just show that we have listings
+            // Here you would update discogs_listed flags in your inventory
+            // This requires matching logic based on release_id or other identifiers
+            
             updateDiscogsStats();
         }
     })
@@ -185,19 +307,75 @@ function checkDiscogsListings() {
  * Apply filters to inventory
  */
 function applyDiscogsFilters() {
+    console.log('📊 Applying filters:', {
+        sleeveFilter: sleeveConditionFilter,
+        discFilter: discConditionFilter,
+        listingStatus: listingStatusFilter,
+        search: searchFilter,
+        totalRecords: discogsInventory.length
+    });
+    
     filteredDiscogsInventory = discogsInventory.filter(record => {
-        // Sleeve condition filter
-        if (sleeveConditionFilter) {
-            const conditionValue = getConditionValue(record.sleeve_condition || record.condition || '');
-            const filterValue = getConditionValue(sleeveConditionFilter);
-            if (conditionValue < filterValue) return false;
-        }
-        
         // Disc condition filter
         if (discConditionFilter) {
-            const conditionValue = getConditionValue(record.media_condition || record.condition || '');
-            const filterValue = getConditionValue(discConditionFilter);
-            if (conditionValue < filterValue) return false;
+            // Get the condition ID from the record
+            const discConditionId = record.condition_disc_id;
+            
+            // If disc condition is missing (NULL), exclude it when filter is active
+            if (!discConditionId) {
+                return false;
+            }
+            
+            // Get the quality index from the conditions map using the condition ID
+            const discQuality = conditionsMap.qualityIndexMap[discConditionId];
+            
+            if (discQuality === undefined) {
+                return false;
+            }
+            
+            // Get filter quality from the conditions map using the selected condition name
+            const filterQuality = conditionsMap.qualityIndexMap[discConditionFilter];
+            
+            // If filter quality not found, exclude (shouldn't happen)
+            if (filterQuality === undefined) {
+                console.warn('Unknown condition filter:', discConditionFilter);
+                return false;
+            }
+            
+            // Compare: we want records with quality_index <= filter quality
+            // (lower index = better condition)
+            if (discQuality > filterQuality) {
+                return false;
+            }
+        }
+        
+        // Sleeve condition filter
+        if (sleeveConditionFilter) {
+            // Get the condition ID from the record
+            const sleeveConditionId = record.condition_sleeve_id;
+            
+            // If sleeve condition is missing (NULL), exclude it when filter is active
+            if (!sleeveConditionId) {
+                return false;
+            }
+            
+            // Get the quality index from the conditions map using the condition ID
+            const sleeveQuality = conditionsMap.qualityIndexMap[sleeveConditionId];
+            
+            if (sleeveQuality === undefined) {
+                return false;
+            }
+            
+            const filterQuality = conditionsMap.qualityIndexMap[sleeveConditionFilter];
+            
+            if (filterQuality === undefined) {
+                console.warn('Unknown condition filter:', sleeveConditionFilter);
+                return false;
+            }
+            
+            if (sleeveQuality > filterQuality) {
+                return false;
+            }
         }
         
         // Listing status filter
@@ -223,6 +401,8 @@ function applyDiscogsFilters() {
         return true;
     });
     
+    console.log('📊 Filtered records:', filteredDiscogsInventory.length);
+    
     discogsTotalPages = Math.ceil(filteredDiscogsInventory.length / discogsPageSize);
     if (discogsCurrentPage > discogsTotalPages) {
         discogsCurrentPage = discogsTotalPages || 1;
@@ -230,31 +410,6 @@ function applyDiscogsFilters() {
     
     renderDiscogsInventory();
     updateDiscogsFilterCounts();
-}
-
-/**
- * Get numeric value for condition for comparison
- */
-function getConditionValue(condition) {
-    const conditionOrder = {
-        'Mint (M)': 10,
-        'Near Mint (NM or M-)': 9,
-        'Very Good Plus (VG+)': 8,
-        'Very Good (VG)': 7,
-        'Good Plus (G+)': 6,
-        'Good (G)': 5,
-        'Fair (F)': 4,
-        'Poor (P)': 3
-    };
-    
-    // Extract the condition string if it contains additional text
-    for (const [key, value] of Object.entries(conditionOrder)) {
-        if (condition && condition.includes(key)) {
-            return value;
-        }
-    }
-    
-    return 0; // Unknown condition
 }
 
 /**
@@ -278,9 +433,19 @@ function renderDiscogsInventory() {
         const isSelected = discogsSelectedRecords.has(record.id);
         const isListed = record.discogs_listed || false;
         
-        // Get condition values
-        const sleeveCondition = record.sleeve_condition || record.condition || 'Not specified';
-        const discCondition = record.media_condition || record.condition || 'Not specified';
+        // Get condition names from IDs using the conditions map
+        const sleeveConditionId = record.condition_sleeve_id;
+        const discConditionId = record.condition_disc_id;
+        
+        const sleeveConditionObj = sleeveConditionId ? conditionsMap.byId[sleeveConditionId] : null;
+        const discConditionObj = discConditionId ? conditionsMap.byId[discConditionId] : null;
+        
+        const sleeveCondition = sleeveConditionObj 
+            ? (sleeveConditionObj.display_name || sleeveConditionObj.condition_name)
+            : 'Not specified';
+        const discCondition = discConditionObj
+            ? (discConditionObj.display_name || discConditionObj.condition_name)
+            : 'Not specified';
         
         html += `
             <tr class="${isSelected ? 'record-selected' : ''} ${isListed ? 'record-listed' : ''}">
@@ -348,13 +513,20 @@ function escapeHtml(text) {
  * Update pagination controls
  */
 function updateDiscogsPagination() {
-    document.getElementById('discogs-total-pages').textContent = discogsTotalPages;
-    document.getElementById('discogs-current-page').value = discogsCurrentPage;
+    const totalPagesEl = document.getElementById('discogs-total-pages');
+    const currentPageEl = document.getElementById('discogs-current-page');
+    const firstBtn = document.getElementById('discogs-first-btn');
+    const prevBtn = document.getElementById('discogs-prev-btn');
+    const nextBtn = document.getElementById('discogs-next-btn');
+    const lastBtn = document.getElementById('discogs-last-btn');
     
-    document.getElementById('discogs-first-btn').disabled = discogsCurrentPage === 1;
-    document.getElementById('discogs-prev-btn').disabled = discogsCurrentPage === 1;
-    document.getElementById('discogs-next-btn').disabled = discogsCurrentPage === discogsTotalPages;
-    document.getElementById('discogs-last-btn').disabled = discogsCurrentPage === discogsTotalPages;
+    if (totalPagesEl) totalPagesEl.textContent = discogsTotalPages;
+    if (currentPageEl) currentPageEl.value = discogsCurrentPage;
+    
+    if (firstBtn) firstBtn.disabled = discogsCurrentPage === 1;
+    if (prevBtn) prevBtn.disabled = discogsCurrentPage === 1;
+    if (nextBtn) nextBtn.disabled = discogsCurrentPage === discogsTotalPages;
+    if (lastBtn) lastBtn.disabled = discogsCurrentPage === discogsTotalPages;
 }
 
 /**
@@ -383,6 +555,13 @@ function filterDiscogsInventory() {
     discConditionFilter = document.getElementById('disc-condition-filter').value;
     listingStatusFilter = document.getElementById('listing-status-filter').value;
     searchFilter = document.getElementById('discogs-search').value;
+    
+    console.log('Filtering with:', {
+        sleeveConditionFilter,
+        discConditionFilter,
+        listingStatusFilter,
+        searchFilter
+    });
     
     discogsCurrentPage = 1;
     applyDiscogsFilters();
@@ -532,8 +711,8 @@ function submitToDiscogs() {
             artist: r.artist,
             title: r.title,
             catalog_number: r.catalog_number,
-            media_condition: r.media_condition || r.condition || '',
-            sleeve_condition: r.sleeve_condition || r.condition || '',
+            media_condition: r.media_condition || '',
+            sleeve_condition: r.sleeve_condition || '',
             price: r.store_price,
             discogs_release_id: r.discogs_release_id,
             notes: r.notes || ''

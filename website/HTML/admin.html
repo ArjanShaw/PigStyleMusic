@@ -1743,15 +1743,7 @@
             opacity: 0.7;
         }
 
-        .condition-badge {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 11px;
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            color: #333;
-        }
+        
 
         .bulk-actions-bar {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -3082,7 +3074,6 @@
                 </div>
             </div>
         </div>
-
         <!-- Discogs Tab -->
         <div id="discogs-tab" class="tab-content">
             <h2><i class="fab fa-discogs"></i> Discogs Inventory Management</h2>
@@ -3112,35 +3103,19 @@
                 <h3><i class="fas fa-filter"></i> Filter Inventory</h3>
                 
                 <div class="filters-row" style="display: flex; gap: 30px; align-items: flex-end; flex-wrap: wrap;">
-                    <!-- Sleeve Condition Filter -->
+                    <!-- Sleeve Condition Filter - Will be populated by JavaScript -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="sleeve-condition-filter"><i class="fas fa-box"></i> Minimal Sleeve Condition:</label>
                         <select id="sleeve-condition-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="">All Conditions</option>
-                            <option value="Mint (M)">Mint (M)</option>
-                            <option value="Near Mint (NM or M-)">Near Mint (NM or M-)</option>
-                            <option value="Very Good Plus (VG+)">Very Good Plus (VG+)</option>
-                            <option value="Very Good (VG)">Very Good (VG)</option>
-                            <option value="Good Plus (G+)">Good Plus (G+)</option>
-                            <option value="Good (G)">Good (G)</option>
-                            <option value="Fair (F)">Fair (F)</option>
-                            <option value="Poor (P)">Poor (P)</option>
+                            <option value="">Loading conditions...</option>
                         </select>
                     </div>
                     
-                    <!-- Disc Condition Filter -->
+                    <!-- Disc Condition Filter - Will be populated by JavaScript -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="disc-condition-filter"><i class="fas fa-compact-disc"></i> Minimal Disc Condition:</label>
                         <select id="disc-condition-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="">All Conditions</option>
-                            <option value="Mint (M)">Mint (M)</option>
-                            <option value="Near Mint (NM or M-)">Near Mint (NM or M-)</option>
-                            <option value="Very Good Plus (VG+)">Very Good Plus (VG+)</option>
-                            <option value="Very Good (VG)">Very Good (VG)</option>
-                            <option value="Good Plus (G+)">Good Plus (G+)</option>
-                            <option value="Good (G)">Good (G)</option>
-                            <option value="Fair (F)">Fair (F)</option>
-                            <option value="Poor (P)">Poor (P)</option>
+                            <option value="">Loading conditions...</option>
                         </select>
                     </div>
                     
@@ -3158,10 +3133,10 @@
                     <div class="filter-group" style="flex: 1; min-width: 300px;">
                         <label for="discogs-search"><i class="fas fa-search"></i> Search:</label>
                         <input type="text" 
-                               id="discogs-search" 
-                               class="search-input" 
-                               placeholder="Search by artist, title, catalog #, or barcode..."
-                               onkeyup="filterDiscogsInventory()">
+                            id="discogs-search" 
+                            class="search-input" 
+                            placeholder="Search by artist, title, catalog #, or barcode..."
+                            onkeyup="filterDiscogsInventory()">
                     </div>
                     
                     <!-- Filter Actions -->
@@ -3271,6 +3246,7 @@
             <!-- Status Message -->
             <div id="discogs-status-message" class="status-message" style="margin-top: 20px; display: none;"></div>
         </div>
+         
     </div>
 
     <!-- Modals -->
