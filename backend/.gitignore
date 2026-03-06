@@ -1,7 +1,14 @@
-.env
+# Database
+records.db
+
+# Environment files
 .env
 .env.local
 *.env
-venv/
+
+# Python cache
 __pycache__/
 *.pyc
+
+# Virtual environment
+venv/
