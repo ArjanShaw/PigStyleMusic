@@ -157,6 +157,27 @@ const TabManager = {
             } else {
                 console.log('ℹ️ TabManager: loadSchema will be called by db-query.js');
             }
+        },
+        
+        'discogs': () => {
+            console.log('🔵 TabManager: Initializing Discogs tab');
+            
+            if (typeof window.loadDiscogsInventory === 'function') {
+                console.log('🔄 TabManager: Calling loadDiscogsInventory()');
+                window.loadDiscogsInventory();
+            } else {
+                console.error('❌ TabManager: loadDiscogsInventory function not found');
+                
+                // Show error in discogs table
+                const discogsBody = document.getElementById('discogs-inventory-body');
+                if (discogsBody) {
+                    discogsBody.innerHTML = `<tr><td colspan="12" style="text-align:center; color: #dc3545; padding: 40px;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i><br>
+                        <strong>ERROR: loadDiscogsInventory function not found</strong><br>
+                        <small>Check if discogs.js is loaded correctly</small>
+                    </td></tr>`;
+                }
+            }
         }
     },
     

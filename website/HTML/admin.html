@@ -1732,6 +1732,31 @@
             white-space: pre-wrap;
             word-break: break-all;
         }
+
+        /* Discogs Tab Styles */
+        .record-selected {
+            background-color: #fff3cd !important;
+            border-left: 4px solid #ffc107 !important;
+        }
+
+        .record-listed {
+            opacity: 0.7;
+        }
+
+        .condition-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            color: #333;
+        }
+
+        .bulk-actions-bar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -1784,6 +1809,9 @@
             </div>
             <div class="tab" data-tab="db-query">
                 <i class="fas fa-database"></i> DB Query
+            </div>
+            <div class="tab" data-tab="discogs">
+                <i class="fab fa-discogs"></i> Discogs
             </div>
         </div>
         
@@ -3054,6 +3082,195 @@
                 </div>
             </div>
         </div>
+
+        <!-- Discogs Tab -->
+        <div id="discogs-tab" class="tab-content">
+            <h2><i class="fab fa-discogs"></i> Discogs Inventory Management</h2>
+            
+            <!-- Stats Cards -->
+            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Active Records</h3>
+                    <p class="stat-number" id="discogs-total-active" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Listed on Discogs</h3>
+                    <p class="stat-number" id="discogs-listed-count" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Not Listed</h3>
+                    <p class="stat-number" id="discogs-not-listed" style="font-size: 28px; font-weight: bold; color: #dc3545; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Selected for Listing</h3>
+                    <p class="stat-number" id="discogs-selected-count" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
+                </div>
+            </div>
+            
+            <!-- Filter Section -->
+            <div class="filters-section" style="margin-bottom: 20px;">
+                <h3><i class="fas fa-filter"></i> Filter Inventory</h3>
+                
+                <div class="filters-row" style="display: flex; gap: 30px; align-items: flex-end; flex-wrap: wrap;">
+                    <!-- Sleeve Condition Filter -->
+                    <div class="filter-group" style="min-width: 200px;">
+                        <label for="sleeve-condition-filter"><i class="fas fa-box"></i> Minimal Sleeve Condition:</label>
+                        <select id="sleeve-condition-filter" class="filter-select" onchange="filterDiscogsInventory()">
+                            <option value="">All Conditions</option>
+                            <option value="Mint (M)">Mint (M)</option>
+                            <option value="Near Mint (NM or M-)">Near Mint (NM or M-)</option>
+                            <option value="Very Good Plus (VG+)">Very Good Plus (VG+)</option>
+                            <option value="Very Good (VG)">Very Good (VG)</option>
+                            <option value="Good Plus (G+)">Good Plus (G+)</option>
+                            <option value="Good (G)">Good (G)</option>
+                            <option value="Fair (F)">Fair (F)</option>
+                            <option value="Poor (P)">Poor (P)</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Disc Condition Filter -->
+                    <div class="filter-group" style="min-width: 200px;">
+                        <label for="disc-condition-filter"><i class="fas fa-compact-disc"></i> Minimal Disc Condition:</label>
+                        <select id="disc-condition-filter" class="filter-select" onchange="filterDiscogsInventory()">
+                            <option value="">All Conditions</option>
+                            <option value="Mint (M)">Mint (M)</option>
+                            <option value="Near Mint (NM or M-)">Near Mint (NM or M-)</option>
+                            <option value="Very Good Plus (VG+)">Very Good Plus (VG+)</option>
+                            <option value="Very Good (VG)">Very Good (VG)</option>
+                            <option value="Good Plus (G+)">Good Plus (G+)</option>
+                            <option value="Good (G)">Good (G)</option>
+                            <option value="Fair (F)">Fair (F)</option>
+                            <option value="Poor (P)">Poor (P)</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Listing Status Filter -->
+                    <div class="filter-group" style="min-width: 200px;">
+                        <label for="listing-status-filter"><i class="fas fa-tag"></i> Listing Status:</label>
+                        <select id="listing-status-filter" class="filter-select" onchange="filterDiscogsInventory()">
+                            <option value="all">All Items</option>
+                            <option value="listed">Listed on Discogs</option>
+                            <option value="unlisted">Not Listed</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Search Filter -->
+                    <div class="filter-group" style="flex: 1; min-width: 300px;">
+                        <label for="discogs-search"><i class="fas fa-search"></i> Search:</label>
+                        <input type="text" 
+                               id="discogs-search" 
+                               class="search-input" 
+                               placeholder="Search by artist, title, catalog #, or barcode..."
+                               onkeyup="filterDiscogsInventory()">
+                    </div>
+                    
+                    <!-- Filter Actions -->
+                    <div class="filter-group">
+                        <button class="btn btn-secondary" onclick="resetDiscogsFilters()">
+                            <i class="fas fa-undo"></i> Reset Filters
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Active Filter Display -->
+                <div id="discogs-active-filters" style="margin-top: 15px; font-size: 13px; color: #666;">
+                    <span><i class="fas fa-info-circle"></i> Showing <span id="discogs-filtered-count">0</span> of <span id="discogs-total-filtered">0</span> records</span>
+                </div>
+            </div>
+            
+            <!-- Bulk Actions Bar -->
+            <div class="bulk-actions-bar" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; color: white;">
+                <div>
+                    <span style="font-weight: 600; margin-right: 15px;"><i class="fas fa-check-square"></i> Bulk Actions:</span>
+                    <button class="btn btn-secondary btn-small" onclick="selectAllDiscogsRecords()">
+                        <i class="fas fa-check-double"></i> Select All
+                    </button>
+                    <button class="btn btn-secondary btn-small" onclick="deselectAllDiscogsRecords()">
+                        <i class="fas fa-times"></i> Deselect All
+                    </button>
+                </div>
+                <div>
+                    <button class="btn btn-success" onclick="submitToDiscogs()" id="submit-to-discogs-btn" disabled>
+                        <i class="fab fa-discogs"></i> Submit to Discogs (<span id="selected-count">0</span>)
+                    </button>
+                    <button class="btn btn-info" onclick="syncDiscogsListings()" id="sync-discogs-btn">
+                        <i class="fas fa-sync-alt"></i> Sync Listings
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Inventory Table -->
+            <div class="records-table-container">
+                <table class="records-table" id="discogs-inventory-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="discogs-select-all" onchange="toggleAllDiscogsRecords()"></th>
+                            <th>ID</th>
+                            <th>Artist</th>
+                            <th>Title</th>
+                            <th>Label</th>
+                            <th>Catalog #</th>
+                            <th>Price</th>
+                            <th>Sleeve Condition</th>
+                            <th>Disc Condition</th>
+                            <th>Status</th>
+                            <th>Discogs ID</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="discogs-inventory-body">
+                        <tr>
+                            <td colspan="12" style="text-align: center; padding: 40px;">
+                                <i class="fab fa-discogs" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
+                                Loading inventory...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button class="page-btn" onclick="goToDiscogsPage(1)" id="discogs-first-btn" disabled>
+                    <i class="fas fa-angle-double-left"></i>
+                </button>
+                <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage - 1)" id="discogs-prev-btn" disabled>
+                    <i class="fas fa-angle-left"></i>
+                </button>
+                
+                <span class="pagination-info">
+                    Page <input type="number" class="page-input" id="discogs-current-page" min="1" value="1" 
+                        onchange="goToDiscogsPage(parseInt(this.value))" onblur="goToDiscogsPage(parseInt(this.value))" 
+                        style="width: 50px; text-align: center;"> 
+                    of <span id="discogs-total-pages">1</span>
+                </span>
+                
+                <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage + 1)" id="discogs-next-btn" disabled>
+                    <i class="fas fa-angle-right"></i>
+                </button>
+                <button class="page-btn" onclick="goToDiscogsPage(discogsTotalPages)" id="discogs-last-btn" disabled>
+                    <i class="fas fa-angle-double-right"></i>
+                </button>
+                
+                <div class="records-per-page" style="margin-left: auto;">
+                    <span>Show:</span>
+                    <select id="discogs-page-size" onchange="changeDiscogsPageSize(parseInt(this.value))">
+                        <option value="20">20</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div class="loading" id="discogs-loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>Processing...</p>
+            </div>
+            
+            <!-- Status Message -->
+            <div id="discogs-status-message" class="status-message" style="margin-top: 20px; display: none;"></div>
+        </div>
     </div>
 
     <!-- Modals -->
@@ -3355,6 +3572,7 @@
     <script src="/static/js/price-checker.js"></script>
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/db-query.js"></script>
+    <script src="/static/js/discogs.js"></script>
     
     <!-- Config Initializer - Uses getConfigValues for all needed configs -->
     <script>
