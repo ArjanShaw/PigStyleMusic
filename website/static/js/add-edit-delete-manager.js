@@ -138,6 +138,7 @@ class AddEditDeleteManager {
         this.minimumPrice = 1.99;
         this.selectedConsignorId = null;
         this.selectedCommissionRate = 20.0;
+        this.autoEstimatePrice = true; // New setting to control price estimation
         
         this.init();
     }
@@ -165,8 +166,14 @@ class AddEditDeleteManager {
                 this.selectedCommissionRate = parseFloat(savedCommission);
             }
             
+            const savedAutoEstimate = localStorage.getItem('add_record_auto_estimate');
+            if (savedAutoEstimate !== null) {
+                this.autoEstimatePrice = savedAutoEstimate === 'true';
+            }
+            
             console.log('LOAD_SETTINGS: Loaded consignor ID:', this.selectedConsignorId);
             console.log('LOAD_SETTINGS: Loaded commission rate:', this.selectedCommissionRate);
+            console.log('LOAD_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
         } catch (error) {
             console.error('Error loading saved settings:', error);
         }
@@ -181,9 +188,11 @@ class AddEditDeleteManager {
             }
             
             localStorage.setItem('add_record_commission_rate', this.selectedCommissionRate.toString());
+            localStorage.setItem('add_record_auto_estimate', this.autoEstimatePrice.toString());
             
             console.log('SAVE_SETTINGS: Saved consignor ID:', this.selectedConsignorId);
             console.log('SAVE_SETTINGS: Saved commission rate:', this.selectedCommissionRate);
+            console.log('SAVE_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
         } catch (error) {
             console.error('Error saving settings:', error);
         }
@@ -193,40 +202,64 @@ class AddEditDeleteManager {
         const searchSection = document.querySelector('.search-section');
         if (!searchSection) return;
         
+        // Remove existing settings if any
         let globalSettings = document.getElementById('global-add-settings');
         if (globalSettings) {
             globalSettings.remove();
         }
         
+        // Create expandable settings section
         globalSettings = document.createElement('div');
         globalSettings.id = 'global-add-settings';
         globalSettings.style.marginTop = '15px';
-        globalSettings.style.padding = '15px';
-        globalSettings.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        globalSettings.style.marginBottom = '15px';
         globalSettings.style.borderRadius = '8px';
-        globalSettings.style.color = 'white';
+        globalSettings.style.overflow = 'hidden';
+        globalSettings.style.border = '1px solid #dee2e6';
         
         const consignorOptions = this.consignors.map(consignor => {
             const selected = consignor.id === this.selectedConsignorId ? 'selected' : '';
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
         }).join('');
         
-        globalSettings.innerHTML = `
-            <h4 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
-                <i class="fas fa-cog"></i> Default Settings for New Records
-            </h4>
+        // Header (always visible)
+        const header = document.createElement('div');
+        header.style.cssText = `
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: 500;
+        `;
+        header.innerHTML = `
+            <span><i class="fas fa-cog"></i> Default Settings for New Records</span>
+            <span class="settings-toggle"><i class="fas fa-chevron-down"></i></span>
+        `;
+        
+        // Content (expandable)
+        const content = document.createElement('div');
+        content.style.cssText = `
+            background: #f8f9fa;
+            padding: 15px;
+            border-top: 1px solid #dee2e6;
+            display: none;
+        `;
+        content.innerHTML = `
             <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
                 <div style="flex: 1; min-width: 200px;">
-                    <label for="global-consignor-select" style="display: block; margin-bottom: 5px; font-size: 0.9rem; opacity: 0.9;">
+                    <label for="global-consignor-select" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-user"></i> Default Consignor
                     </label>
-                    <select id="global-consignor-select" style="width: 100%; padding: 8px 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.95); color: #333;">
+                    <select id="global-consignor-select" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
                         <option value="">No default consignor</option>
                         ${consignorOptions}
                     </select>
                 </div>
                 <div style="flex: 1; min-width: 150px;">
-                    <label for="global-commission-input" style="display: block; margin-bottom: 5px; font-size: 0.9rem; opacity: 0.9;">
+                    <label for="global-commission-input" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-percentage"></i> Default Consignment Rate (%)
                     </label>
                     <div style="display: flex; gap: 5px;">
@@ -236,25 +269,46 @@ class AddEditDeleteManager {
                                step="10" 
                                min="0" 
                                max="100"
-                               style="flex: 1; padding: 8px 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.95); color: #333;">
-                        <button class="btn btn-small" id="apply-commission-btn" style="background: #ffd700; color: #333; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
+                               style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                        <button class="btn btn-small" id="apply-commission-btn" style="background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
                             <i class="fas fa-check"></i> Set
                         </button>
                     </div>
-                    <p style="margin-top: 5px; font-size: 0.8rem; opacity: 0.8;">
-                        <i class="fas fa-info-circle"></i> Step: 10% (use +/- buttons)
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                    <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-calculator"></i> Price Estimation
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" id="auto-estimate-checkbox" ${this.autoEstimatePrice ? 'checked' : ''}>
+                            <span>Auto-estimate when conditions change</span>
+                        </label>
+                    </div>
+                    <p style="margin-top: 5px; font-size: 0.8rem; color: #666;">
+                        <i class="fas fa-info-circle"></i> When disabled, you can still click "Estimate Price" button
                     </p>
                 </div>
                 <div style="flex: 0 0 auto;">
-                    <button class="btn btn-small" id="clear-defaults-btn" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 8px 15px; border-radius: 4px; cursor: pointer;">
+                    <button class="btn btn-small" id="clear-defaults-btn" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
                         <i class="fas fa-undo"></i> Clear Defaults
                     </button>
                 </div>
             </div>
-            <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
+            <p style="margin-top: 15px; margin-bottom: 0; font-size: 0.85rem; color: #666; border-top: 1px solid #dee2e6; padding-top: 10px;">
                 <i class="fas fa-save"></i> These settings will be automatically applied to all new records until you change them
             </p>
         `;
+        
+        globalSettings.appendChild(header);
+        globalSettings.appendChild(content);
+        
+        // Toggle functionality
+        header.addEventListener('click', () => {
+            const isVisible = content.style.display !== 'none';
+            content.style.display = isVisible ? 'none' : 'block';
+            header.querySelector('.settings-toggle i').className = isVisible ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
+        });
         
         const radioGroup = searchSection.querySelector('.radio-group');
         if (radioGroup) {
@@ -263,6 +317,7 @@ class AddEditDeleteManager {
             searchSection.appendChild(globalSettings);
         }
         
+        // Add event listeners
         document.getElementById('global-consignor-select').addEventListener('change', (e) => {
             const value = e.target.value;
             this.selectedConsignorId = value ? parseInt(value) : null;
@@ -282,15 +337,23 @@ class AddEditDeleteManager {
             }
         });
         
+        document.getElementById('auto-estimate-checkbox').addEventListener('change', (e) => {
+            this.autoEstimatePrice = e.target.checked;
+            this.saveSettings();
+            showMessage(`Auto-estimate ${this.autoEstimatePrice ? 'enabled' : 'disabled'}`, 'success');
+        });
+        
         document.getElementById('clear-defaults-btn').addEventListener('click', () => {
             this.selectedConsignorId = null;
             this.selectedCommissionRate = 20.0;
+            this.autoEstimatePrice = true;
             this.saveSettings();
             
             document.getElementById('global-consignor-select').value = '';
             document.getElementById('global-commission-input').value = '20.0';
+            document.getElementById('auto-estimate-checkbox').checked = true;
             
-            showMessage('Default settings cleared (commission reset to 20%)', 'success');
+            showMessage('Default settings cleared (commission reset to 20%, auto-estimate enabled)', 'success');
         });
     }
 
@@ -628,21 +691,7 @@ class AddEditDeleteManager {
         
         return `
             <h3>Search Results (${resultsCount})</h3>
-            <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
-                <i class="fas fa-info-circle"></i>
-                <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
-                <div style="margin-top: 5px;">
-                    <div>• Prices are rounded according to store pricing rules</div>
-                    <div>• <strong>Price step: $1.00</strong> - Use +/- buttons to adjust by whole dollars</div>
-                </div>
-            </div>
-            <div class="default-settings-indicator" style="margin-bottom: 15px; padding: 8px 12px; background: #e8f4fd; border-left: 4px solid #17a2b8; border-radius: 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <i class="fas fa-info-circle" style="color: #17a2b8;"></i>
-                <span>Using default settings: <strong>${this.selectedConsignorId ? this.consignors.find(c => c.id === this.selectedConsignorId)?.username || 'Unknown' : 'No consignor'}</strong> | <strong>${this.selectedCommissionRate}%</strong> commission</span>
-                <span style="margin-left: auto; font-size: 12px; color: #666;">
-                    <i class="fas fa-cog"></i> Change in the settings above
-                </span>
-            </div>
+            
             ${this.currentResults.map((record, index) => {
                 const hasPrediction = record.predicted_genre;
                 const predictedGenreId = hasPrediction ? record.predicted_genre.local_genre_id : null;
@@ -676,27 +725,25 @@ class AddEditDeleteManager {
                             `}
                             <div class="record-info">
                                 <div class="record-title">${record.artist} - ${record.title}</div>
-                                <div class="record-details">
-                                    ${record.year ? `<p><strong>Year:</strong> ${record.year}</p>` : ''}
-                                    ${record.genre ? `<p><strong>Discogs Genre:</strong> ${record.genre}</p>` : ''}
-                                    ${record.format ? `<p><strong>Format:</strong> ${record.format}</p>` : ''}
-                                    ${record.country ? `<p><strong>Country:</strong> ${record.country}</p>` : ''}
-                                    ${record.catalog_number ? `<p><strong>Discogs Catalog #:</strong> ${record.catalog_number}</p>` : ''}
-                                    ${discogsIdentifiers ? `<p><strong>Discogs Identifiers:</strong> ${discogsIdentifiers}</p>` : ''}
+                                <div class="record-details" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px 15px; margin-top: 8px;">
+                                    ${record.year ? `<span><strong>Year:</strong> ${record.year}</span>` : ''}
+                                    ${record.genre ? `<span><strong>Discogs Genre:</strong> ${record.genre}</span>` : ''}
+                                    ${record.format ? `<span><strong>Format:</strong> ${record.format}</span>` : ''}
+                                    ${record.country ? `<span><strong>Country:</strong> ${record.country}</span>` : ''}
+                                    ${record.catalog_number ? `<span><strong>Catalog #:</strong> ${record.catalog_number}</span>` : ''}
+                                    ${discogsIdentifiers ? `<span style="grid-column: span 2;"><strong>Identifiers:</strong> ${discogsIdentifiers.substring(0, 100)}${discogsIdentifiers.length > 100 ? '...' : ''}</span>` : ''}
                                 </div>
                             </div>
                         </div>
                         
                         ${hasPrediction ? `
-                            <div class="genre-prediction prediction-available" id="prediction-banner-${record.discogs_id}">
-                                <i class="fas fa-lightbulb prediction-icon"></i>
-                                <div class="prediction-text">
-                                    <strong>💡 Genre Prediction:</strong> "${record.genre}" maps to <strong>${predictedGenreName}</strong>
-                                    <div class="prediction-hint">
-                                        Based on previous mappings. The dropdown is pre-selected.
-                                    </div>
+                            <div class="genre-prediction prediction-available" id="prediction-banner-${record.discogs_id}" style="margin: 10px 0; padding: 10px; background: #e8f4fd; border-left: 4px solid #17a2b8; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
+                                <i class="fas fa-lightbulb" style="color: #ffc107; font-size: 20px;"></i>
+                                <div style="flex: 1;">
+                                    <strong>Genre Prediction:</strong> "${record.genre}" maps to <strong>${predictedGenreName}</strong>
+                                    <div style="font-size: 12px; color: #666;">Based on previous mappings. The dropdown is pre-selected.</div>
                                 </div>
-                                <button class="btn accept-prediction-btn" 
+                                <button class="btn btn-small btn-success accept-prediction-btn" 
                                         data-record-id="${record.discogs_id}"
                                         data-discogs-genre="${record.genre}"
                                         data-genre-id="${predictedGenreId}"
@@ -705,87 +752,81 @@ class AddEditDeleteManager {
                                 </button>
                             </div>
                         ` : record.genre ? `
-                            <div class="genre-prediction">
-                                <i class="fas fa-search prediction-icon"></i>
-                                <div class="prediction-text">
-                                    No genre prediction found for "${record.genre}"
-                                    <div class="prediction-hint">
-                                        Select a genre manually to create a mapping for future records
-                                    </div>
-                                </div>
+                            <div class="genre-prediction" style="margin: 10px 0; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                                <i class="fas fa-search" style="color: #856404;"></i>
+                                <span>No genre prediction found for "${record.genre}". Select a genre manually to create a mapping.</span>
                             </div>
                         ` : ''}
                         
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Genre *</label>
-                                <select class="form-control genre-select ${hasPrediction ? 'predicted-genre' : ''}" 
-                                        required
-                                        data-record-id="${record.discogs_id}">
-                                    <option value="">Select genre...</option>
-                                    ${genreOptions}
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    <i class="fas fa-album"></i> Sleeve Condition *
-                                </label>
-                                <select class="form-control sleeve-condition-select" required>
-                                    <option value="">Select sleeve condition...</option>
-                                    ${conditionOptions}
-                                </select>
-                                <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                    <i class="fas fa-info-circle"></i> Setting sleeve condition will auto-set disc condition
+                        <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                                <div>
+                                    <label class="form-label">Genre *</label>
+                                    <select class="form-control genre-select ${hasPrediction ? 'predicted-genre' : ''}" 
+                                            required
+                                            data-record-id="${record.discogs_id}">
+                                        <option value="">Select genre...</option>
+                                        ${genreOptions}
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">
+                                        <i class="fas fa-album"></i> Sleeve Condition *
+                                    </label>
+                                    <select class="form-control sleeve-condition-select" required>
+                                        <option value="">Select sleeve condition...</option>
+                                        ${conditionOptions}
+                                    </select>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Auto-sets disc condition
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">
+                                        <i class="fas fa-compact-disc"></i> Disc Condition *
+                                    </label>
+                                    <select class="form-control disc-condition-select" required>
+                                        <option value="">Select disc condition...</option>
+                                        ${conditionOptions}
+                                    </select>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Can be changed independently
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">Price ($) *</label>
+                                    <input type="number" 
+                                           class="form-control price-input" 
+                                           step="1" 
+                                           min="${this.minimumPrice}" 
+                                           placeholder="Min: $${this.minimumPrice.toFixed(2)}" 
+                                           required>
+                                    <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Step: $1.00
+                                    </div>
+                                    <button class="btn btn-sm btn-info estimate-now-btn" style="margin-top: 5px; font-size: 12px; display: ${this.autoEstimatePrice ? 'none' : 'inline-block'};">
+                                        <i class="fas fa-calculator"></i> Estimate Price
+                                    </button>
                                 </div>
                             </div>
                             
-                            <div class="form-group">
-                                <label class="form-label">
-                                    <i class="fas fa-compact-disc"></i> Disc Condition *
-                                </label>
-                                <select class="form-control disc-condition-select" required>
-                                    <option value="">Select disc condition...</option>
-                                    ${conditionOptions}
-                                </select>
-                                <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                    <i class="fas fa-edit"></i> Auto-set from sleeve, can be changed independently
-                                </div>
+                            <div class="barcode-info" style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 4px;">
+                                <i class="fas fa-barcode"></i>
+                                <span>A numeric PigStyle barcode will be automatically generated when you add this record</span>
                             </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Price ($) *</label>
-                                <input type="number" 
-                                       class="form-control price-input" 
-                                       step="1" 
-                                       min="${this.minimumPrice}" 
-                                       placeholder="Min: $${this.minimumPrice.toFixed(2)}" 
-                                       required>
-                                <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                    <i class="fas fa-plus-circle"></i> <i class="fas fa-minus-circle"></i> Use +/- buttons to adjust by $1.00
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="barcode-info">
-                            <i class="fas fa-barcode"></i>
-                            <span>A numeric PigStyle barcode will be automatically generated when you add this record</span>
-                        </div>
-                        
-                        <div id="calculation-${record.discogs_id}" class="calculation-container"></div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
+                            
+                            <div id="calculation-${record.discogs_id}" class="calculation-container" style="margin-top: 15px;"></div>
+                            
+                            <div style="margin-top: 15px;">
                                 <button class="btn btn-primary add-record-btn">
                                     <i class="fas fa-plus"></i> Add to Inventory
                                 </button>
-                                <div class="form-hint" style="font-size: 12px; color: rgba(0,0,0,0.5); margin-top: 5px;">
+                                <span class="form-hint" style="margin-left: 10px; font-size: 12px; color: #666;">
                                     * Required fields
-                                </div>
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -843,14 +884,7 @@ class AddEditDeleteManager {
         
         return `
             <h3>Database Results (${filteredResults.length})</h3>
-            <div class="price-note" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; border-left: 4px solid #007bff;">
-                <i class="fas fa-info-circle"></i>
-                <strong>Pricing Rules:</strong> Minimum price: $${this.minimumPrice.toFixed(2)}. 
-                <div style="margin-top: 5px;">
-                    <div>• Prices are rounded according to store pricing rules</div>
-                    <div>• <strong>Price step: $1.00</strong> - Use +/- buttons to adjust by whole dollars</div>
-                </div>
-            </div>
+             
             ${filteredResults.map((record, index) => {
                 const statusName = (record.status_name || 'active').toLowerCase();
                 const statusClass = statusName.replace(/\s+/g, '-');
@@ -892,7 +926,7 @@ class AddEditDeleteManager {
                             </div>
                         </div>
                         
-                        <div id="calculation-${record.id}" class="calculation-container"></div>
+                        <div id="calculation-${record.id}" class="calculation-container" style="margin: 15px 0;"></div>
                         
                         <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
@@ -935,6 +969,9 @@ class AddEditDeleteManager {
                                     <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                                         Step: $1.00
                                     </div>
+                                    <button class="btn btn-sm btn-info edit-estimate-now-btn" style="margin-top: 5px; font-size: 12px; display: ${this.autoEstimatePrice ? 'none' : 'inline-block'};" data-record-id="${record.id}">
+                                        <i class="fas fa-calculator"></i> Estimate Price
+                                    </button>
                                 </div>
                                 
                                 <div>
@@ -1029,7 +1066,19 @@ class AddEditDeleteManager {
                 discogs_id: record.discogs_id || ''
             });
             
-            console.log('ESTIMATE_PRICE: API response:', response);
+            console.log('ESTIMATE_PRICE: API response received');
+            console.log('ESTIMATE_RESPONSE_STRUCTURE:', Object.keys(response));
+            console.log('Has calculation?', response.calculation ? 'yes' : 'no');
+            console.log('Has ebay_listings?', response.ebay_listings ? 'yes' : 'no');
+            console.log('Has ebay_summary?', response.ebay_summary ? 'yes' : 'no');
+            
+            if (response.calculation) {
+                console.log('Calculation sample:', response.calculation.slice(0, 2));
+            }
+            if (response.ebay_listings) {
+                console.log('eBay listings count:', response.ebay_listings.length);
+            }
+            
             return response;
         } catch (error) {
             console.error('Error estimating price:', error);
@@ -1072,8 +1121,12 @@ class AddEditDeleteManager {
             return;
         }
         
-        if (sleeveConditionId && discConditionId) {
+        // Only estimate price if auto-estimate is enabled
+        if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
+            console.log('Auto-estimating price (enabled)');
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
+        } else {
+            console.log('Price estimation skipped (auto-estimate disabled)');
         }
     }
 
@@ -1103,9 +1156,46 @@ class AddEditDeleteManager {
             return;
         }
         
-        if (sleeveConditionId && discConditionId) {
+        // Only estimate price if auto-estimate is enabled
+        if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
+            console.log('Auto-estimating price (enabled)');
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
+        } else {
+            console.log('Price estimation skipped (auto-estimate disabled)');
         }
+    }
+
+    async handleManualEstimate(recordId, isEditMode = false) {
+        console.log('Manual estimate requested for record:', recordId);
+        
+        const card = document.querySelector(`[data-record-id="${recordId}"]`);
+        if (!card) return;
+        
+        const sleeveSelect = card.querySelector(isEditMode ? '.edit-sleeve-condition-select' : '.sleeve-condition-select');
+        const discSelect = card.querySelector(isEditMode ? '.edit-disc-condition-select' : '.disc-condition-select');
+        
+        const sleeveConditionId = sleeveSelect ? sleeveSelect.value : null;
+        const discConditionId = discSelect ? discSelect.value : null;
+        
+        if (!sleeveConditionId || !discConditionId) {
+            showMessage('Please select both sleeve and disc conditions first', 'warning');
+            return;
+        }
+        
+        let record;
+        if (isEditMode) {
+            record = this.currentResults.find(r => r.id == recordId);
+        } else {
+            const index = card.getAttribute('data-index');
+            record = this.currentResults[index];
+        }
+        
+        if (!record) {
+            console.error('Record not found for manual estimate');
+            return;
+        }
+        
+        await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
     }
 
     async estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode) {
@@ -1155,7 +1245,7 @@ class AddEditDeleteManager {
         tempOverlay.remove();
         priceInput.disabled = false;
         
-        if (estimate.success || estimate.estimated_price || estimate.calculation) {
+        if (estimate.success || estimate.estimated_price || estimate.calculation || estimate.price) {
             let estimatedPrice;
             let priceSource = 'unknown';
             
@@ -1216,6 +1306,8 @@ class AddEditDeleteManager {
                 
                 priceInput.parentElement.appendChild(hint);
                 
+                // Always show expandable calculation details if available
+                console.log('Calling showExpandableCalculationDetails for recordId:', recordId);
                 this.showExpandableCalculationDetails(record, sleeveConditionId, discConditionId, estimate, recordId, finalPrice);
                 
             } else {
@@ -1233,8 +1325,14 @@ class AddEditDeleteManager {
     }
 
     showExpandableCalculationDetails(record, sleeveConditionId, discConditionId, estimate, recordId, finalPrice) {
+        console.log('showExpandableCalculationDetails called for recordId:', recordId);
         const calculationContainer = document.getElementById(`calculation-${recordId}`);
-        if (!calculationContainer) return;
+        console.log('Found container:', calculationContainer);
+        
+        if (!calculationContainer) {
+            console.error('Calculation container not found for ID:', `calculation-${recordId}`);
+            return;
+        }
         
         const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
         const discCond = this.conditions.find(c => c.id == discConditionId);
@@ -1252,6 +1350,7 @@ class AddEditDeleteManager {
             }
         }
         
+        // Always show the rounding info
         calculationHTML += `
             <div class="rounding-info" style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
                 <strong>💰 Price Rules Applied by API:</strong>
@@ -1266,7 +1365,9 @@ class AddEditDeleteManager {
             </div>
         `;
         
+        // Add calculation steps if available
         if (estimate.calculation && estimate.calculation.length > 0) {
+            console.log('Adding calculation steps to expandable');
             calculationHTML += `
                 <div class="calculation-content">
                     <strong>🧮 Price Calculation:</strong>
@@ -1279,11 +1380,13 @@ class AddEditDeleteManager {
             `;
         }
         
+        // Add eBay summary if available
         if (estimate.ebay_summary && Object.keys(estimate.ebay_summary).length > 0) {
-            const searchQuery = estimate.search_query || estimate.ebay_summary.search_query || 'Nirvana Nevermind vinyl';
+            console.log('Adding eBay summary to expandable');
+            const searchQuery = estimate.search_query || estimate.ebay_summary.search_query || `${record.artist} ${record.title} vinyl`;
             
             calculationHTML += `
-                <div class="ebay-summary">
+                <div class="ebay-summary" style="margin-top: 15px;">
                     <strong>🛒 eBay Listings Summary</strong>
                     <div class="ebay-summary-table-container">
                         <table class="ebay-summary-table">
@@ -1321,7 +1424,9 @@ class AddEditDeleteManager {
             `;
         }
         
+        // Add eBay listings if available
         if (estimate.ebay_listings && estimate.ebay_listings.length > 0) {
+            console.log('Adding eBay listings to expandable, count:', estimate.ebay_listings.length);
             calculationHTML += `
                 <div class="ebay-listings" style="margin-top: 15px;">
                     <div class="table-header">
@@ -1383,6 +1488,7 @@ class AddEditDeleteManager {
         }
         
         if (calculationHTML) {
+            console.log('Setting calculation container HTML');
             calculationContainer.innerHTML = `
                 <div class="calculation-toggle" onclick="this.classList.toggle('expanded'); 
                     this.nextElementSibling.classList.toggle('expanded');">
@@ -1397,6 +1503,7 @@ class AddEditDeleteManager {
                 </div>
             `;
         } else {
+            console.log('No calculation details to show');
             calculationContainer.innerHTML = '';
         }
     }
@@ -1416,6 +1523,22 @@ class AddEditDeleteManager {
         
         document.querySelectorAll('.edit-disc-condition-select').forEach(select => {
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, true));
+        });
+        
+        // Add manual estimate button listeners
+        document.querySelectorAll('.estimate-now-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const card = e.target.closest('.record-card');
+                const recordId = card.getAttribute('data-record-id');
+                this.handleManualEstimate(recordId, false);
+            });
+        });
+        
+        document.querySelectorAll('.edit-estimate-now-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const recordId = e.target.getAttribute('data-record-id');
+                this.handleManualEstimate(recordId, true);
+            });
         });
     }
 
