@@ -1462,3 +1462,143 @@ body {
         padding-left: 5px;
     }
 }
+
+/* Mobile responsive cart drawer */
+@media (max-width: 768px) {
+    .cart-drawer {
+        width: 100% !important;
+        max-width: 100% !important;
+        right: -100% !important;
+        padding-bottom: 20px;
+    }
+    
+    .cart-drawer.open {
+        right: 0 !important;
+    }
+    
+    .cart-drawer-header {
+        padding: 15px;
+    }
+    
+    .cart-drawer-header h3 {
+        font-size: 18px;
+    }
+    
+    .cart-drawer-close {
+        font-size: 28px;
+        padding: 0 10px;
+    }
+    
+    .cart-drawer-items {
+        max-height: calc(100vh - 250px);
+        padding: 10px;
+        overflow-y: auto;
+    }
+    
+    /* Cart items table mobile view */
+    .cart-items-table {
+        font-size: 14px;
+    }
+    
+    .cart-items-table th {
+        padding: 8px 3px;
+        font-size: 12px;
+    }
+    
+    .item-info-cell {
+        padding: 8px 3px;
+    }
+    
+    .cart-item-info {
+        gap: 8px;
+    }
+    
+    .cart-item-image {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .cart-item-title {
+        font-size: 13px;
+    }
+    
+    .cart-item-artist {
+        font-size: 11px;
+    }
+    
+    .cart-item-condition {
+        font-size: 9px;
+        padding: 2px 4px;
+    }
+    
+    .item-price-cell {
+        padding: 8px 3px;
+    }
+    
+    .cart-item-price {
+        font-size: 13px;
+    }
+    
+    .item-action-cell {
+        padding: 8px 3px;
+    }
+    
+    .cart-item-remove-btn {
+        padding: 6px;
+        font-size: 14px;
+    }
+    
+    /* Cart footer mobile */
+    .cart-drawer-footer {
+        padding: 15px;
+        background: white;
+        border-top: 1px solid #eee;
+        position: sticky;
+        bottom: 0;
+    }
+    
+    .cart-totals-table {
+        font-size: 14px;
+    }
+    
+    .cart-totals-table .total-row .amount {
+        font-size: 16px;
+    }
+    
+    .checkout-btn {
+        padding: 14px;
+        font-size: 16px;
+        margin-top: 10px;
+    }
+    
+    /* Cart toggle button positioning for mobile */
+    #cartToggleContainer {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 999;
+    }
+    
+    .cart-icon-wrapper {
+        background: #007bff;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    
+    .cart-icon-wrapper i {
+        font-size: 24px !important;
+    }
+    
+    .cart-badge {
+        top: -5px;
+        right: -5px;
+        min-width: 22px;
+        height: 22px;
+        font-size: 12px;
+    }
+}
