@@ -470,7 +470,7 @@ function renderDiscogsInventory() {
                         '<span class="status-badge paid">Listed</span>' : 
                         '<span class="status-badge new">Not Listed</span>'}
                 </td>
-                <td>${record.discogs_release_id ? escapeHtml(record.discogs_release_id) : '-'}</td>
+                <td>${record.catalog_number ? escapeHtml(record.catalog_number) : '-'}</td>
                 <td>
                     ${!isListed ? `
                         <button class="btn btn-small btn-info" onclick="viewDiscogsMatch(${record.id})" title="Find on Discogs">
@@ -714,16 +714,10 @@ function submitToDiscogs() {
             media_condition: r.media_condition || '',
             sleeve_condition: r.sleeve_condition || '',
             price: r.store_price,
-            discogs_release_id: r.discogs_release_id,
             notes: r.notes || ''
         }));
     
-    // Check for missing release IDs
-    const missingRelease = recordsToSubmit.filter(r => !r.discogs_release_id);
-    if (missingRelease.length > 0) {
-        showDiscogsStatus(`${missingRelease.length} records need Discogs release IDs. Please add them first.`, 'warning');
-        return;
-    }
+    
     
     // Check authentication first
     showDiscogsStatus('Checking Discogs authentication...', 'info');
