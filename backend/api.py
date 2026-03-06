@@ -3122,6 +3122,9 @@ def update_record(record_id):
         conn.close()
         return jsonify({'status': 'error', 'error': 'No valid fields to update'}), 400
 
+    # Always update last_seen to current timestamp
+    update_fields.append("last_seen = CURRENT_TIMESTAMP")
+
     update_values.append(record_id)
     update_query = f"UPDATE records SET {', '.join(update_fields)} WHERE id = ?"
 

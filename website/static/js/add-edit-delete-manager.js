@@ -129,7 +129,7 @@ class AddEditDeleteManager {
         this.currentSearchField = 'all';
         this.currentResults = [];
         this.genres = [];
-        this.conditions = []; // Will hold condition objects from API
+        this.conditions = [];
         this.statuses = ['new', 'active', 'sold', 'removed'];
         this.consignors = [];
         this.genrePredictor = new GenrePredictor();
@@ -137,7 +137,7 @@ class AddEditDeleteManager {
         this.commissionRate = 0.20;
         this.minimumPrice = 1.99;
         this.selectedConsignorId = null;
-        this.selectedCommissionRate = 20.0; // Default 20%
+        this.selectedCommissionRate = 20.0;
         
         this.init();
     }
@@ -146,7 +146,7 @@ class AddEditDeleteManager {
         await this.loadMinimumPrice();
         await this.loadStats();
         await this.loadGenres();
-        await this.loadConditions(); // Load conditions from API
+        await this.loadConditions();
         await this.loadConsignors();
         this.loadSavedSettings();
         this.setupEventListeners();
@@ -193,13 +193,11 @@ class AddEditDeleteManager {
         const searchSection = document.querySelector('.search-section');
         if (!searchSection) return;
         
-        // Check if global settings already exist
         let globalSettings = document.getElementById('global-add-settings');
         if (globalSettings) {
             globalSettings.remove();
         }
         
-        // Create global settings div
         globalSettings = document.createElement('div');
         globalSettings.id = 'global-add-settings';
         globalSettings.style.marginTop = '15px';
@@ -208,7 +206,6 @@ class AddEditDeleteManager {
         globalSettings.style.borderRadius = '8px';
         globalSettings.style.color = 'white';
         
-        // Generate consignor options
         const consignorOptions = this.consignors.map(consignor => {
             const selected = consignor.id === this.selectedConsignorId ? 'selected' : '';
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
@@ -259,7 +256,6 @@ class AddEditDeleteManager {
             </p>
         `;
         
-        // Insert after the radio group but before the search row
         const radioGroup = searchSection.querySelector('.radio-group');
         if (radioGroup) {
             radioGroup.after(globalSettings);
@@ -267,7 +263,6 @@ class AddEditDeleteManager {
             searchSection.appendChild(globalSettings);
         }
         
-        // Add event listeners
         document.getElementById('global-consignor-select').addEventListener('change', (e) => {
             const value = e.target.value;
             this.selectedConsignorId = value ? parseInt(value) : null;
@@ -292,7 +287,6 @@ class AddEditDeleteManager {
             this.selectedCommissionRate = 20.0;
             this.saveSettings();
             
-            // Update UI
             document.getElementById('global-consignor-select').value = '';
             document.getElementById('global-commission-input').value = '20.0';
             
@@ -320,7 +314,7 @@ class AddEditDeleteManager {
             const commissionResponse = await APIUtils.get('/api/commission-rate');
             this.commissionRate = commissionResponse.commission_rate / 100;
             document.getElementById('commission-rate').textContent = 
-                `${commissionResponse.commission_rate }%`;
+                `${commissionResponse.commission_rate}%`;
 
             const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
             const capacity = parseInt(configResponse.config_value);
@@ -385,7 +379,6 @@ class AddEditDeleteManager {
             }
         } catch (error) {
             console.error('Error loading conditions:', error);
-            // Fallback to hardcoded conditions if API fails
             this.conditions = [
                 { id: 1, condition_name: 'Mint (M)', display_name: 'Mint (M)', abbreviation: 'M', quality_index: 0 },
                 { id: 2, condition_name: 'Near Mint (NM or M-)', display_name: 'Near Mint (NM or M-)', abbreviation: 'NM', quality_index: 1 },
@@ -407,7 +400,6 @@ class AddEditDeleteManager {
             console.log('LOAD_CONSIGNORS: Raw API response:', response);
             
             if (response && response.users) {
-                // Filter to only consignors and sort by username
                 this.consignors = response.users
                     .filter(user => user.role === 'consignor')
                     .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
@@ -627,12 +619,10 @@ class AddEditDeleteManager {
             return this.genres.findIndex(g => g.id == genreId);
         };
         
-        // Generate condition options for dropdowns
         const conditionOptions = this.conditions.map(condition => {
             return `<option value="${condition.id}">${condition.display_name || condition.condition_name}</option>`;
         }).join('');
         
-        // Get current user from localStorage
         const user = JSON.parse(localStorage.getItem('user')) || {};
         const isAdmin = user.role === 'admin';
         
@@ -847,7 +837,6 @@ class AddEditDeleteManager {
             }).join('');
         };
         
-        // Generate consignor options for edit mode
         const consignorOptions = this.consignors.map(consignor => {
             return `<option value="${consignor.id}">${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
         }).join('');
@@ -867,14 +856,14 @@ class AddEditDeleteManager {
                 const statusClass = statusName.replace(/\s+/g, '-');
                 const displayStatus = record.status_name || 'Active';
                 
-                // Get current consignor for this record
                 const currentConsignorId = record.consignor_id || '';
                 
-                // Get condition names for display
                 const sleeveCondition = this.conditions.find(c => c.id == record.condition_sleeve_id);
                 const discCondition = this.conditions.find(c => c.id == record.condition_disc_id);
                 const sleeveDisplay = sleeveCondition ? sleeveCondition.display_name || sleeveCondition.condition_name : 'Not set';
                 const discDisplay = discCondition ? discCondition.display_name || discCondition.condition_name : 'Not set';
+                
+                const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleString() : 'Never';
                 
                 return `
                     <div class="record-card" data-record-id="${record.id}" data-index="${index}">
@@ -889,111 +878,99 @@ class AddEditDeleteManager {
                             `}
                             <div class="record-info">
                                 <div class="record-title">${record.artist} - ${record.title}</div>
-                                <div class="record-details">
-                                    ${record.genre_name ? `<p><strong>Genre:</strong> ${record.genre_name}</p>` : ''}
-                                    ${record.barcode ? `<p><strong>PigStyle Barcode:</strong> <span class="barcode-value">${record.barcode}</span></p>` : ''}
-                                    ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
-                                    <p><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</p>
-                                    <p><strong>Commission:</strong> ${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}%</p>
-                                    <p><strong>Sleeve Condition:</strong> ${sleeveDisplay}</p>
-                                    <p><strong>Disc Condition:</strong> ${discDisplay}</p>
-                                    <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></p>
-                                    ${record.consignor_name ? `<p><strong>Consignor:</strong> ${record.consignor_name}</p>` : ''}
+                                <div class="record-details" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px 15px; margin-top: 8px;">
+                                    <span><strong>Barcode:</strong> <span class="barcode-value">${record.barcode || 'None'}</span></span>
+                                    <span><strong>Catalog #:</strong> ${record.catalog_number || 'None'}</span>
+                                    <span><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</span>
+                                    <span><strong>Commission:</strong> ${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}%</span>
+                                    <span><strong>Sleeve:</strong> ${sleeveDisplay}</span>
+                                    <span><strong>Disc:</strong> ${discDisplay}</span>
+                                    <span><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></span>
+                                    <span><strong>Last Seen:</strong> ${lastSeen}</span>
+                                    ${record.consignor_name ? `<span><strong>Consignor:</strong> ${record.consignor_name}</span>` : ''}
                                 </div>
                             </div>
                         </div>
                         
                         <div id="calculation-${record.id}" class="calculation-container"></div>
                         
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Genre</label>
-                                <select class="form-control edit-genre-select" data-record-id="${record.id}">
-                                    <option value="">Select genre...</option>
-                                    ${getGenreOptions(record.id)}
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    <i class="fas fa-album"></i> Sleeve Condition
-                                </label>
-                                <select class="form-control edit-sleeve-condition-select" data-record-id="${record.id}">
-                                    <option value="">Select sleeve condition...</option>
-                                    ${getConditionOptions(record.id, 'sleeve')}
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label class="form-label">
-                                    <i class="fas fa-compact-disc"></i> Disc Condition
-                                </label>
-                                <select class="form-control edit-disc-condition-select" data-record-id="${record.id}">
-                                    <option value="">Select disc condition...</option>
-                                    ${getConditionOptions(record.id, 'disc')}
-                                </select>
-                                <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                    <i class="fas fa-link"></i> Disc condition is independent
+                        <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                                <div>
+                                    <label class="form-label">Genre</label>
+                                    <select class="form-control edit-genre-select" data-record-id="${record.id}">
+                                        <option value="">Select genre...</option>
+                                        ${getGenreOptions(record.id)}
+                                    </select>
                                 </div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Price ($)</label>
-                                <input type="number" 
-                                       class="form-control edit-price-input" 
-                                       data-record-id="${record.id}"
-                                       value="${record.store_price || ''}" 
-                                       step="1" 
-                                       min="${this.minimumPrice}"
-                                       placeholder="Min: $${this.minimumPrice.toFixed(2)}">
-                                <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                    <i class="fas fa-plus-circle"></i> <i class="fas fa-minus-circle"></i> Use +/- buttons to adjust by $1.00
+                                
+                                <div>
+                                    <label class="form-label">Sleeve Condition</label>
+                                    <select class="form-control edit-sleeve-condition-select" data-record-id="${record.id}">
+                                        <option value="">Select sleeve condition...</option>
+                                        ${getConditionOptions(record.id, 'sleeve')}
+                                    </select>
                                 </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label class="form-label">Consignor</label>
-                                <select class="form-control edit-consignor-select" data-record-id="${record.id}">
-                                    <option value="">Select consignor (optional)</option>
-                                    ${consignorOptions.replace(`value="${currentConsignorId}"`, `value="${currentConsignorId}" selected`)}
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Consignment Rate (%)</label>
-                                <input type="number" 
-                                       class="form-control edit-commission-input" 
-                                       data-record-id="${record.id}"
-                                       value="${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}" 
-                                       step="10" 
-                                       min="0" 
-                                       max="100"
-                                       placeholder="Commission %">
-                                <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                    <i class="fas fa-info-circle"></i> Store's cut percentage (step: 10%)
-                                </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                ${userRole === 'admin' ? `
-                                    <div style="margin-bottom: 10px;">
-                                        <label class="form-label">Status</label>
-                                        <select class="form-control edit-status-select" data-record-id="${record.id}">
-                                            ${getStatusOptions(record.id)}
-                                        </select>
+                                
+                                <div>
+                                    <label class="form-label">Disc Condition</label>
+                                    <select class="form-control edit-disc-condition-select" data-record-id="${record.id}">
+                                        <option value="">Select disc condition...</option>
+                                        ${getConditionOptions(record.id, 'disc')}
+                                    </select>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Independent from sleeve
                                     </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">Price ($)</label>
+                                    <input type="number" 
+                                           class="form-control edit-price-input" 
+                                           data-record-id="${record.id}"
+                                           value="${record.store_price || ''}" 
+                                           step="1" 
+                                           min="${this.minimumPrice}"
+                                           placeholder="Min: $${this.minimumPrice.toFixed(2)}">
+                                    <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Step: $1.00
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">Consignor</label>
+                                    <select class="form-control edit-consignor-select" data-record-id="${record.id}">
+                                        <option value="">None</option>
+                                        ${consignorOptions.replace(`value="${currentConsignorId}"`, `value="${currentConsignorId}" selected`)}
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">Commission (%)</label>
+                                    <input type="number" 
+                                           class="form-control edit-commission-input" 
+                                           data-record-id="${record.id}"
+                                           value="${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}" 
+                                           step="10" 
+                                           min="0" 
+                                           max="100"
+                                           placeholder="Commission %">
+                                    <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Store's cut (step: 10%)
+                                    </div>
+                                </div>
+                                
+                                ${userRole === 'admin' ? `
+                                <div>
+                                    <label class="form-label">Status</label>
+                                    <select class="form-control edit-status-select" data-record-id="${record.id}">
+                                        ${getStatusOptions(record.id)}
+                                    </select>
+                                </div>
                                 ` : ''}
                             </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group" style="display: flex; gap: 10px; align-items: center;">
+                            
+                            <div style="display: flex; gap: 10px; margin-top: 20px;">
                                 <button class="btn btn-primary save-changes-btn" data-record-id="${record.id}">
                                     <i class="fas fa-save"></i> Save Changes
                                 </button>
@@ -1015,14 +992,11 @@ class AddEditDeleteManager {
         console.log('ESTIMATE_PRICE: Estimating price for', record.artist, '-', record.title, 
                     'Sleeve Condition ID:', sleeveConditionId, 'Disc Condition ID:', discConditionId);
         
-        // For price estimation, we'll use the lower of the two conditions (higher quality index = worse)
-        // or default to the sleeve condition if disc is not set
         let conditionForEstimate = '';
         if (sleeveConditionId && discConditionId) {
             const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
             const discCond = this.conditions.find(c => c.id == discConditionId);
             
-            // Use the worse condition (higher quality index) for price estimation
             if (sleeveCond && discCond) {
                 if (sleeveCond.quality_index >= discCond.quality_index) {
                     conditionForEstimate = sleeveCond.condition_name;
@@ -1069,24 +1043,20 @@ class AddEditDeleteManager {
         const recordId = card.getAttribute('data-record-id');
         const sleeveConditionId = selectElement.value;
         
-        // Find the disc condition dropdown in the same card
         const discSelect = card.querySelector(isEditMode ? '.edit-disc-condition-select' : '.disc-condition-select');
         
         if (!sleeveConditionId) {
             return;
         }
         
-        // Auto-set disc condition to same as sleeve (if disc is not already set)
         if (discSelect && !discSelect.value) {
             discSelect.value = sleeveConditionId;
             console.log(`AUTO-SET: Disc condition set to match sleeve (ID: ${sleeveConditionId})`);
             
-            // Trigger change event on disc select to update any dependent logic
             const changeEvent = new Event('change', { bubbles: true });
             discSelect.dispatchEvent(changeEvent);
         }
         
-        // Get disc condition value (either existing or newly set)
         const discConditionId = discSelect.value;
         
         let record;
@@ -1102,7 +1072,6 @@ class AddEditDeleteManager {
             return;
         }
         
-        // Only estimate price if both conditions are set
         if (sleeveConditionId && discConditionId) {
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
         }
@@ -1114,7 +1083,6 @@ class AddEditDeleteManager {
         const recordId = card.getAttribute('data-record-id');
         const discConditionId = selectElement.value;
         
-        // Get sleeve condition value
         const sleeveSelect = card.querySelector(isEditMode ? '.edit-sleeve-condition-select' : '.sleeve-condition-select');
         const sleeveConditionId = sleeveSelect ? sleeveSelect.value : null;
         
@@ -1135,7 +1103,6 @@ class AddEditDeleteManager {
             return;
         }
         
-        // Only estimate price if sleeve condition is also set
         if (sleeveConditionId && discConditionId) {
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
         }
@@ -1269,7 +1236,6 @@ class AddEditDeleteManager {
         const calculationContainer = document.getElementById(`calculation-${recordId}`);
         if (!calculationContainer) return;
         
-        // Get condition names
         const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
         const discCond = this.conditions.find(c => c.id == discConditionId);
         const sleeveName = sleeveCond ? sleeveCond.display_name || sleeveCond.condition_name : 'Unknown';
@@ -1436,17 +1402,14 @@ class AddEditDeleteManager {
     }
 
     addConditionChangeListeners() {
-        // Add listeners for sleeve condition dropdowns
         document.querySelectorAll('.sleeve-condition-select').forEach(select => {
             select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, false));
         });
         
-        // Add listeners for disc condition dropdowns
         document.querySelectorAll('.disc-condition-select').forEach(select => {
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, false));
         });
         
-        // Edit mode listeners
         document.querySelectorAll('.edit-sleeve-condition-select').forEach(select => {
             select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, true));
         });
@@ -1528,9 +1491,8 @@ class AddEditDeleteManager {
         const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
         
-        // Use global settings
         const consignorId = this.selectedConsignorId;
-        const commissionRate = this.selectedCommissionRate / 100; // Convert percentage to decimal
+        const commissionRate = this.selectedCommissionRate / 100;
         
         const errors = [];
         if (!genreId) errors.push('Please select a genre');
@@ -1695,14 +1657,25 @@ class AddEditDeleteManager {
             const response = await APIUtils.put(`/records/${recordId}`, updates);
             
             if (response.status === 'success') {
-                showMessage(`Record updated successfully! Price: $${updates.store_price ? (response.record?.store_price || updates.store_price).toFixed(2) : 'unchanged'}`, 'success');
+                let updatedPrice = updates.store_price;
+                
+                if (response.record && response.record.store_price) {
+                    updatedPrice = response.record.store_price;
+                } else if (response.store_price) {
+                    updatedPrice = response.store_price;
+                } else if (response.data && response.data.store_price) {
+                    updatedPrice = response.data.store_price;
+                }
+                
+                showMessage(`Record updated successfully! Price: $${(updatedPrice || 0).toFixed(2)}`, 'success');
+                
                 const currentSearch = document.getElementById('searchInput').value;
                 if (currentSearch) {
                     await this.performSearch(currentSearch);
                 }
                 await this.loadStats();
             } else {
-                showMessage(`Error: ${response.error || 'Failed to update record'}`, 'error');
+                showMessage(`Error: ${response.error || response.message || 'Failed to update record'}`, 'error');
             }
         } catch (error) {
             console.error('Error updating record:', error);
