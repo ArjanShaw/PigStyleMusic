@@ -321,13 +321,14 @@
                 quantity: 1
             });
             
-            // Recalculate total
-            const newTotal = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            // 🔴 FIX: Recalculate cart.total
+            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
+            // Show alert after adding
             alert(`🔴 AFTER ADDING:
         Items now: ${cart.items.length}
-        New total: $${newTotal.toFixed(2)}
-        cart.total variable: $${cart.total.toFixed(2)}`);
+        New cart.total: $${cart.total.toFixed(2)}
+        Items in cart: ${cart.items.map(item => `${item.title}: $${item.price}`).join(', ')}`);
             
             saveCart();
             showNotification('Item added to cart!', 'success');
@@ -335,8 +336,23 @@
         }
 
         // Remove item from cart
+        // Remove item from cart
         function removeFromCart(index) {
+            // Show alert before removing
+        //     alert(`🔴 BEFORE REMOVAL:
+        // Removing item at index ${index}: ${cart.items[index].title}
+        // Current cart.total: $${cart.total.toFixed(2)}`);
+            
             cart.items.splice(index, 1);
+            
+            // 🔴 FIX: Recalculate cart.total after removal
+            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            // Show alert after removal
+        //     alert(`🔴 AFTER REMOVAL:
+        // Items remaining: ${cart.items.length}
+        // New cart.total: $${cart.total.toFixed(2)}`);
+            
             saveCart();
             showNotification('Item removed from cart', 'success');
             
@@ -348,8 +364,15 @@
 
         // Clear entire cart
         function clearCart() {
+        //     alert(`🔴 CLEARING CART:
+        // Before clear - Items: ${cart.items.length}, Total: $${cart.total.toFixed(2)}`);
+            
             cart.items = [];
-            cart.total = 0;
+            cart.total = 0;  // 🔴 FIX: Explicitly set to 0
+            
+        //     alert(`🔴 CART CLEARED:
+        // After clear - Items: ${cart.items.length}, Total: $${cart.total.toFixed(2)}`);
+            
             saveCart();
             closeCartDrawer();
             showNotification('Cart cleared', 'success');
