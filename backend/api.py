@@ -22,7 +22,6 @@ from discogs_handler import DiscogsHandler
 from handlers.price_advise_handler import PriceAdviseHandler
 import hmac
 import traceback
-import os
 import subprocess
 
 app = Flask(__name__)
@@ -71,7 +70,6 @@ user_tokens = {}
 background_jobs = {}
 square_payment_sessions = {}  # Store active payment sessions
 
-# Add this right after your CORS configuration (around line 65)
 @app.before_request
 def log_request_info():
     app.logger.debug('Headers: %s', request.headers)
@@ -84,7 +82,6 @@ def log_response_info(response):
     app.logger.debug('Response Headers: %s', response.headers)
     return response
 
- 
 def setup_logging():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
     os.makedirs(logs_dir, exist_ok=True)
@@ -121,13 +118,9 @@ def get_db():
 def square_webhook():
     """Handle Square webhook events - simplified version"""
     try:
-        # Log the entire webhook payload
         webhook_data = request.json
         app.logger.info(f"🔔 Square webhook received: {json.dumps(webhook_data, indent=2)}")
-        
-        # Always return success to acknowledge receipt
         return jsonify({'status': 'success', 'message': 'Webhook received'}), 200
-        
     except Exception as e:
         app.logger.error(f"Webhook error: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -140,10 +133,6 @@ def verify_square_webhook(signature, body):
         app.logger.warning("SQUARE_WEBHOOK_SIGNATURE_KEY not set")
         return False
     
-    import hmac
-    import hashlib
-    
-    # Create expected signature
     expected_signature = hmac.new(
         key=webhook_signature_key.encode('utf-8'),
         msg=body,
@@ -164,7 +153,6 @@ def process_checkout():
         subtotal = data.get('subtotal', 0)
         total = data.get('total', 0)
         
-        # Generate UUID and order number FIRST (before Square call)
         import uuid
         import random
         import string
@@ -181,7 +169,6 @@ def process_checkout():
                 'error': 'Invalid cart data'
             }), 400
         
-        # Get Square credentials
         access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
         location_id = os.environ.get('SQUARE_LOCATION_ID')
         
@@ -192,7 +179,6 @@ def process_checkout():
                 'error': 'Payment system not configured'
             }), 500
         
-        # Verify items are available
         conn = get_db()
         cursor = conn.cursor()
         
@@ -218,7 +204,6 @@ def process_checkout():
                 'error': f'Items unavailable: {", ".join(unavailable_items)}'
             }), 400
         
-        # Create line items for Square
         line_items = []
         for item in valid_items:
             line_items.append({
@@ -230,7 +215,6 @@ def process_checkout():
                 }
             })
         
-        # Add shipping as a line item if present
         if shipping and shipping.get('amount', 0) > 0:
             line_items.append({
                 "name": "Shipping",
@@ -241,7 +225,6 @@ def process_checkout():
                 }
             })
         
-        # 🔴 FIX: Add tax as a line item if present
         tax_amount = data.get('tax', 0)
         if tax_amount and float(tax_amount) > 0:
             line_items.append({
@@ -254,13 +237,11 @@ def process_checkout():
             })
             app.logger.info(f"✅ Added tax line item: ${tax_amount}")
         
-        # Prepare metadata
         metadata = {}
         metadata['order_id'] = str(order_id)
         metadata['order_number'] = order_number
         metadata['record_ids'] = json.dumps([item.get('copy_id') for item in valid_items])
         
-        # Build Square payload
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
@@ -291,19 +272,15 @@ def process_checkout():
         square_base_url = 'https://connect.squareup.com'
         
         app.logger.info(f"Sending to Square with reference_id: {order_id}")
-        app.logger.info(f"Request payload: {json.dumps(payload, indent=2)}")
         
-        # STEP 1: CALL SQUARE
         response = requests.post(
             f'{square_base_url}/v2/online-checkout/payment-links',
             headers=headers,
             json=payload
         )
         
-        # LOG THE ENTIRE SQUARE RESPONSE
         app.logger.info("=== SQUARE API RESPONSE ===")
         app.logger.info(f"Status Code: {response.status_code}")
-        app.logger.info(f"Response Headers: {dict(response.headers)}")
         app.logger.info(f"Response Body: {response.text}")
         app.logger.info("=== END SQUARE RESPONSE ===")
         
@@ -317,7 +294,7 @@ def process_checkout():
         result = response.json()
         payment_link = result.get('payment_link', {})
         checkout_url = payment_link.get('url')
-        square_order_id = payment_link.get('order_id')  # ← SQUARE'S ORDER ID!
+        square_order_id = payment_link.get('order_id')
         
         if not square_order_id:
             return jsonify({
@@ -331,36 +308,12 @@ def process_checkout():
                 'error': 'No checkout URL returned'
             }), 500
         
-        # STEP 2: INSERT ORDER INTO DATABASE (with Square's order_id)
         shipping_method = shipping.get('method', 'pickup') if shipping else 'pickup'
         shipping_cost = float(shipping.get('amount', 0)) if shipping else 0
         
-        # Log the data we're about to insert
-        app.logger.info("=== ORDER INSERT DATA ===")
-        app.logger.info(f"order_id: {order_id}")
-        app.logger.info(f"order_number: {order_number}")
-        app.logger.info(f"customer_name: {data.get('customer_name', 'Walk-in Customer')}")
-        app.logger.info(f"customer_email: {data.get('customer_email', '')}")
-        app.logger.info(f"shipping_method: {shipping_method}")
-        app.logger.info(f"address: {data.get('address', '')}")
-        app.logger.info(f"apt: {data.get('apt', '')}")
-        app.logger.info(f"city: {data.get('city', '')}")
-        app.logger.info(f"state: {data.get('state', '')}")
-        app.logger.info(f"zip: {data.get('zip', '')}")
-        app.logger.info(f"country: {data.get('country', 'USA')}")
-        app.logger.info(f"shipping_cost: {shipping_cost}")
-        app.logger.info(f"subtotal: {subtotal}")
-        app.logger.info(f"tax: {data.get('tax', 0)}")
-        app.logger.info(f"total: {total}")
-        app.logger.info(f"square_checkout_id: {payment_link.get('id')}")
-        app.logger.info(f"square_order_id: {square_order_id}")
-        app.logger.info("=== END ORDER INSERT DATA ===")
-        
-        # Begin transaction
         cursor.execute("BEGIN TRANSACTION")
         
         try:
-            # Log the exact SQL we're about to execute
             insert_sql = '''
                 INSERT INTO orders (
                     id, order_number, customer_name, customer_email,
@@ -372,10 +325,7 @@ def process_checkout():
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             '''
-            app.logger.info(f"SQL Query: {insert_sql}")
-            app.logger.info(f"SQL Parameters: {[order_id, order_number, data.get('customer_name', 'Walk-in Customer'), data.get('customer_email', ''), shipping_method, data.get('address', ''), data.get('apt', ''), data.get('city', ''), data.get('state', ''), data.get('zip', ''), data.get('country', 'USA'), shipping_cost, subtotal, data.get('tax', 0), total, payment_link.get('id'), square_order_id, 'pending', 'pending', data.get('notes', '')]}")
             
-            # Insert into orders table with Square's order_id
             cursor.execute(insert_sql, (
                 order_id,
                 order_number,
@@ -392,14 +342,13 @@ def process_checkout():
                 subtotal,
                 data.get('tax', 0),
                 total,
-                payment_link.get('id'),      # square_checkout_id
-                square_order_id,              # ← SQUARE'S ORDER ID STORED HERE!
+                payment_link.get('id'),
+                square_order_id,
                 'pending',
                 'pending',
                 data.get('notes', '')
             ))
             
-            # Insert order items
             for item in valid_items:
                 item_sql = '''
                     INSERT INTO order_items (
@@ -407,8 +356,6 @@ def process_checkout():
                         record_condition, price_at_time, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 '''
-                app.logger.info(f"Item SQL: {item_sql}")
-                app.logger.info(f"Item Parameters: {[order_id, item.get('copy_id'), item.get('title'), item.get('artist'), item.get('condition'), float(item.get('price'))]}")
                 
                 cursor.execute(item_sql, (
                     order_id,
@@ -420,14 +367,12 @@ def process_checkout():
                 ))
             
             conn.commit()
-            app.logger.info(f"Order created successfully: {order_number} with Square order_id: {square_order_id}")
+            app.logger.info(f"Order created successfully: {order_number}")
             
         except Exception as e:
             conn.rollback()
             app.logger.error(f"Error creating order: {str(e)}")
             app.logger.error(traceback.format_exc())
-            # Note: Square payment link was already created, but order insert failed
-            # You may want to handle this edge case
             return jsonify({
                 'status': 'error',
                 'error': 'Order creation failed after Square call'
@@ -440,7 +385,7 @@ def process_checkout():
             'checkout_url': checkout_url,
             'order_id': order_id,
             'order_number': order_number,
-            'square_order_id': square_order_id,  # Return to frontend if needed
+            'square_order_id': square_order_id,
             'message': 'Checkout created successfully'
         }), 200
         
@@ -468,18 +413,15 @@ def order_complete():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Begin transaction
         cursor.execute("BEGIN TRANSACTION")
         
         try:
-            # Get the payment details from Square to verify amounts
             access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
             headers = {
                 'Authorization': f'Bearer {access_token}',
                 'Square-Version': '2026-01-22'
             }
             
-            # Fetch payment details from Square
             payment_response = requests.get(
                 f'https://connect.squareup.com/v2/payments/{transaction_id}',
                 headers=headers
@@ -489,14 +431,11 @@ def order_complete():
                 payment_data = payment_response.json()
                 payment = payment_data.get('payment', {})
                 
-                # Get the actual amounts from Square
                 square_total = float(payment.get('amount_money', {}).get('amount', 0)) / 100
-                square_subtotal = square_total  # You may need to calculate this based on line items
                 square_tax = float(payment.get('tax_money', {}).get('amount', 0)) / 100 if payment.get('tax_money') else 0
                 
                 app.logger.info(f"Square amounts - Total: {square_total}, Tax: {square_tax}")
                 
-                # Update order with correct amounts from Square
                 cursor.execute('''
                     UPDATE orders 
                     SET square_payment_id = ?,
@@ -508,7 +447,6 @@ def order_complete():
                     WHERE id = ? AND payment_status = 'pending'
                 ''', (transaction_id, square_total, square_tax, order_id))
             else:
-                # If can't fetch from Square, at least mark as paid
                 app.logger.warning(f"Could not fetch payment details from Square: {payment_response.status_code}")
                 cursor.execute('''
                     UPDATE orders 
@@ -519,7 +457,6 @@ def order_complete():
                     WHERE id = ? AND payment_status = 'pending'
                 ''', (transaction_id, order_id))
             
-            # Get all record IDs from this order
             cursor.execute('''
                 SELECT record_id FROM order_items WHERE order_id = ?
             ''', (order_id,))
@@ -527,7 +464,6 @@ def order_complete():
             record_ids = [row['record_id'] for row in cursor.fetchall()]
             app.logger.info(f"Found {len(record_ids)} records in order {order_id}")
             
-            # Update each record's status to sold (status_id = 3)
             if record_ids:
                 placeholders = ','.join('?' for _ in record_ids)
                 cursor.execute(f'''
@@ -562,55 +498,6 @@ def order_complete():
             'error': f'Server error: {str(e)}'
         }), 500
 
-@app.route('/checkout/complete')
-def checkout_complete():
-    """Handle successful checkout return from Square"""
-    transaction_id = request.args.get('transactionId')
-    
-    app.logger.info(f"Checkout complete callback: transactionId={transaction_id}")
-    
-    # You could update the checkout session status here
-    if transaction_id:
-        try:
-            conn = get_db()
-            cursor = conn.cursor()
-            
-            # Update status to completed
-            cursor.execute('''
-                UPDATE checkout_sessions 
-                SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-                WHERE square_checkout_id = ?
-            ''', (transaction_id,))
-            
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            app.logger.error(f"Error updating checkout completion: {e}")
-    
-    # Redirect back to inventory with success message
-    return redirect('/inventory?payment=success')
-
-@app.route('/checkout/cancel')
-def checkout_cancel():
-    """Handle canceled checkout"""
-    transaction_id = request.args.get('transactionId')
-    
-    if transaction_id:
-        try:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE checkout_sessions 
-                SET status = 'canceled' 
-                WHERE square_checkout_id = ?
-            ''', (transaction_id,))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            app.logger.error(f"Error updating checkout cancellation: {e}")
-    
-    return redirect('/inventory?payment=canceled')
-
 def square_api_request(endpoint, method='GET', data=None):
     """Make direct request to Square API"""
     access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
@@ -619,7 +506,6 @@ def square_api_request(endpoint, method='GET', data=None):
     if not access_token:
         return None, "SQUARE_ACCESS_TOKEN not set"
     
-    # Choose the correct base URL
     if environment == 'production':
         base_url = 'https://connect.squareup.com'
     else:
@@ -631,7 +517,7 @@ def square_api_request(endpoint, method='GET', data=None):
         'Square-Version': '2026-01-22'
     }
     
-    url = f"{base_url}{endpoint}"  # endpoint should already include the full path
+    url = f"{base_url}{endpoint}"
     
     try:
         app.logger.info(f"Square API request: {method} {url}")
@@ -660,7 +546,6 @@ def square_api_request(endpoint, method='GET', data=None):
     except Exception as e:
         app.logger.error(f"Square API request exception: {e}")
         return None, str(e)
- 
 
 def verify_square_webhook(signature, body):
     """Verify Square webhook signature"""
@@ -677,17 +562,14 @@ def verify_square_webhook(signature, body):
 
 def get_terminal_devices():
     """Get list of available Square Terminal devices using direct API call"""
-    # GET /v2/devices - exactly like your working curl command
     result, error = square_api_request('/v2/devices')
     
     if error:
         app.logger.error(f"Failed to get terminal devices: {error}")
         return None, error
     
-    # Extract devices from response
     devices = result.get('devices', [])
     
-    # Format devices for frontend
     enhanced_devices = []
     for device in devices:
         enhanced_devices.append({
@@ -704,7 +586,6 @@ def get_terminal_devices():
 def create_square_terminal_checkout(amount_cents, record_ids, record_titles, reference_id=None, device_id=None):
     """Create a Square Terminal checkout using direct API call"""
     
-    # ADD THIS DEBUG LINE
     print(f"\n🔍 DEBUG - Received device_id: '{device_id}'")
     
     access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
@@ -721,21 +602,18 @@ def create_square_terminal_checkout(amount_cents, record_ids, record_titles, ref
         'Square-Version': '2026-01-22'
     }
     
-    # If no device_id provided, get from API
     if not device_id:
         devices_response = requests.get(f'{base_url}/v2/devices', headers=headers)
         if devices_response.status_code == 200:
             devices = devices_response.json().get('devices', [])
             if devices:
                 full_device_id = devices[0].get('id')
-                # Strip the "device:" prefix if present
                 if full_device_id and full_device_id.startswith('device:'):
                     device_id = full_device_id.replace('device:', '')
                 else:
                     device_id = full_device_id
                 print(f"🔍 DEBUG - Got device from API: '{full_device_id}' → '{device_id}'")
     
-    # ADD DEBUG FOR FINAL DEVICE ID
     print(f"🔍 DEBUG - Final device_id being used: '{device_id}'")
     
     if not device_id:
@@ -751,14 +629,13 @@ def create_square_terminal_checkout(amount_cents, record_ids, record_titles, ref
                 "currency": "USD"
             },
             "device_options": {
-                "device_id": device_id  # This should be WITHOUT prefix
+                "device_id": device_id
             },
             "reference_id": reference_id or f"pigstyle_{idempotency_key[:8]}",
             "note": f"PigStyle Music: {', '.join(record_titles[:3])}{'...' if len(record_titles) > 3 else ''}"
         }
     }
     
-    # ADD DEBUG FOR FINAL PAYLOAD
     print(f"🔍 DEBUG - Sending device_id in payload: '{checkout_data['checkout']['device_options']['device_id']}'")
     
     response = requests.post(
@@ -773,11 +650,9 @@ def create_square_terminal_checkout(amount_cents, record_ids, record_titles, ref
     
     result = response.json()
     return result, None
- 
 
 def get_terminal_checkout_status(checkout_id):
     """Get the status of a terminal checkout"""
-    # IMPORTANT: Do NOT add any prefix - use the ID as-is
     result, error = square_api_request(f'/v2/terminals/checkouts/{checkout_id}', method='GET')
     
     if error:
@@ -787,11 +662,9 @@ def get_terminal_checkout_status(checkout_id):
     checkout = result.get('checkout', {})
     status = checkout.get('status', 'UNKNOWN')
     
-    # Update stored session
     if checkout_id in square_payment_sessions:
         square_payment_sessions[checkout_id]['status'] = status
         
-        # If completed, get payment details
         if status == 'COMPLETED':
             payment_id = checkout.get('payment_ids', [None])[0]
             if payment_id:
@@ -801,7 +674,6 @@ def get_terminal_checkout_status(checkout_id):
 
 def cancel_terminal_checkout(checkout_id):
     """Cancel a pending terminal checkout"""
-    # IMPORTANT: Do NOT add any prefix - use the ID as-is
     result, error = square_api_request(f'/v2/terminals/checkouts/{checkout_id}/cancel', method='POST')
     
     if error:
@@ -926,22 +798,13 @@ def print_receipt():
     printer_path = data['printer']
     receipt_data = data['data']
     
-    # Validate printer path (security - prevent path traversal)
     if not printer_path.startswith('/dev/usb/lp'):
         return jsonify({'status': 'error', 'message': 'Invalid printer path'}), 400
     
     try:
-        # Method 1: Direct write to device file (most reliable for Linux)
         with open(printer_path, 'wb') as printer:
             printer.write(receipt_data.encode('utf-8'))
             printer.flush()
-        
-        # Alternative Method 2: Using lp command if direct write doesn't work
-        # Uncomment if needed:
-        # process = subprocess.run(['lp', '-d', os.path.basename(printer_path)], 
-        #                          input=receipt_data, 
-        #                          capture_output=True, 
-        #                          text=True)
         
         return jsonify({
             'status': 'success', 
@@ -950,12 +813,9 @@ def print_receipt():
         })
         
     except PermissionError:
-        # Try to fix permissions if needed
         try:
-            # Make printer writable for the web server user
             subprocess.run(['sudo', 'chmod', '666', printer_path], check=False)
             
-            # Try writing again
             with open(printer_path, 'wb') as printer:
                 printer.write(receipt_data.encode('utf-8'))
                 printer.flush()
@@ -983,8 +843,6 @@ def print_receipt():
             'message': f'Print error: {str(e)}'
         }), 500
 
-
-# Optional: Add endpoint to test printer
 @app.route('/print-test', methods=['POST'])
 def print_test():
     """Send a simple test page to the printer"""
@@ -994,17 +852,15 @@ def print_test():
                 '\x1B\x61\x01' +  # Center
                 'PigStyle Music\n' +
                 'Test Page\n' +
-                ''.padEnd(32, '=') + '\n' +
+                ''.ljust(32, '=') + '\n' +
                 '\x1B\x61\x00' +  # Left
                 'Date: ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '\n' +
                 'Printer: VCP-8370\n' +
                 'Status: Working!\n\n\n\n'
     }
     
-    return print_receipt.__wrapped__(test_data)  # Call the actual function
+    return print_receipt.__wrapped__(test_data)
 
-
-# Optional: Add endpoint to list available printers
 @app.route('/printers', methods=['GET'])
 def list_printers():
     """List all USB printers connected to the system"""
@@ -1015,7 +871,6 @@ def list_printers():
     result = []
     for printer in printers:
         try:
-            # Try to get printer info (if possible)
             result.append({
                 'path': printer,
                 'available': os.path.exists(printer),
@@ -1033,7 +888,6 @@ def list_printers():
         'printers': result
     })
 
-# Get single accessory
 @app.route('/accessories/<int:accessory_id>', methods=['GET'])
 def get_accessory(accessory_id):
     conn = get_db()
@@ -1059,23 +913,19 @@ def get_accessory(accessory_id):
             'message': 'Accessory not found'
         }), 404
 
-# Add new accessory
 @app.route('/accessories', methods=['POST'])
 def add_accessory():
     data = request.json
     
-    # Validate required fields
     if not data.get('description') or not data.get('store_price'):
         return jsonify({
             'status': 'error',
             'message': 'Description and store_price are required'
         }), 400
     
-    # Generate barcode (you can customize this logic)
     import random
     import string
     
-    # Generate a unique barcode (e.g., ACC + timestamp + random numbers)
     timestamp = str(int(time.time()))[-6:]
     random_digits = ''.join(random.choices(string.digits, k=4))
     barcode = f"ACC{timestamp}{random_digits}"
@@ -1113,7 +963,6 @@ def add_accessory():
     finally:
         conn.close()
 
-# Update accessory
 @app.route('/accessories/<int:accessory_id>', methods=['PUT'])
 def update_accessory(accessory_id):
     data = request.json
@@ -1121,7 +970,6 @@ def update_accessory(accessory_id):
     conn = get_db()
     cursor = conn.cursor()
     
-    # Check if accessory exists
     cursor.execute('SELECT id FROM accessories WHERE id = ?', (accessory_id,))
     if not cursor.fetchone():
         conn.close()
@@ -1130,7 +978,6 @@ def update_accessory(accessory_id):
             'message': 'Accessory not found'
         }), 404
     
-    # Build update query dynamically based on provided fields
     updates = []
     values = []
     
@@ -1180,7 +1027,6 @@ def update_accessory(accessory_id):
     finally:
         conn.close()
 
-# Delete accessory
 @app.route('/accessories/<int:accessory_id>', methods=['DELETE'])
 def delete_accessory(accessory_id):
     conn = get_db()
@@ -1208,13 +1054,11 @@ def delete_accessory(accessory_id):
     finally:
         conn.close()
 
-# Generate new barcode for accessory
 @app.route('/accessories/<int:accessory_id>/generate-barcode', methods=['POST'])
 def generate_new_barcode(accessory_id):
     import random
     import string
     
-    # Generate a new unique barcode
     timestamp = str(int(time.time()))[-6:]
     random_digits = ''.join(random.choices(string.digits, k=4))
     new_barcode = f"ACC{timestamp}{random_digits}"
@@ -1262,7 +1106,6 @@ def get_artists_by_genre(genre_id):
 
     return jsonify([dict(artist) for artist in artists])
 
-
 @app.route('/api/square/terminals', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -1283,16 +1126,13 @@ def api_get_terminals():
         
         devices = data.get('devices', [])
         
-        # Format devices for frontend
         enhanced_devices = []
         for device in devices:
             device_id = device.get('id')
             
-            # Get status - Square returns {"category": "AVAILABLE"}
             status_obj = device.get('status', {})
             raw_status = status_obj.get('category', 'UNKNOWN')
             
-            # Map to frontend expected values
             if raw_status == 'AVAILABLE':
                 display_status = 'ONLINE'
             elif raw_status == 'OFFLINE':
@@ -1300,20 +1140,19 @@ def api_get_terminals():
             else:
                 display_status = 'UNKNOWN'
             
-            # Get device name
             attributes = device.get('attributes', {})
             device_name = attributes.get('name', 'Square Terminal')
             
             enhanced_devices.append({
                 'id': device_id,
                 'device_name': device_name,
-                'status': display_status,  # Now 'ONLINE' instead of {'category': 'AVAILABLE'}
-                'raw_status': raw_status,  # Include for debugging
+                'status': display_status,
+                'raw_status': raw_status,
                 'device_type': attributes.get('type', 'TERMINAL'),
                 'manufacturer': attributes.get('manufacturer', 'Square')
             })
         
-        app.logger.info(f"Sending {len(enhanced_devices)} devices with status: {enhanced_devices[0]['status'] if enhanced_devices else 'none'}")
+        app.logger.info(f"Sending {len(enhanced_devices)} devices")
         
         return jsonify({
             'status': 'success',
@@ -1327,7 +1166,6 @@ def api_get_terminals():
             'message': str(e)
         }), 500
     
-     
 @app.route('/api/square/terminal/checkout', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -1404,8 +1242,6 @@ def api_get_checkout_status(checkout_id):
             'status': 'error',
             'message': str(e)
         }), 500
-    
-     
 
 @app.route('/api/square/terminal/checkout/<checkout_id>/cancel', methods=['POST'])
 @login_required
@@ -1459,7 +1295,6 @@ def api_get_payment(payment_id):
             'message': str(e)
         }), 500
 
-
 # ==================== RECEIPTS ENDPOINTS ====================
 
 @app.route('/api/receipts', methods=['GET'])
@@ -1469,7 +1304,6 @@ def get_receipts():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get query parameters for filtering
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         payment_method = request.args.get('payment_method')
@@ -1504,7 +1338,6 @@ def get_receipts():
         receipts_list = []
         for r in receipts:
             receipt_dict = dict(r)
-            # Parse the JSON transaction_data
             try:
                 receipt_dict['transaction_data'] = json.loads(receipt_dict['transaction_data'])
             except:
@@ -1539,18 +1372,15 @@ def save_receipt():
         if not receipt_id:
             return jsonify({'status': 'error', 'error': 'Missing receipt ID'}), 400
         
-        # Convert the entire transaction to JSON string for storage
         transaction_json = json.dumps(data)
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if receipt already exists
         cursor.execute('SELECT id FROM receipts WHERE receipt_id = ?', (receipt_id,))
         existing = cursor.fetchone()
         
         if existing:
-            # Update existing receipt
             cursor.execute('''
                 UPDATE receipts 
                 SET transaction_data = ?, total = ?, tax = ?, 
@@ -1559,7 +1389,6 @@ def save_receipt():
             ''', (transaction_json, total, tax, payment_method, cashier, square_payment_id, receipt_id))
             message = 'Receipt updated'
         else:
-            # Insert new receipt
             cursor.execute('''
                 INSERT INTO receipts 
                 (receipt_id, square_payment_id, transaction_data, total, tax, payment_method, cashier)
@@ -1613,7 +1442,6 @@ def get_receipt(receipt_id):
 def delete_receipt(receipt_id):
     """Delete a receipt (admin only)"""
     try:
-        # Check if user is admin (you may want to add authentication check)
         if session.get('role') != 'admin':
             return jsonify({'status': 'error', 'error': 'Unauthorized'}), 403
         
@@ -1647,7 +1475,6 @@ def get_receipt_stats():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get date range
         days = request.args.get('days', 30, type=int)
         
         cursor.execute('''
@@ -1692,10 +1519,8 @@ def debug_checkout_direct(checkout_id):
             'Square-Version': '2026-01-22'
         }
         
-        # Try different URL formats
         results = {}
         
-        # Format 1: Standard
         url1 = f"{base_url}/v2/terminals/checkouts/{checkout_id}"
         response1 = requests.get(url1, headers=headers)
         results['standard'] = {
@@ -1704,7 +1529,6 @@ def debug_checkout_direct(checkout_id):
             'response': response1.text[:500]
         }
         
-        # Format 2: With termapia prefix
         url2 = f"{base_url}/v2/terminals/checkouts/termapia:{checkout_id}"
         response2 = requests.get(url2, headers=headers)
         results['with_prefix'] = {
@@ -1724,7 +1548,6 @@ def debug_checkout_direct(checkout_id):
             'status': 'error',
             'error': str(e)
         }), 500
-
 
 @app.route('/api/receipts/sync', methods=['POST'])
 def sync_receipts():
@@ -1752,7 +1575,6 @@ def sync_receipts():
             cashier = receipt_data.get('cashier', 'Admin')
             transaction_json = json.dumps(receipt_data)
             
-            # Check if already exists
             cursor.execute('SELECT id FROM receipts WHERE receipt_id = ?', (receipt_id,))
             existing = cursor.fetchone()
             
@@ -1776,7 +1598,6 @@ def sync_receipts():
     except Exception as e:
         app.logger.error(f"Error syncing receipts: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/square/terminal/session/<checkout_id>', methods=['GET'])
 @login_required
@@ -1809,7 +1630,6 @@ def test_square():
     """Test Square API connection and list available devices"""
     result = []
     
-    # Test authentication and get devices
     devices, error = get_terminal_devices()
     
     if error:
@@ -1823,7 +1643,6 @@ def test_square():
             result.append(f"  📱 Device Name: {device.get('device_name')}")
             result.append(f"  🔋 Status: {device.get('status')}")
     
-    # Environment info
     result.append(f"🏁 Environment: {os.environ.get('SQUARE_ENVIRONMENT', 'not set')}")
     result.append(f"🔑 Token length: {len(os.environ.get('SQUARE_ACCESS_TOKEN', ''))} chars")
     result.append(f"🎯 Location ID: {os.environ.get('SQUARE_LOCATION_ID', 'not set')}")
@@ -1849,14 +1668,12 @@ def price_estimate_debug():
         discogs_genre = data.get('discogs_genre', '')
         discogs_id = data.get('discogs_id', '')
         
-        # Initialize price advisor
         price_advisor = PriceAdviseHandler(
             discogs_token=app.config.get('DISCOGS_USER_TOKEN'),
             ebay_client_id=app.config.get('EBAY_CLIENT_ID'),
             ebay_client_secret=app.config.get('EBAY_CLIENT_SECRET')
         )
         
-        # Call internal method directly to get raw eBay data
         ebay_result = price_advisor._get_ebay_price_with_listings(
             artist=artist,
             title=title,
@@ -1891,14 +1708,12 @@ def price_estimate():
         
         app.logger.info(f"Price estimate called: {artist} - {title}")
         
-        # Initialize price advisor
         price_advisor = PriceAdviseHandler(
             discogs_token=app.config.get('DISCOGS_USER_TOKEN'),
             ebay_client_id=app.config.get('EBAY_CLIENT_ID'),
             ebay_client_secret=app.config.get('EBAY_CLIENT_SECRET')
         )
         
-        # Get price estimate
         result = price_advisor.get_price_estimate(
             artist=artist,
             title=title,
@@ -1907,7 +1722,6 @@ def price_estimate():
             discogs_id=discogs_id
         )
         
-        # Apply rounding rules
         estimated_price = result['estimated_price'] if result['success'] else 19.99
         
         def round_down_to_99(price):
@@ -2198,7 +2012,6 @@ def youtube_search():
         if not query:
             return jsonify({'status': 'error', 'error': 'Search query required'}), 400
         
-        # Get YouTube API key from environment variable
         youtube_api_key = os.environ.get('YOUTUBE_API_KEY')
         if not youtube_api_key:
             app.logger.error("YOUTUBE_API_KEY not found in environment variables")
@@ -2207,7 +2020,6 @@ def youtube_search():
                 'error': 'YouTube API not configured on server'
             }), 503
         
-        # Search YouTube
         import requests
         search_url = "https://www.googleapis.com/youtube/v3/search"
         params = {
@@ -2223,7 +2035,6 @@ def youtube_search():
         
         response = requests.get(search_url, params=params)
         
-        # Check for quota exceeded
         if response.status_code == 403:
             error_text = response.text.lower()
             if 'quota' in error_text:
@@ -2242,7 +2053,6 @@ def youtube_search():
         
         data = response.json()
         
-        # Process results
         results = []
         for item in data.get('items', []):
             video_id = item.get('id', {}).get('videoId')
@@ -2272,13 +2082,13 @@ def youtube_search():
         }), 500
 
 # ==================== USER MANAGEMENT ENDPOINTS ====================
+
 @app.route('/users', methods=['POST'])
 def create_user():
     data = request.get_json()
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
 
-    # Basic required fields - username and role are always required
     if 'username' not in data:
         return jsonify({'status': 'error', 'error': 'username required'}), 400
     if 'role' not in data:
@@ -2287,11 +2097,9 @@ def create_user():
     username = data['username']
     role = data['role']
     
-    # Update valid roles to include 'seller'
     if role not in ['admin', 'consignor', 'youtube_linker', 'seller']:
         return jsonify({'status': 'error', 'error': 'Invalid role'}), 400
 
-    # For non-seller roles, validate email and password
     if role != 'seller':
         if 'email' not in data:
             return jsonify({'status': 'error', 'error': 'email required for this role'}), 400
@@ -2301,11 +2109,9 @@ def create_user():
         email = data['email']
         password = data['password']
         
-        # Email format validation
         if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
             return jsonify({'status': 'error', 'error': 'Invalid email format'}), 400
         
-        # Password validation
         if len(password) < 8:
             return jsonify({'status': 'error', 'error': 'Password must be at least 8 characters long'}), 400
         
@@ -2318,7 +2124,6 @@ def create_user():
         if not re.search(r'[0-9]', password):
             return jsonify({'status': 'error', 'error': 'Password must contain at least one number'}), 400
         
-        # Check if email already exists
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
@@ -2326,15 +2131,12 @@ def create_user():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Email already exists'}), 400
     else:
-        # For sellers, email and password are optional
         email = data.get('email', '')
         password = data.get('password', '')
         
-        # If email is provided for seller, validate it
         if email and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
             return jsonify({'status': 'error', 'error': 'Invalid email format'}), 400
         
-        # If password is provided for seller, validate it
         if password:
             if len(password) < 8:
                 return jsonify({'status': 'error', 'error': 'Password must be at least 8 characters long'}), 400
@@ -2351,14 +2153,12 @@ def create_user():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Only check email uniqueness if email is provided
         if email:
             cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
             if cursor.fetchone():
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Email already exists'}), 400
 
-    # Check if username already exists (always required)
     cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
     if cursor.fetchone():
         conn.close()
@@ -2366,16 +2166,14 @@ def create_user():
 
     full_name = data.get('full_name', '')
     initials = data.get('initials', '')
-    flag_color = data.get('flag_color', '')  # Add flag_color support
+    flag_color = data.get('flag_color', '')
 
-    # Only hash password if it's provided
     if password:
         salt = secrets.token_hex(16)
         password_hash = f"{salt}${hashlib.sha256((salt + password).encode()).hexdigest()}"
     else:
         password_hash = None
 
-    # Insert user - note that email and password_hash can be NULL for sellers
     cursor.execute('''
         INSERT INTO users (username, email, password_hash, role, full_name, initials, flag_color, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -2564,19 +2362,16 @@ def change_password(user_id):
 @app.route('/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
     """Delete a user (admin only)"""
-    # Debug: Print session info
     print(f"DELETE /users/{user_id} - Session: {dict(session)}")
     print(f"DELETE /users/{user_id} - logged_in: {session.get('logged_in')}")
     print(f"DELETE /users/{user_id} - role: {session.get('role')}")
     
-    # Check if user is logged in
     if not session.get('logged_in') or 'user_id' not in session:
         return jsonify({
             'status': 'error',
             'error': 'Authentication required - not logged in'
         }), 401
     
-    # Check if user has admin role
     if session.get('role') != 'admin':
         return jsonify({
             'status': 'error',
@@ -2587,7 +2382,6 @@ def delete_user(user_id):
     cursor = conn.cursor()
     
     try:
-        # Check if user exists
         cursor.execute('SELECT id, username, role FROM users WHERE id = ?', (user_id,))
         user = cursor.fetchone()
         
@@ -2597,7 +2391,6 @@ def delete_user(user_id):
                 'error': 'User not found'
             }), 404
         
-        # Check if user has any records
         cursor.execute('SELECT COUNT(*) as count FROM records WHERE consignor_id = ?', (user_id,))
         records_count = cursor.fetchone()['count']
         
@@ -2607,7 +2400,6 @@ def delete_user(user_id):
                 'error': f'Cannot delete user with {records_count} existing records. Please reassign or delete records first.'
             }), 400
         
-        # Delete the user
         cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
         conn.commit()
         
@@ -2662,7 +2454,6 @@ def get_admin_order(order_id):
         
         order_dict = dict(order)
         
-        # Combine payment_status and order_status
         if order_dict['payment_status'] == 'paid' and order_dict['order_status'] == 'confirmed':
             order_dict['status'] = 'paid'
         elif order_dict['payment_status'] == 'failed' or order_dict['order_status'] == 'cancelled':
@@ -2672,7 +2463,6 @@ def get_admin_order(order_id):
         else:
             order_dict['status'] = order_dict['order_status'] or 'pending'
         
-        # Parse items JSON
         try:
             if order_dict['items_json']:
                 items_json = '[' + order_dict['items_json'] + ']'
@@ -2778,8 +2568,6 @@ def get_all_users_admin():
         'users': users_list
     })
 
- 
-
 @app.route('/debug/verify-login/<int:user_id>', methods=['POST'])
 def verify_login(user_id):
     data = request.get_json()
@@ -2826,7 +2614,6 @@ def get_admin_orders():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get orders with their items
         cursor.execute('''
             SELECT 
                 o.*,
@@ -2847,7 +2634,6 @@ def get_admin_orders():
         
         orders = cursor.fetchall()
         
-        # Get stats
         cursor.execute('''
             SELECT 
                 COUNT(*) as total,
@@ -2860,12 +2646,10 @@ def get_admin_orders():
         stats = cursor.fetchone()
         conn.close()
         
-        # Process orders
         orders_list = []
         for order in orders:
             order_dict = dict(order)
             
-            # Combine payment_status and order_status into a single status field
             if order_dict['payment_status'] == 'paid' and order_dict['order_status'] == 'confirmed':
                 order_dict['status'] = 'paid'
             elif order_dict['payment_status'] == 'failed' or order_dict['order_status'] == 'cancelled':
@@ -2875,7 +2659,6 @@ def get_admin_orders():
             else:
                 order_dict['status'] = order_dict['order_status'] or 'pending'
             
-            # Parse items JSON
             try:
                 if order_dict['items_json']:
                     items_json = '[' + order_dict['items_json'] + ']'
@@ -2886,13 +2669,11 @@ def get_admin_orders():
                 app.logger.error(f"Error parsing items JSON: {e}")
                 order_dict['items'] = []
             
-            # Remove the raw JSON field
             if 'items_json' in order_dict:
                 del order_dict['items_json']
             
             orders_list.append(order_dict)
         
-        # Format stats
         stats_dict = {
             'total': stats['total'] if stats and stats['total'] else 0,
             'pending': stats['pending'] if stats and stats['pending'] else 0,
@@ -2916,7 +2697,6 @@ def get_admin_orders():
 def refresh_order_payment(order_id):
     """Check Square for payment status using stored square_order_id"""
 
-    # CORS preflight
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
@@ -2931,7 +2711,6 @@ def refresh_order_payment(order_id):
         conn = get_db()
         cursor = conn.cursor()
 
-        # Get order from local DB
         cursor.execute('''
             SELECT o.id, o.square_order_id, o.payment_status,
                    oi.record_id
@@ -2976,14 +2755,12 @@ def refresh_order_payment(order_id):
             'Content-Type': 'application/json'
         }
 
-        # 📅 Define the last week time range
         end_time = datetime.utcnow().isoformat() + "Z"
         begin_time = (datetime.utcnow() - timedelta(days=7)).isoformat() + "Z"
 
         cursor_token = None
         matching_payment = None
 
-        # ⚠️ We must page through payments for the last week
         while True:
             params = {
                 'begin_time': begin_time,
@@ -3008,7 +2785,6 @@ def refresh_order_payment(order_id):
             data = response.json()
             payments = data.get('payments', [])
 
-            # 🔍 Find one that matches both status AND order_id
             for payment in payments:
                 if (payment.get('status') == 'COMPLETED' and
                     payment.get('order_id') == square_order_id):
@@ -3022,7 +2798,6 @@ def refresh_order_payment(order_id):
             if not cursor_token:
                 break
 
-        # If we found it, update local DB
         if matching_payment:
             cursor.execute('''
                 UPDATE orders
@@ -3067,10 +2842,12 @@ def refresh_order_payment(order_id):
         response.headers.add('Access-Control-Allow-Origin','http://localhost:8000')
         response.headers.add('Access-Control-Allow-Credentials','true')
         return response, 500
- 
+
+# ==================== UPDATED RECORDS ENDPOINTS WITH CONDITION TABLE ====================
+
 @app.route('/records', methods=['POST'])
 def create_record():
-    """Create a new record in the database"""
+    """Create a new record in the database with separate sleeve and disc conditions"""
     data = request.get_json()
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
@@ -3088,13 +2865,26 @@ def create_record():
         commission_rate = data.get('commission_rate')
         status_id = data.get('status_id', 1)
         
+        # Get condition IDs - either from direct IDs or from condition string
+        condition_sleeve_id = data.get('condition_sleeve_id')
+        condition_disc_id = data.get('condition_disc_id')
+        
+        # If only a single condition string is provided, use it for both sleeve and disc
+        if not condition_sleeve_id and data.get('condition'):
+            cursor.execute('SELECT id FROM d_condition WHERE condition_name = ?', 
+                          (data.get('condition'),))
+            result = cursor.fetchone()
+            if result:
+                condition_sleeve_id = result['id']
+                condition_disc_id = result['id']  # Set both to same value
+        
         cursor.execute('''
             INSERT INTO records (
                 artist, title, barcode, genre_id, image_url,
-                catalog_number, condition, store_price,
+                catalog_number, condition_sleeve_id, condition_disc_id, store_price,
                 youtube_url, consignor_id, commission_rate,
                 status_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             data.get('artist'),
             data.get('title'),
@@ -3102,22 +2892,35 @@ def create_record():
             data.get('genre_id'),
             data.get('image_url', ''),
             data.get('catalog_number', ''),
-            data.get('condition', 'Very Good (VG)'),
+            condition_sleeve_id,
+            condition_disc_id,
             float(data.get('store_price', 0.0)),
             data.get('youtube_url', ''),
             consignor_id,
-            float(commission_rate),
+            float(commission_rate) if commission_rate else None,
             int(status_id)
         ))
         
         record_id = cursor.lastrowid
         conn.commit()
         
+        # Get the record with joined condition data
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name 
+            SELECT 
+                r.*,
+                g.genre_name,
+                s.status_name,
+                cs.condition_name as sleeve_condition_name,
+                cs.display_name as sleeve_display,
+                cs.abbreviation as sleeve_abbr,
+                cd.condition_name as disc_condition_name,
+                cd.display_name as disc_display,
+                cd.abbreviation as disc_abbr
             FROM records r
             LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             WHERE r.id = ?
         ''', (record_id,))
         
@@ -3150,22 +2953,38 @@ def create_record():
 
 @app.route('/records', methods=['GET'])
 def get_records():
+    """Get records with condition data joined from d_condition table"""
     conn = get_db()
     cursor = conn.cursor()
     
     random_order = request.args.get('random', 'false').lower() == 'true'
     limit = request.args.get('limit', type=int)
     has_youtube = request.args.get('has_youtube', 'false').lower() == 'true'
+    status_id = request.args.get('status_id', type=int)
     
     query = '''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
+        SELECT 
+            r.*,
+            COALESCE(g.genre_name, 'Unknown') as genre_name,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name,
+            cs.display_name as sleeve_display,
+            cs.abbreviation as sleeve_abbr,
+            cs.quality_index as sleeve_quality,
+            cd.condition_name as disc_condition_name,
+            cd.display_name as disc_display,
+            cd.abbreviation as disc_abbr,
+            cd.quality_index as disc_quality
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
         AND r.artist != '' AND r.title != ''
     '''
+    
+    params = []
     
     if has_youtube:
         query += '''
@@ -3173,19 +2992,30 @@ def get_records():
                  r.youtube_url LIKE '%youtu.be%')
         '''
     
+    if status_id is not None:
+        query += ' AND r.status_id = ?'
+        params.append(status_id)
+    
     if random_order:
         query += ' ORDER BY RANDOM()'
     else:
         query += ' ORDER BY r.id DESC'
     
     if limit:
-        query += f' LIMIT {limit}'
+        query += ' LIMIT ?'
+        params.append(limit)
     
-    cursor.execute(query)
+    cursor.execute(query, params)
     records = cursor.fetchall()
     conn.close()
     
-    records_list = [dict(record) for record in records]
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        # Add a combined condition field for backward compatibility
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
     
     return jsonify({
         'status': 'success',
@@ -3195,15 +3025,26 @@ def get_records():
 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
+    """Get a single record by ID with condition data"""
     conn = get_db()
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
+        SELECT 
+            r.*,
+            g.genre_name,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name,
+            cs.display_name as sleeve_display,
+            cs.abbreviation as sleeve_abbr,
+            cd.condition_name as disc_condition_name,
+            cd.display_name as disc_display,
+            cd.abbreviation as disc_abbr
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.id = ?
     ''', (record_id,))
 
@@ -3213,10 +3054,16 @@ def get_record(record_id):
     if not record:
         return jsonify({'status': 'error', 'error': 'Record not found'}), 404
 
-    return jsonify(dict(record))
+    record_dict = dict(record)
+    # Add a combined condition field for backward compatibility
+    if record_dict.get('sleeve_condition_name'):
+        record_dict['condition'] = record_dict['sleeve_condition_name']
+
+    return jsonify(record_dict)
 
 @app.route('/records/<int:record_id>', methods=['PUT'])
 def update_record(record_id):
+    """Update a record with support for separate sleeve and disc conditions"""
     data = request.get_json()
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
@@ -3239,7 +3086,8 @@ def update_record(record_id):
         'genre_id': 'genre_id',
         'image_url': 'image_url',
         'catalog_number': 'catalog_number',
-        'condition': 'condition',
+        'condition_sleeve_id': 'condition_sleeve_id',
+        'condition_disc_id': 'condition_disc_id',
         'store_price': 'store_price',
         'youtube_url': 'youtube_url',
         'consignor_id': 'consignor_id',
@@ -3252,8 +3100,21 @@ def update_record(record_id):
         'date_paid': 'date_paid'
     }
 
+    # Handle backward compatibility - if 'condition' is provided but not condition_sleeve_id
+    if 'condition' in data and 'condition_sleeve_id' not in data:
+        cursor.execute('SELECT id FROM d_condition WHERE condition_name = ?', (data['condition'],))
+        result = cursor.fetchone()
+        if result:
+            condition_id = result['id']
+            update_fields.append('condition_sleeve_id = ?')
+            update_values.append(condition_id)
+            # Optionally set disc condition too if not provided
+            if 'condition_disc_id' not in data:
+                update_fields.append('condition_disc_id = ?')
+                update_values.append(condition_id)
+
     for key, value in data.items():
-        if key in field_mapping:
+        if key in field_mapping and key not in ['condition']:  # Skip 'condition' as we handled it
             update_fields.append(f"{field_mapping[key]} = ?")
             update_values.append(value)
 
@@ -3287,11 +3148,17 @@ def get_record_by_barcode(barcode):
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
+        SELECT 
+            r.*,
+            g.genre_name,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name,
+            cd.condition_name as disc_condition_name
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.barcode = ?
     ''', (barcode,))
 
@@ -3301,7 +3168,11 @@ def get_record_by_barcode(barcode):
     if not record:
         return jsonify({'status': 'error', 'error': 'Record not found'}), 404
 
-    return jsonify(dict(record))
+    record_dict = dict(record)
+    if record_dict.get('sleeve_condition_name'):
+        record_dict['condition'] = record_dict['sleeve_condition_name']
+
+    return jsonify(record_dict)
 
 @app.route('/records/search', methods=['GET'])
 def search_records():
@@ -3316,10 +3187,17 @@ def search_records():
     try:
         search_term = f'%{query}%'
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name 
+            SELECT 
+                r.*,
+                g.genre_name,
+                s.status_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
             FROM records r
             LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             WHERE r.barcode LIKE ? 
                OR r.title LIKE ? 
                OR r.artist LIKE ? 
@@ -3328,7 +3206,12 @@ def search_records():
         ''', (search_term, search_term, search_term, search_term))
         
         records = cursor.fetchall()
-        records_list = [dict(record) for record in records]
+        records_list = []
+        for record in records:
+            record_dict = dict(record)
+            if record_dict.get('sleeve_condition_name'):
+                record_dict['condition'] = record_dict['sleeve_condition_name']
+            records_list.append(record_dict)
         
         response = jsonify({
             'status': 'success',
@@ -3356,7 +3239,6 @@ def search_records():
 
 @app.route('/api/square/refund', methods=['POST', 'OPTIONS'])
 def square_refund():
-    # Handle CORS preflight
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
@@ -3378,20 +3260,15 @@ def square_refund():
         
         app.logger.info(f"Processing refund for payment_id: {payment_id}")
         
-        # Check if this is a local receipt ID (starts with SQUARE-)
         if payment_id.startswith('SQUARE-'):
-            # Try to find the real payment_id from square_payment_sessions
-            # This would require storing a mapping between receipt_id and payment_id
             app.logger.error(f"Cannot refund local receipt ID: {payment_id}. Need actual Square payment_id.")
             return jsonify({
                 'status': 'error', 
                 'error': 'Please use the actual Square payment ID, not the receipt ID. This refund must be processed through the Square Dashboard.'
             }), 400
         
-        # Convert amount to cents for Square
         amount_cents = int(round(amount * 100))
         
-        # Get access token
         access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
         if not access_token:
             return jsonify({
@@ -3399,14 +3276,11 @@ def square_refund():
                 'error': 'SQUARE_ACCESS_TOKEN not configured'
             }), 500
         
-        # Determine environment
         environment = os.environ.get('SQUARE_ENVIRONMENT', 'sandbox')
         base_url = 'https://connect.squareup.com' if environment == 'production' else 'https://connect.squareupsandbox.com'
         
-        # Create idempotency key to prevent duplicate refunds
         idempotency_key = str(uuid.uuid4())
         
-        # Prepare refund request
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
@@ -3423,7 +3297,6 @@ def square_refund():
             "reason": reason
         }
         
-        # If device_id is provided, include it
         if device_id:
             refund_data["device_details"] = {
                 "device_id": device_id
@@ -3431,7 +3304,6 @@ def square_refund():
         
         app.logger.info(f"Sending refund request to Square: {refund_data}")
         
-        # Make the API call to Square
         response = requests.post(
             f'{base_url}/v2/refunds',
             headers=headers,
@@ -3442,7 +3314,6 @@ def square_refund():
             error_text = response.text[:500]
             app.logger.error(f"Square refund API error: {error_text}")
             
-            # Try to parse the error
             try:
                 error_json = response.json()
                 if 'errors' in error_json:
@@ -3461,7 +3332,6 @@ def square_refund():
         
         result = response.json()
         
-        # Check if there were errors in the response
         if 'errors' in result:
             errors = result['errors']
             error_messages = [e.get('detail', 'Unknown error') for e in errors]
@@ -3470,7 +3340,6 @@ def square_refund():
                 'error': ', '.join(error_messages)
             }), 400
         
-        # Refund successful
         refund = result.get('refund', {})
         
         app.logger.info(f"Square refund successful: {refund.get('id')}")
@@ -3488,8 +3357,6 @@ def square_refund():
         app.logger.error(f"Error processing refund: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
-     
 
 @app.route('/records/random', methods=['GET'])
 def get_random_records():
@@ -3501,11 +3368,17 @@ def get_random_records():
     cursor = conn.cursor()
 
     query = '''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
+        SELECT 
+            r.*,
+            g.genre_name,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name,
+            cd.condition_name as disc_condition_name
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
         AND r.artist != '' AND r.title != ''
     '''
@@ -3525,7 +3398,12 @@ def get_random_records():
     records = cursor.fetchall()
     conn.close()
 
-    records_list = [dict(record) for record in records]
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
 
     return jsonify({
         'status': 'success',
@@ -3560,11 +3438,17 @@ def get_records_by_ids():
     cursor = conn.cursor()
 
     cursor.execute(f'''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
+        SELECT 
+            r.*,
+            g.genre_name,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name,
+            cd.condition_name as disc_condition_name
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.id IN ({placeholders})
         ORDER BY r.artist, r.title
     ''', record_ids)
@@ -3572,7 +3456,13 @@ def get_records_by_ids():
     records = cursor.fetchall()
     conn.close()
 
-    records_list = [dict(record) for record in records]
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
+
     return jsonify({'status': 'success', 'records': records_list})
 
 @app.route('/records/update-status', methods=['POST'])
@@ -3621,11 +3511,17 @@ def get_user_records(user_id):
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
+        SELECT 
+            r.*,
+            g.genre_name,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name,
+            cd.condition_name as disc_condition_name
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.consignor_id = ?
         ORDER BY r.artist, r.title
     ''', (user_id,))
@@ -3633,7 +3529,13 @@ def get_user_records(user_id):
     records = cursor.fetchall()
     conn.close()
 
-    records_list = [dict(record) for record in records]
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
+
     return jsonify({'status': 'success', 'records': records_list})
 
 @app.route('/records/no-barcodes', methods=['GET'])
@@ -3642,11 +3544,17 @@ def get_records_without_barcodes():
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
+        SELECT 
+            r.*,
+            g.genre_name,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name,
+            cd.condition_name as disc_condition_name
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.barcode IS NULL OR r.barcode = '' OR r.barcode = 'None'
         ORDER BY r.artist, r.title
     ''')
@@ -3654,7 +3562,13 @@ def get_records_without_barcodes():
     records = cursor.fetchall()
     conn.close()
 
-    records_list = [dict(record) for record in records]
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
+
     return jsonify({'status': 'success', 'records': records_list})
 
 @app.route('/records/status/<int:status_id>', methods=['GET'])
@@ -3669,12 +3583,19 @@ def get_records_by_status(status_id):
         return jsonify({'status': 'error', 'error': 'Invalid status ID'}), 400
 
     cursor.execute('''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name, u.username as consignor_name
+        SELECT 
+            r.*,
+            g.genre_name,
+            s.status_name,
+            u.username as consignor_name,
+            cs.condition_name as sleeve_condition_name,
+            cd.condition_name as disc_condition_name
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN users u ON r.consignor_id = u.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.status_id = ?
         ORDER BY r.artist, r.title
     ''', (status_id,))
@@ -3682,13 +3603,85 @@ def get_records_by_status(status_id):
     records = cursor.fetchall()
     conn.close()
 
-    records_list = [dict(record) for record in records]
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
+
     return jsonify({
         'status': 'success',
         'count': len(records_list),
         'status_id': status_id,
         'records': records_list
     })
+
+# ==================== CONDITIONS ENDPOINTS (NEW) ====================
+
+@app.route('/api/conditions', methods=['GET'])
+def get_conditions():
+    """Get available conditions based on user role"""
+    try:
+        user_role = request.args.get('role', session.get('role', 'admin'))
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        if user_role == 'consignor':
+            cursor.execute('''
+                SELECT id, condition_name, display_name, abbreviation, description, quality_index
+                FROM d_condition
+                WHERE is_consignor_allowed = 1
+                ORDER BY quality_index
+            ''')
+        else:
+            cursor.execute('''
+                SELECT id, condition_name, display_name, abbreviation, description, quality_index
+                FROM d_condition
+                ORDER BY quality_index
+            ''')
+        
+        conditions = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'conditions': [dict(c) for c in conditions]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting conditions: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/conditions/<int:condition_id>', methods=['GET'])
+def get_condition_by_id(condition_id):
+    """Get a single condition by ID"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, condition_name, display_name, abbreviation, description, quality_index
+            FROM d_condition
+            WHERE id = ?
+        ''', (condition_id,))
+        
+        condition = cursor.fetchone()
+        conn.close()
+        
+        if not condition:
+            return jsonify({'status': 'error', 'error': 'Condition not found'}), 404
+        
+        return jsonify({
+            'status': 'success',
+            'condition': dict(condition)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting condition: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== GENRES ENDPOINTS ====================
 
@@ -3873,22 +3866,35 @@ def get_consignor_records():
 
     if session.get('role') == 'admin':
         cursor.execute('''
-            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-                   s.status_name, u.username as consignor_name
+            SELECT 
+                r.*,
+                g.genre_name,
+                s.status_name,
+                u.username as consignor_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
             FROM records r
             LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             WHERE r.consignor_id IS NOT NULL
             ORDER BY r.created_at DESC
         ''')
     else:
         cursor.execute('''
-            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-                   s.status_name
+            SELECT 
+                r.*,
+                g.genre_name,
+                s.status_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
             FROM records r
             LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             WHERE r.consignor_id = ?
             ORDER BY r.created_at DESC
         ''', (session['user_id'],))
@@ -3896,7 +3902,13 @@ def get_consignor_records():
     records = cursor.fetchall()
     conn.close()
 
-    records_list = [dict(record) for record in records]
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
+
     return jsonify({
         'status': 'success',
         'count': len(records_list),
@@ -3923,13 +3935,26 @@ def add_consignor_record():
     commission_result = cursor.fetchone()
     commission_rate = float(commission_result['config_value']) 
 
+    # Get condition IDs
+    condition_sleeve_id = data.get('condition_sleeve_id')
+    condition_disc_id = data.get('condition_disc_id')
+    
+    # If only a condition string is provided, try to map it
+    if not condition_sleeve_id and data.get('condition'):
+        cursor.execute('SELECT id FROM d_condition WHERE condition_name = ?', 
+                      (data.get('condition'),))
+        result = cursor.fetchone()
+        if result:
+            condition_sleeve_id = result['id']
+            condition_disc_id = result['id']
+
     cursor.execute('''
         INSERT INTO records (
             artist, title, barcode, genre_id, image_url,
-            catalog_number, condition, store_price,
+            catalog_number, condition_sleeve_id, condition_disc_id, store_price,
             youtube_url, consignor_id, commission_rate,
             status_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ''', (
         data.get('artist'),
         data.get('title'),
@@ -3937,7 +3962,8 @@ def add_consignor_record():
         data.get('genre_id'),
         data.get('image_url', ''),
         data.get('catalog_number', ''),
-        data.get('condition', '4'),
+        condition_sleeve_id,
+        condition_disc_id,
         float(data.get('store_price')),
         data.get('youtube_url', ''),
         session['user_id'],
@@ -3966,12 +3992,19 @@ def get_consignment_records():
 
     if user_id:
         cursor.execute('''
-            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-                   s.status_name, u.username as consignor_name
+            SELECT 
+                r.*,
+                g.genre_name,
+                s.status_name,
+                u.username as consignor_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
             FROM records r
             LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             WHERE r.consignor_id = ?
             ORDER BY
                 CASE r.status_id
@@ -3985,12 +4018,19 @@ def get_consignment_records():
         ''', (user_id,))
     else:
         cursor.execute('''
-            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-                   s.status_name, u.username as consignor_name
+            SELECT 
+                r.*,
+                g.genre_name,
+                s.status_name,
+                u.username as consignor_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
             FROM records r
             LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             WHERE r.consignor_id IS NOT NULL
             ORDER BY
                 CASE r.status_id
@@ -4006,25 +4046,33 @@ def get_consignment_records():
     records = cursor.fetchall()
     conn.close()
 
-    records_list = [dict(record) for record in records]
-
-    for record in records_list:
-        barcode = record.get('barcode')
-        status_id = record.get('status_id')
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        
+        # Add display status
+        barcode = record_dict.get('barcode')
+        status_id = record_dict.get('status_id')
 
         if status_id == 1:
             if not barcode or barcode in [None, '', 'None']:
-                record['display_status'] = '🆕 New'
+                record_dict['display_status'] = '🆕 New'
             else:
-                record['display_status'] = '✅ Active'
+                record_dict['display_status'] = '✅ Active'
         elif status_id == 2:
-            record['display_status'] = '✅ Active'
+            record_dict['display_status'] = '✅ Active'
         elif status_id == 3:
-            record['display_status'] = '💰 Sold'
+            record_dict['display_status'] = '💰 Sold'
         elif status_id == 4:
-            record['display_status'] = '🗑️ Removed'
+            record_dict['display_status'] = '🗑️ Removed'
         else:
-            record['display_status'] = '❓ Unknown'
+            record_dict['display_status'] = '❓ Unknown'
+        
+        # Add condition field for backward compatibility
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+            
+        records_list.append(record_dict)
 
     return jsonify({
         'status': 'success',
@@ -4041,12 +4089,19 @@ def get_dropoff_records():
 
     if user_id:
         cursor.execute('''
-            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-                   s.status_name, u.username as consignor_name
+            SELECT 
+                r.*,
+                g.genre_name,
+                s.status_name,
+                u.username as consignor_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
             FROM records r
             LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             WHERE r.consignor_id = ?
             AND (r.barcode IS NULL OR r.barcode = '' OR r.barcode = 'None')
             AND r.status_id IN (1, 2)
@@ -4054,12 +4109,19 @@ def get_dropoff_records():
         ''', (user_id,))
     else:
         cursor.execute('''
-            SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-                   s.status_name, u.username as consignor_name
+            SELECT 
+                r.*,
+                g.genre_name,
+                s.status_name,
+                u.username as consignor_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
             FROM records r
             LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             WHERE r.consignor_id IS NOT NULL
             AND (r.barcode IS NULL OR r.barcode = '' OR r.barcode = 'None')
             AND r.status_id IN (1, 2)
@@ -4069,10 +4131,17 @@ def get_dropoff_records():
     records = cursor.fetchall()
     conn.close()
 
-    records_list = [dict(record) for record in records]
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
+
     return jsonify({'status': 'success', 'records': records_list})
 
 # ==================== CATALOG ENDPOINTS ====================
+
 @app.route('/catalog/grouped-by-release', methods=['GET'])
 def get_catalog_grouped_by_release():
     """
@@ -4082,7 +4151,6 @@ def get_catalog_grouped_by_release():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Only get records with status_id = 2 (active/inventory)
     cursor.execute('''
         SELECT 
             r.id,
@@ -4090,7 +4158,8 @@ def get_catalog_grouped_by_release():
             r.title,
             COALESCE(r.image_url, '') as image_url,
             COALESCE(g.genre_name, 'Unknown') as genre_name,
-            r.condition,
+            cs.condition_name as sleeve_condition,
+            cd.condition_name as disc_condition,
             r.store_price,
             r.barcode,
             r.catalog_number,
@@ -4100,6 +4169,8 @@ def get_catalog_grouped_by_release():
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
         AND r.artist != '' AND r.title != ''
         AND r.store_price IS NOT NULL
@@ -4110,7 +4181,6 @@ def get_catalog_grouped_by_release():
     records = cursor.fetchall()
     conn.close()
 
-    # Group records by artist + title combination
     groups = {}
     condition_order = {
         'Mint (M)': 1,
@@ -4131,14 +4201,11 @@ def get_catalog_grouped_by_release():
         artist = (record_dict.get('artist') or '').strip()
         title = (record_dict.get('title') or '').strip()
         
-        # Skip if missing critical data
         if not artist or not title:
             continue
             
-        # Create unique key for this release
         key = f"{artist.lower()}|{title.lower()}"
         
-        # Convert store_price to float
         if 'store_price' in record_dict and record_dict['store_price'] is not None:
             record_dict['store_price'] = float(record_dict['store_price'])
         
@@ -4155,14 +4222,15 @@ def get_catalog_grouped_by_release():
                     'max': 0
                 },
                 'copies': [],
-                'created_at': record_dict.get('created_at')  # Track earliest creation date
+                'created_at': record_dict.get('created_at')
             }
         
-        # Add this copy to the group
         copy_data = {
             'id': record_dict['id'],
-            'condition': record_dict.get('condition', 'Unknown'),
-            'condition_rank': condition_order.get(record_dict.get('condition'), 99),
+            'sleeve_condition': record_dict.get('sleeve_condition', 'Unknown'),
+            'disc_condition': record_dict.get('disc_condition', 'Unknown'),
+            'sleeve_condition_rank': condition_order.get(record_dict.get('sleeve_condition'), 99),
+            'disc_condition_rank': condition_order.get(record_dict.get('disc_condition'), 99),
             'store_price': record_dict['store_price'],
             'barcode': record_dict.get('barcode', ''),
             'catalog_number': record_dict.get('catalog_number', ''),
@@ -4174,36 +4242,35 @@ def get_catalog_grouped_by_release():
         groups[key]['total_copies'] += 1
         total_copies += 1
         
-        # Update price range
         price = record_dict['store_price']
         if price > 0:
             groups[key]['price_range']['min'] = min(groups[key]['price_range']['min'], price)
             groups[key]['price_range']['max'] = max(groups[key]['price_range']['max'], price)
         
-        # Track the earliest creation date for the release
         if record_dict.get('created_at') and (
             not groups[key]['created_at'] or 
             record_dict['created_at'] < groups[key]['created_at']
         ):
             groups[key]['created_at'] = record_dict['created_at']
     
-    # Convert groups to list and sort copies within each group by condition
     result = []
     for group in groups.values():
-        # Clean up price range (if no valid prices)
         if group['price_range']['min'] == float('inf'):
             group['price_range'] = {'min': 0, 'max': 0}
         
-        # Sort copies by condition (best first) then price (highest first)
-        group['copies'].sort(key=lambda x: (x['condition_rank'], -x['store_price']))
+        group['copies'].sort(key=lambda x: (x['sleeve_condition_rank'], -x['store_price']))
         
-        # Remove condition_rank from copies before sending (not needed in frontend)
         for copy in group['copies']:
-            del copy['condition_rank']
+            del copy['sleeve_condition_rank']
+            del copy['disc_condition_rank']
+            # Add a combined condition field for display
+            if copy['sleeve_condition'] == copy['disc_condition']:
+                copy['condition'] = copy['sleeve_condition']
+            else:
+                copy['condition'] = f"Sleeve: {copy['sleeve_condition']}, Disc: {copy['disc_condition']}"
         
         result.append(group)
     
-    # Sort releases by artist name
     result.sort(key=lambda x: (x['artist'] or '').lower())
 
     return jsonify({
@@ -4213,13 +4280,11 @@ def get_catalog_grouped_by_release():
         'groups': result
     })
 
-
 @app.route('/catalog/grouped-records', methods=['GET'])
 def get_catalog_grouped_records():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Get price weighting from config - will raise exception if not found
     cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'CATALOG_PRICE_WEIGHTING'")
     weighting_result = cursor.fetchone()
     
@@ -4229,13 +4294,18 @@ def get_catalog_grouped_records():
     price_weighting = float(weighting_result[0])
     price_weighting = max(0.0, min(1.0, price_weighting))
 
-    # Only get records with status_id = 2 (active/inventory)
     cursor.execute('''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name,
-               s.status_name
+        SELECT 
+            r.*,
+            g.genre_name,
+            s.status_name,
+            cs.condition_name as sleeve_condition,
+            cd.condition_name as disc_condition
         FROM records r
         LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL
         AND r.artist != '' AND r.title != ''
         AND r.store_price IS NOT NULL
@@ -4250,9 +4320,13 @@ def get_catalog_grouped_records():
         record_dict = dict(record)
         if 'store_price' in record_dict:
             record_dict['store_price'] = float(record_dict['store_price'])
+        if record_dict.get('sleeve_condition'):
+            if record_dict['sleeve_condition'] == record_dict.get('disc_condition'):
+                record_dict['condition'] = record_dict['sleeve_condition']
+            else:
+                record_dict['condition'] = f"Sleeve: {record_dict['sleeve_condition']}, Disc: {record_dict['disc_condition']}"
         records_list.append(record_dict)
 
-    # Filter records with valid prices (should all have prices but check anyway)
     valid_price_records = [r for r in records_list if isinstance(r.get('store_price'), (int, float)) and r['store_price'] > 0]
     
     if not valid_price_records:
@@ -4537,11 +4611,11 @@ def get_commission_rate_simple():
     })
 
 # ==================== NEW DB QUERY ENDPOINTS ====================
+
 @app.route('/api/admin/db-schema')
 @login_required
 def get_db_schema():
     """Get database schema information"""
-    # Check if user is admin
     if session.get('role') != 'admin':
         return jsonify({
             'status': 'error', 
@@ -4557,7 +4631,6 @@ def get_db_schema():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all tables
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         tables = cursor.fetchall()
         
@@ -4566,11 +4639,9 @@ def get_db_schema():
         for table in tables:
             table_name = table[0]
             
-            # PRAGMA doesn't support parameters, so we need to use string formatting
-            # But we sanitize by only allowing alphanumeric and underscore
             import re
             if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
-                continue  # Skip invalid table names for security
+                continue
                 
             cursor.execute(f"PRAGMA table_info({table_name})")
             columns = cursor.fetchall()
@@ -4593,8 +4664,6 @@ def get_db_schema():
         traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e), 'traceback': traceback.format_exc()}), 500
 
-
-
 @app.route('/api/admin/execute-query', methods=['POST'])
 @login_required
 def execute_query():
@@ -4615,14 +4684,12 @@ def execute_query():
     if not query:
         return jsonify({'status': 'error', 'message': 'No query provided'}), 400
     
-    # Basic query validation - prevent multiple statements for safety
     if ';' in query and query.count(';') > 1:
         return jsonify({
             'status': 'error', 
             'message': 'Multiple SQL statements are not allowed for security reasons'
         }), 400
     
-    # Block dangerous commands
     dangerous_keywords = ['DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'RENAME']
     query_upper = query.upper()
     for keyword in dangerous_keywords:
@@ -4636,7 +4703,6 @@ def execute_query():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Determine query type
         query_type = 'SELECT' if query_upper.lstrip().startswith('SELECT') else \
                     'INSERT' if query_upper.lstrip().startswith('INSERT') else \
                     'UPDATE' if query_upper.lstrip().startswith('UPDATE') else \
@@ -4645,25 +4711,20 @@ def execute_query():
         import time
         start_time = time.time()
         
-        # Execute query
         cursor.execute(query)
         
-        execution_time = round((time.time() - start_time) * 1000, 2)  # in milliseconds
+        execution_time = round((time.time() - start_time) * 1000, 2)
         
         if query_type == 'SELECT':
-            # For SQLite, fetchall returns rows that need conversion
             rows = cursor.fetchall()
             
-            # Get column names from cursor description
             columns = [description[0] for description in cursor.description] if cursor.description else []
             
-            # Convert rows to list of dicts
             results = []
             for row in rows:
                 row_dict = {}
                 for i, col in enumerate(columns):
                     value = row[i]
-                    # Handle datetime objects if any
                     if hasattr(value, 'isoformat'):
                         value = value.isoformat()
                     row_dict[col] = value
@@ -4680,7 +4741,6 @@ def execute_query():
             })
             
         else:
-            # For INSERT, UPDATE, DELETE
             conn.commit()
             affected_rows = cursor.rowcount
             last_insert_id = cursor.lastrowid if query_type == 'INSERT' else None
@@ -4748,8 +4808,6 @@ def get_commission_rate():
         'store_capacity': config['STORE_CAPACITY']
     })
 
- 
-
 # ==================== BARCODE ASSIGNMENT ENDPOINT ====================
 
 @app.route('/barcodes/assign', methods=['POST'])
@@ -4781,11 +4839,11 @@ def assign_barcodes():
     return jsonify({'status': 'success', 'barcode_mapping': barcode_mapping})
 
 # ==================== CHECKOUT PAYMENT ENDPOINT ====================
+
 @app.route('/api/square/generate-device-code', methods=['POST'])
 def generate_square_device_code():
     """Generate a device code for Terminal API mode - NO AUTH REQUIRED FOR TESTING"""
     try:
-        # Get location_id from request or use env
         data = request.get_json() or {}
         location_id = data.get('location_id') or os.environ.get('SQUARE_LOCATION_ID')
         
@@ -4802,17 +4860,14 @@ def generate_square_device_code():
                 'message': 'SQUARE_ACCESS_TOKEN not set in environment'
             }), 400
         
-        # Generate unique idempotency key
         idempotency_key = str(uuid.uuid4())
         
-        # Prepare request to Square API
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
             'Square-Version': '2026-01-22'
         }
         
-        # CRITICAL: product_type MUST be "TERMINAL_API" for API mode
         code_data = {
             "idempotency_key": idempotency_key,
             "device_code": {
@@ -4822,7 +4877,6 @@ def generate_square_device_code():
             }
         }
         
-        # Make the API call to Square
         response = requests.post(
             'https://connect.squareup.com/v2/devices/codes',
             headers=headers,
@@ -4839,7 +4893,6 @@ def generate_square_device_code():
         result = response.json()
         device_code = result.get('device_code', {})
         
-        # Format the response for easy display
         return jsonify({
             'status': 'success',
             'device_code': {
@@ -4867,7 +4920,6 @@ def generate_square_device_code():
             'status': 'error',
             'message': str(e)
         }), 500
-
 
 @app.route('/checkout/process-payment', methods=['POST'])
 def process_checkout_payment():

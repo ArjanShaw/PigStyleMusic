@@ -129,7 +129,7 @@ class AddEditDeleteManager {
         this.currentSearchField = 'all';
         this.currentResults = [];
         this.genres = [];
-        this.conditions = [];
+        this.conditions = []; // Will hold condition objects from API
         this.statuses = ['new', 'active', 'sold', 'removed'];
         this.consignors = [];
         this.genrePredictor = new GenrePredictor();
@@ -146,8 +146,8 @@ class AddEditDeleteManager {
         await this.loadMinimumPrice();
         await this.loadStats();
         await this.loadGenres();
+        await this.loadConditions(); // Load conditions from API
         await this.loadConsignors();
-        this.loadConditions();
         this.loadSavedSettings();
         this.setupEventListeners();
         this.renderGlobalSettings();
@@ -370,6 +370,36 @@ class AddEditDeleteManager {
         }
     }
 
+    async loadConditions() {
+        console.log('LOAD_CONDITIONS: Loading conditions from /api/conditions');
+        try {
+            const response = await APIUtils.get('/api/conditions');
+            console.log('LOAD_CONDITIONS: Raw API response:', response);
+            
+            if (response && response.conditions) {
+                this.conditions = response.conditions;
+                console.log('LOAD_CONDITIONS: Conditions loaded successfully:', this.conditions);
+            } else {
+                console.error('LOAD_CONDITIONS: Invalid response format:', response);
+                this.conditions = [];
+            }
+        } catch (error) {
+            console.error('Error loading conditions:', error);
+            // Fallback to hardcoded conditions if API fails
+            this.conditions = [
+                { id: 1, condition_name: 'Mint (M)', display_name: 'Mint (M)', abbreviation: 'M', quality_index: 0 },
+                { id: 2, condition_name: 'Near Mint (NM or M-)', display_name: 'Near Mint (NM or M-)', abbreviation: 'NM', quality_index: 1 },
+                { id: 3, condition_name: 'Very Good Plus (VG+)', display_name: 'Very Good Plus (VG+)', abbreviation: 'VG+', quality_index: 2 },
+                { id: 4, condition_name: 'Very Good (VG)', display_name: 'Very Good (VG)', abbreviation: 'VG', quality_index: 3 },
+                { id: 5, condition_name: 'Good Plus (G+)', display_name: 'Good Plus (G+)', abbreviation: 'G+', quality_index: 4 },
+                { id: 6, condition_name: 'Good (G)', display_name: 'Good (G)', abbreviation: 'G', quality_index: 5 },
+                { id: 7, condition_name: 'Fair (F)', display_name: 'Fair (F)', abbreviation: 'F', quality_index: 6 },
+                { id: 8, condition_name: 'Poor (P)', display_name: 'Poor (P)', abbreviation: 'P', quality_index: 7 }
+            ];
+            console.log('LOAD_CONDITIONS: Using fallback conditions:', this.conditions);
+        }
+    }
+
     async loadConsignors() {
         console.log('LOAD_CONSIGNORS: Starting to load consignors from /users endpoint');
         try {
@@ -390,22 +420,6 @@ class AddEditDeleteManager {
             console.error('Error loading consignors:', error);
             this.consignors = [];
         }
-    }
-
-    loadConditions() {
-        const allConditions = [
-            'Mint (M)',
-            'Near Mint (NM or M-)',
-            'Very Good Plus (VG+)',
-            'Very Good (VG)',
-            'Good Plus (G+)',
-            'Good (G)',
-            'Fair (F)',
-            'Poor (P)'
-        ];
-        
-        this.conditions = allConditions;
-        console.log('LOAD_CONDITIONS: Conditions loaded:', this.conditions);
     }
 
     setupEventListeners() {
@@ -613,6 +627,11 @@ class AddEditDeleteManager {
             return this.genres.findIndex(g => g.id == genreId);
         };
         
+        // Generate condition options for dropdowns
+        const conditionOptions = this.conditions.map(condition => {
+            return `<option value="${condition.id}">${condition.display_name || condition.condition_name}</option>`;
+        }).join('');
+        
         // Get current user from localStorage
         const user = JSON.parse(localStorage.getItem('user')) || {};
         const isAdmin = user.role === 'admin';
@@ -643,10 +662,6 @@ class AddEditDeleteManager {
                 const genreOptions = this.genres.map((genre, idx) => {
                     const selected = hasPrediction && idx === predictionIndex ? 'selected' : '';
                     return `<option value="${genre.id}" ${selected}>${genre.genre_name}</option>`;
-                }).join('');
-                
-                const conditionOptions = this.conditions.map(condition => {
-                    return `<option value="${condition}">${condition}</option>`;
                 }).join('');
                 
                 let discogsIdentifiers = '';
@@ -721,19 +736,37 @@ class AddEditDeleteManager {
                                     ${genreOptions}
                                 </select>
                             </div>
-                            
+                        </div>
+                        
+                        <div class="form-row">
                             <div class="form-group">
-                                <label class="form-label">Condition *</label>
-                                <select class="form-control condition-select" required>
-                                    <option value="">Select condition...</option>
+                                <label class="form-label">
+                                    <i class="fas fa-album"></i> Sleeve Condition *
+                                </label>
+                                <select class="form-control sleeve-condition-select" required>
+                                    <option value="">Select sleeve condition...</option>
                                     ${conditionOptions}
                                 </select>
-                                <div class="estimation-hint">
-                                    <i class="fas fa-bolt"></i>
-                                    Price auto-estimates when condition is selected
+                                <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                    <i class="fas fa-info-circle"></i> Setting sleeve condition will auto-set disc condition
                                 </div>
                             </div>
                             
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <i class="fas fa-compact-disc"></i> Disc Condition *
+                                </label>
+                                <select class="form-control disc-condition-select" required>
+                                    <option value="">Select disc condition...</option>
+                                    ${conditionOptions}
+                                </select>
+                                <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                    <i class="fas fa-edit"></i> Auto-set from sleeve, can be changed independently
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Price ($) *</label>
                                 <input type="number" 
@@ -797,11 +830,12 @@ class AddEditDeleteManager {
             }).join('');
         };
         
-        const getConditionOptions = (recordId) => {
+        const getConditionOptions = (recordId, type = 'sleeve') => {
             const record = this.currentResults.find(r => r.id == recordId);
+            const conditionId = type === 'sleeve' ? record.condition_sleeve_id : record.condition_disc_id;
             return this.conditions.map(condition => {
-                const selected = record && record.condition === condition ? 'selected' : '';
-                return `<option value="${condition}" ${selected}>${condition}</option>`;
+                const selected = conditionId == condition.id ? 'selected' : '';
+                return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
             }).join('');
         };
         
@@ -836,6 +870,12 @@ class AddEditDeleteManager {
                 // Get current consignor for this record
                 const currentConsignorId = record.consignor_id || '';
                 
+                // Get condition names for display
+                const sleeveCondition = this.conditions.find(c => c.id == record.condition_sleeve_id);
+                const discCondition = this.conditions.find(c => c.id == record.condition_disc_id);
+                const sleeveDisplay = sleeveCondition ? sleeveCondition.display_name || sleeveCondition.condition_name : 'Not set';
+                const discDisplay = discCondition ? discCondition.display_name || discCondition.condition_name : 'Not set';
+                
                 return `
                     <div class="record-card" data-record-id="${record.id}" data-index="${index}">
                         <div class="record-header">
@@ -855,7 +895,8 @@ class AddEditDeleteManager {
                                     ${record.catalog_number ? `<p><strong>Catalog #:</strong> ${record.catalog_number}</p>` : ''}
                                     <p><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</p>
                                     <p><strong>Commission:</strong> ${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}%</p>
-                                    ${record.condition ? `<p><strong>Condition:</strong> ${record.condition}</p>` : ''}
+                                    <p><strong>Sleeve Condition:</strong> ${sleeveDisplay}</p>
+                                    <p><strong>Disc Condition:</strong> ${discDisplay}</p>
                                     <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></p>
                                     ${record.consignor_name ? `<p><strong>Consignor:</strong> ${record.consignor_name}</p>` : ''}
                                 </div>
@@ -872,19 +913,34 @@ class AddEditDeleteManager {
                                     ${getGenreOptions(record.id)}
                                 </select>
                             </div>
-                            
+                        </div>
+                        
+                        <div class="form-row">
                             <div class="form-group">
-                                <label class="form-label">Condition</label>
-                                <select class="form-control edit-condition-select" data-record-id="${record.id}">
-                                    <option value="">Select condition...</option>
-                                    ${getConditionOptions(record.id)}
+                                <label class="form-label">
+                                    <i class="fas fa-album"></i> Sleeve Condition
+                                </label>
+                                <select class="form-control edit-sleeve-condition-select" data-record-id="${record.id}">
+                                    <option value="">Select sleeve condition...</option>
+                                    ${getConditionOptions(record.id, 'sleeve')}
                                 </select>
-                                <div class="estimation-hint">
-                                    <i class="fas fa-bolt"></i>
-                                    Price auto-estimates when condition is selected
-                                </div>
                             </div>
                             
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <i class="fas fa-compact-disc"></i> Disc Condition
+                                </label>
+                                <select class="form-control edit-disc-condition-select" data-record-id="${record.id}">
+                                    <option value="">Select disc condition...</option>
+                                    ${getConditionOptions(record.id, 'disc')}
+                                </select>
+                                <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                    <i class="fas fa-link"></i> Disc condition is independent
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Price ($)</label>
                                 <input type="number" 
@@ -898,9 +954,7 @@ class AddEditDeleteManager {
                                     <i class="fas fa-plus-circle"></i> <i class="fas fa-minus-circle"></i> Use +/- buttons to adjust by $1.00
                                 </div>
                             </div>
-                        </div>
-                        
-                        <div class="form-row">
+                            
                             <div class="form-group">
                                 <label class="form-label">Consignor</label>
                                 <select class="form-control edit-consignor-select" data-record-id="${record.id}">
@@ -908,7 +962,9 @@ class AddEditDeleteManager {
                                     ${consignorOptions.replace(`value="${currentConsignorId}"`, `value="${currentConsignorId}" selected`)}
                                 </select>
                             </div>
-                            
+                        </div>
+                        
+                        <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Consignment Rate (%)</label>
                                 <input type="number" 
@@ -923,9 +979,7 @@ class AddEditDeleteManager {
                                     <i class="fas fa-info-circle"></i> Store's cut percentage (step: 10%)
                                 </div>
                             </div>
-                        </div>
-                        
-                        <div class="form-row">
+                            
                             <div class="form-group">
                                 ${userRole === 'admin' ? `
                                     <div style="margin-bottom: 10px;">
@@ -935,19 +989,21 @@ class AddEditDeleteManager {
                                         </select>
                                     </div>
                                 ` : ''}
-                                
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group" style="display: flex; gap: 10px; align-items: center;">
                                 <button class="btn btn-primary save-changes-btn" data-record-id="${record.id}">
                                     <i class="fas fa-save"></i> Save Changes
                                 </button>
-                            </div>
-                            
-                            ${userRole === 'admin' ? `
-                                <div class="form-group">
+                                
+                                ${userRole === 'admin' ? `
                                     <button class="btn btn-secondary delete-record-btn" data-record-id="${record.id}">
-                                        <i class="fas fa-trash"></i> Delete Record
+                                        <i class="fas fa-trash"></i> Delete
                                     </button>
-                                </div>
-                            ` : ''}
+                                ` : ''}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -955,14 +1011,46 @@ class AddEditDeleteManager {
         `;
     }
 
-    async estimatePriceForRecord(record, selectedCondition) {
-        console.log('ESTIMATE_PRICE: Estimating price for', record.artist, '-', record.title, 'Condition:', selectedCondition);
+    async estimatePriceForRecord(record, sleeveConditionId, discConditionId) {
+        console.log('ESTIMATE_PRICE: Estimating price for', record.artist, '-', record.title, 
+                    'Sleeve Condition ID:', sleeveConditionId, 'Disc Condition ID:', discConditionId);
+        
+        // For price estimation, we'll use the lower of the two conditions (higher quality index = worse)
+        // or default to the sleeve condition if disc is not set
+        let conditionForEstimate = '';
+        if (sleeveConditionId && discConditionId) {
+            const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
+            const discCond = this.conditions.find(c => c.id == discConditionId);
+            
+            // Use the worse condition (higher quality index) for price estimation
+            if (sleeveCond && discCond) {
+                if (sleeveCond.quality_index >= discCond.quality_index) {
+                    conditionForEstimate = sleeveCond.condition_name;
+                } else {
+                    conditionForEstimate = discCond.condition_name;
+                }
+            } else if (sleeveCond) {
+                conditionForEstimate = sleeveCond.condition_name;
+            } else if (discCond) {
+                conditionForEstimate = discCond.condition_name;
+            }
+        } else if (sleeveConditionId) {
+            const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
+            conditionForEstimate = sleeveCond ? sleeveCond.condition_name : '';
+        } else if (discConditionId) {
+            const discCond = this.conditions.find(c => c.id == discConditionId);
+            conditionForEstimate = discCond ? discCond.condition_name : '';
+        }
+        
+        if (!conditionForEstimate) {
+            return { success: false, error: 'No condition selected' };
+        }
             
         try {
             const response = await APIUtils.post('/api/price-estimate', {
                 artist: record.artist,
                 title: record.title,
-                condition: selectedCondition,
+                condition: conditionForEstimate,
                 discogs_genre: record.genre || '',
                 discogs_id: record.discogs_id || ''
             });
@@ -975,13 +1063,62 @@ class AddEditDeleteManager {
         }
     }
 
-    async handleConditionChange(event, isEditMode = false) {
+    async handleSleeveConditionChange(event, isEditMode = false) {
         const selectElement = event.target;
         const card = selectElement.closest('.record-card');
         const recordId = card.getAttribute('data-record-id');
-        const selectedCondition = selectElement.value;
+        const sleeveConditionId = selectElement.value;
         
-        if (!selectedCondition) {
+        // Find the disc condition dropdown in the same card
+        const discSelect = card.querySelector(isEditMode ? '.edit-disc-condition-select' : '.disc-condition-select');
+        
+        if (!sleeveConditionId) {
+            return;
+        }
+        
+        // Auto-set disc condition to same as sleeve (if disc is not already set)
+        if (discSelect && !discSelect.value) {
+            discSelect.value = sleeveConditionId;
+            console.log(`AUTO-SET: Disc condition set to match sleeve (ID: ${sleeveConditionId})`);
+            
+            // Trigger change event on disc select to update any dependent logic
+            const changeEvent = new Event('change', { bubbles: true });
+            discSelect.dispatchEvent(changeEvent);
+        }
+        
+        // Get disc condition value (either existing or newly set)
+        const discConditionId = discSelect.value;
+        
+        let record;
+        if (isEditMode) {
+            record = this.currentResults.find(r => r.id == recordId);
+        } else {
+            const index = card.getAttribute('data-index');
+            record = this.currentResults[index];
+        }
+        
+        if (!record) {
+            console.error('HANDLE_SLEEVE_CONDITION_CHANGE: Record not found');
+            return;
+        }
+        
+        // Only estimate price if both conditions are set
+        if (sleeveConditionId && discConditionId) {
+            await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
+        }
+    }
+
+    async handleDiscConditionChange(event, isEditMode = false) {
+        const selectElement = event.target;
+        const card = selectElement.closest('.record-card');
+        const recordId = card.getAttribute('data-record-id');
+        const discConditionId = selectElement.value;
+        
+        // Get sleeve condition value
+        const sleeveSelect = card.querySelector(isEditMode ? '.edit-sleeve-condition-select' : '.sleeve-condition-select');
+        const sleeveConditionId = sleeveSelect ? sleeveSelect.value : null;
+        
+        if (!discConditionId) {
             return;
         }
         
@@ -994,10 +1131,17 @@ class AddEditDeleteManager {
         }
         
         if (!record) {
-            console.error('HANDLE_CONDITION_CHANGE: Record not found');
+            console.error('HANDLE_DISC_CONDITION_CHANGE: Record not found');
             return;
         }
         
+        // Only estimate price if sleeve condition is also set
+        if (sleeveConditionId && discConditionId) {
+            await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
+        }
+    }
+
+    async estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode) {
         let priceInput;
         if (isEditMode) {
             priceInput = card.querySelector('.edit-price-input');
@@ -1006,7 +1150,7 @@ class AddEditDeleteManager {
         }
         
         if (!priceInput) {
-            console.error('HANDLE_CONDITION_CHANGE: Price input not found');
+            console.error('PRICE_ESTIMATE: Price input not found');
             return;
         }
         
@@ -1039,7 +1183,7 @@ class AddEditDeleteManager {
         priceContainer.style.position = 'relative';
         priceContainer.appendChild(tempOverlay);
         
-        const estimate = await this.estimatePriceForRecord(record, selectedCondition);
+        const estimate = await this.estimatePriceForRecord(record, sleeveConditionId, discConditionId);
         
         tempOverlay.remove();
         priceInput.disabled = false;
@@ -1105,7 +1249,7 @@ class AddEditDeleteManager {
                 
                 priceInput.parentElement.appendChild(hint);
                 
-                this.showExpandableCalculationDetails(record, selectedCondition, estimate, recordId, finalPrice);
+                this.showExpandableCalculationDetails(record, sleeveConditionId, discConditionId, estimate, recordId, finalPrice);
                 
             } else {
                 if (!hasExistingValue) {
@@ -1121,9 +1265,15 @@ class AddEditDeleteManager {
         }
     }
 
-    showExpandableCalculationDetails(record, condition, estimate, recordId, finalPrice) {
+    showExpandableCalculationDetails(record, sleeveConditionId, discConditionId, estimate, recordId, finalPrice) {
         const calculationContainer = document.getElementById(`calculation-${recordId}`);
         if (!calculationContainer) return;
+        
+        // Get condition names
+        const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
+        const discCond = this.conditions.find(c => c.id == discConditionId);
+        const sleeveName = sleeveCond ? sleeveCond.display_name || sleeveCond.condition_name : 'Unknown';
+        const discName = discCond ? discCond.display_name || discCond.condition_name : 'Unknown';
         
         let calculationHTML = '';
         let priceSourceClass = 'estimated';
@@ -1140,6 +1290,7 @@ class AddEditDeleteManager {
             <div class="rounding-info" style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
                 <strong>💰 Price Rules Applied by API:</strong>
                 <div style="margin-top: 5px;">
+                    <div><strong>Conditions:</strong> Sleeve: ${sleeveName} | Disc: ${discName}</div>
                     <div>• <strong>Final Price:</strong> $${finalPrice.toFixed(2)} (already rounded)</div>
                     <div>• <strong>Minimum Price:</strong> $${this.minimumPrice.toFixed(2)} ${finalPrice === this.minimumPrice ? '✓ Minimum applied' : '✓ Met minimum'}</div>
                     <div style="font-size: 11px; color: #666; margin-top: 3px;">
@@ -1242,7 +1393,6 @@ class AddEditDeleteManager {
                                             </div>
                                             ${listing.matches_condition ? '<span class="condition-match-badge">✓ Match</span>' : ''}
                                         </td>
-                                         
                                         <td>
                                             <div class="ebay-condition">${listing.condition || 'N/A'}</div>
                                         </td>
@@ -1286,12 +1436,23 @@ class AddEditDeleteManager {
     }
 
     addConditionChangeListeners() {
-        document.querySelectorAll('.condition-select').forEach(select => {
-            select.addEventListener('change', (e) => this.handleConditionChange(e, false));
+        // Add listeners for sleeve condition dropdowns
+        document.querySelectorAll('.sleeve-condition-select').forEach(select => {
+            select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, false));
         });
         
-        document.querySelectorAll('.edit-condition-select').forEach(select => {
-            select.addEventListener('change', (e) => this.handleConditionChange(e, true));
+        // Add listeners for disc condition dropdowns
+        document.querySelectorAll('.disc-condition-select').forEach(select => {
+            select.addEventListener('change', (e) => this.handleDiscConditionChange(e, false));
+        });
+        
+        // Edit mode listeners
+        document.querySelectorAll('.edit-sleeve-condition-select').forEach(select => {
+            select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, true));
+        });
+        
+        document.querySelectorAll('.edit-disc-condition-select').forEach(select => {
+            select.addEventListener('change', (e) => this.handleDiscConditionChange(e, true));
         });
     }
 
@@ -1358,11 +1519,13 @@ class AddEditDeleteManager {
 
     async addRecordFromDiscogs(card, discogsRecord) {
         const genreSelect = card.querySelector('.genre-select');
-        const conditionSelect = card.querySelector('.condition-select');
+        const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
+        const discConditionSelect = card.querySelector('.disc-condition-select');
         const priceInput = card.querySelector('.price-input');
         
         const genreId = genreSelect.value;
-        const condition = conditionSelect.value;
+        const sleeveConditionId = sleeveConditionSelect.value;
+        const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
         
         // Use global settings
@@ -1371,7 +1534,8 @@ class AddEditDeleteManager {
         
         const errors = [];
         if (!genreId) errors.push('Please select a genre');
-        if (!condition) errors.push('Please select a condition');
+        if (!sleeveConditionId) errors.push('Please select a sleeve condition');
+        if (!discConditionId) errors.push('Please select a disc condition');
         if (!price || price < this.minimumPrice) errors.push(`Price must be at least $${this.minimumPrice.toFixed(2)}`);
         
         if (errors.length > 0) {
@@ -1397,7 +1561,8 @@ class AddEditDeleteManager {
         console.log('Artist:', discogsRecord.artist);
         console.log('Title:', discogsRecord.title);
         console.log('Genre ID:', genreId);
-        console.log('Condition:', condition);
+        console.log('Sleeve Condition ID:', sleeveConditionId);
+        console.log('Disc Condition ID:', discConditionId);
         console.log('Final Price:', price);
         console.log('Consignor ID (from global settings):', consignorId);
         console.log('Commission Rate (from global settings):', commissionRate);
@@ -1411,7 +1576,8 @@ class AddEditDeleteManager {
             image_url: discogsRecord.image_url || '',
             catalog_number: discogsRecord.catalog_number || '',
             format: discogsRecord.format || 'Vinyl',
-            condition: condition,
+            condition_sleeve_id: parseInt(sleeveConditionId),
+            condition_disc_id: parseInt(discConditionId),
             store_price: price,
             youtube_url: '',
             consignor_id: consignorId || user.id || null,
@@ -1463,7 +1629,8 @@ class AddEditDeleteManager {
         if (!card) return;
         
         const genreSelect = card.querySelector('.edit-genre-select');
-        const conditionSelect = card.querySelector('.edit-condition-select');
+        const sleeveConditionSelect = card.querySelector('.edit-sleeve-condition-select');
+        const discConditionSelect = card.querySelector('.edit-disc-condition-select');
         const priceInput = card.querySelector('.edit-price-input');
         const statusSelect = card.querySelector('.edit-status-select');
         const consignorSelect = card.querySelector('.edit-consignor-select');
@@ -1475,8 +1642,12 @@ class AddEditDeleteManager {
             updates.genre_id = parseInt(genreSelect.value);
         }
         
-        if (conditionSelect && conditionSelect.value) {
-            updates.condition = conditionSelect.value;
+        if (sleeveConditionSelect && sleeveConditionSelect.value) {
+            updates.condition_sleeve_id = parseInt(sleeveConditionSelect.value);
+        }
+        
+        if (discConditionSelect && discConditionSelect.value) {
+            updates.condition_disc_id = parseInt(discConditionSelect.value);
         }
         
         if (priceInput) {
@@ -1524,7 +1695,7 @@ class AddEditDeleteManager {
             const response = await APIUtils.put(`/records/${recordId}`, updates);
             
             if (response.status === 'success') {
-                showMessage(`Record updated successfully! Price: $${updates.store_price ? (response.record.store_price || updates.store_price).toFixed(2) : 'unchanged'}`, 'success');
+                showMessage(`Record updated successfully! Price: $${updates.store_price ? (response.record?.store_price || updates.store_price).toFixed(2) : 'unchanged'}`, 'success');
                 const currentSearch = document.getElementById('searchInput').value;
                 if (currentSearch) {
                     await this.performSearch(currentSearch);
