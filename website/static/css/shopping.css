@@ -1463,8 +1463,9 @@ body {
     }
 }
 
-/* Mobile responsive cart drawer */
+/* NEW: Mobile responsive styles for tablets and phones (under 768px) */
 @media (max-width: 768px) {
+    /* Cart drawer */
     .cart-drawer {
         width: 100% !important;
         max-width: 100% !important;
@@ -1495,7 +1496,6 @@ body {
         overflow-y: auto;
     }
     
-    /* Cart items table mobile view */
     .cart-items-table {
         font-size: 14px;
     }
@@ -1548,7 +1548,6 @@ body {
         font-size: 14px;
     }
     
-    /* Cart footer mobile */
     .cart-drawer-footer {
         padding: 15px;
         background: white;
@@ -1571,8 +1570,9 @@ body {
         margin-top: 10px;
     }
     
-    /* Cart toggle button positioning for mobile */
+    /* Always visible cart toggle on mobile */
     #cartToggleContainer {
+        display: block !important;  /* Override inline style */
         position: fixed;
         bottom: 20px;
         right: 20px;
@@ -1592,13 +1592,23 @@ body {
     
     .cart-icon-wrapper i {
         font-size: 24px !important;
+        color: white !important;
     }
     
     .cart-badge {
+        position: absolute;
         top: -5px;
         right: -5px;
+        background: #dc3545;
+        color: white;
+        border-radius: 50%;
         min-width: 22px;
         height: 22px;
         font-size: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
 }
