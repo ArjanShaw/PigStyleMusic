@@ -15,308 +15,12 @@
       gtag('config', 'G-03HFDR9PV7');
     </script>
     
-    <link rel="stylesheet" href="/static/css/catalog.css">
-    <script src="/static/js/app-config.js"></script>
+    <!-- External CSS -->
+    <link rel="stylesheet" href="/static/css/shopping.css">
     
-    <style>
-        /* Additional styles for copy count and price range */
-        .copy-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 8px 0 5px 0;
-            font-size: 13px;
-            color: #666;
-        }
-        
-        .copy-count {
-            background: #ff6b6b;
-            color: white;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            display: inline-block;
-        }
-        
-        .price-range {
-            font-weight: 600;
-            color: #28a745;
-            font-size: 13px;
-        }
-        
-        .condition-indicator {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 500;
-            margin-right: 4px;
-        }
-        
-        .condition-mint { background: #d4edda; color: #155724; }
-        .condition-near-mint { background: #cce5ff; color: #004085; }
-        .condition-very-good-plus { background: #d1ecf1; color: #0c5460; }
-        .condition-very-good { background: #fff3cd; color: #856404; }
-        .condition-good-plus { background: #f8d7da; color: #721c24; }
-        .condition-good { background: #f8d7da; color: #721c24; }
-        .condition-fair { background: #e2e3e5; color: #383d41; }
-        .condition-poor { background: #e2e3e5; color: #383d41; }
-        
-        .conditions-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            margin-top: 5px;
-        }
-        
-        .card:hover .conditions-list {
-            opacity: 1;
-        }
-        
-        /* Tooltip for additional copies */
-        .more-copies {
-            font-size: 11px;
-            color: #999;
-            margin-left: 4px;
-        }
-
-        /* Popup/Modal styles */
-        .copies-modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 2000;
-        }
-
-        .copies-modal {
-            background: white;
-            border-radius: 8px;
-            width: 500px;
-            max-width: 90%;
-            max-height: 80vh;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        }
-
-        .copies-modal-header {
-            background: #f8f9fa;
-            padding: 15px 20px;
-            border-bottom: 2px solid #ff6b6b;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .copies-modal-header h3 {
-            margin: 0;
-            color: #000000;
-            font-size: 16px;
-            font-weight: 600;
-        }
-
-        .copies-modal-close {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #000000;
-            padding: 0;
-            line-height: 1;
-            opacity: 0.7;
-            transition: opacity 0.2s;
-        }
-
-        .copies-modal-close:hover {
-            opacity: 1;
-            color: #ff6b6b;
-        }
-
-        .copies-list {
-            padding: 20px;
-            max-height: calc(80vh - 120px);
-            overflow-y: auto;
-            background: white;
-        }
-
-        .copy-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .copy-item:last-child {
-            border-bottom: none;
-        }
-
-        .copy-condition {
-            flex: 2;
-        }
-
-        .copy-price {
-            flex: 1;
-            text-align: right;
-            font-weight: 600;
-            color: #000000;
-            font-size: 16px;
-        }
-
-        .copies-modal-footer {
-            background: #f8f9fa;
-            padding: 15px 20px;
-            border-top: 1px solid #dee2e6;
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-        }
-
-        .footer-total {
-            color: #000000;
-            font-weight: 500;
-            font-size: 14px;
-        }
-
-        /* New styles for album image in popup */
-        .copies-modal-content {
-            display: flex;
-            flex-direction: row;
-            max-height: calc(80vh - 120px);
-        }
-
-        .modal-album-image {
-            width: 150px;
-            flex-shrink: 0;
-            padding: 20px 0 20px 20px;
-        }
-
-        .modal-album-image img {
-            width: 100%;
-            height: auto;
-            border-radius: 4px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .modal-album-image.default-record-bg {
-            background-image: url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'150\' height=\'150\' viewBox=\'0 0 150 150\'%3E%3Crect width=\'150\' height=\'150\' fill=\'%23f8f9fa\'/%3E%3Ccircle cx=\'75\' cy=\'75\' r=\'65\' fill=\'%23333\' stroke=\'%23666\' stroke-width=\'3\'/%3E%3Ccircle cx=\'75\' cy=\'75\' r=\'45\' fill=\'%23222\' stroke=\'%23444\' stroke-width=\'2\'/%3E%3Ccircle cx=\'75\' cy=\'75\' r=\'25\' fill=\'%23ff6b6b\' stroke=\'%23cc5555\' stroke-width=\'2\'/%3E%3Ccircle cx=\'75\' cy=\'75\' r=\'7\' fill=\'%23111\'/%3E%3C/svg%3E');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            width: 150px;
-            height: 150px;
-            border-radius: 4px;
-        }
-
-        .copies-list-with-image {
-            flex: 1;
-            padding: 20px 20px 20px 10px;
-            max-height: calc(80vh - 120px);
-            overflow-y: auto;
-            background: white;
-        }
-
-        /* Default image for cards */
-        .card-image.default-record-bg {
-            background-image: url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\' viewBox=\'0 0 200 200\'%3E%3Crect width=\'200\' height=\'200\' fill=\'%23f8f9fa\'/%3E%3Ccircle cx=\'100\' cy=\'100\' r=\'85\' fill=\'%23333\' stroke=\'%23666\' stroke-width=\'3\'/%3E%3Ccircle cx=\'100\' cy=\'100\' r=\'60\' fill=\'%23222\' stroke=\'%23444\' stroke-width=\'2\'/%3E%3Ccircle cx=\'100\' cy=\'100\' r=\'35\' fill=\'%23ff6b6b\' stroke=\'%23cc5555\' stroke-width=\'2\'/%3E%3Ccircle cx=\'100\' cy=\'100\' r=\'10\' fill=\'%23111\'/%3E%3C/svg%3E');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            width: 100%;
-            aspect-ratio: 1;
-        }
-
-        /* Simplified filter section - only date buttons */
-        .filter-section {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .filter-label {
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-            margin-bottom: 5px;
-        }
-
-        .date-presets {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .date-preset-btn {
-            padding: 8px 16px;
-            background: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 13px;
-            cursor: pointer;
-            color: #333;
-            transition: all 0.2s;
-            font-weight: 500;
-        }
-
-        .date-preset-btn:hover {
-            background: #ff6b6b;
-            border-color: #ff6b6b;
-            color: white;
-        }
-
-        .date-preset-btn.active {
-            background: #ff6b6b;
-            border-color: #ff6b6b;
-            color: white;
-        }
-
-        /* New arrivals badge */
-        .new-arrival-badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: #ff6b6b;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            z-index: 2;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-
-        .card {
-            position: relative;
-        }
-
-        /* Search box */
-        .search-wrapper {
-            margin-bottom: 20px;
-        }
-
-        #searchBox {
-            width: 100%;
-            max-width: 400px;
-            padding: 10px 15px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 16px;
-        }
-
-        #searchBox:focus {
-            outline: none;
-            border-color: #ff6b6b;
-            box-shadow: 0 0 0 2px rgba(255,107,107,0.1);
-        }
-    </style>
+    <!-- JavaScript files -->
+    <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/config-value-manager.js"></script>
 </head>
 <body>
     <!-- Navbar -->
@@ -328,7 +32,14 @@
             <a href="/shop" style="color: white; text-decoration: none;">Shop</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
             <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
-            <div id="auth-section">
+            <div id="auth-section"></div>
+            
+            <!-- Cart drawer toggle button - only shows when items exist -->
+            <div id="cartToggleContainer" style="display: none;">
+                <div class="cart-icon-wrapper" id="cartToggle">
+                    <i class="fas fa-shopping-cart" style="color: white; font-size: 20px;"></i>
+                    <span id="cartBadge" class="cart-badge">0</span>
+                </div>
             </div>
         </div>
     </nav>
@@ -348,13 +59,23 @@
         </div>
         
         <div class="filter-section">
-            <div class="filter-label"><i class="far fa-calendar-alt"></i> Date Added</div>
-            <div class="date-presets">
-                <button type="button" class="date-preset-btn active" data-days="7">Last 7 days</button>
-                <button type="button" class="date-preset-btn" data-days="30">Last 30 days</button>
-                <button type="button" class="date-preset-btn" data-days="90">Last 90 days</button>
-                <button type="button" class="date-preset-btn" data-days="365">Last year</button>
-                <button type="button" class="date-preset-btn" id="clearDates">Clear</button>
+            <div class="filter-group">
+                <div class="filter-label"><i class="far fa-calendar-alt"></i> New Arrivals</div>
+                <div class="filter-toggle">
+                    <button type="button" class="filter-toggle-btn active" id="newArrivalsToggle">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Last 7 days</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <div class="filter-label"><i class="fas fa-music"></i> Genre</div>
+                <div class="genre-filter">
+                    <select id="genreSelect" class="genre-select">
+                        <option value="">All Genres</option>
+                    </select>
+                </div>
             </div>
         </div>
     </div>
@@ -371,15 +92,312 @@
         </div>
     </div>
 
+    <!-- Cart Drawer - Hidden by default -->
+    <div class="cart-drawer" id="cartDrawer">
+        <div class="cart-drawer-header">
+            <h3><i class="fas fa-shopping-cart"></i> Your Cart</h3>
+            <button class="cart-drawer-close" id="closeCartDrawer">&times;</button>
+        </div>
+        <div class="cart-drawer-items" id="cartItems">
+            <!-- Cart items will be dynamically inserted here -->
+            <div class="empty-cart-message">
+                <i class="fas fa-shopping-bag"></i>
+                <p>Your cart is empty</p>
+            </div>
+        </div>
+        <div class="cart-drawer-footer" id="cartFooter" style="display: none;">
+            <!-- Cart footer will be dynamically populated by updateCartDrawer() -->
+        </div>
+    </div>
+
+    <!-- Cart Overlay (click to close) -->
+    <div class="cart-overlay" id="cartOverlay"></div>
+
     <script>
         // Store all releases globally
         let allReleases = [];
+        
+        // Cart state
+        let cart = {
+            items: [],
+            total: 0
+        };
 
-        // Load data from new grouped API endpoint
+        // Current order being processed
+        let currentOrder = null;
+
+        // Shipping cost - will be set from config
+        let shippingCost = 0;
+        
+        // Tax rate - will be loaded from config
+        let taxRate = 0;
+
+        // Debug mode
+        let debugMode = true;
+
+        // Default record image constant (empty string - we use CSS backgrounds now)
+        const DEFAULT_RECORD_IMAGE = '';
+
+        // Add debug message
+        function addDebug(message, type = 'info') {
+            if (!debugMode) return;
+            console.log(`[Checkout Debug] ${message}`);
+        }
+
+        // Load cart from localStorage on page load
+        function loadCart() {
+            const savedCart = localStorage.getItem('pigstyle_cart');
+            if (savedCart) {
+                try {
+                    cart = JSON.parse(savedCart);
+                    updateCartDisplay();
+                    addDebug(`Loaded cart with ${cart.items.length} items`);
+                } catch (e) {
+                    console.error('Error loading cart:', e);
+                }
+            }
+        }
+
+        // Save cart to localStorage
+        function saveCart() {
+            localStorage.setItem('pigstyle_cart', JSON.stringify(cart));
+            updateCartDisplay();
+        }
+
+        // Update cart display (badge, toggle visibility, drawer)
+        function updateCartDisplay() {
+            const cartToggleContainer = document.getElementById('cartToggleContainer');
+            const cartBadge = document.getElementById('cartBadge');
+            
+            // Update badge count
+            const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+            cartBadge.textContent = itemCount;
+            
+            // Show/hide cart toggle based on items
+            if (itemCount > 0) {
+                cartToggleContainer.style.display = 'block';
+            } else {
+                cartToggleContainer.style.display = 'none';
+            }
+            
+            // Update cart drawer if it's open
+            updateCartDrawer();
+        }
+
+        // Update cart drawer contents with tax display
+        async function updateCartDrawer() {
+            const cartItems = document.getElementById('cartItems');
+            const cartFooter = document.getElementById('cartFooter');
+            
+            if (cart.items.length === 0) {
+                cartItems.innerHTML = `
+                    <div class="empty-cart-message">
+                        <i class="fas fa-shopping-bag"></i>
+                        <p>Your cart is empty</p>
+                    </div>
+                `;
+                cartFooter.style.display = 'none';
+            } else {
+                // Calculate subtotal
+                const subtotal = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                
+                // Get tax rate (use stored value or fetch if needed)
+                let currentTaxRate = taxRate;
+                if (currentTaxRate === 0) {
+                    try {
+                        currentTaxRate = await getConfigValue('TAX_RATE') || 0;
+                        taxRate = currentTaxRate; // Store for future use
+                    } catch (e) {
+                        console.warn('Could not fetch tax rate, using 0');
+                        currentTaxRate = 0;
+                    }
+                }
+                
+                // Calculate tax
+                const taxAmount = subtotal * (currentTaxRate / 100);
+                const totalWithTax = subtotal + taxAmount;
+                
+                // Build items HTML with table layout
+                let itemsHtml = `
+                    <table class="cart-items-table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th class="price-column">Price</th>
+                                <th class="action-column"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                cart.items.forEach((item, index) => {
+                    const conditionClass = getConditionClass(item.condition);
+                    
+                    // Handle image display
+                    const imageHtml = item.image_url ? 
+                        `<img src="${item.image_url}" alt="${item.title}" class="cart-item-image" onerror="this.parentElement.innerHTML='<div class=\'cart-item-image default-record-bg\'></div>'">` : 
+                        `<div class="cart-item-image default-record-bg"></div>`;
+                    
+                    itemsHtml += `
+                        <tr class="cart-item-row" data-cart-index="${index}">
+                            <td class="item-info-cell">
+                                <div class="cart-item-info">
+                                    ${imageHtml}
+                                    <div class="cart-item-details">
+                                        <div class="cart-item-title">${escapeHtml(item.title)}</div>
+                                        <div class="cart-item-artist">${escapeHtml(item.artist)}</div>
+                                        <span class="cart-item-condition ${conditionClass}">${item.condition || 'Unknown'}</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="item-price-cell">
+                                <div class="cart-item-price">$${item.price.toFixed(2)}</div>
+                            </td>
+                            <td class="item-action-cell">
+                                <button class="cart-item-remove-btn" onclick="removeFromCart(${index})" title="Remove item">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+                
+                itemsHtml += `
+                        </tbody>
+                    </table>
+                `;
+                
+                cartItems.innerHTML = itemsHtml;
+                
+                // Update footer with table layout for totals
+                cartFooter.innerHTML = `
+                    <table class="cart-totals-table">
+                        <tbody>
+                            <tr class="subtotal-row">
+                                <td class="label">Subtotal:</td>
+                                <td class="amount">$${subtotal.toFixed(2)}</td>
+                            </tr>
+                            <tr class="tax-row">
+                                <td class="label">Tax (${currentTaxRate}%):</td>
+                                <td class="amount">$${taxAmount.toFixed(2)}</td>
+                            </tr>
+                            <tr class="total-row">
+                                <td class="label">Total:</td>
+                                <td class="amount total-amount">$${totalWithTax.toFixed(2)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button>
+                `;
+                
+                cartFooter.style.display = 'block';
+                
+                // Re-attach checkout button event listener
+                document.getElementById('checkoutBtn').addEventListener('click', function() {
+                    if (cart.items.length > 0) {
+                        showShippingOptions();
+                    }
+                });
+            }
+        }
+
+        // Check if a copy is already in cart
+        function isInCart(copyId) {
+            return cart.items.some(item => item.copyId === copyId);
+        }
+
+        // Add item to cart
+        function addToCart(copy, release) {
+            // Check if item is already in cart
+            if (isInCart(copy.id)) {
+                showNotification('This item is already in your cart!', 'error');
+                return false;
+            }
+            
+            // Add new item
+            cart.items.push({
+                copyId: copy.id,
+                title: release.title,
+                artist: release.artist,
+                condition: copy.condition,
+                price: copy.store_price,
+                image_url: release.image_url,
+                quantity: 1
+            });
+            
+            // Recalculate cart.total
+            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            saveCart();
+            showNotification('Item added to cart!', 'success');
+            return true;
+        }
+
+        // Remove item from cart
+        function removeFromCart(index) {
+            cart.items.splice(index, 1);
+            
+            // Recalculate cart.total after removal
+            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            saveCart();
+            showNotification('Item removed from cart', 'success');
+            
+            // If cart becomes empty, close the drawer
+            if (cart.items.length === 0) {
+                closeCartDrawer();
+            }
+        }
+
+        // Clear entire cart
+        function clearCart() {
+            cart.items = [];
+            cart.total = 0;
+            
+            saveCart();
+            closeCartDrawer();
+            showNotification('Cart cleared', 'success');
+        }
+
+        // Show notification
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type === 'error' ? 'error' : ''}`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }, 3000);
+        }
+
+        // Open cart drawer
+        function openCartDrawer() {
+            document.getElementById('cartDrawer').classList.add('open');
+            document.getElementById('cartOverlay').classList.add('active');
+            updateCartDrawer(); // Refresh contents when opening
+        }
+
+        // Close cart drawer
+        function closeCartDrawer() {
+            document.getElementById('cartDrawer').classList.remove('open');
+            document.getElementById('cartOverlay').classList.remove('active');
+        }
+
+        // Load data from grouped API endpoint
         async function loadCatalogData() {
             try {
                 console.log('Loading grouped catalog data from API...');
                 const response = await fetch(`${AppConfig.baseUrl}/catalog/grouped-by-release`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                }
+                
                 const data = await response.json();
                 
                 console.log('API Response:', data);
@@ -387,122 +405,60 @@
                 if (data.status === 'success') {
                     allReleases = data.groups || [];
                     console.log(`Loaded ${allReleases.length} unique releases with ${data.total_copies} total copies`);
+                    
+                    // Populate genre filter
+                    populateGenreFilter(allReleases);
+                    
                     displayReleases(allReleases);
                 } else {
-                    throw new Error('Invalid response from server');
+                    throw new Error('Invalid response from server: ' + JSON.stringify(data));
                 }
                 
             } catch (error) {
-                console.error('Error loading catalog data:', error);
-                // Fallback to original endpoint if new one fails
-                loadCatalogDataFallback();
+                console.error('CRITICAL ERROR: Failed to load grouped catalog data:', error);
+                
+                // Show error message to user with details
+                document.getElementById('catalogContainer').innerHTML = `
+                    <div class="error-message">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h2>Failed to Load Catalog</h2>
+                        <p>Unable to retrieve inventory data from the server. Please try again or contact support if the problem persists.</p>
+                        <div class="error-details">
+                            <strong>Error:</strong> ${escapeHtml(error.message)}
+                        </div>
+                        <button class="retry-btn" onclick="window.location.reload()">
+                            <i class="fas fa-sync-alt"></i> Retry
+                        </button>
+                    </div>
+                `;
+                
+                // Re-throw the error to ensure it's not silently handled
+                throw error;
             }
         }
 
-        // Fallback to original endpoint
-        async function loadCatalogDataFallback() {
-            try {
-                console.log('Falling back to original catalog endpoint...');
-                // Assuming pigstyleAPI is available from app-config.js
-                const response = await window.pigstyleAPI?.loadCatalogGroupedRecords?.() || [];
-                
-                let catalogData;
-                if (Array.isArray(response)) {
-                    catalogData = {
-                        groups: [{
-                            label: 'All Records',
-                            records: response
-                        }]
-                    };
-                } else if (response && response.groups) {
-                    catalogData = response;
-                } else {
-                    throw new Error('Invalid response format');
-                }
-                
-                // Convert flat records to grouped format
-                const records = catalogData.groups.flatMap(g => g.records || []);
-                const grouped = groupRecordsByRelease(records);
-                allReleases = grouped;
-                
-                displayReleases(grouped);
-                
-            } catch (error) {
-                console.error('Error loading fallback data:', error);
-                document.getElementById('catalogContainer').innerHTML = 
-                    '<div class="error-message">Error loading catalog. Please try again later.<br>' + 
-                    error.message + '</div>';
-            }
-        }
-
-        // Helper function to group flat records by release
-        function groupRecordsByRelease(records) {
-            const groups = {};
-            const conditionOrder = {
-                'Mint (M)': 1,
-                'Near Mint (NM or M-)': 2,
-                'Very Good Plus (VG+)': 3,
-                'Very Good (VG)': 4,
-                'Good Plus (G+)': 5,
-                'Good (G)': 6,
-                'Fair (F)': 7,
-                'Poor (P)': 8
-            };
+        // Populate genre filter dropdown
+        function populateGenreFilter(releases) {
+            const genreSelect = document.getElementById('genreSelect');
             
-            records.forEach(record => {
-                const artist = (record.artist || '').trim();
-                const title = (record.title || '').trim();
-                const key = `${artist.toLowerCase()}|${title.toLowerCase()}`;
-                
-                if (!groups[key]) {
-                    groups[key] = {
-                        artist: artist,
-                        title: title,
-                        genre_name: record.genre_name,
-                        image_url: record.image_url,
-                        total_copies: 0,
-                        price_range: { min: Infinity, max: 0 },
-                        copies: [],
-                        // Track the earliest created_at date for this release
-                        created_at: record.created_at
-                    };
-                }
-                
-                const copy = {
-                    id: record.id,
-                    condition: record.condition,
-                    condition_rank: conditionOrder[record.condition] || 99,
-                    store_price: parseFloat(record.store_price) || 0,
-                    barcode: record.barcode,
-                    catalog_number: record.catalog_number,
-                    youtube_url: record.youtube_url,
-                    created_at: record.created_at
-                };
-                
-                groups[key].copies.push(copy);
-                groups[key].total_copies++;
-                
-                // Track the earliest creation date for the release
-                if (record.created_at && (!groups[key].created_at || record.created_at < groups[key].created_at)) {
-                    groups[key].created_at = record.created_at;
-                }
-                
-                if (copy.store_price > 0) {
-                    groups[key].price_range.min = Math.min(groups[key].price_range.min, copy.store_price);
-                    groups[key].price_range.max = Math.max(groups[key].price_range.max, copy.store_price);
+            // Get unique genres
+            const genres = new Set();
+            releases.forEach(release => {
+                if (release.genre_name) {
+                    genres.add(release.genre_name);
                 }
             });
             
-            // Clean up price ranges
-            Object.values(groups).forEach(group => {
-                if (group.price_range.min === Infinity) {
-                    group.price_range = { min: 0, max: 0 };
-                }
-            });
+            // Sort genres alphabetically
+            const sortedGenres = Array.from(genres).sort();
             
-            return Object.values(groups).sort((a, b) => 
-                (a.artist || '').localeCompare(b.artist || '')
-            );
+            // Add options to select
+            sortedGenres.forEach(genre => {
+                const option = document.createElement('option');
+                option.value = genre;
+                option.textContent = genre;
+                genreSelect.appendChild(option);
+            });
         }
 
         // Display releases (keeps same tile layout)
@@ -520,10 +476,6 @@
             // Create a gallery container to maintain same layout
             const gallery = document.createElement('div');
             gallery.className = 'group-gallery';
-            gallery.style.display = 'grid';
-            gallery.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
-            gallery.style.gap = '20px';
-            gallery.style.padding = '20px';
 
             releases.forEach(release => {
                 const card = createReleaseCard(release);
@@ -532,9 +484,9 @@
 
             container.appendChild(gallery);
             
-            // Apply the default 7-day filter after loading
+            // Apply filters after loading
             setTimeout(() => {
-                applyDateFilter(7);
+                applyFilters();
             }, 100);
         }
 
@@ -546,17 +498,18 @@
             // Set data attributes for filtering
             card.setAttribute('data-artist', (release.artist || '').toLowerCase());
             card.setAttribute('data-title', (release.title || '').toLowerCase());
+            card.setAttribute('data-genre', release.genre_name || '');
             
             // Set date attribute for filtering (earliest creation date)
             if (release.created_at) {
                 card.setAttribute('data-created', release.created_at);
                 
-                // Add "New Arrival" badge for items added in the last 30 days
-                const thirtyDaysAgo = new Date();
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                // Add "New Arrival" badge for items added in the last 7 days
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
                 const createdDate = new Date(release.created_at);
                 
-                if (createdDate >= thirtyDaysAgo) {
+                if (createdDate >= sevenDaysAgo) {
                     const badge = document.createElement('div');
                     badge.className = 'new-arrival-badge';
                     badge.textContent = 'NEW';
@@ -704,7 +657,7 @@
             return '';
         }
 
-        // Show popup with all copies (with album image)
+        // Show popup with all copies (with album image and add to cart buttons)
         function showCopiesPopup(release) {
             // Create modal overlay
             const modal = document.createElement('div');
@@ -758,12 +711,23 @@
                         <div class="copies-list-with-image">
                             ${sortedCopies.map(copy => {
                                 const conditionClass = getConditionClass(copy.condition);
+                                const alreadyInCart = isInCart(copy.id);
                                 return `
                                     <div class="copy-item">
-                                        <span class="copy-condition">
-                                            <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
-                                        </span>
-                                        <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+                                        <div class="copy-item-content">
+                                            <span class="copy-condition">
+                                                <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
+                                            </span>
+                                            <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+                                        </div>
+                                        <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" 
+                                                data-copy-id="${copy.id}" 
+                                                data-copy-condition="${copy.condition}" 
+                                                data-copy-price="${copy.store_price}"
+                                                ${alreadyInCart ? 'disabled' : ''}>
+                                            <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
+                                            ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
+                                        </button>
                                     </div>
                                 `;
                             }).join('')}
@@ -784,6 +748,27 @@
                 if (e.target === modal) {
                     modal.remove();
                 }
+            });
+            
+            // Add event listeners for add to cart buttons
+            modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    
+                    const copyId = btn.dataset.copyId;
+                    
+                    // Find the full copy object
+                    const copy = release.copies.find(c => c.id == copyId);
+                    
+                    if (copy) {
+                        const added = addToCart(copy, release);
+                        
+                        if (added) {
+                            // Close the modal after adding to cart
+                            modal.remove();
+                        }
+                    }
+                });
             });
             
             document.body.appendChild(modal);
@@ -846,35 +831,39 @@
             return null;
         }
 
-        // Apply date filter based on days
-        function applyDateFilter(days) {
+        // Apply all filters (new arrivals toggle and genre)
+        function applyFilters() {
             const container = document.getElementById('catalogContainer');
             const cards = container.querySelectorAll('.card');
-            
-            if (days === null || days === undefined) {
-                // Show all cards
-                cards.forEach(card => {
-                    card.style.display = 'block';
-                });
-                return;
-            }
-            
-            const cutoffDate = new Date();
-            cutoffDate.setDate(cutoffDate.getDate() - days);
-            cutoffDate.setHours(0, 0, 0, 0);
+            const newArrivalsActive = document.getElementById('newArrivalsToggle').classList.contains('active');
+            const selectedGenre = document.getElementById('genreSelect').value;
             
             let visibleCount = 0;
             
             cards.forEach(card => {
                 const createdDate = card.getAttribute('data-created');
+                const genre = card.getAttribute('data-genre') || '';
                 
-                if (!createdDate) {
-                    card.style.display = 'none';
-                    return;
+                // Check new arrivals filter
+                let dateMatch = true;
+                if (newArrivalsActive && createdDate) {
+                    const sevenDaysAgo = new Date();
+                    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                    sevenDaysAgo.setHours(0, 0, 0, 0);
+                    const cardDate = new Date(createdDate);
+                    dateMatch = cardDate >= sevenDaysAgo;
                 }
                 
-                const cardDate = new Date(createdDate);
-                const shouldShow = cardDate >= cutoffDate;
+                // Check genre filter
+                const genreMatch = !selectedGenre || genre === selectedGenre;
+                
+                // Get search term from search box
+                const searchTerm = document.getElementById('searchBox').value.toLowerCase().trim();
+                const artist = card.getAttribute('data-artist') || '';
+                const title = card.getAttribute('data-title') || '';
+                const searchMatch = !searchTerm || artist.includes(searchTerm) || title.includes(searchTerm);
+                
+                const shouldShow = dateMatch && genreMatch && searchMatch;
                 
                 card.style.display = shouldShow ? 'block' : 'none';
                 if (shouldShow) visibleCount++;
@@ -886,7 +875,7 @@
                 if (!existingNoResults) {
                     const noResultsDiv = document.createElement('div');
                     noResultsDiv.className = 'no-records';
-                    noResultsDiv.textContent = 'No records match the selected date range.';
+                    noResultsDiv.textContent = 'No records match your filters.';
                     container.appendChild(noResultsDiv);
                 }
             } else if (existingNoResults) {
@@ -894,96 +883,420 @@
             }
         }
 
-        // Initialize search and filter functionality
+        // Initialize filters
         function initializeFilters() {
             const searchBox = document.getElementById('searchBox');
+            const newArrivalsToggle = document.getElementById('newArrivalsToggle');
+            const genreSelect = document.getElementById('genreSelect');
             
             // Search functionality
-            searchBox.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase().trim();
-                const container = document.getElementById('catalogContainer');
-                const cards = container.querySelectorAll('.card');
-                
-                // Get current active date filter
-                const activeDateBtn = document.querySelector('.date-preset-btn.active');
-                const activeDays = activeDateBtn && activeDateBtn.dataset.days ? parseInt(activeDateBtn.dataset.days) : null;
-                
-                let visibleCount = 0;
-                
-                cards.forEach(card => {
-                    const artist = card.getAttribute('data-artist') || '';
-                    const title = card.getAttribute('data-title') || '';
-                    const createdDate = card.getAttribute('data-created');
-                    
-                    // Check date filter first
-                    let dateMatch = true;
-                    if (activeDays !== null && createdDate) {
-                        const cutoffDate = new Date();
-                        cutoffDate.setDate(cutoffDate.getDate() - activeDays);
-                        cutoffDate.setHours(0, 0, 0, 0);
-                        const cardDate = new Date(createdDate);
-                        dateMatch = cardDate >= cutoffDate;
-                    }
-                    
-                    // Then check search
-                    const searchMatch = !searchTerm || 
-                        artist.includes(searchTerm) || 
-                        title.includes(searchTerm);
-                    
-                    const shouldShow = dateMatch && searchMatch;
-                    
-                    card.style.display = shouldShow ? 'block' : 'none';
-                    if (shouldShow) visibleCount++;
-                });
-                
-                // Show no results message if needed
-                const existingNoResults = container.querySelector('.no-records');
-                if (visibleCount === 0) {
-                    if (!existingNoResults) {
-                        const noResultsDiv = document.createElement('div');
-                        noResultsDiv.className = 'no-records';
-                        noResultsDiv.textContent = 'No records match your search criteria.';
-                        container.appendChild(noResultsDiv);
-                    }
-                } else if (existingNoResults) {
-                    existingNoResults.remove();
-                }
+            searchBox.addEventListener('input', applyFilters);
+            
+            // New arrivals toggle (click to toggle on/off)
+            newArrivalsToggle.addEventListener('click', function() {
+                this.classList.toggle('active');
+                applyFilters();
             });
             
-            // Setup date preset buttons
-            document.querySelectorAll('.date-preset-btn[data-days]').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    // Remove active class from all preset buttons
-                    document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    const days = parseInt(this.dataset.days);
-                    applyDateFilter(days);
-                    
-                    // Also trigger search filter to reapply with new date range
-                    const searchEvent = new Event('input');
-                    document.getElementById('searchBox').dispatchEvent(searchEvent);
+            // Genre filter
+            genreSelect.addEventListener('change', applyFilters);
+        }
+
+        // ==================== CHECKOUT FUNCTIONS ====================
+
+        // Show shipping/pickup options modal
+        function showShippingOptions() {
+            return new Promise((resolve) => {
+                // Create modal overlay
+                const modal = document.createElement('div');
+                modal.className = 'payment-modal-overlay';
+                modal.style.zIndex = '4000'; // Higher than other modals
+                
+                modal.innerHTML = `
+                    <div class="payment-modal shipping-modal">
+                        <h2 style="margin-bottom: 20px; color: #333; text-align: center;">Shipping Options</h2>
+                        
+                        <div class="shipping-option" id="pickupOption">
+                            <input type="radio" name="shippingOption" id="pickupRadio" value="pickup" checked>
+                            <label for="pickupRadio">Pick up in store</label>
+                            <p style="margin: 5px 0 0 25px; font-size: 13px; color: #666;">Free - Available during business hours</p>
+                        </div>
+                        
+                        <div class="shipping-option" id="shipOption">
+                            <input type="radio" name="shippingOption" id="shipRadio" value="ship">
+                            <label for="shipRadio">Ship my order</label>
+                            <p style="margin: 5px 0 0 25px; font-size: 13px; color: #666;">Shipping costs calculated at checkout</p>
+                            <div class="shipping-cost-display">+ $${shippingCost.toFixed(2)} shipping</div>
+                        </div>
+                        
+                        <div id="shippingFormContainer" style="display: none;">
+                            <div class="shipping-form">
+                                <h4>Shipping Information</h4>
+                                <div class="form-group">
+                                    <label for="fullName">Full Name *</label>
+                                    <input type="text" id="fullName" placeholder="John Doe">
+                                </div>
+                                <div class="form-group">
+                                    <label for="address">Street Address *</label>
+                                    <input type="text" id="address" placeholder="123 Main St">
+                                </div>
+                                <div class="form-group">
+                                    <label for="apt">Apartment/Suite (optional)</label>
+                                    <input type="text" id="apt" placeholder="Apt 4B">
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="city">City *</label>
+                                        <input type="text" id="city" placeholder="New York">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="state">State *</label>
+                                        <input type="text" id="state" placeholder="NY">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="zip">ZIP Code *</label>
+                                        <input type="text" id="zip" placeholder="10001">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="country">Country *</label>
+                                        <input type="text" id="country" placeholder="USA" value="USA">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="email">Email *</label>
+                                    <input type="email" id="email" placeholder="john@example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label for="phone">Phone (optional)</label>
+                                    <input type="tel" id="phone" placeholder="(555) 123-4567">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-actions">
+                            <button class="cancel-btn" id="cancelShipping">Cancel</button>
+                            <button class="continue-btn" id="continueShipping">Continue to Payment</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                // Get elements
+                const pickupOption = document.getElementById('pickupOption');
+                const shipOption = document.getElementById('shipOption');
+                const pickupRadio = document.getElementById('pickupRadio');
+                const shipRadio = document.getElementById('shipRadio');
+                const shippingFormContainer = document.getElementById('shippingFormContainer');
+                const continueBtn = document.getElementById('continueShipping');
+                const cancelBtn = document.getElementById('cancelShipping');
+                
+                // Handle option selection
+                pickupOption.addEventListener('click', () => {
+                    pickupRadio.checked = true;
+                    shipRadio.checked = false;
+                    shippingFormContainer.style.display = 'none';
+                    pickupOption.classList.add('selected');
+                    shipOption.classList.remove('selected');
                 });
-            });
-            
-            // Clear dates button
-            document.getElementById('clearDates').addEventListener('click', function() {
-                // Remove active class from all preset buttons
-                document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
                 
-                // Show all cards
-                applyDateFilter(null);
+                shipOption.addEventListener('click', () => {
+                    shipRadio.checked = true;
+                    pickupRadio.checked = false;
+                    shippingFormContainer.style.display = 'block';
+                    shipOption.classList.add('selected');
+                    pickupOption.classList.remove('selected');
+                });
                 
-                // Trigger search filter
-                const searchEvent = new Event('input');
-                document.getElementById('searchBox').dispatchEvent(searchEvent);
+                // Handle continue button
+                continueBtn.addEventListener('click', async () => {
+                    const isShip = shipRadio.checked;
+                    
+                    if (isShip) {
+                        // Validate shipping form
+                        const fullName = document.getElementById('fullName')?.value.trim();
+                        const address = document.getElementById('address')?.value.trim();
+                        const city = document.getElementById('city')?.value.trim();
+                        const state = document.getElementById('state')?.value.trim();
+                        const zip = document.getElementById('zip')?.value.trim();
+                        const country = document.getElementById('country')?.value.trim();
+                        const email = document.getElementById('email')?.value.trim();
+                        
+                        if (!fullName || !address || !city || !state || !zip || !country || !email) {
+                            showNotification('Please fill in all required fields', 'error');
+                            return;
+                        }
+                        
+                        if (!email.includes('@') || !email.includes('.')) {
+                            showNotification('Please enter a valid email address', 'error');
+                            return;
+                        }
+                    }
+                    
+                    // Collect shipping data
+                    const shippingData = {
+                        method: isShip ? 'ship' : 'pickup',
+                        cost: isShip ? shippingCost : 0,
+                        ...(isShip && {
+                            fullName: document.getElementById('fullName')?.value.trim(),
+                            email: document.getElementById('email')?.value.trim(),
+                            address: document.getElementById('address')?.value.trim(),
+                            apt: document.getElementById('apt')?.value.trim(),
+                            city: document.getElementById('city')?.value.trim(),
+                            state: document.getElementById('state')?.value.trim(),
+                            zip: document.getElementById('zip')?.value.trim(),
+                            country: document.getElementById('country')?.value.trim(),
+                            phone: document.getElementById('phone')?.value.trim()
+                        })
+                    };
+                    
+                    console.log('Shipping data collected:', shippingData);
+                    
+                    // Close modal
+                    modal.remove();
+                    
+                    // SINGLE STEP: Process checkout with Square (order creation happens on backend)
+                    await processCheckout(shippingData);
+                });
+                
+                // Handle cancel button
+                cancelBtn.addEventListener('click', () => {
+                    modal.remove();
+                    resolve(null); // Cancelled
+                });
+                
+                // Handle click outside
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        modal.remove();
+                        resolve(null);
+                    }
+                });
             });
         }
 
+        // Process checkout with Square (order creation happens on backend)
+        async function processCheckout(shippingData) {
+            try {
+                // Close cart drawer
+                closeCartDrawer();
+                
+                // Show processing modal
+                const modal = document.createElement('div');
+                modal.className = 'payment-modal-overlay';
+                modal.innerHTML = `
+                    <div class="payment-modal">
+                        <div class="loading-spinner"></div>
+                        <h2>Processing Checkout...</h2>
+                        <p>Please wait while we prepare your payment.</p>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                
+                addDebug('Sending cart to backend for checkout...');
+                
+                // Calculate tax (use stored taxRate)
+                const taxableAmount = cart.total + (shippingData?.cost || 0);
+                const taxAmount = taxableAmount * (taxRate / 100);
+                const totalWithTax = taxableAmount + taxAmount;
+                
+                // Prepare items array
+                const items = cart.items.map(item => ({
+                    copy_id: item.copyId,
+                    title: item.title,
+                    artist: item.artist,
+                    condition: item.condition,
+                    price: item.price,
+                    quantity: item.quantity || 1
+                }));
+                
+                // Prepare customer/shipping data
+                const requestData = {
+                    items: items,
+                    shipping: shippingData.method === 'ship' ? {
+                        amount: shippingData.cost,
+                        name: 'Shipping'
+                    } : null,
+                    subtotal: cart.total,
+                    tax: taxAmount,
+                    total: totalWithTax,
+                    currency: 'USD'
+                };
+ 
+                // Add customer info if shipping
+                if (shippingData.method === 'ship') {
+                    Object.assign(requestData, {
+                        customer_name: shippingData.fullName,
+                        customer_email: shippingData.email,
+                        address: shippingData.address,
+                        apt: shippingData.apt,
+                        city: shippingData.city,
+                        state: shippingData.state,
+                        zip: shippingData.zip,
+                        country: shippingData.country
+                    });
+                }
+                
+                // Send to checkout endpoint
+                const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.checkout_url) {
+                    // Store order info for reference
+                    currentOrder = {
+                        order_id: data.order_id,
+                        order_number: data.order_number
+                    };
+                    
+                    // Redirect to Square checkout page
+                    addDebug(`Redirecting to Square checkout: ${data.checkout_url}`);
+                    window.location.href = data.checkout_url;
+                    
+                } else if (data.status === 'error') {
+                    // Payment failed
+                    modal.innerHTML = `
+                        <div class="payment-modal">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <h2>Checkout Failed</h2>
+                            <p>${data.error || 'An error occurred processing your checkout.'}</p>
+                            <button class="payment-btn payment-btn-primary" id="tryAgainBtn">
+                                Try Again
+                            </button>
+                            <button class="payment-btn payment-btn-secondary" id="closeErrorBtn" style="margin-top: 10px;">
+                                Cancel
+                            </button>
+                        </div>
+                    `;
+                    
+                    document.getElementById('tryAgainBtn').addEventListener('click', () => {
+                        modal.remove();
+                        processCheckout(shippingData);
+                    });
+                    
+                    document.getElementById('closeErrorBtn').addEventListener('click', () => {
+                        modal.remove();
+                        openCartDrawer();
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Checkout error:', error);
+                addDebug(`Checkout error: ${error.message}`, 'error');
+                
+                // Remove any existing modal
+                const existingModal = document.querySelector('.payment-modal-overlay');
+                if (existingModal) {
+                    existingModal.remove();
+                }
+                
+                showNotification('Error processing checkout: ' + error.message, 'error');
+                openCartDrawer();
+            }
+        }
+
+        // Check checkout status when returning from Square
+        async function checkReturnStatus() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const transactionId = urlParams.get('transactionId');
+            const status = urlParams.get('status');
+            const orderId = urlParams.get('order_id');
+            
+            addDebug(`Returning from checkout: transactionId=${transactionId}, status=${status}, orderId=${orderId}`);
+            
+            if (transactionId && status === 'completed' && orderId) {
+                try {
+                    // Call backend to update record statuses
+                    const response = await fetch(`${AppConfig.baseUrl}/api/order/complete`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            transaction_id: transactionId,
+                            order_id: orderId
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        addDebug('Order status updated successfully');
+                    } else {
+                        addDebug(`Failed to update order: ${data.error}`, 'error');
+                    }
+                } catch (error) {
+                    addDebug(`Error calling order complete endpoint: ${error.message}`, 'error');
+                } finally {
+                    // Clear cart on successful payment
+                    cart.items = [];
+                    saveCart();
+                    
+                    // Show success message
+                    setTimeout(() => {
+                        showNotification('Payment successful! Thank you for your purchase.', 'success');
+                    }, 500);
+                    
+                    // Remove query parameters from URL
+                    window.history.replaceState({}, document.title, '/shop');
+                }
+            } else if (status === 'canceled') {
+                showNotification('Checkout was canceled.', 'error');
+                window.history.replaceState({}, document.title, '/shop');
+            }
+        }
+
+        // Initialize cart event listeners
+        function initializeCart() {
+            // Cart toggle click
+            document.getElementById('cartToggle').addEventListener('click', openCartDrawer);
+            
+            // Close cart drawer
+            document.getElementById('closeCartDrawer').addEventListener('click', closeCartDrawer);
+            
+            // Overlay click to close
+            document.getElementById('cartOverlay').addEventListener('click', closeCartDrawer);
+            
+            // Note: Checkout button event listener is now attached in updateCartDrawer
+        }
+
         // Load the catalog data when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            loadCatalogData();
-            initializeFilters();
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                // Load shipping cost directly from config
+                const cost = await getConfigValue('SHIPPING_COST');
+                shippingCost = parseFloat(cost);
+                console.log('Shipping cost set to:', shippingCost);
+                
+                // Load tax rate
+                try {
+                    taxRate = await getConfigValue('TAX_RATE') || 0;
+                    console.log('Tax rate set to:', taxRate);
+                } catch (e) {
+                    console.warn('Could not load tax rate, using 0');
+                    taxRate = 0;
+                }
+                
+                loadCart(); // Load cart from localStorage
+                await loadCatalogData();
+                initializeFilters();
+                initializeCart();
+                checkReturnStatus();
+                
+                // Make removeFromCart function globally available
+                window.removeFromCart = removeFromCart;
+                
+            } catch (error) {
+                console.error('Failed to initialize page:', error);
+            }
         });
     </script>
 </body>
