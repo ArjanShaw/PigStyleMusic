@@ -1141,6 +1141,8 @@
                     currency: 'USD'
                 };
                 
+                alert("CHECKOUT DATA:\n" + JSON.stringify(requestData, null, 2));
+ 
                 // Add customer info if shipping
                 if (shippingData.method === 'ship') {
                     Object.assign(requestData, {
