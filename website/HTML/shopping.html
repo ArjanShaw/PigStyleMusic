@@ -305,10 +305,10 @@
             }
             
             // Show alert before adding
-            alert(`🔴 BEFORE ADDING:
-        Current cart items: ${cart.items.length}
-        Current cart total: $${cart.total.toFixed(2)}
-        Adding item: ${release.title} at $${copy.store_price.toFixed(2)}`);
+        //     alert(`🔴 BEFORE ADDING:
+        // Current cart items: ${cart.items.length}
+        // Current cart total: $${cart.total.toFixed(2)}
+        // Adding item: ${release.title} at $${copy.store_price.toFixed(2)}`);
             
             // Add new item
             cart.items.push({
@@ -325,10 +325,10 @@
             cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
             // Show alert after adding
-            alert(`🔴 AFTER ADDING:
-        Items now: ${cart.items.length}
-        New cart.total: $${cart.total.toFixed(2)}
-        Items in cart: ${cart.items.map(item => `${item.title}: $${item.price}`).join(', ')}`);
+        //     alert(`🔴 AFTER ADDING:
+        // Items now: ${cart.items.length}
+        // New cart.total: $${cart.total.toFixed(2)}
+        // Items in cart: ${cart.items.map(item => `${item.title}: $${item.price}`).join(', ')}`);
             
             saveCart();
             showNotification('Item added to cart!', 'success');
@@ -1178,7 +1178,7 @@
                     currency: 'USD'
                 };
                 
-                alert("CHECKOUT DATA:\n" + JSON.stringify(requestData, null, 2));
+                // alert("CHECKOUT DATA:\n" + JSON.stringify(requestData, null, 2));
  
                 // Add customer info if shipping
                 if (shippingData.method === 'ship') {
