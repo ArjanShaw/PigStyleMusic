@@ -3429,6 +3429,45 @@ def create_record():
     finally:
         conn.close()
 
+@app.route('/api/sticky-notes', methods=['GET'])
+def get_sticky_notes():
+    """Get all active sticky notes ordered by position"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT id, note_text, position 
+            FROM sticky_notes 
+            WHERE is_active = 1 
+            ORDER BY position ASC, created_at DESC
+        ''')
+        
+        notes = cursor.fetchall()
+        
+        response = jsonify({
+            'status': 'success',
+            'notes': [dict(note) for note in notes]
+        })
+        
+        # Add CORS headers if needed
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        
+        return response
+        
+    except Exception as e:
+        error_msg = f"Database error: {str(e)}"
+        response = jsonify({
+            'status': 'error',
+            'error': error_msg
+        })
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response, 500
+    finally:
+        conn.close()
+
+
 @app.route('/records', methods=['GET'])
 def get_records():
     """Get records with condition data joined from d_condition table"""
