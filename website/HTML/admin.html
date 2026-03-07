@@ -3128,6 +3128,14 @@
                             <option value="unlisted">Not Listed</option>
                         </select>
                     </div>
+                    <!-- Add this in the Discogs tab's filters-row div -->
+                    <div class="filter-group" style="min-width: 200px;">
+                        <label for="consignor-filter"><i class="fas fa-user"></i> Consignor:</label>
+                        <select id="consignor-filter" class="filter-select" onchange="filterDiscogsInventory()">
+                            <option value="all">All Consignors</option>
+                            <!-- Dynamically populated by JavaScript -->
+                        </select>
+                    </div>
                     
                     <!-- Search Filter -->
                     <div class="filter-group" style="flex: 1; min-width: 300px;">

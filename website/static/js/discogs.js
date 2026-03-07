@@ -1,4 +1,4 @@
-// discogs.js - Complete version with database-driven condition filtering
+// discogs.js - Complete version with database-driven condition filtering and consignor filter
 
 /**
  * Discogs Inventory Management Module
@@ -18,6 +18,7 @@ let sleeveConditionFilter = '';
 let discConditionFilter = '';
 let listingStatusFilter = 'all';
 let searchFilter = '';
+let consignorFilter = 'all'; // New consignor filter
 
 // Conditions data from database
 let conditionsMap = {
@@ -27,6 +28,9 @@ let conditionsMap = {
     byAbbreviation: {}, // abbreviation -> condition object
     qualityIndexMap: {} // Maps condition identifiers to quality_index
 };
+
+// Consignors data
+let consignorsList = [];
 
 // Make functions globally available
 window.loadDiscogsInventory = loadDiscogsInventory;
@@ -42,6 +46,7 @@ window.submitToDiscogs = submitToDiscogs;
 window.syncDiscogsListings = syncDiscogsListings;
 window.viewDiscogsMatch = viewDiscogsMatch;
 window.populateConditionDropdowns = populateConditionDropdowns;
+window.loadConsignors = loadConsignors; // New function
 
 /**
  * Load conditions from database and populate dropdowns
@@ -106,6 +111,84 @@ function loadConditions() {
 }
 
 /**
+ * Load consignors from database
+ */
+function loadConsignors() {
+    console.log('👤 Loading consignors from database...');
+    
+    return fetch(`${window.AppConfig.baseUrl}/users?role=consignor`, {
+        credentials: 'include',
+        headers: window.AppConfig.getHeaders()
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success' && data.users) {
+            consignorsList = data.users.map(user => ({
+                id: user.id,
+                username: user.username,
+                full_name: user.full_name || user.username,
+                initials: user.initials || ''
+            }));
+            
+            console.log(`👤 Loaded ${consignorsList.length} consignors`);
+            
+            // Populate consignor dropdown
+            populateConsignorDropdown(consignorsList);
+            
+            return consignorsList;
+        } else {
+            console.warn('No consignors found or error loading consignors');
+            consignorsList = [];
+            return [];
+        }
+    })
+    .catch(error => {
+        console.error('Error loading consignors:', error);
+        consignorsList = [];
+        return [];
+    });
+}
+
+/**
+ * Populate consignor dropdown
+ */
+function populateConsignorDropdown(consignors) {
+    const consignorDropdown = document.getElementById('consignor-filter');
+    
+    if (!consignorDropdown) {
+        console.error('Consignor dropdown element not found');
+        return;
+    }
+    
+    // Clear existing options and add default
+    consignorDropdown.innerHTML = '<option value="all">All Consignors</option>';
+    
+    // Sort consignors by name
+    const sortedConsignors = [...consignors].sort((a, b) => {
+        const nameA = (a.full_name || a.username).toLowerCase();
+        const nameB = (b.full_name || b.username).toLowerCase();
+        return nameA.localeCompare(nameB);
+    });
+    
+    // Add consignor options
+    sortedConsignors.forEach(consignor => {
+        const option = document.createElement('option');
+        option.value = consignor.id;
+        
+        // Display name with initials if available
+        let displayName = consignor.full_name || consignor.username;
+        if (consignor.initials) {
+            displayName += ` (${consignor.initials})`;
+        }
+        
+        option.textContent = displayName;
+        consignorDropdown.appendChild(option);
+    });
+    
+    console.log(`👤 Populated consignor dropdown with ${consignors.length} consignors`);
+}
+
+/**
  * Populate condition dropdowns with data from database
  */
 function populateConditionDropdowns(conditions) {
@@ -165,11 +248,14 @@ function loadDiscogsInventory() {
     if (statusMsg) statusMsg.style.display = 'none';
     
     if (tableBody) {
-        tableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i><p>Loading inventory...</p></td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i><p>Loading inventory...</p></td></tr>';
     }
     
     // First load conditions and populate dropdowns
-    loadConditions()
+    Promise.all([
+        loadConditions(),
+        loadConsignors() // Load consignors in parallel
+    ])
         .then(() => {
             // Then check Discogs authentication status
             return fetch(`${window.AppConfig.baseUrl}/api/discogs/check-auth`, {
@@ -212,7 +298,9 @@ function loadLocalInventory() {
             // Initialize records with discogs_listed flag (default to false)
             discogsInventory = data.records.map(record => ({
                 ...record,
-                discogs_listed: false // Will be updated by sync function if implemented
+                discogs_listed: false, // Will be updated by sync function if implemented
+                consignor_name: record.consignor_name || 'Unknown', // Ensure consignor name is available
+                consignor_id: record.consignor_id || null
             }));
             
             console.log(`📀 loadDiscogsInventory: Loaded ${discogsInventory.length} records`);
@@ -236,7 +324,7 @@ function loadLocalInventory() {
         const loadingEl = document.getElementById('discogs-loading');
         
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 40px; color: #dc3545;">
+            tableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">
                 <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i>
                 <p>Error loading inventory: ${error.message}</p>
                 <button class="btn btn-primary" onclick="loadDiscogsInventory()">
@@ -312,6 +400,7 @@ function applyDiscogsFilters() {
         discFilter: discConditionFilter,
         listingStatus: listingStatusFilter,
         search: searchFilter,
+        consignor: consignorFilter,
         totalRecords: discogsInventory.length
     });
     
@@ -382,6 +471,21 @@ function applyDiscogsFilters() {
         if (listingStatusFilter === 'listed' && !record.discogs_listed) return false;
         if (listingStatusFilter === 'unlisted' && record.discogs_listed) return false;
         
+        // Consignor filter
+        if (consignorFilter !== 'all') {
+            const consignorId = record.consignor_id;
+            
+            // If record has no consignor (store-owned), exclude when specific consignor is selected
+            if (!consignorId) {
+                return false;
+            }
+            
+            // Compare as strings or numbers based on how they're stored
+            if (String(consignorId) !== String(consignorFilter)) {
+                return false;
+            }
+        }
+        
         // Search filter
         if (searchFilter) {
             const searchLower = searchFilter.toLowerCase();
@@ -389,11 +493,13 @@ function applyDiscogsFilters() {
             const title = (record.title || '').toLowerCase();
             const catalog = (record.catalog_number || '').toLowerCase();
             const barcode = (record.barcode || '').toLowerCase();
+            const consignor = (record.consignor_name || '').toLowerCase();
             
             if (!artist.includes(searchLower) && 
                 !title.includes(searchLower) && 
                 !catalog.includes(searchLower) && 
-                !barcode.includes(searchLower)) {
+                !barcode.includes(searchLower) &&
+                !consignor.includes(searchLower)) {
                 return false;
             }
         }
@@ -424,7 +530,7 @@ function renderDiscogsInventory() {
     if (!tableBody) return;
     
     if (filteredDiscogsInventory.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i><p>No records match your filters</p></td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i><p>No records match your filters</p></td></tr>';
         return;
     }
     
@@ -447,6 +553,20 @@ function renderDiscogsInventory() {
             ? (discConditionObj.display_name || discConditionObj.condition_name)
             : 'Not specified';
         
+        // Get consignor display name
+        let consignorDisplay = 'Store';
+        if (record.consignor_id) {
+            const consignor = consignorsList.find(c => String(c.id) === String(record.consignor_id));
+            if (consignor) {
+                consignorDisplay = consignor.full_name || consignor.username;
+                if (consignor.initials) {
+                    consignorDisplay += ` (${consignor.initials})`;
+                }
+            } else {
+                consignorDisplay = record.consignor_name || 'Consignor';
+            }
+        }
+        
         html += `
             <tr class="${isSelected ? 'record-selected' : ''} ${isListed ? 'record-listed' : ''}">
                 <td style="text-align: center;">
@@ -465,6 +585,7 @@ function renderDiscogsInventory() {
                 <td>$${parseFloat(record.store_price || 0).toFixed(2)}</td>
                 <td><span class="condition-badge">${escapeHtml(sleeveCondition)}</span></td>
                 <td><span class="condition-badge">${escapeHtml(discCondition)}</span></td>
+                <td>${escapeHtml(consignorDisplay)}</td>
                 <td>
                     ${isListed ? 
                         '<span class="status-badge paid">Listed</span>' : 
@@ -555,12 +676,14 @@ function filterDiscogsInventory() {
     discConditionFilter = document.getElementById('disc-condition-filter').value;
     listingStatusFilter = document.getElementById('listing-status-filter').value;
     searchFilter = document.getElementById('discogs-search').value;
+    consignorFilter = document.getElementById('consignor-filter').value; // New consignor filter
     
     console.log('Filtering with:', {
         sleeveConditionFilter,
         discConditionFilter,
         listingStatusFilter,
-        searchFilter
+        searchFilter,
+        consignorFilter
     });
     
     discogsCurrentPage = 1;
@@ -575,11 +698,13 @@ function resetDiscogsFilters() {
     document.getElementById('disc-condition-filter').value = '';
     document.getElementById('listing-status-filter').value = 'all';
     document.getElementById('discogs-search').value = '';
+    document.getElementById('consignor-filter').value = 'all'; // Reset consignor filter
     
     sleeveConditionFilter = '';
     discConditionFilter = '';
     listingStatusFilter = 'all';
     searchFilter = '';
+    consignorFilter = 'all'; // Reset consignor filter
     
     discogsCurrentPage = 1;
     applyDiscogsFilters();
@@ -717,8 +842,6 @@ function submitToDiscogs() {
             notes: r.notes || ''
         }));
     
-    
-    
     // Check authentication first
     showDiscogsStatus('Checking Discogs authentication...', 'info');
     
@@ -832,9 +955,12 @@ function showDiscogsStatus(message, type = 'info') {
     statusEl.className = `status-message status-${type}`;
     statusEl.style.display = 'block';
     
-    setTimeout(() => {
-        statusEl.style.display = 'none';
-    }, 5000);
+    // Auto-hide after 5 seconds for success/info, keep error visible
+    if (type !== 'error') {
+        setTimeout(() => {
+            statusEl.style.display = 'none';
+        }, 5000);
+    }
 }
 
 // Initialize when tab is shown
@@ -857,4 +983,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded successfully');
+console.log('✅ discogs.js loaded successfully with consignor filter');
