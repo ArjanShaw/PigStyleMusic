@@ -118,28 +118,39 @@ def get_db():
 
 # ==================== SQUARE API HELPER FUNCTIONS ====================
 
-# ==================== DISCOGS ENDPOINTS ====================
-
 @app.route('/api/discogs/auth', methods=['GET'])
 def discogs_auth():
     """Start Discogs OAuth flow"""
     try:
-        # Initialize Discogs client with consumer key/secret
+        import discogs_client
+        import traceback
+        
+        consumer_key = os.environ.get('DISCOGS_CONSUMER_KEY')
+        consumer_secret = os.environ.get('DISCOGS_CONSUMER_SECRET')
+        callback_url = os.environ.get('DISCOGS_CALLBACK_URL', f"{request.host_url.rstrip('/')}/api/discogs/callback")
+        
+        app.logger.info(f"Starting Discogs auth with callback: {callback_url}")
+        
+        if not consumer_key or not consumer_secret:
+            app.logger.error("Discogs credentials not configured")
+            return jsonify({'error': 'Discogs credentials not configured'}), 500
+        
+        # Initialize client
         d = discogs_client.Client(
             'PigStyleMusic/1.0',
-            consumer_key=os.environ.get('DISCOGS_CONSUMER_KEY'),
-            consumer_secret=os.environ.get('DISCOGS_CONSUMER_SECRET')
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret
         )
         
-        # Get request token and authorization URL
-        callback_url = f"{request.host_url.rstrip('/')}/api/discogs/callback"
-        request_token = d.get_request_token(callback_url=callback_url)
+        # Get request token and authorization URL - CORRECT METHOD
+        request_token, request_token_secret, auth_url = d.get_authorize_url(callback_url=callback_url)
         
         # Store in session
         session['discogs_request_token'] = request_token
+        session['discogs_request_token_secret'] = request_token_secret
         
-        # Redirect to Discogs for user authorization
-        auth_url = d.get_authorize_url(request_token)
+        app.logger.info(f"Got auth URL: {auth_url}")
+        
         return jsonify({
             'success': True,
             'auth_url': auth_url
@@ -147,60 +158,81 @@ def discogs_auth():
         
     except Exception as e:
         app.logger.error(f"Discogs auth error: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/discogs/callback', methods=['GET'])
 def discogs_callback():
     """OAuth callback after user authorizes"""
     try:
+        import discogs_client
+        import traceback
+        
         verifier = request.args.get('oauth_verifier')
         if not verifier:
+            app.logger.error("No verifier provided in callback")
             return jsonify({'error': 'No verifier provided'}), 400
         
         # Get stored request token
         request_token = session.get('discogs_request_token')
-        if not request_token:
+        request_token_secret = session.get('discogs_request_token_secret')
+        
+        if not request_token or not request_token_secret:
+            app.logger.error("No request token found in session")
             return jsonify({'error': 'No request token found'}), 400
         
-        # Initialize client again
+        consumer_key = os.environ.get('DISCOGS_CONSUMER_KEY')
+        consumer_secret = os.environ.get('DISCOGS_CONSUMER_SECRET')
+        
+        # Initialize client with request token
         d = discogs_client.Client(
             'PigStyleMusic/1.0',
-            consumer_key=os.environ.get('DISCOGS_CONSUMER_KEY'),
-            consumer_secret=os.environ.get('DISCOGS_CONSUMER_SECRET')
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
+            token=request_token,
+            secret=request_token_secret
         )
         
-        # Get access token
-        access_token = d.get_access_token(request_token, verifier)
+        # Get access token - try with just the verifier
+        access_token, access_token_secret = d.get_access_token(verifier)
         
         # Store access token in session
-        session['discogs_access_token'] = access_token
+        session['discogs_access_token'] = {
+            'oauth_token': access_token,
+            'oauth_token_secret': access_token_secret
+        }
         
         # Get username for display
-        d.token = access_token['oauth_token']
-        d.token_secret = access_token['oauth_token_secret']
+        d = discogs_client.Client(
+            'PigStyleMusic/1.0',
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
+            token=access_token,
+            secret=access_token_secret
+        )
         user = d.identity()
         
         # Clean up
         session.pop('discogs_request_token', None)
+        session.pop('discogs_request_token_secret', None)
         
         app.logger.info(f"Discogs authentication successful for user: {user.username}")
         
-        return jsonify({
-            'success': True,
-            'username': user.username,
-            'message': 'Successfully authenticated with Discogs'
-        })
+        # Redirect back to admin panel Discogs tab
+        return redirect('http://localhost:8000/admin#discogs')
         
     except Exception as e:
         app.logger.error(f"Discogs callback error: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
-
+ 
 @app.route('/api/discogs/check-auth', methods=['GET'])
 def check_discogs_auth():
     """Check if user is authenticated with Discogs"""
     return jsonify({
         'authenticated': 'discogs_access_token' in session
     })
+ 
 
 @app.route('/api/discogs/logout', methods=['POST'])
 def discogs_logout():
@@ -215,10 +247,13 @@ def get_discogs_client():
     if not access_token:
         return None
     
+    consumer_key = os.environ.get('DISCOGS_CONSUMER_KEY')
+    consumer_secret = os.environ.get('DISCOGS_CONSUMER_SECRET')
+    
     d = discogs_client.Client(
         'PigStyleMusic/1.0',
-        consumer_key=os.environ.get('DISCOGS_CONSUMER_KEY'),
-        consumer_secret=os.environ.get('DISCOGS_CONSUMER_SECRET'),
+        consumer_key=consumer_key,
+        consumer_secret=consumer_secret,
         token=access_token['oauth_token'],
         secret=access_token['oauth_token_secret']
     )
@@ -241,7 +276,6 @@ def require_discogs_auth(f):
 def get_my_discogs_listings():
     """
     Get all items currently listed in your Discogs inventory
-    This is what you need to reconcile your inventory
     """
     try:
         app.logger.info("Fetching Discogs listings")
@@ -251,7 +285,8 @@ def get_my_discogs_listings():
         user = d.identity()
         app.logger.info(f"Authenticated as: {user.username}")
         
-        # Get inventory (listings for sale)
+        # Get inventory (listings for sale) - CORRECT METHOD
+        # The method is likely 'inventory' not 'inventory_folders'
         inventory = user.inventory
         
         listings = []
@@ -281,7 +316,7 @@ def get_my_discogs_listings():
                         'sleeve_condition': listing.sleeve_condition,
                         'comments': listing.comments,
                         'status': listing.status,
-                        'listed_date': listing.listed,
+                        'listed_date': listing.listed.isoformat() if hasattr(listing.listed, 'isoformat') else str(listing.listed),
                         'url': listing.url
                     })
                 except Exception as e:
@@ -299,49 +334,57 @@ def get_my_discogs_listings():
         
     except Exception as e:
         app.logger.error(f"Error fetching Discogs listings: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/discogs/create-listings', methods=['POST'])
 @require_discogs_auth
 def create_discogs_listings():
     """
     Create multiple listings on Discogs from your records
-    This is what you need to list items for sale
     """
     try:
         data = request.json
         records = data.get('records', [])
         
+        app.logger.info(f"=== CREATE LISTINGS CALLED ===")
+        app.logger.info(f"Records received: {len(records)}")
+        
         if not records:
             return jsonify({'error': 'No records provided'}), 400
         
-        app.logger.info(f"Creating {len(records)} Discogs listings")
-        
         d = get_discogs_client()
+        if not d:
+            app.logger.error("Failed to get authenticated Discogs client")
+            return jsonify({'error': 'Not authenticated'}), 401
         
-        # Get user and default "For Sale" folder
+        # Get user
         user = d.identity()
-        # Get the first folder (usually "Inventory" or "For Sale")
-        folder = user.inventory_folders[0]
-        app.logger.info(f"Using folder: {folder.name}")
+        app.logger.info(f"Authenticated as: {user.username}")
+        
+        # Get inventory folder - CORRECT METHOD
+        # The method is likely 'inventory' not 'inventory_folders'
+        inventory = user.inventory
         
         results = []
         
         for record in records:
             try:
-                # Check if we have a release_id
-                if not record.get('discogs_release_id'):
+                release_id = record.get('discogs_release_id') or record.get('catalog_number')
+                app.logger.info(f"Processing record {record['id']} with release_id: {release_id}")
+                
+                if not release_id:
                     results.append({
                         'record_id': record['id'],
                         'success': False,
-                        'error': 'Missing Discogs release ID'
+                        'error': 'Missing release ID/catalog number'
                     })
                     continue
                 
-                app.logger.info(f"Creating listing for record {record['id']}, release_id: {record['discogs_release_id']}")
-                
                 # Get release by ID
-                release = d.release(int(record['discogs_release_id']))
+                release = d.release(int(release_id))
+                app.logger.info(f"Found release: {release.title}")
                 
                 # Prepare condition
                 condition = record.get('media_condition', 'Very Good (VG)')
@@ -352,8 +395,11 @@ def create_discogs_listings():
                 if record.get('notes'):
                     comments += f" - {record['notes']}"
                 
-                # Create listing
-                listing = folder.add_listing(
+                app.logger.info(f"Creating listing with price: {record['price']}, condition: {condition}")
+                
+                # Create listing - CORRECT METHOD
+                # Add to inventory
+                listing = inventory.add_listing(
                     release=release,
                     condition=condition,
                     price=float(record['price']),
@@ -373,15 +419,17 @@ def create_discogs_listings():
                 
             except Exception as e:
                 app.logger.error(f"Error creating listing for record {record['id']}: {str(e)}")
+                app.logger.error(traceback.format_exc())
                 results.append({
                     'record_id': record['id'],
                     'success': False,
                     'error': str(e)
                 })
         
-        # Count successes and failures
         successful = sum(1 for r in results if r['success'])
         failed = len(results) - successful
+        
+        app.logger.info(f"Completed: {successful} successful, {failed} failed")
         
         return jsonify({
             'success': True,
@@ -393,7 +441,9 @@ def create_discogs_listings():
         
     except Exception as e:
         app.logger.error(f"Error creating Discogs listings: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/discogs/listings/<listing_id>', methods=['DELETE'])
 @require_discogs_auth
@@ -428,12 +478,12 @@ def delete_discogs_listing(listing_id):
 
 @app.route('/api/discogs/search-release', methods=['POST'])
 def search_discogs_release():
-    """Search Discogs for a release (doesn't require authentication)"""
+    """Search Discogs for a release"""
     try:
         data = request.json
-        artist = data.get('artist')
-        title = data.get('title')
-        catalog = data.get('catalog_number')
+        artist = data.get('artist', '')
+        title = data.get('title', '')
+        catalog = data.get('catalog_number', '')
         
         # Build search query
         query = f"{artist} {title}"
@@ -442,42 +492,63 @@ def search_discogs_release():
         
         app.logger.info(f"Searching Discogs for: {query}")
         
-        # Use unauthenticated client for search
-        d = discogs_client.Client('PigStyleMusic/1.0')
+        # Use Discogs API directly with requests
+        import requests
         
-        # Search for releases
-        results = d.search(query, type='release')
+        # Search Discogs database (no auth needed for search)
+        search_url = "https://api.discogs.com/database/search"
+        params = {
+            'q': query,
+            'type': 'release',
+            'per_page': 10
+        }
         
-        matches = []
-        for result in results[:10]:  # Top 10 matches
-            try:
-                artist_name = result.artists[0].name if result.artists else 'Unknown'
-                label_name = result.labels[0].name if result.labels else ''
-                catalog_number = result.labels[0].catalog_number if result.labels and hasattr(result.labels[0], 'catalog_number') else ''
-                
-                matches.append({
-                    'release_id': result.id,
-                    'title': result.title,
-                    'artist': artist_name,
-                    'year': result.year,
-                    'format': result.formats[0]['name'] if result.formats else '',
-                    'label': label_name,
-                    'catalog_number': catalog_number,
-                    'thumb': result.thumb if hasattr(result, 'thumb') else None,
-                    'url': result.url if hasattr(result, 'url') else None
-                })
-            except Exception as e:
-                app.logger.error(f"Error processing search result: {str(e)}")
-                continue
+        headers = {
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
+        
+        response = requests.get(search_url, params=params, headers=headers)
+        
+        if response.status_code != 200:
+            app.logger.error(f"Discogs API error: {response.text}")
+            return jsonify({'error': 'Discogs search failed'}), response.status_code
+        
+        data = response.json()
+        results = data.get('results', [])
+        
+        formatted_results = []
+        for result in results[:10]:
+            # Extract artist from title if needed
+            result_title = result.get('title', '')
+            result_artist = result.get('artist', '')
+            
+            # Some results have title as "Artist - Title"
+            if ' - ' in result_title and not result_artist:
+                parts = result_title.split(' - ', 1)
+                result_artist = parts[0]
+                result_title = parts[1]
+            
+            formatted_results.append({
+                'release_id': result.get('id'),
+                'title': result_title,
+                'artist': result_artist,
+                'year': result.get('year'),
+                'format': result.get('format', [''])[0] if result.get('format') else '',
+                'label': result.get('label', [''])[0] if result.get('label') else '',
+                'catalog_number': result.get('catno', ''),
+                'thumb': result.get('thumb', ''),
+                'url': f"https://www.discogs.com/release/{result.get('id')}"
+            })
         
         return jsonify({
             'success': True,
-            'results': matches,
-            'count': len(matches)
+            'results': formatted_results,
+            'count': len(formatted_results)
         })
         
     except Exception as e:
         app.logger.error(f"Error searching Discogs: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/discogs/sync', methods=['POST'])
