@@ -76,6 +76,49 @@ window.getStatusText = function(statusId) {
 };
 
 // ============================================================================
+// Validation Functions
+// ============================================================================
+
+function validateConsignorCommission(item) {
+    if (item.consignor_id) {
+        if (!item.commission_rate && item.commission_rate !== 0) {
+            throw new Error(
+                `Consignor item missing commission rate: ${item.artist || 'Unknown'} - ${item.title || 'Unknown'} (ID: ${item.id})`
+            );
+        }
+        if (isNaN(parseFloat(item.commission_rate))) {
+            throw new Error(
+                `Invalid commission rate for consignor item: ${item.artist || 'Unknown'} - ${item.title || 'Unknown'} (Rate: ${item.commission_rate})`
+            );
+        }
+    }
+}
+
+function validateItemPrice(item) {
+    const price = parseFloat(item.store_price);
+    if (isNaN(price) || price <= 0) {
+        throw new Error(
+            `Invalid or missing price for item: ${item.artist || item.description || item.note || 'Unknown'} (Price: ${item.store_price})`
+        );
+    }
+    return price;
+}
+
+async function validateTaxRate() {
+    const taxRateStr = await getConfigValue('TAX_RATE');
+    if (!taxRateStr && taxRateStr !== 0) {
+        throw new Error('TAX_RATE configuration value is missing');
+    }
+    
+    const taxRate = parseFloat(taxRateStr);
+    if (isNaN(taxRate)) {
+        throw new Error(`Invalid TAX_RATE configuration value: ${taxRateStr}`);
+    }
+    
+    return taxRate / 100;
+}
+
+// ============================================================================
 // VCP-8370 Thermal Printer Functions
 // ============================================================================
 
@@ -899,7 +942,7 @@ window.updateCartWithDiscount = function() {
 function calculateTotalsWithDiscount() {
     let subtotal = 0;
     checkoutCart.forEach(item => {
-        const price = parseFloat(item.store_price);
+        const price = validateItemPrice(item);
         subtotal += price;
     });
     
@@ -970,13 +1013,13 @@ async function updateCartDisplay() {
     
     let subtotal = 0;
     checkoutCart.forEach(item => {
-        const price = parseFloat(item.store_price);
+        const price = validateItemPrice(item);
         subtotal += price;
     });
     
     const discountedSubtotal = calculateTotalsWithDiscount();
     
-    const taxRate = parseFloat(await getConfigValue('TAX_RATE')) / 100;
+    const taxRate = await validateTaxRate();
     
     if (taxRateDisplay) taxRateDisplay.textContent = (taxRate * 100).toFixed(1);
     
@@ -1548,6 +1591,9 @@ async function processSquarePaymentSuccess() {
             });
         } else {
             try {
+                // Validate commission rate for consignor items
+                validateConsignorCommission(item);
+                
                 const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                     method: 'PUT',
                     headers: {
@@ -1572,7 +1618,10 @@ async function processSquarePaymentSuccess() {
                 soldItems.push(item);
                 
                 if (item.consignor_id) {
-                    const commissionRate = item.commission_rate || 20;
+                    const commissionRate = parseFloat(item.commission_rate);
+                    if (isNaN(commissionRate)) {
+                        throw new Error(`Invalid commission rate for consignor item: ${item.artist} - ${item.title}`);
+                    }
                     const consignorShare = item.store_price * (1 - (commissionRate / 100));
                     
                     if (!consignorPayments[item.consignor_id]) {
@@ -1613,7 +1662,7 @@ async function processSquarePaymentSuccess() {
         
         const subtotal = pendingCartCheckout.items.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
         
-        const taxRate = parseFloat(await getConfigValue('TAX_RATE')) / 100;
+        const taxRate = await validateTaxRate();
         
         const discount = pendingCartCheckout.discount ? pendingCartCheckout.discount.value || 0 : 0;
         const discountedSubtotal = subtotal - discount;
@@ -1919,6 +1968,9 @@ window.processCashPayment = async function() {
                 });
             } else {
                 try {
+                    // Validate commission rate for consignor items
+                    validateConsignorCommission(item);
+                    
                     const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                         method: 'PUT',
                         headers: {
@@ -1943,7 +1995,10 @@ window.processCashPayment = async function() {
                     soldItems.push(item);
                     
                     if (item.consignor_id) {
-                        const commissionRate = item.commission_rate || 20;
+                        const commissionRate = parseFloat(item.commission_rate);
+                        if (isNaN(commissionRate)) {
+                            throw new Error(`Invalid commission rate for consignor item: ${item.artist} - ${item.title}`);
+                        }
                         const consignorShare = item.store_price * (1 - (commissionRate / 100));
                         
                         if (!consignorPayments[item.consignor_id]) {
@@ -1984,7 +2039,7 @@ window.processCashPayment = async function() {
             
             const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
             
-            const taxRate = parseFloat(await getConfigValue('TAX_RATE')) / 100;
+            const taxRate = await validateTaxRate();
             
             const discount = currentDiscount.value || 0;
             const discountedSubtotal = subtotal - discount;
@@ -2215,4 +2270,4 @@ document.addEventListener('keypress', function(e) {
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
-console.log('✅ checkout.js loaded with VCP-8370 printer support and manual completion button');
+console.log('✅ checkout.js loaded with VCP-8370 printer support, manual completion button, and strict validation');
