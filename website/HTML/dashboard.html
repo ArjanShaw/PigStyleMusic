@@ -501,6 +501,12 @@
             font-size: 12px;
             padding: 2px 8px;
         }
+        
+        /* Credit amount styling */
+        .credit-positive {
+            color: #28a745;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -541,8 +547,8 @@
                 <div class="stat-label">Commission Rate</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="store-fill">0%</div>
-                <div class="stat-label">Store Fill</div>
+                <div class="stat-value credit-positive" id="user-credit">$0.00</div>
+                <div class="stat-label">Credit</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="last-added">--</div>
@@ -1001,6 +1007,54 @@
                 }
             }
 
+            async loadUserCredit() {
+                const user = window.Auth.getUser();
+                
+                if (!user || user.role !== 'consignor') {
+                    document.getElementById('user-credit').textContent = '$0.00';
+                    return;
+                }
+                
+                try {
+                    // Get all records for this user
+                    const response = await APIUtils.get(`/records/user/${user.id}`);
+                    const records = response.records || [];
+                    
+                    // Calculate credit from sold records
+                    let totalCredit = 0;
+                    
+                    records.forEach(record => {
+                        // Only count sold records (status_id === 3)
+                        if (record.status_id === 3 && record.consignor_id == user.id) {
+                            const storePrice = Number(record.store_price) || 0;
+                            const commissionRate = Number(record.commission_rate) || 0;
+                            
+                            if (!isNaN(storePrice) && !isNaN(commissionRate) && commissionRate > 0) {
+                                // Calculate consignor share (store_price minus commission)
+                                let consignorShare;
+                                if (commissionRate > 1) {
+                                    // Commission rate is percentage (e.g., 20)
+                                    consignorShare = storePrice * ((100 - commissionRate) / 100);
+                                } else {
+                                    // Commission rate is decimal (e.g., 0.2)
+                                    consignorShare = storePrice * (1 - commissionRate);
+                                }
+                                
+                                totalCredit += consignorShare;
+                            }
+                        }
+                    });
+                    
+                    // Update the display
+                    document.getElementById('user-credit').textContent = `$${totalCredit.toFixed(2)}`;
+                    console.log(`CREDIT: User ${user.id} has $${totalCredit.toFixed(2)} in credit`);
+                    
+                } catch (error) {
+                    console.error('CREDIT: Error loading user credit:', error);
+                    document.getElementById('user-credit').textContent = '$0.00';
+                }
+            }
+
             showDashboard() {
                 document.getElementById('guest-message').style.display = 'none';
                 document.getElementById('dashboard-content').style.display = 'block';
@@ -1346,15 +1400,8 @@
                 document.getElementById('commission-rate').textContent = 
                     `${commissionResponse.commission_rate}%`;
 
-                // Only show store fill for admin users
-                if (user.role === 'admin') {
-                    const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
-                    const capacity = parseInt(configResponse.config_value);
-                    const fillPercentage = (recordsCount / capacity * 100).toFixed(1);
-                    document.getElementById('store-fill').textContent = `${fillPercentage}%`;
-                } else {
-                    document.getElementById('store-fill').textContent = 'N/A';
-                }
+                // Load user credit
+                await this.loadUserCredit();
 
                 await this.loadLastAddedRecord();
             }
@@ -1371,7 +1418,9 @@
                 
                 if (response.records && response.records.length > 0) {
                     const record = response.records[0];
-                    lastAdded = `${record.artist.substring(0, 15)}...`;
+                    lastAdded = record.artist ? 
+                        `${record.artist.substring(0, 15)}${record.artist.length > 15 ? '...' : ''}` : 
+                        'Unknown';
                 }
                 
                 document.getElementById('last-added').textContent = lastAdded;

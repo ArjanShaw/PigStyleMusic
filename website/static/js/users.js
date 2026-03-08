@@ -1,4 +1,4 @@
-// users.js - Clean version with flag color support and Seller type
+// users.js - Clean version with flag color support, Seller type, password reset, and sold records details
 
 // ============================================================================
 // users.js - Users Tab Functionality
@@ -230,6 +230,127 @@ const UsersModule = (function() {
         return totalOwed;
     }
     
+    // New function to show sold records details for a consignor
+    window.showSoldRecordsDetails = function(consignorId, consignorName) {
+        const consignorRecords = allRecords.filter(record => {
+            return record.consignor_id == consignorId && record.status_id === 3;
+        });
+        
+        // Sort by sold date (most recent first) if available
+        consignorRecords.sort((a, b) => {
+            const dateA = a.sold_date || a.updated_at || a.created_at;
+            const dateB = b.sold_date || b.updated_at || b.created_at;
+            return new Date(dateB) - new Date(dateA);
+        });
+        
+        // Calculate total owed
+        let totalOwed = 0;
+        consignorRecords.forEach(record => {
+            const storePrice = Number(record.store_price);
+            const commissionRate = Number(record.commission_rate);
+            
+            if (!isNaN(storePrice) && !isNaN(commissionRate)) {
+                if (commissionRate > 1) {
+                    totalOwed += storePrice * ((100 - commissionRate) / 100);
+                } else {
+                    totalOwed += storePrice * (1 - commissionRate);
+                }
+            }
+        });
+        
+        // Build HTML for the modal
+        let recordsHtml = '';
+        
+        if (consignorRecords.length === 0) {
+            recordsHtml = '<tr><td colspan="8" style="text-align: center; padding: 30px;">No sold records found for this consignor</td></tr>';
+        } else {
+            consignorRecords.forEach(record => {
+                const storePrice = Number(record.store_price);
+                const commissionRate = Number(record.commission_rate);
+                
+                let consignorShare = 0;
+                if (!isNaN(storePrice) && !isNaN(commissionRate)) {
+                    if (commissionRate > 1) {
+                        consignorShare = storePrice * ((100 - commissionRate) / 100);
+                    } else {
+                        consignorShare = storePrice * (1 - commissionRate);
+                    }
+                }
+                
+                const soldDate = record.sold_date || record.updated_at || record.created_at;
+                const formattedDate = soldDate ? new Date(soldDate).toLocaleDateString() : 'Unknown';
+                
+                recordsHtml += `
+                    <tr>
+                        <td>${escapeHtml(record.artist || 'Unknown')}</td>
+                        <td>${escapeHtml(record.title || 'Unknown')}</td>
+                        <td>${escapeHtml(record.catalog_number || '—')}</td>
+                        <td>$${storePrice.toFixed(2)}</td>
+                        <td>${commissionRate}%</td>
+                        <td>$${(storePrice * (commissionRate / 100)).toFixed(2)}</td>
+                        <td>$${consignorShare.toFixed(2)}</td>
+                        <td>${formattedDate}</td>
+                    </tr>
+                `;
+            });
+        }
+        
+        const modalHtml = `
+            <div id="sold-records-modal" class="modal-overlay" style="display: flex;">
+                <div class="modal-content" style="max-width: 900px; width: 90%; background: white;">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; border-radius: 8px 8px 0 0;">
+                        <h3 class="modal-title" style="margin: 0; color: white;">
+                            <i class="fas fa-receipt"></i> Sold Records for ${escapeHtml(consignorName)}
+                        </h3>
+                        <button class="modal-close" onclick="closeSoldRecordsModal()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px; background: white; max-height: 500px; overflow-y: auto;">
+                        <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>Total Records Sold:</strong> ${consignorRecords.length}
+                            </div>
+                            <div>
+                                <strong>Total Owed:</strong> <span style="color: #28a745; font-size: 18px;">$${totalOwed.toFixed(2)}</span>
+                            </div>
+                        </div>
+                        <table class="records-table" style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #f8f9fa;">
+                                    <th style="padding: 10px; text-align: left;">Artist</th>
+                                    <th style="padding: 10px; text-align: left;">Title</th>
+                                    <th style="padding: 10px; text-align: left;">Catalog #</th>
+                                    <th style="padding: 10px; text-align: left;">Price</th>
+                                    <th style="padding: 10px; text-align: left;">Commission</th>
+                                    <th style="padding: 10px; text-align: left;">Store Cut</th>
+                                    <th style="padding: 10px; text-align: left;">Consignor Cut</th>
+                                    <th style="padding: 10px; text-align: left;">Sold Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${recordsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer" style="padding: 15px 20px; background: #f8f9fa; border-top: 1px solid #ddd; border-radius: 0 0 8px 8px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button class="btn btn-secondary" onclick="closeSoldRecordsModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove any existing modal
+        const existingModal = document.getElementById('sold-records-modal');
+        if (existingModal) existingModal.remove();
+        
+        // Add modal to body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
+    
+    window.closeSoldRecordsModal = function() {
+        const modal = document.getElementById('sold-records-modal');
+        if (modal) modal.remove();
+    };
+    
     window.loadUsers = async function() {
         const tbody = document.getElementById('users-body');
         const loading = document.getElementById('users-loading');
@@ -362,7 +483,14 @@ const UsersModule = (function() {
                     ${u.flag_color ? `<span class="flag-badge" style="${getFlagColorStyle(u.flag_color)}">${u.flag_color}</span>` : '<span style="color: #999;">—</span>'}
                 </td>
                 <td>$${u.owed.toFixed(2)}</td>
-                <td>${u.recordsSold}</td>
+                <td>
+                    ${u.recordsSold > 0 ? 
+                        `<a href="#" onclick="showSoldRecordsDetails(${u.id}, '${escapeHtml(u.username)}'); return false;" style="color: #007bff; text-decoration: underline; cursor: pointer;">
+                            ${u.recordsSold}
+                        </a>` : 
+                        '0'
+                    }
+                </td>
                 <td>
                     <button class="btn btn-sm btn-primary" onclick="editUser(${u.id})" style="margin-right: 5px;">
                         <i class="fas fa-edit"></i> Edit
@@ -470,14 +598,12 @@ const UsersModule = (function() {
                                     <i class="fas fa-info-circle"></i> Enter any color name or hex code
                                 </p>
                             </div>
-                            <div class="user-form-group">
-                                <label for="edit-password" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">New Password ${user.role === 'seller' ? '<span class="optional-badge" style="font-size: 11px; color: #666; font-weight: normal;">(optional)</span>' : ''}</label>
-                                <input type="password" id="edit-password" placeholder="Enter new password (leave blank to keep current)" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
-                                <div id="edit-password-strength" class="password-strength" style="color: #666;"></div>
-                            </div>
                         </div>
                     </div>
-                    <div class="modal-footer" style="padding: 15px 20px; background: #f8f9fa; border-top: 1px solid #ddd; border-radius: 0 0 8px 8px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <div class="modal-footer" style="padding: 15px 20px; background: #f8f9fa; border-top: 1px solid #ddd; border-radius: 0 0 8px 8px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end;">
+                        <button class="btn btn-info" onclick="showResetPasswordModal(${userId})" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            <i class="fas fa-key"></i> Reset Password
+                        </button>
                         <button class="btn btn-secondary" onclick="closeEditUserModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
                         <button class="btn btn-success" onclick="saveUserEdit(${userId})" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
                             <i class="fas fa-save"></i> Save Changes
@@ -493,50 +619,147 @@ const UsersModule = (function() {
         
         // Add modal to body
         document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
+    
+    // New function to show password reset modal
+    window.showResetPasswordModal = function(userId) {
+        const user = usersList.find(u => u.id == userId);
+        if (!user) return;
         
-        // Add password strength listener
-        document.getElementById('edit-password').addEventListener('keyup', function() {
-            const password = this.value;
-            const strengthDiv = document.getElementById('edit-password-strength');
-            if (!strengthDiv) return;
+        const modalHtml = `
+            <div id="reset-password-modal" class="modal-overlay" style="display: flex;">
+                <div class="modal-content" style="max-width: 400px; background: white;">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; border-radius: 8px 8px 0 0;">
+                        <h3 class="modal-title" style="margin: 0; color: white;"><i class="fas fa-key"></i> Reset Password for ${escapeHtml(user.username)}</h3>
+                        <button class="modal-close" onclick="closeResetPasswordModal()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px; background: white;">
+                        <div class="user-form-group">
+                            <label for="reset-password" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">New Password *</label>
+                            <input type="password" id="reset-password" placeholder="Enter new password" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;" onkeyup="checkResetPasswordStrength(this.value)">
+                            <div id="reset-password-strength" class="password-strength" style="color: #666;"></div>
+                        </div>
+                        <div class="user-form-group" style="margin-top: 15px;">
+                            <label for="confirm-reset-password" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">Confirm Password *</label>
+                            <input type="password" id="confirm-reset-password" placeholder="Confirm new password" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; color: #333; background: white;">
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="padding: 15px 20px; background: #f8f9fa; border-top: 1px solid #ddd; border-radius: 0 0 8px 8px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button class="btn btn-secondary" onclick="closeResetPasswordModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                        <button class="btn btn-warning" onclick="confirmResetPassword(${userId})" style="padding: 8px 16px; background: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer;">
+                            <i class="fas fa-key"></i> Reset Password
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove any existing reset modal
+        const existingModal = document.getElementById('reset-password-modal');
+        if (existingModal) existingModal.remove();
+        
+        // Add modal to body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    };
+    
+    window.checkResetPasswordStrength = function(password) {
+        const strengthDiv = document.getElementById('reset-password-strength');
+        if (!strengthDiv) return;
+        
+        if (!password) {
+            strengthDiv.innerHTML = '';
+            return;
+        }
+        
+        let strength = 0;
+        if (password.length >= 8) strength++;
+        if (password.match(/[a-z]+/)) strength++;
+        if (password.match(/[A-Z]+/)) strength++;
+        if (password.match(/[0-9]+/)) strength++;
+        if (password.match(/[$@#&!]+/)) strength++;
+        
+        const strengthMessages = ['Weak password', 'Medium password', 'Strong password'];
+        const strengthClasses = ['strength-weak', 'strength-medium', 'strength-strong'];
+        const index = Math.min(strength, 2);
+        
+        strengthDiv.innerHTML = strengthMessages[index];
+        strengthDiv.className = `password-strength ${strengthClasses[index]}`;
+    };
+    
+    window.closeResetPasswordModal = function() {
+        const modal = document.getElementById('reset-password-modal');
+        if (modal) modal.remove();
+    };
+    
+    window.confirmResetPassword = async function(userId) {
+        const password = document.getElementById('reset-password').value;
+        const confirmPassword = document.getElementById('confirm-reset-password').value;
+        
+        if (!password) {
+            alert('Password is required');
+            return;
+        }
+        
+        if (password.length < 8) {
+            alert('Password must be at least 8 characters long');
+            return;
+        }
+        
+        if (password !== confirmPassword) {
+            alert('Passwords do not match');
+            return;
+        }
+        
+        const loading = document.getElementById('users-loading');
+        loading.style.display = 'block';
+        
+        try {
+            // Use the dedicated password reset endpoint
+            const response = await fetch(`${AppConfig.baseUrl}/users/${userId}/reset-password`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    new_password: password
+                })
+            });
             
-            if (!password) {
-                strengthDiv.innerHTML = '';
-                return;
+            if (!response.ok) {
+                const text = await response.text();
+                try {
+                    const errorData = JSON.parse(text);
+                    throw new Error(errorData.error || `Server returned ${response.status}`);
+                } catch (e) {
+                    throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
+                }
             }
             
-            let strength = 0;
-            if (password.length >= 8) strength++;
-            if (password.match(/[a-z]+/)) strength++;
-            if (password.match(/[A-Z]+/)) strength++;
-            if (password.match(/[0-9]+/)) strength++;
-            if (password.match(/[$@#&!]+/)) strength++;
+            const data = await response.json();
             
-            const strengthMessages = ['Weak password', 'Medium password', 'Strong password'];
-            const strengthClasses = ['strength-weak', 'strength-medium', 'strength-strong'];
-            const index = Math.min(strength, 2);
-            
-            strengthDiv.innerHTML = strengthMessages[index];
-            strengthDiv.className = `password-strength ${strengthClasses[index]}`;
-        });
-        
-        // Initial toggle for edit modal
-        toggleEditSellerFields(user.role);
+            if (data.status === 'success') {
+                showStatus('Password reset successfully!', 'success');
+                window.closeResetPasswordModal();
+            } else {
+                throw new Error(data.error || 'Failed to reset password');
+            }
+        } catch (error) {
+            console.error('Error resetting password:', error);
+            alert(`Error: ${error.message}`);
+        } finally {
+            loading.style.display = 'none';
+        }
     };
     
     window.toggleEditSellerFields = function(role) {
         const emailField = document.getElementById('edit-email');
-        const passwordField = document.getElementById('edit-password');
         const emailLabel = document.querySelector('label[for="edit-email"]');
         
         if (role === 'seller') {
             if (emailField) {
                 emailField.required = false;
                 emailField.placeholder = 'Email (optional for sellers)';
-            }
-            if (passwordField) {
-                passwordField.required = false;
-                passwordField.placeholder = 'New password (optional for sellers)';
             }
             if (emailLabel && !emailLabel.innerHTML.includes('(optional)')) {
                 emailLabel.innerHTML = emailLabel.innerHTML.replace('*', '<span class="optional-badge" style="font-size: 11px; color: #666; font-weight: normal;">(optional)</span>');
@@ -545,10 +768,6 @@ const UsersModule = (function() {
             if (emailField) {
                 emailField.required = true;
                 emailField.placeholder = 'Enter email';
-            }
-            if (passwordField) {
-                passwordField.required = false; // Password is always optional in edit
-                passwordField.placeholder = 'Enter new password (leave blank to keep current)';
             }
             if (emailLabel) {
                 emailLabel.innerHTML = emailLabel.innerHTML.replace(/<span class="optional-badge".*<\/span>/, '*');
@@ -568,7 +787,6 @@ const UsersModule = (function() {
         const initials = document.getElementById('edit-initials').value.trim().toUpperCase();
         const role = document.getElementById('edit-role').value;
         const flagColor = document.getElementById('edit-flag-color').value.trim();
-        const password = document.getElementById('edit-password').value;
         
         if (!username) {
             alert('Username is required');
@@ -578,12 +796,6 @@ const UsersModule = (function() {
         // Email validation only if email is provided and role requires it
         if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
             alert('Please enter a valid email address');
-            return;
-        }
-        
-        // Password validation only if password is provided
-        if (password && password.length < 8) {
-            alert('Password must be at least 8 characters long if changing');
             return;
         }
         
@@ -601,7 +813,6 @@ const UsersModule = (function() {
             if (email) updateData.email = email;
             if (fullName) updateData.full_name = fullName;
             if (initials) updateData.initials = initials;
-            if (password) updateData.password = password;
             
             const response = await fetch(`${AppConfig.baseUrl}/users/${userId}`, {
                 method: 'PUT',
@@ -758,7 +969,7 @@ const UsersModule = (function() {
     
     return {
         init: function() {
-            console.log('UsersModule initialized with Seller support');
+            console.log('UsersModule initialized with Seller support, password reset, and sold records details');
             
             // Add role change listener to the new role select
             const roleSelect = document.getElementById('new-role');
