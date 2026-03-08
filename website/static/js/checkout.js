@@ -1306,6 +1306,14 @@ window.initiateCartTerminalCheckout = async function() {
                     <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
                     <div class="payment-status-detail">Please complete payment on the Square Terminal</div>
                     <div class="payment-status-detail" style="margin-top: 20px; font-weight: bold;">Waiting for payment...</div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn btn-success" onclick="forceCompleteSquarePayment()">
+                            <i class="fas fa-check-circle"></i> Complete Sale
+                        </button>
+                        <button class="btn btn-danger" onclick="cancelTerminalCheckout()">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                    </div>
                 </div>
             `;
         }
@@ -1329,6 +1337,77 @@ window.initiateCartTerminalCheckout = async function() {
         }
         
         showCheckoutStatus(`Checkout failed: ${error.message}`, 'error');
+    }
+};
+
+// ============================================================================
+// Manual Force Complete Square Payment Function
+// ============================================================================
+
+window.forceCompleteSquarePayment = async function() {
+    if (!activeCheckoutId) {
+        showCheckoutStatus('No active checkout to complete', 'error');
+        return;
+    }
+    
+    if (!pendingCartCheckout) {
+        showCheckoutStatus('No pending cart checkout found', 'error');
+        return;
+    }
+    
+    const modalBody = document.getElementById('terminal-checkout-body');
+    
+    if (modalBody) {
+        modalBody.innerHTML = `
+            <div class="payment-status">
+                <div class="payment-status-icon processing">
+                    <i class="fas fa-spinner fa-pulse"></i>
+                </div>
+                <div class="payment-status-message">Completing sale manually...</div>
+                <div class="payment-status-detail">Processing payment for ${pendingCartCheckout.items.length} items</div>
+            </div>
+        `;
+    }
+    
+    try {
+        // Stop polling if it's still running
+        if (square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
+            clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
+        }
+        
+        // Generate a manual payment ID
+        const manualPaymentId = `MANUAL-${Date.now()}`;
+        square_payment_sessions[activeCheckoutId].payment_id = manualPaymentId;
+        square_payment_sessions[activeCheckoutId].status = 'COMPLETED';
+        
+        await processSquarePaymentSuccess();
+        closeTerminalCheckoutModal();
+        showCheckoutStatus('Sale completed successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error completing sale:', error);
+        
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div class="payment-status">
+                    <div class="payment-status-icon error">
+                        <i class="fas fa-times-circle"></i>
+                    </div>
+                    <div class="payment-status-message">Completion Failed</div>
+                    <div class="payment-status-detail">${error.message}</div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn btn-warning" onclick="forceCompleteSquarePayment()">
+                            <i class="fas fa-redo"></i> Retry
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeTerminalCheckoutModal()">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        showCheckoutStatus(`Failed to complete sale: ${error.message}`, 'error');
     }
 };
 
@@ -2136,4 +2215,4 @@ document.addEventListener('keypress', function(e) {
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
-console.log('✅ checkout.js loaded with VCP-8370 printer support');
+console.log('✅ checkout.js loaded with VCP-8370 printer support and manual completion button');
