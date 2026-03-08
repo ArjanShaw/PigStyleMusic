@@ -1591,8 +1591,6 @@ async function processSquarePaymentSuccess() {
             });
         } else {
             try {
-                // Validate commission rate for consignor items
-                validateConsignorCommission(item);
                 
                 const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                     method: 'PUT',
