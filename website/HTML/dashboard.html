@@ -662,7 +662,7 @@
                     <i class="fas fa-angle-right"></i>
                 </button>
                 <button class="pagination-btn" id="page-last" title="Last Page">
-                    <i class="fas fa-angle-double-right"></i>
+                    <i class="fas fa-angle-double-left"></i>
                 </button>
             </div>
             <div class="pagination-size-selector">
@@ -963,7 +963,7 @@
                 this.conditions = [];
                 this.statuses = ['new', 'active', 'sold', 'removed'];
                 this.selectedStatuses = ['new', 'active', 'sold', 'removed'];
-                this.commissionRate = 0.20;
+                this.globalCommissionRate = 20; // Default global rate
                 this.minimumPrice = 1.99;
                 this.allInventoryRecords = [];
                 this.filteredInventoryRecords = [];
@@ -984,6 +984,7 @@
                 if (window.Auth.isLoggedIn) {
                     console.log('INIT: User authenticated, showing dashboard');
                     await this.loadMinimumPrice();
+                    await this.loadGlobalCommissionRate();
                     this.showDashboard();
                     await this.loadStats();
                     await this.loadGenres();
@@ -1007,6 +1008,19 @@
                 }
             }
 
+            async loadGlobalCommissionRate() {
+                try {
+                    const response = await APIUtils.get('/api/commission-rate');
+                    this.globalCommissionRate = response.commission_rate || 20;
+                    document.getElementById('commission-rate').textContent = `${this.globalCommissionRate}%`;
+                    console.log(`COMMISSION: Global commission rate loaded: ${this.globalCommissionRate}%`);
+                } catch (error) {
+                    console.warn('COMMISSION: Could not load global commission rate, using default:', error);
+                    this.globalCommissionRate = 20;
+                    document.getElementById('commission-rate').textContent = '20%';
+                }
+            }
+
             async loadUserCredit() {
                 const user = window.Auth.getUser();
                 
@@ -1027,7 +1041,7 @@
                         // Only count sold records (status_id === 3)
                         if (record.status_id === 3 && record.consignor_id == user.id) {
                             const storePrice = Number(record.store_price) || 0;
-                            const commissionRate = Number(record.commission_rate) || 0;
+                            const commissionRate = Number(record.commission_rate) || 20; // Use record's commission rate, fallback to 20
                             
                             if (!isNaN(storePrice) && !isNaN(commissionRate) && commissionRate > 0) {
                                 // Calculate consignor share (store_price minus commission)
@@ -1336,9 +1350,6 @@
                 
                 emptyDiv.style.display = 'none';
                 
-                // Get commission rate for display
-                const commissionRate = this.commissionRate;
-                
                 tableBody.innerHTML = records.map(record => {
                     const barcodeDisplay = record.barcode ? 
                         `<span class="barcode-value" title="${record.barcode}">${record.barcode}</span>` : 
@@ -1347,6 +1358,15 @@
                     const statusName = (record.status_name || 'active').toLowerCase();
                     const statusClass = statusName.replace(/\s+/g, '-');
                     const displayStatus = record.status_name || 'Active';
+                    
+                    // Get the record-specific commission rate from the database
+                    // The record object should contain commission_rate from the API response
+                    const commissionRate = record.commission_rate !== null && record.commission_rate !== undefined 
+                        ? Number(record.commission_rate) 
+                        : 20; // Fallback to 20% if not set
+                    
+                    // Format for display (ensure it's shown as a percentage)
+                    const commissionDisplay = commissionRate > 1 ? commissionRate : (commissionRate * 100);
                     
                     return `
                     <tr>
@@ -1365,7 +1385,7 @@
                         <td>${record.condition || 'N/A'}</td>
                         <td>$${(record.store_price || 0).toFixed(2)}</td>
                         <td>
-                            <span class="commission-badge">${(commissionRate * 100).toFixed(1)}%</span>
+                            <span class="commission-badge">${commissionDisplay.toFixed(1)}%</span>
                         </td>
                         <td>
                             <span class="status-badge ${statusClass}">${displayStatus}</span>
@@ -1394,11 +1414,6 @@
                 const recordsCount = response.records ? response.records.length : 0;
                 
                 document.getElementById('total-records').textContent = recordsCount;
-
-                const commissionResponse = await APIUtils.get('/api/commission-rate');
-                this.commissionRate = commissionResponse.commission_rate / 100;
-                document.getElementById('commission-rate').textContent = 
-                    `${commissionResponse.commission_rate}%`;
 
                 // Load user credit
                 await this.loadUserCredit();
