@@ -119,8 +119,9 @@
         // Current order being processed
         let currentOrder = null;
 
-        // Shipping cost - will be set from config
-        let shippingCost = 0;
+        // Hardcoded shipping rates
+        const SHIPPING_TEE = 5.72;
+        const SHIPPING_STICKER = 0.45;
         
         // Tax rate - will be loaded from config
         let taxRate = 0;
@@ -139,7 +140,7 @@
 
         // Load cart from localStorage on page load
         function loadCart() {
-            const savedCart = localStorage.getItem('pigstyle_cart');
+            const savedCart = localStorage.getItem('pigstyle_cart_merch');
             if (savedCart) {
                 try {
                     cart = JSON.parse(savedCart);
@@ -153,7 +154,7 @@
 
         // Save cart to localStorage
         function saveCart() {
-            localStorage.setItem('pigstyle_cart', JSON.stringify(cart));
+            localStorage.setItem('pigstyle_cart_merch', JSON.stringify(cart));
             updateCartDisplay();
         }
 
@@ -701,9 +702,33 @@
 
         // ==================== CHECKOUT FUNCTIONS ====================
 
+        // Calculate shipping cost based on cart items
+        function calculateShippingCost() {
+            let hasTees = false;
+            let hasStickers = false;
+            
+            cart.items.forEach(item => {
+                const description = (item.description || item.title || '').toLowerCase();
+                if (description.includes('tee')) {
+                    hasTees = true;
+                } else if (description.includes('sticker')) {
+                    hasStickers = true;
+                }
+            });
+            
+            let shippingCost = 0;
+            if (hasTees) shippingCost += SHIPPING_TEE;
+            if (hasStickers) shippingCost += SHIPPING_STICKER;
+            
+            return shippingCost;
+        }
+
         // Show shipping/pickup options modal
         function showShippingOptions() {
             return new Promise((resolve) => {
+                // Calculate shipping cost based on cart items
+                const calculatedShipping = calculateShippingCost();
+                
                 // Create modal overlay
                 const modal = document.createElement('div');
                 modal.className = 'payment-modal-overlay';
@@ -722,8 +747,8 @@
                         <div class="shipping-option" id="shipOption">
                             <input type="radio" name="shippingOption" id="shipRadio" value="ship">
                             <label for="shipRadio">Ship my order</label>
-                            <p style="margin: 5px 0 0 25px; font-size: 13px; color: #666;">Shipping costs calculated at checkout</p>
-                            <div class="shipping-cost-display">+ $${shippingCost.toFixed(2)} shipping</div>
+                            <p style="margin: 5px 0 0 25px; font-size: 13px; color: #666;">Shipping costs calculated based on items</p>
+                            <div class="shipping-cost-display">+ $${calculatedShipping.toFixed(2)} shipping</div>
                         </div>
                         
                         <div id="shippingFormContainer" style="display: none;">
@@ -832,10 +857,10 @@
                         }
                     }
                     
-                    // Collect shipping data
+                    // Collect shipping data with calculated cost
                     const shippingData = {
                         method: isShip ? 'ship' : 'pickup',
-                        cost: isShip ? shippingCost : 0,
+                        cost: isShip ? calculatedShipping : 0,
                         ...(isShip && {
                             fullName: document.getElementById('fullName')?.value.trim(),
                             email: document.getElementById('email')?.value.trim(),
@@ -894,17 +919,23 @@
                 
                 addDebug('Sending cart to backend for checkout...');
                 
-                // Calculate tax (use stored taxRate)
-                const taxableAmount = cart.total + (shippingData?.cost || 0);
+                // Calculate subtotal from cart items
+                const subtotal = cart.items.reduce((sum, item) => {
+                    const price = parseFloat(item.price);
+                    return sum + (price * item.quantity);
+                }, 0);
+                
+                // Calculate tax
+                const taxableAmount = subtotal + (shippingData?.cost || 0);
                 const taxAmount = taxableAmount * (taxRate / 100);
                 const totalWithTax = taxableAmount + taxAmount;
                 
                 // Prepare items array
                 const items = cart.items.map(item => ({
                     accessory_id: item.accessoryId,
-                    title: item.title,
+                    title: item.title || item.description,
                     description: item.description,
-                    price: item.price,
+                    price: parseFloat(item.price),
                     quantity: item.quantity
                 }));
                 
@@ -916,7 +947,7 @@
                         amount: shippingData.cost,
                         name: 'Shipping'
                     } : null,
-                    subtotal: cart.total,
+                    subtotal: subtotal,
                     tax: taxAmount,
                     total: totalWithTax,
                     currency: 'USD'
@@ -936,6 +967,8 @@
                     });
                 }
                 
+                console.log('Sending to checkout endpoint:', requestData);
+                
                 // Send to checkout endpoint
                 const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
                     method: 'POST',
@@ -953,6 +986,11 @@
                         order_id: data.order_id,
                         order_number: data.order_number
                     };
+                    
+                    // Clear cart before redirect
+                    cart.items = [];
+                    cart.total = 0;
+                    saveCart();
                     
                     // Redirect to Square checkout page
                     addDebug(`Redirecting to Square checkout: ${data.checkout_url}`);
@@ -1033,8 +1071,9 @@
                 } catch (error) {
                     addDebug(`Error calling order complete endpoint: ${error.message}`, 'error');
                 } finally {
-                    // Clear cart on successful payment
+                    // Cart is already cleared before redirect, but just in case
                     cart.items = [];
+                    cart.total = 0;
                     saveCart();
                     
                     // Show success message
@@ -1081,11 +1120,6 @@
         // Load the catalog data when page loads
         document.addEventListener('DOMContentLoaded', async function() {
             try {
-                // Load shipping cost directly from config
-                const cost = await getConfigValue('SHIPPING_COST');
-                shippingCost = parseFloat(cost);
-                console.log('Shipping cost set to:', shippingCost);
-                
                 // Load tax rate
                 try {
                     taxRate = await getConfigValue('TAX_RATE') || 0;
