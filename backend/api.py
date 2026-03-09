@@ -675,12 +675,7 @@ def process_checkout():
             else:
                 valid_items.append(item)
         
-        if unavailable_items:
-            conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'Items unavailable: {", ".join(unavailable_items)}'
-            }), 400
+         
         
         line_items = []
         for item in valid_items:
@@ -1239,25 +1234,7 @@ def get_artist_genre(artist_name):
 
     return jsonify(dict(artist))
 
-# Get all accessories
-@app.route('/accessories', methods=['GET'])
-def get_accessories():
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT id, description, bar_code, store_price, count, created_at, updated_at
-        FROM accessories
-        ORDER BY created_at DESC
-    ''')
-    
-    accessories = cursor.fetchall()
-    conn.close()
-    
-    return jsonify({
-        'status': 'success',
-        'accessories': [dict(acc) for acc in accessories]
-    })
+
 
 @app.route('/print-receipt', methods=['POST'])
 def print_receipt():
@@ -1365,14 +1342,52 @@ def list_printers():
         'status': 'success',
         'printers': result
     })
+ 
+# ==================== ACCESSORIES ENDPOINTS ====================
 
-@app.route('/accessories/<int:accessory_id>', methods=['GET'])
-def get_accessory(accessory_id):
+@app.route('/accessories', methods=['GET'])
+def get_accessories():
+    """Get all accessories with proper ordering"""
     conn = get_db()
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT id, description, bar_code, store_price, count, created_at, updated_at
+        SELECT id, description, bar_code, store_price, count, created_at, updated_at, image_url
+        FROM accessories
+        ORDER BY 
+            CASE 
+                WHEN description LIKE '%Sticker%' THEN 999
+                WHEN description LIKE '%Tee black%' THEN 1
+                WHEN description LIKE '%Tee yellow%' THEN 2
+                ELSE 3
+            END,
+            CASE 
+                WHEN description LIKE '%XS%' THEN 1
+                WHEN description LIKE '%S%' THEN 2
+                WHEN description LIKE '%M%' THEN 3
+                WHEN description LIKE '%L%' THEN 4
+                WHEN description LIKE '%XL%' THEN 5
+                WHEN description LIKE '%XXL%' THEN 6
+                ELSE 7
+            END
+    ''')
+    
+    accessories = cursor.fetchall()
+    conn.close()
+    
+    return jsonify({
+        'status': 'success',
+        'accessories': [dict(acc) for acc in accessories]
+    })
+
+@app.route('/accessories/<int:accessory_id>', methods=['GET'])
+def get_accessory(accessory_id):
+    """Get a single accessory by ID"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT id, description, bar_code, store_price, count, created_at, updated_at, image_url
         FROM accessories
         WHERE id = ?
     ''', (accessory_id,))
@@ -1393,6 +1408,7 @@ def get_accessory(accessory_id):
 
 @app.route('/accessories', methods=['POST'])
 def add_accessory():
+    """Add a new accessory"""
     data = request.json
     
     if not data.get('description') or not data.get('store_price'):
@@ -1413,13 +1429,14 @@ def add_accessory():
     
     try:
         cursor.execute('''
-            INSERT INTO accessories (description, bar_code, store_price, count)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO accessories (description, bar_code, store_price, count, image_url)
+            VALUES (?, ?, ?, ?, ?)
         ''', (
             data['description'],
             barcode,
             float(data['store_price']),
-            data.get('count', 0)
+            data.get('count', 0),
+            data.get('image_url', '')
         ))
         
         conn.commit()
@@ -1443,6 +1460,7 @@ def add_accessory():
 
 @app.route('/accessories/<int:accessory_id>', methods=['PUT'])
 def update_accessory(accessory_id):
+    """Update an accessory"""
     data = request.json
     
     conn = get_db()
@@ -1471,6 +1489,10 @@ def update_accessory(accessory_id):
         updates.append('count = ?')
         values.append(data['count'])
     
+    if 'image_url' in data:
+        updates.append('image_url = ?')
+        values.append(data['image_url'])
+    
     if not updates:
         conn.close()
         return jsonify({
@@ -1483,7 +1505,7 @@ def update_accessory(accessory_id):
     try:
         cursor.execute(f'''
             UPDATE accessories 
-            SET {', '.join(updates)}
+            SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         ''', values)
         
@@ -1507,6 +1529,7 @@ def update_accessory(accessory_id):
 
 @app.route('/accessories/<int:accessory_id>', methods=['DELETE'])
 def delete_accessory(accessory_id):
+    """Delete an accessory"""
     conn = get_db()
     cursor = conn.cursor()
     
@@ -1534,6 +1557,7 @@ def delete_accessory(accessory_id):
 
 @app.route('/accessories/<int:accessory_id>/generate-barcode', methods=['POST'])
 def generate_new_barcode(accessory_id):
+    """Generate a new barcode for an accessory"""
     import random
     import string
     
@@ -1547,7 +1571,7 @@ def generate_new_barcode(accessory_id):
     try:
         cursor.execute('''
             UPDATE accessories 
-            SET bar_code = ?
+            SET bar_code = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         ''', (new_barcode, accessory_id))
         
@@ -2779,6 +2803,64 @@ def update_user(user_id):
     conn.close()
 
     return jsonify({'status': 'success', 'message': 'User updated'})
+
+@app.route('/artist-genre', methods=['POST'])
+def create_artist_genre():
+    """Create a new artist-genre mapping"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+    artist = data.get('artist')
+    genre_id = data.get('genre_id')
+
+    if not artist or not genre_id:
+        return jsonify({'status': 'error', 'error': 'artist and genre_id required'}), 400
+
+    # Clean artist name
+    artist = artist.strip()
+    if not artist:
+        return jsonify({'status': 'error', 'error': 'Artist name cannot be empty'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Verify genre exists
+    cursor.execute('SELECT id, genre_name FROM genres WHERE id = ?', (genre_id,))
+    genre = cursor.fetchone()
+    if not genre:
+        conn.close()
+        return jsonify({'status': 'error', 'error': f'Genre ID {genre_id} not found'}), 404
+
+    # Check if artist already exists
+    cursor.execute('SELECT * FROM artist_genre WHERE artist = ?', (artist,))
+    existing = cursor.fetchone()
+
+    if existing:
+        conn.close()
+        return jsonify({
+            'status': 'error',
+            'error': f'Artist "{artist}" already exists with genre ID {existing["genre_id"]}'
+        }), 400
+
+    # Insert new mapping
+    cursor.execute('''
+        INSERT INTO artist_genre (artist, genre_id)
+        VALUES (?, ?)
+    ''', (artist, genre_id))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'status': 'success',
+        'message': f'Artist "{artist}" mapped to genre "{genre["genre_name"]}"',
+        'artist': artist,
+        'genre_id': genre_id,
+        'genre_name': genre['genre_name']
+    }), 201
+
+
 
 @app.route('/users/<int:user_id>/reset-password', methods=['POST'])
 def reset_password(user_id):
