@@ -2,14 +2,36 @@
 // add-edit-delete-manager.js - Add/Edit/Delete Tab Functionality
 // ============================================================================
 
-// Genre Predictor Class
+// Genre Predictor Class - Updated to check artist_genre table first
 class GenrePredictor {
     constructor() {
         this.genreMappingCache = {};
+        this.artistGenreCache = {};
     }
     
-    async predictGenre(discogsGenre) {
-        if (!discogsGenre) return null;
+    async predictGenre(artist, discogsGenre) {
+        console.log(`GENRE_PREDICTION: Predicting for artist="${artist}", discogsGenre="${discogsGenre}"`);
+        
+        // First, check if artist exists in artist_genre table
+        if (artist) {
+            const artistGenre = await this.getArtistGenre(artist);
+            if (artistGenre) {
+                console.log(`GENRE_PREDICTION: Found artist "${artist}" in artist_genre table with genre ID ${artistGenre.genre_id} (${artistGenre.genre_name})`);
+                return {
+                    local_genre_id: artistGenre.genre_id,
+                    local_genre_name: artistGenre.genre_name,
+                    source: 'artist_genre'
+                };
+            } else {
+                console.log(`GENRE_PREDICTION: Artist "${artist}" not found in artist_genre table`);
+            }
+        }
+        
+        // If artist not found, fall back to Discogs genre mapping
+        if (!discogsGenre) {
+            console.log('GENRE_PREDICTION: No discogs genre provided');
+            return null;
+        }
         
         let cleanGenre = discogsGenre;
         if (cleanGenre.includes('/')) {
@@ -17,30 +39,75 @@ class GenrePredictor {
         }
         
         if (this.genreMappingCache[cleanGenre]) {
-            console.log(`GENRE_CACHE: Using cached prediction for "${cleanGenre}"`);
-            return this.genreMappingCache[cleanGenre];
+            console.log(`GENRE_PREDICTION: Using cached mapping for "${cleanGenre}"`);
+            return {
+                ...this.genreMappingCache[cleanGenre],
+                source: 'discogs_mapping_cache'
+            };
         }
         
-        const response = await APIUtils.get(
-            `/discogs-genre-mappings/${encodeURIComponent(cleanGenre)}`
-        );
+        try {
+            const response = await APIUtils.get(
+                `/discogs-genre-mappings/${encodeURIComponent(cleanGenre)}`
+            );
+            
+            if (response.status === 'success' && response.mapping) {
+                this.genreMappingCache[cleanGenre] = {
+                    local_genre_id: response.mapping.local_genre_id,
+                    local_genre_name: response.mapping.local_genre_name
+                };
+                console.log(`GENRE_PREDICTION: Found mapping for "${cleanGenre}" -> ${response.mapping.local_genre_name}`);
+                return {
+                    ...this.genreMappingCache[cleanGenre],
+                    source: 'discogs_mapping'
+                };
+            } else {
+                console.log(`GENRE_PREDICTION: No mapping found for "${cleanGenre}"`);
+                this.genreMappingCache[cleanGenre] = null;
+                return null;
+            }
+        } catch (error) {
+            console.error(`GENRE_PREDICTION: Error fetching mapping for "${cleanGenre}":`, error);
+            return null;
+        }
+    }
+    
+    async getArtistGenre(artist) {
+        // Check cache first
+        if (this.artistGenreCache[artist]) {
+            return this.artistGenreCache[artist];
+        }
         
-        if (response.status === 'success' && response.mapping) {
-            this.genreMappingCache[cleanGenre] = response.mapping;
-            console.log(`GENRE_PREDICTION: Found mapping for "${cleanGenre}" -> ${response.mapping.local_genre_name}`);
-            return response.mapping;
-        } else {
-            console.log(`GENRE_PREDICTION: No mapping found for "${cleanGenre}"`);
-            this.genreMappingCache[cleanGenre] = null;
+        try {
+            const response = await APIUtils.get(
+                `/artist-genre/${encodeURIComponent(artist)}`
+            );
+            
+            if (response.status === 'success') {
+                this.artistGenreCache[artist] = {
+                    artist: response.artist,
+                    genre_id: response.genre_id,
+                    genre_name: response.genre_name
+                };
+                return this.artistGenreCache[artist];
+            } else if (response.status === 'error' && response.error === 'Artist not found') {
+                this.artistGenreCache[artist] = null;
+                return null;
+            }
+        } catch (error) {
+            console.error(`Error fetching artist genre for "${artist}":`, error);
             return null;
         }
     }
     
     clearCache() {
         this.genreMappingCache = {};
+        this.artistGenreCache = {};
     }
     
     async saveMapping(discogsGenre, localGenreId, localGenreName) {
+        if (!discogsGenre) return null;
+        
         const cleanGenre = discogsGenre.includes('/') ? 
             discogsGenre.replace('/', ' ') : discogsGenre;
         
@@ -49,16 +116,54 @@ class GenrePredictor {
             local_genre_id: localGenreId
         };
         
-        const response = await APIUtils.post('/discogs-genre-mappings', mappingData);
+        try {
+            const response = await APIUtils.post('/discogs-genre-mappings', mappingData);
+            
+            if (response.status === 'success') {
+                this.genreMappingCache[cleanGenre] = {
+                    local_genre_id: localGenreId,
+                    local_genre_name: localGenreName
+                };
+                
+                console.log(`GENRE_MAPPING: Saved mapping "${cleanGenre}" -> ${localGenreName}`);
+                return response;
+            }
+        } catch (error) {
+            console.error('Error saving genre mapping:', error);
+        }
+        return null;
+    }
+    
+    async saveArtistGenre(artist, genreId, genreName) {
+        if (!artist || !genreId) return null;
         
-        if (response.status === 'success') {
-            this.genreMappingCache[cleanGenre] = {
-                local_genre_id: localGenreId,
-                local_genre_name: localGenreName
+        // First check if artist already has a genre
+        const existing = await this.getArtistGenre(artist);
+        if (existing) {
+            console.log(`Artist "${artist}" already has genre ID ${existing.genre_id}, not overwriting`);
+            return existing;
+        }
+        
+        try {
+            const data = {
+                artist: artist,
+                genre_id: genreId
             };
             
-            console.log(`GENRE_MAPPING: Saved mapping "${cleanGenre}" -> ${localGenreName}`);
-            return response;
+            const response = await APIUtils.post('/artist-genre', data);
+            
+            if (response.status === 'success') {
+                this.artistGenreCache[artist] = {
+                    artist: artist,
+                    genre_id: genreId,
+                    genre_name: genreName
+                };
+                
+                console.log(`ARTIST_GENRE: Saved artist "${artist}" -> ${genreName}`);
+                return response;
+            }
+        } catch (error) {
+            console.error('Error saving artist genre:', error);
         }
         return null;
     }
@@ -138,7 +243,7 @@ class AddEditDeleteManager {
         this.minimumPrice = 1.99;
         this.selectedConsignorId = null;
         this.selectedCommissionRate = 20.0;
-        this.autoEstimatePrice = true; // New setting to control price estimation
+        this.autoEstimatePrice = true;
         
         this.init();
     }
@@ -202,13 +307,11 @@ class AddEditDeleteManager {
         const searchSection = document.querySelector('.search-section');
         if (!searchSection) return;
         
-        // Remove existing settings if any
         let globalSettings = document.getElementById('global-add-settings');
         if (globalSettings) {
             globalSettings.remove();
         }
         
-        // Create expandable settings section
         globalSettings = document.createElement('div');
         globalSettings.id = 'global-add-settings';
         globalSettings.style.marginTop = '15px';
@@ -222,7 +325,6 @@ class AddEditDeleteManager {
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
         }).join('');
         
-        // Header (always visible)
         const header = document.createElement('div');
         header.style.cssText = `
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -239,7 +341,6 @@ class AddEditDeleteManager {
             <span class="settings-toggle"><i class="fas fa-chevron-down"></i></span>
         `;
         
-        // Content (expandable)
         const content = document.createElement('div');
         content.style.cssText = `
             background: #f8f9fa;
@@ -303,7 +404,6 @@ class AddEditDeleteManager {
         globalSettings.appendChild(header);
         globalSettings.appendChild(content);
         
-        // Toggle functionality
         header.addEventListener('click', () => {
             const isVisible = content.style.display !== 'none';
             content.style.display = isVisible ? 'none' : 'block';
@@ -317,7 +417,6 @@ class AddEditDeleteManager {
             searchSection.appendChild(globalSettings);
         }
         
-        // Add event listeners
         document.getElementById('global-consignor-select').addEventListener('change', (e) => {
             const value = e.target.value;
             this.selectedConsignorId = value ? parseInt(value) : null;
@@ -571,14 +670,16 @@ class AddEditDeleteManager {
             const response = await APIUtils.get('/api/discogs/search', { q: searchTerm });
             
             if (response.status === 'success' && response.results) {
+                // For each result, predict genre using artist name first, then Discogs genre
                 const enhancedResults = await Promise.all(
                     response.results.map(async (record) => {
-                        if (record.genre) {
-                            const prediction = await this.genrePredictor.predictGenre(record.genre);
-                            if (prediction) {
-                                record.predicted_genre = prediction;
-                                console.log(`GENRE_PREDICTION: "${record.genre}" -> ${prediction.local_genre_name}`);
-                            }
+                        const prediction = await this.genrePredictor.predictGenre(
+                            record.artist, 
+                            record.genre
+                        );
+                        if (prediction) {
+                            record.predicted_genre = prediction;
+                            console.log(`GENRE_PREDICTION: For "${record.artist}" - "${record.genre}" -> ${prediction.local_genre_name} (source: ${prediction.source})`);
                         }
                         return record;
                     })
@@ -628,7 +729,11 @@ class AddEditDeleteManager {
                     catalog_number: 'GHS 24425',
                     discogs_id: '123456',
                     barcode: ['GHS 24425', '075992442517'],
-                    predicted_genre: { local_genre_id: 1, local_genre_name: 'Rock' }
+                    predicted_genre: { 
+                        local_genre_id: 1, 
+                        local_genre_name: 'Rock',
+                        source: 'sample_data'
+                    }
                 }
             ];
         } else {
@@ -696,6 +801,7 @@ class AddEditDeleteManager {
                 const hasPrediction = record.predicted_genre;
                 const predictedGenreId = hasPrediction ? record.predicted_genre.local_genre_id : null;
                 const predictedGenreName = hasPrediction ? record.predicted_genre.local_genre_name : null;
+                const predictionSource = hasPrediction ? record.predicted_genre.source : null;
                 const predictionIndex = findGenreIndex(predictedGenreId);
                 
                 const genreOptions = this.genres.map((genre, idx) => {
@@ -709,6 +815,42 @@ class AddEditDeleteManager {
                         discogsIdentifiers = record.barcode.join(', ');
                     } else {
                         discogsIdentifiers = record.barcode;
+                    }
+                }
+                
+                let predictionMessage = '';
+                let predictionClass = '';
+                let predictionIcon = '';
+                let predictionTitle = '';
+                let bannerColor = '';
+                let borderColor = '';
+                let iconColor = '';
+                
+                if (hasPrediction) {
+                    if (predictionSource === 'artist_genre') {
+                        predictionIcon = 'fa-check-circle';
+                        iconColor = '#28a745';
+                        borderColor = '#28a745';
+                        bannerColor = '#d4edda';
+                        predictionTitle = '✅ Artist Match';
+                        predictionMessage = `Artist "${record.artist}" found in database - genre set to ${predictedGenreName}`;
+                        predictionClass = 'prediction-artist';
+                    } else if (predictionSource === 'discogs_mapping' || predictionSource === 'discogs_mapping_cache') {
+                        predictionIcon = 'fa-lightbulb';
+                        iconColor = '#ffc107';
+                        borderColor = '#17a2b8';
+                        bannerColor = '#e8f4fd';
+                        predictionTitle = '💡 Genre Prediction';
+                        predictionMessage = `Discogs genre "${record.genre}" maps to ${predictedGenreName}`;
+                        predictionClass = 'prediction-available';
+                    } else {
+                        predictionIcon = 'fa-search';
+                        iconColor = '#856404';
+                        borderColor = '#ffc107';
+                        bannerColor = '#fff3cd';
+                        predictionTitle = 'Prediction';
+                        predictionMessage = `Suggested genre: ${predictedGenreName}`;
+                        predictionClass = '';
                     }
                 }
                 
@@ -737,24 +879,27 @@ class AddEditDeleteManager {
                         </div>
                         
                         ${hasPrediction ? `
-                            <div class="genre-prediction prediction-available" id="prediction-banner-${record.discogs_id}" style="margin: 10px 0; padding: 10px; background: #e8f4fd; border-left: 4px solid #17a2b8; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
-                                <i class="fas fa-lightbulb" style="color: #ffc107; font-size: 20px;"></i>
+                            <div class="genre-prediction ${predictionClass}" id="prediction-banner-${record.discogs_id}" style="margin: 10px 0; padding: 10px; background: ${bannerColor}; border-left: 4px solid ${borderColor}; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
+                                <i class="fas ${predictionIcon}" style="color: ${iconColor}; font-size: 20px;"></i>
                                 <div style="flex: 1;">
-                                    <strong>Genre Prediction:</strong> "${record.genre}" maps to <strong>${predictedGenreName}</strong>
-                                    <div style="font-size: 12px; color: #666;">Based on previous mappings. The dropdown is pre-selected.</div>
+                                    <strong>${predictionTitle}:</strong> ${predictionMessage}
+                                    <div style="font-size: 12px; color: #666;">The genre dropdown has been pre-selected.</div>
                                 </div>
-                                <button class="btn btn-small btn-success accept-prediction-btn" 
-                                        data-record-id="${record.discogs_id}"
-                                        data-discogs-genre="${record.genre}"
-                                        data-genre-id="${predictedGenreId}"
-                                        data-genre-name="${predictedGenreName}">
-                                    <i class="fas fa-check"></i> Confirm
-                                </button>
+                                ${predictionSource !== 'artist_genre' ? `
+                                    <button class="btn btn-small btn-success accept-prediction-btn" 
+                                            data-record-id="${record.discogs_id}"
+                                            data-artist="${record.artist}"
+                                            data-discogs-genre="${record.genre}"
+                                            data-genre-id="${predictedGenreId}"
+                                            data-genre-name="${predictedGenreName}">
+                                        <i class="fas fa-check"></i> Confirm
+                                    </button>
+                                ` : ''}
                             </div>
                         ` : record.genre ? `
                             <div class="genre-prediction" style="margin: 10px 0; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
                                 <i class="fas fa-search" style="color: #856404;"></i>
-                                <span>No genre prediction found for "${record.genre}". Select a genre manually to create a mapping.</span>
+                                <span>No artist or genre prediction found. Select a genre manually to save to artist_genre table.</span>
                             </div>
                         ` : ''}
                         
@@ -1067,17 +1212,6 @@ class AddEditDeleteManager {
             });
             
             console.log('ESTIMATE_PRICE: API response received');
-            console.log('ESTIMATE_RESPONSE_STRUCTURE:', Object.keys(response));
-            console.log('Has calculation?', response.calculation ? 'yes' : 'no');
-            console.log('Has ebay_listings?', response.ebay_listings ? 'yes' : 'no');
-            console.log('Has ebay_summary?', response.ebay_summary ? 'yes' : 'no');
-            
-            if (response.calculation) {
-                console.log('Calculation sample:', response.calculation.slice(0, 2));
-            }
-            if (response.ebay_listings) {
-                console.log('eBay listings count:', response.ebay_listings.length);
-            }
             
             return response;
         } catch (error) {
@@ -1121,7 +1255,6 @@ class AddEditDeleteManager {
             return;
         }
         
-        // Only estimate price if auto-estimate is enabled
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
             console.log('Auto-estimating price (enabled)');
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
@@ -1156,7 +1289,6 @@ class AddEditDeleteManager {
             return;
         }
         
-        // Only estimate price if auto-estimate is enabled
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
             console.log('Auto-estimating price (enabled)');
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
@@ -1306,8 +1438,6 @@ class AddEditDeleteManager {
                 
                 priceInput.parentElement.appendChild(hint);
                 
-                // Always show expandable calculation details if available
-                console.log('Calling showExpandableCalculationDetails for recordId:', recordId);
                 this.showExpandableCalculationDetails(record, sleeveConditionId, discConditionId, estimate, recordId, finalPrice);
                 
             } else {
@@ -1325,9 +1455,7 @@ class AddEditDeleteManager {
     }
 
     showExpandableCalculationDetails(record, sleeveConditionId, discConditionId, estimate, recordId, finalPrice) {
-        console.log('showExpandableCalculationDetails called for recordId:', recordId);
         const calculationContainer = document.getElementById(`calculation-${recordId}`);
-        console.log('Found container:', calculationContainer);
         
         if (!calculationContainer) {
             console.error('Calculation container not found for ID:', `calculation-${recordId}`);
@@ -1350,7 +1478,6 @@ class AddEditDeleteManager {
             }
         }
         
-        // Always show the rounding info
         calculationHTML += `
             <div class="rounding-info" style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
                 <strong>💰 Price Rules Applied by API:</strong>
@@ -1365,9 +1492,7 @@ class AddEditDeleteManager {
             </div>
         `;
         
-        // Add calculation steps if available
         if (estimate.calculation && estimate.calculation.length > 0) {
-            console.log('Adding calculation steps to expandable');
             calculationHTML += `
                 <div class="calculation-content">
                     <strong>🧮 Price Calculation:</strong>
@@ -1380,9 +1505,7 @@ class AddEditDeleteManager {
             `;
         }
         
-        // Add eBay summary if available
         if (estimate.ebay_summary && Object.keys(estimate.ebay_summary).length > 0) {
-            console.log('Adding eBay summary to expandable');
             const searchQuery = estimate.search_query || estimate.ebay_summary.search_query || `${record.artist} ${record.title} vinyl`;
             
             calculationHTML += `
@@ -1424,9 +1547,7 @@ class AddEditDeleteManager {
             `;
         }
         
-        // Add eBay listings if available
         if (estimate.ebay_listings && estimate.ebay_listings.length > 0) {
-            console.log('Adding eBay listings to expandable, count:', estimate.ebay_listings.length);
             calculationHTML += `
                 <div class="ebay-listings" style="margin-top: 15px;">
                     <div class="table-header">
@@ -1488,7 +1609,6 @@ class AddEditDeleteManager {
         }
         
         if (calculationHTML) {
-            console.log('Setting calculation container HTML');
             calculationContainer.innerHTML = `
                 <div class="calculation-toggle" onclick="this.classList.toggle('expanded'); 
                     this.nextElementSibling.classList.toggle('expanded');">
@@ -1503,7 +1623,6 @@ class AddEditDeleteManager {
                 </div>
             `;
         } else {
-            console.log('No calculation details to show');
             calculationContainer.innerHTML = '';
         }
     }
@@ -1525,7 +1644,6 @@ class AddEditDeleteManager {
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, true));
         });
         
-        // Add manual estimate button listeners
         document.querySelectorAll('.estimate-now-btn').forEach(button => {
             button.addEventListener('click', (e) => {
                 const card = e.target.closest('.record-card');
@@ -1557,12 +1675,19 @@ class AddEditDeleteManager {
             button.addEventListener('click', async (e) => {
                 e.preventDefault();
                 
+                const artist = button.getAttribute('data-artist');
                 const discogsGenre = button.getAttribute('data-discogs-genre');
                 const genreId = button.getAttribute('data-genre-id');
                 const genreName = button.getAttribute('data-genre-name');
                 const recordId = button.getAttribute('data-record-id');
                 
+                // Save to discogs_genre_mappings
                 const saved = await this.genrePredictor.saveMapping(discogsGenre, genreId, genreName);
+                
+                // Also save to artist_genre table
+                if (artist && genreId) {
+                    await this.genrePredictor.saveArtistGenre(artist, genreId, genreName);
+                }
                 
                 if (saved) {
                     const banner = document.getElementById(`prediction-banner-${recordId}`);
@@ -1570,7 +1695,7 @@ class AddEditDeleteManager {
                         banner.innerHTML = `
                             <i class="fas fa-check-circle"></i>
                             <div class="prediction-text">
-                                <strong>✅ Mapping Saved!</strong> Future "${discogsGenre}" records will default to ${genreName}
+                                <strong>✅ Saved!</strong> Artist and genre mapping saved to database
                             </div>
                         `;
                         banner.classList.add('prediction-success');
@@ -1579,7 +1704,7 @@ class AddEditDeleteManager {
                     
                     button.style.display = 'none';
                     
-                    showMessage(`Genre mapping saved: "${discogsGenre}" → ${genreName}`, 'success');
+                    showMessage(`Artist and genre mapping saved`, 'success');
                 }
             });
         });
@@ -1677,15 +1802,14 @@ class AddEditDeleteManager {
             
             if (response.status === 'success') {
                 showMessage(`Record added successfully! Barcode: ${pigstyleBarcode}. Price: $${price.toFixed(2)}`, 'success');
+                
+                // Save artist to artist_genre table if it doesn't exist
+                if (discogsRecord.artist && genreId) {
+                    await this.genrePredictor.saveArtistGenre(discogsRecord.artist, genreId, genreName);
+                }
 
-                if (discogsRecord.genre && discogsRecord.predicted_genre && 
-                    discogsRecord.predicted_genre.local_genre_id == genreId) {
-                    await this.genrePredictor.saveMapping(
-                        discogsRecord.genre,
-                        genreId,
-                        genreName
-                    );
-                } else if (discogsRecord.genre && genreId) {
+                // Save Discogs genre mapping if applicable
+                if (discogsRecord.genre && genreId) {
                     await this.genrePredictor.saveMapping(
                         discogsRecord.genre,
                         genreId,
