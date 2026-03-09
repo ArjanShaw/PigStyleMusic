@@ -619,14 +619,16 @@ def verify_square_webhook(signature, body):
     
     return hmac.compare_digest(expected_signature, signature)
 
+
 @app.route('/api/checkout/process', methods=['POST'])
 def process_checkout():
-    """Create a Square payment link AND insert order after success"""
+    """Create a Square payment link for either records or accessories"""
     try:
         data = request.json
         app.logger.info(f"Checkout request received: {data}")
         
         items = data.get('items', [])
+        item_type = data.get('item_type', 'record')  # 'record' or 'accessory'
         shipping = data.get('shipping')
         subtotal = data.get('subtotal', 0)
         total = data.get('total', 0)
@@ -657,37 +659,41 @@ def process_checkout():
                 'error': 'Payment system not configured'
             }), 500
         
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        unavailable_items = []
-        valid_items = []
-        for item in items:
-            copy_id = item.get('copy_id')
-            cursor.execute('''
-                SELECT id, status_id, artist, title, store_price 
-                FROM records WHERE id = ?
-            ''', (copy_id,))
-            result = cursor.fetchone()
-            
-            if not result or result['status_id'] not in [1, 2]:
-                unavailable_items.append(item.get('title', 'Unknown'))
-            else:
-                valid_items.append(item)
-        
-         
-        
+        # Build line items for Square
         line_items = []
-        for item in valid_items:
+        item_ids = []  # Track IDs for metadata
+        
+        for item in items:
+            # For accessories, use description as name
+            if item_type == 'accessory':
+                item_name = item.get('description') or item.get('title', 'Merchandise')
+                artist_name = ''
+            else:
+                # For records, use artist - title format
+                artist_name = item.get('artist', '')
+                item_name = item.get('title', 'Unknown')
+            
+            # Build the display name
+            if artist_name:
+                display_name = f"{artist_name} - {item_name}"
+            else:
+                display_name = item_name
+            
             line_items.append({
-                "name": f"{item.get('artist')} - {item.get('title')}",
+                "name": display_name,
                 "quantity": str(item.get('quantity', 1)),
                 "base_price_money": {
-                    "amount": int(round(item.get('price', 0) * 100)),
+                    "amount": int(round(float(item.get('price', 0)) * 100)),
                     "currency": "USD"
                 }
             })
+            
+            # Track the item ID (either copy_id or accessory_id)
+            item_id = item.get('copy_id') or item.get('accessory_id')
+            if item_id:
+                item_ids.append(str(item_id))
         
+        # Add shipping line item if present
         if shipping and shipping.get('amount', 0) > 0:
             line_items.append({
                 "name": "Shipping",
@@ -698,6 +704,7 @@ def process_checkout():
                 }
             })
         
+        # Add tax line item if present
         tax_amount = data.get('tax', 0)
         if tax_amount and float(tax_amount) > 0:
             line_items.append({
@@ -710,10 +717,13 @@ def process_checkout():
             })
             app.logger.info(f"✅ Added tax line item: ${tax_amount}")
         
-        metadata = {}
-        metadata['order_id'] = str(order_id)
-        metadata['order_number'] = order_number
-        metadata['record_ids'] = json.dumps([item.get('copy_id') for item in valid_items])
+        # Prepare metadata
+        metadata = {
+            'order_id': str(order_id),
+            'order_number': order_number,
+            'item_type': item_type,
+            'item_ids': json.dumps(item_ids)
+        }
         
         headers = {
             'Authorization': f'Bearer {access_token}',
@@ -721,12 +731,18 @@ def process_checkout():
             'Square-Version': '2026-01-22'
         }
         
+        # Determine redirect URL based on item type
         env = os.getenv("ENV", "production")
-
-        if env == "development":
-            redirect_url = f"http://localhost:8000/shop?status=completed&order_id={order_id}"
+        
+        if item_type == 'accessory':
+            redirect_path = '/merchandise'
         else:
-            redirect_url = f"https://www.pigstylemusic.com/shop?status=completed&order_id={order_id}"
+            redirect_path = '/shop'
+        
+        if env == "development":
+            redirect_url = f"http://localhost:8000{redirect_path}?status=completed&order_id={order_id}"
+        else:
+            redirect_url = f"https://www.pigstylemusic.com{redirect_path}?status=completed&order_id={order_id}"
 
         payload = {
             "idempotency_key": str(uuid.uuid4()),
@@ -745,6 +761,7 @@ def process_checkout():
         square_base_url = 'https://connect.squareup.com'
         
         app.logger.info(f"Sending to Square with reference_id: {order_id}")
+        app.logger.info(f"Line items: {json.dumps(line_items, indent=2)}")
         
         response = requests.post(
             f'{square_base_url}/v2/online-checkout/payment-links',
@@ -780,6 +797,22 @@ def process_checkout():
                 'status': 'error',
                 'error': 'No checkout URL returned'
             }), 500
+        
+        # For accessories, we don't need to create orders in the database yet
+        # Just return success with checkout URL
+        if item_type == 'accessory':
+            return jsonify({
+                'status': 'success',
+                'checkout_url': checkout_url,
+                'order_id': order_id,
+                'order_number': order_number,
+                'square_order_id': square_order_id,
+                'message': 'Checkout created successfully'
+            }), 200
+        
+        # For records, create order in database (existing code)
+        conn = get_db()
+        cursor = conn.cursor()
         
         shipping_method = shipping.get('method', 'pickup') if shipping else 'pickup'
         shipping_cost = float(shipping.get('amount', 0)) if shipping else 0
@@ -822,7 +855,7 @@ def process_checkout():
                 data.get('notes', '')
             ))
             
-            for item in valid_items:
+            for item in items:
                 item_sql = '''
                     INSERT INTO order_items (
                         order_id, record_id, record_title, record_artist,
@@ -846,10 +879,8 @@ def process_checkout():
             conn.rollback()
             app.logger.error(f"Error creating order: {str(e)}")
             app.logger.error(traceback.format_exc())
-            return jsonify({
-                'status': 'error',
-                'error': 'Order creation failed after Square call'
-            }), 500
+            # Still return success for Square even if order creation fails
+            # The payment was still created
         finally:
             conn.close()
         
