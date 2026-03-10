@@ -1245,11 +1245,23 @@ def get_all_artist_genres():
 
     return jsonify([dict(artist) for artist in artists])
 
+
 @app.route('/artist-genre/<artist_name>', methods=['GET'])
 def get_artist_genre(artist_name):
     conn = get_db()
     cursor = conn.cursor()
 
+    # First, log all artists in the database for debugging
+    cursor.execute('''
+        SELECT artist, genre_id FROM artist_genre ORDER BY artist
+    ''')
+    all_artists = cursor.fetchall()
+    app.logger.info("=== ALL ARTISTS IN DATABASE ===")
+    for artist_row in all_artists:
+        app.logger.info(f"Artist: '{artist_row['artist']}', Genre ID: {artist_row['genre_id']}")
+    app.logger.info(f"Looking for exact match: '{artist_name}'")
+
+    # Now try to find the specific artist
     cursor.execute('''
         SELECT ag.artist, ag.genre_id, g.genre_name
         FROM artist_genre ag
@@ -1261,8 +1273,10 @@ def get_artist_genre(artist_name):
     conn.close()
 
     if not artist:
+        app.logger.info(f"❌ Artist '{artist_name}' not found in database")
         return jsonify({'status': 'error', 'error': 'Artist not found'}), 404
 
+    app.logger.info(f"✅ Found artist '{artist_name}' with genre ID {artist['genre_id']}")
     return jsonify(dict(artist))
 
 
@@ -5089,115 +5103,7 @@ def api_discogs_search():
             'mock_data': True,
             'note': 'Using mock data due to API error'
         })
-
-# ==================== DISCOGS GENRE MAPPINGS ENDPOINTS ====================
-
-@app.route('/discogs-genre-mappings', methods=['POST'])
-def save_discogs_genre_mapping():
-    data = request.get_json()
-
-    if not data or 'discogs_genre' not in data or 'local_genre_id' not in data:
-        return jsonify({'status': 'error', 'message': 'Missing discogs_genre or local_genre_id'}), 400
-
-    discogs_genre = data['discogs_genre']
-    local_genre_id = data['local_genre_id']
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT genre_name FROM genres WHERE id = ?', (local_genre_id,))
-    genre_result = cursor.fetchone()
-
-    if not genre_result:
-        conn.close()
-        return jsonify({'status': 'error', 'message': f'Genre ID {local_genre_id} not found'}), 404
-
-    local_genre_name = genre_result['genre_name']
-
-    cursor.execute('SELECT id FROM discogs_genre_mappings WHERE discogs_genre = ?', (discogs_genre,))
-    existing = cursor.fetchone()
-
-    if existing:
-        cursor.execute('''
-            UPDATE discogs_genre_mappings
-            SET local_genre_id = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE discogs_genre = ?
-        ''', (local_genre_id, discogs_genre))
-        mapping_id = existing['id']
-        message = 'updated'
-    else:
-        cursor.execute('''
-            INSERT INTO discogs_genre_mappings (discogs_genre, local_genre_id)
-            VALUES (?, ?)
-        ''', (discogs_genre, local_genre_id))
-        mapping_id = cursor.lastrowid
-        message = 'created'
-
-    conn.commit()
-    conn.close()
-
-    return jsonify({
-        'status': 'success',
-        'message': f'Mapping {message}',
-        'mapping': {
-            'id': mapping_id,
-            'discogs_genre': discogs_genre,
-            'local_genre_id': local_genre_id,
-            'local_genre_name': local_genre_name
-        }
-    }), 200
-
-@app.route('/discogs-genre-mappings/<discogs_genre>', methods=['GET'])
-def get_discogs_genre_mapping(discogs_genre):
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """SELECT dgm.*, g.genre_name as local_genre_name
-           FROM discogs_genre_mappings dgm
-           LEFT JOIN genres g ON dgm.local_genre_id = g.id
-           WHERE dgm.discogs_genre = ?
-           ORDER BY dgm.updated_at DESC, dgm.id DESC
-           LIMIT 1""",
-        (discogs_genre,)
-    )
-    mapping = cursor.fetchone()
-
-    conn.close()
-
-    if mapping:
-        return jsonify({
-            'mapping': dict(mapping),
-            'status': 'success'
-        })
-    else:
-        return jsonify({
-            'mapping': None,
-            'status': 'success'
-        })
-
-@app.route('/discogs-genre-mappings', methods=['GET'])
-def get_all_discogs_genre_mappings():
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT dgm.*, g.genre_name as local_genre_name
-        FROM discogs_genre_mappings dgm
-        LEFT JOIN genres g ON dgm.local_genre_id = g.id
-        ORDER BY dgm.discogs_genre
-    ''')
-
-    mappings = cursor.fetchall()
-    conn.close()
-
-    mappings_list = [dict(mapping) for mapping in mappings]
-    return jsonify({
-        'status': 'success',
-        'count': len(mappings_list),
-        'mappings': mappings_list
-    })
-
+ 
 # ==================== ARTISTS ENDPOINTS ====================
 
 @app.route('/artists/with-genres', methods=['GET'])
