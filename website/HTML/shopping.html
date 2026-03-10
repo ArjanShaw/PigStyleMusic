@@ -24,21 +24,21 @@
 </head>
 <body>
     <!-- Navbar -->
-    <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
-        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
-            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+    <nav>
+        <a href="/">
+            <img src="/static/images/PigStyle.ico" alt="PigStyle">
         </a>
-        <div style="display: flex; gap: 20px; align-items: center;">
-            <a href="/shop" style="color: white; text-decoration: none;">Browse</a>
-            <a href="/merch" style="color: white; text-decoration: none;">Merchandise</a>
-            <a href="/streaming" style="color: white; text-decoration: none;">Streaming</a>
-            <a href="/consignment" style="color: white; text-decoration: none;">Consignment</a>
+        <div>
+            <a href="/shop">Browse</a>
+            <a href="/merch">Merchandise</a>
+            <a href="/streaming">Streaming</a>
+            <a href="/consignment">Consignment</a>
             <div id="auth-section"></div>
             
             <!-- Cart drawer toggle button - only shows when items exist -->
             <div id="cartToggleContainer" style="display: none;">
                 <div class="cart-icon-wrapper" id="cartToggle">
-                    <i class="fas fa-shopping-cart" style="color: white; font-size: 20px;"></i>
+                    <i class="fas fa-shopping-cart"></i>
                     <span id="cartBadge" class="cart-badge">0</span>
                 </div>
             </div>
@@ -60,11 +60,35 @@
         </div>
         
         <div class="filter-section">
-            <div class="filter-label"><i class="far fa-calendar-alt"></i> Date Added</div>
-            <div class="date-presets">
-                <button type="button" class="date-preset-btn active" data-days="7">Last 7 days</button>
-                
-                <button type="button" class="date-preset-btn" id="clearDates">Clear</button>
+            <!-- Genre Filter -->
+            <div class="filter-group">
+                <div class="filter-label"><i class="fas fa-music"></i> Genre</div>
+                <div class="filter-controls">
+                    <button id="genreFilterBtn" class="filter-toggle-btn">
+                        <i class="fas fa-filter"></i> Filter Genres
+                    </button>
+                    
+                    <div id="genreCheckboxContainer" class="filter-checkbox-container">
+                        <div class="filter-checkbox-loading">
+                            <div class="loading-dots small">
+                                <div></div>
+                                <div></div>
+                                <div></div>
+                                <div></div>
+                            </div>
+                            <p>Loading genres...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Date Filter -->
+            <div class="filter-group">
+                <div class="filter-label"><i class="far fa-calendar-alt"></i> Date Added</div>
+                <div class="date-presets">
+                    <button type="button" class="date-preset-btn active" data-days="7">Last 7 days</button>
+                    <button type="button" class="date-preset-btn" id="clearDates">Clear</button>
+                </div>
             </div>
         </div>
     </div>
@@ -105,6 +129,12 @@
     <script>
         // Store all releases globally
         let allReleases = [];
+        
+        // Store available genres
+        let availableGenres = [];
+        
+        // Current selected genres for filtering
+        let selectedGenres = [];
         
         // Cart state
         let cart = {
@@ -303,12 +333,6 @@
                 return false;
             }
             
-            // Show alert before adding
-        //     alert(`🔴 BEFORE ADDING:
-        // Current cart items: ${cart.items.length}
-        // Current cart total: $${cart.total.toFixed(2)}
-        // Adding item: ${release.title} at $${copy.store_price.toFixed(2)}`);
-            
             // Add new item
             cart.items.push({
                 copyId: copy.id,
@@ -320,14 +344,8 @@
                 quantity: 1
             });
             
-            // 🔴 FIX: Recalculate cart.total
+            // Recalculate cart.total
             cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            
-            // Show alert after adding
-        //     alert(`🔴 AFTER ADDING:
-        // Items now: ${cart.items.length}
-        // New cart.total: $${cart.total.toFixed(2)}
-        // Items in cart: ${cart.items.map(item => `${item.title}: $${item.price}`).join(', ')}`);
             
             saveCart();
             showNotification('Item added to cart!', 'success');
@@ -335,22 +353,11 @@
         }
 
         // Remove item from cart
-        // Remove item from cart
         function removeFromCart(index) {
-            // Show alert before removing
-        //     alert(`🔴 BEFORE REMOVAL:
-        // Removing item at index ${index}: ${cart.items[index].title}
-        // Current cart.total: $${cart.total.toFixed(2)}`);
-            
             cart.items.splice(index, 1);
             
-            // 🔴 FIX: Recalculate cart.total after removal
+            // Recalculate cart.total after removal
             cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            
-            // Show alert after removal
-        //     alert(`🔴 AFTER REMOVAL:
-        // Items remaining: ${cart.items.length}
-        // New cart.total: $${cart.total.toFixed(2)}`);
             
             saveCart();
             showNotification('Item removed from cart', 'success');
@@ -363,14 +370,8 @@
 
         // Clear entire cart
         function clearCart() {
-        //     alert(`🔴 CLEARING CART:
-        // Before clear - Items: ${cart.items.length}, Total: $${cart.total.toFixed(2)}`);
-            
             cart.items = [];
-            cart.total = 0;  // 🔴 FIX: Explicitly set to 0
-            
-        //     alert(`🔴 CART CLEARED:
-        // After clear - Items: ${cart.items.length}, Total: $${cart.total.toFixed(2)}`);
+            cart.total = 0;
             
             saveCart();
             closeCartDrawer();
@@ -422,7 +423,24 @@
                 
                 if (data.status === 'success') {
                     allReleases = data.groups || [];
+                    
+                    // Extract unique genres from releases
+                    const genreSet = new Set();
+                    allReleases.forEach(release => {
+                        if (release.genre_name && release.genre_name !== 'Unknown') {
+                            genreSet.add(release.genre_name);
+                        }
+                    });
+                    
+                    // Convert to array and sort
+                    availableGenres = Array.from(genreSet).sort();
+                    
                     console.log(`Loaded ${allReleases.length} unique releases with ${data.total_copies} total copies`);
+                    console.log(`Found ${availableGenres.length} unique genres:`, availableGenres);
+                    
+                    // Populate genre filter dropdown
+                    populateGenreFilter();
+                    
                     displayReleases(allReleases);
                 } else {
                     throw new Error('Invalid response from server: ' + JSON.stringify(data));
@@ -451,7 +469,81 @@
             }
         }
 
-        // Display releases (keeps same tile layout)
+        // Populate genre filter dropdown
+        function populateGenreFilter() {
+            const container = document.getElementById('genreCheckboxContainer');
+            
+            if (!container) return;
+            
+            if (availableGenres.length === 0) {
+                container.innerHTML = '<div class="filter-checkbox-loading">No genres available</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="filter-checkbox-header">
+                    <h3>Select Genres</h3>
+                </div>
+                <div class="filter-checkbox-group">
+            `;
+            
+            availableGenres.forEach(genre => {
+                const checked = selectedGenres.includes(genre) ? 'checked' : '';
+                html += `
+                    <div class="filter-checkbox-item">
+                        <input type="checkbox" id="genre-${escapeHtml(genre)}" value="${escapeHtml(genre)}" ${checked}>
+                        <label for="genre-${escapeHtml(genre)}">${escapeHtml(genre)}</label>
+                    </div>
+                `;
+            });
+            
+            html += `
+                </div>
+                <div class="filter-actions">
+                    <button class="filter-action-btn filter-select-all" id="selectAllGenres">Select All</button>
+                    <button class="filter-action-btn filter-deselect-all" id="deselectAllGenres">Clear All</button>
+                    <button class="filter-action-btn filter-apply" id="applyGenreFilter">Apply</button>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+            
+            // Add event listeners
+            document.getElementById('selectAllGenres').addEventListener('click', () => {
+                document.querySelectorAll('#genreCheckboxContainer input[type="checkbox"]').forEach(cb => {
+                    cb.checked = true;
+                });
+            });
+            
+            document.getElementById('deselectAllGenres').addEventListener('click', () => {
+                document.querySelectorAll('#genreCheckboxContainer input[type="checkbox"]').forEach(cb => {
+                    cb.checked = false;
+                });
+            });
+            
+            document.getElementById('applyGenreFilter').addEventListener('click', () => {
+                // Update selected genres
+                selectedGenres = [];
+                document.querySelectorAll('#genreCheckboxContainer input[type="checkbox"]:checked').forEach(cb => {
+                    selectedGenres.push(cb.value);
+                });
+                
+                // Close the dropdown
+                document.getElementById('genreCheckboxContainer').classList.remove('show');
+                
+                // Apply filters
+                applyFilters();
+            });
+            
+            // Add click handlers for checkboxes to allow direct selection without Apply
+            document.querySelectorAll('#genreCheckboxContainer input[type="checkbox"]').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    // Optional: auto-apply on change? For now, user must click Apply
+                });
+            });
+        }
+
+        // Display releases
         function displayReleases(releases) {
             const container = document.getElementById('catalogContainer');
             container.innerHTML = ''; // Clear loading message
@@ -474,9 +566,9 @@
 
             container.appendChild(gallery);
             
-            // Apply the default 7-day filter after loading
+            // Apply filters after loading
             setTimeout(() => {
-                applyDateFilter(7);
+                applyFilters();
             }, 100);
         }
 
@@ -488,6 +580,7 @@
             // Set data attributes for filtering
             card.setAttribute('data-artist', (release.artist || '').toLowerCase());
             card.setAttribute('data-title', (release.title || '').toLowerCase());
+            card.setAttribute('data-genre', (release.genre_name || '').toLowerCase());
             
             // Set date attribute for filtering (earliest creation date)
             if (release.created_at) {
@@ -646,7 +739,7 @@
             return '';
         }
 
-        // Show popup with all copies (with album image and add to cart buttons)
+        // Show popup with all copies
         function showCopiesPopup(release) {
             // Create modal overlay
             const modal = document.createElement('div');
@@ -820,35 +913,49 @@
             return null;
         }
 
-        // Apply date filter based on days
-        function applyDateFilter(days) {
+        // Apply all filters (search, genre, date)
+        function applyFilters() {
             const container = document.getElementById('catalogContainer');
             const cards = container.querySelectorAll('.card');
             
-            if (days === null || days === undefined) {
-                // Show all cards
-                cards.forEach(card => {
-                    card.style.display = 'block';
-                });
-                return;
-            }
+            // Get search term
+            const searchBox = document.getElementById('searchBox');
+            const searchTerm = searchBox ? searchBox.value.toLowerCase().trim() : '';
             
-            const cutoffDate = new Date();
-            cutoffDate.setDate(cutoffDate.getDate() - days);
-            cutoffDate.setHours(0, 0, 0, 0);
+            // Get active date filter
+            const activeDateBtn = document.querySelector('.date-preset-btn.active');
+            const activeDays = activeDateBtn && activeDateBtn.dataset.days ? parseInt(activeDateBtn.dataset.days) : null;
             
             let visibleCount = 0;
             
             cards.forEach(card => {
+                const artist = card.getAttribute('data-artist') || '';
+                const title = card.getAttribute('data-title') || '';
+                const genre = card.getAttribute('data-genre') || '';
                 const createdDate = card.getAttribute('data-created');
                 
-                if (!createdDate) {
-                    card.style.display = 'none';
-                    return;
+                // Check date filter
+                let dateMatch = true;
+                if (activeDays !== null && createdDate) {
+                    const cutoffDate = new Date();
+                    cutoffDate.setDate(cutoffDate.getDate() - activeDays);
+                    cutoffDate.setHours(0, 0, 0, 0);
+                    const cardDate = new Date(createdDate);
+                    dateMatch = cardDate >= cutoffDate;
                 }
                 
-                const cardDate = new Date(createdDate);
-                const shouldShow = cardDate >= cutoffDate;
+                // Check search
+                const searchMatch = !searchTerm || 
+                    artist.includes(searchTerm) || 
+                    title.includes(searchTerm);
+                
+                // Check genre filter
+                let genreMatch = true;
+                if (selectedGenres.length > 0) {
+                    genreMatch = selectedGenres.some(g => g.toLowerCase() === genre);
+                }
+                
+                const shouldShow = dateMatch && searchMatch && genreMatch;
                 
                 card.style.display = shouldShow ? 'block' : 'none';
                 if (shouldShow) visibleCount++;
@@ -860,7 +967,7 @@
                 if (!existingNoResults) {
                     const noResultsDiv = document.createElement('div');
                     noResultsDiv.className = 'no-records';
-                    noResultsDiv.textContent = 'No records match the selected date range.';
+                    noResultsDiv.textContent = 'No records match your search criteria.';
                     container.appendChild(noResultsDiv);
                 }
             } else if (existingNoResults) {
@@ -868,61 +975,12 @@
             }
         }
 
-        // Initialize search and filter functionality
+        // Initialize filter functionality
         function initializeFilters() {
             const searchBox = document.getElementById('searchBox');
             
             // Search functionality
-            searchBox.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase().trim();
-                const container = document.getElementById('catalogContainer');
-                const cards = container.querySelectorAll('.card');
-                
-                // Get current active date filter
-                const activeDateBtn = document.querySelector('.date-preset-btn.active');
-                const activeDays = activeDateBtn && activeDateBtn.dataset.days ? parseInt(activeDateBtn.dataset.days) : null;
-                
-                let visibleCount = 0;
-                
-                cards.forEach(card => {
-                    const artist = card.getAttribute('data-artist') || '';
-                    const title = card.getAttribute('data-title') || '';
-                    const createdDate = card.getAttribute('data-created');
-                    
-                    // Check date filter first
-                    let dateMatch = true;
-                    if (activeDays !== null && createdDate) {
-                        const cutoffDate = new Date();
-                        cutoffDate.setDate(cutoffDate.getDate() - activeDays);
-                        cutoffDate.setHours(0, 0, 0, 0);
-                        const cardDate = new Date(createdDate);
-                        dateMatch = cardDate >= cutoffDate;
-                    }
-                    
-                    // Then check search
-                    const searchMatch = !searchTerm || 
-                        artist.includes(searchTerm) || 
-                        title.includes(searchTerm);
-                    
-                    const shouldShow = dateMatch && searchMatch;
-                    
-                    card.style.display = shouldShow ? 'block' : 'none';
-                    if (shouldShow) visibleCount++;
-                });
-                
-                // Show no results message if needed
-                const existingNoResults = container.querySelector('.no-records');
-                if (visibleCount === 0) {
-                    if (!existingNoResults) {
-                        const noResultsDiv = document.createElement('div');
-                        noResultsDiv.className = 'no-records';
-                        noResultsDiv.textContent = 'No records match your search criteria.';
-                        container.appendChild(noResultsDiv);
-                    }
-                } else if (existingNoResults) {
-                    existingNoResults.remove();
-                }
-            });
+            searchBox.addEventListener('input', applyFilters);
             
             // Setup date preset buttons
             document.querySelectorAll('.date-preset-btn[data-days]').forEach(btn => {
@@ -931,12 +989,7 @@
                     document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
                     
-                    const days = parseInt(this.dataset.days);
-                    applyDateFilter(days);
-                    
-                    // Also trigger search filter to reapply with new date range
-                    const searchEvent = new Event('input');
-                    document.getElementById('searchBox').dispatchEvent(searchEvent);
+                    applyFilters();
                 });
             });
             
@@ -945,13 +998,26 @@
                 // Remove active class from all preset buttons
                 document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
                 
-                // Show all cards
-                applyDateFilter(null);
-                
-                // Trigger search filter
-                const searchEvent = new Event('input');
-                document.getElementById('searchBox').dispatchEvent(searchEvent);
+                applyFilters();
             });
+            
+            // Setup genre filter toggle
+            const genreFilterBtn = document.getElementById('genreFilterBtn');
+            const genreCheckboxContainer = document.getElementById('genreCheckboxContainer');
+            
+            if (genreFilterBtn && genreCheckboxContainer) {
+                genreFilterBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    genreCheckboxContainer.classList.toggle('show');
+                });
+                
+                // Close when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (!genreCheckboxContainer.contains(e.target) && !genreFilterBtn.contains(e.target)) {
+                        genreCheckboxContainer.classList.remove('show');
+                    }
+                });
+            }
         }
 
         // ==================== CHECKOUT FUNCTIONS ====================
@@ -1129,7 +1195,7 @@
             });
         }
 
-        // Process checkout with Square (order creation happens on backend)
+        // Process checkout with Square
         async function processCheckout(shippingData) {
             try {
                 // Close cart drawer
@@ -1176,8 +1242,6 @@
                     total: totalWithTax,
                     currency: 'USD'
                 };
-                
-                // alert("CHECKOUT DATA:\n" + JSON.stringify(requestData, null, 2));
  
                 // Add customer info if shipping
                 if (shippingData.method === 'ship') {
@@ -1210,22 +1274,6 @@
                         order_id: data.order_id,
                         order_number: data.order_number
                     };
-                    
-                    // 🔴 SHOW ALERT WITH TAX INFO BEFORE REDIRECT
-        //             alert(`
-        // 🔴 CHECKOUT DATA CHECK:
-        // -------------------
-        // Subtotal: $${cart.total.toFixed(2)}
-        // Shipping: $${(shippingData?.cost || 0).toFixed(2)}
-        // Tax Rate: ${taxRate}%
-        // Tax Amount: $${taxAmount.toFixed(2)}
-        // Total with Tax: $${totalWithTax.toFixed(2)}
-
-        // ✅ Tax field in request: ${requestData.tax === taxAmount ? 'YES' : 'NO'}
-        // ✅ Total field in request: $${requestData.total.toFixed(2)}
-
-        // Click OK to proceed to Square checkout.
-        //             `);
                     
                     // Redirect to Square checkout page
                     addDebug(`Redirecting to Square checkout: ${data.checkout_url}`);
