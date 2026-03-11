@@ -110,6 +110,9 @@
         // Store all accessories globally
         let allAccessories = [];
         
+        // Store grouped merchandise (tees by color, stickers as single items)
+        let groupedMerch = [];
+        
         // Cart state
         let cart = {
             items: [],
@@ -231,13 +234,16 @@
                         `<img src="${item.image_url}" alt="${item.description}" class="cart-item-image" onerror="this.parentElement.innerHTML='<div class=\'cart-item-image default-merch-bg\'></div>'">` : 
                         `<div class="cart-item-image default-merch-bg"></div>`;
                     
+                    // Include size in title if present
+                    const displayTitle = item.size ? `${item.title} - ${item.size}` : item.title;
+                    
                     itemsHtml += `
                         <tr class="cart-item-row" data-cart-index="${index}">
                             <td class="item-info-cell">
                                 <div class="cart-item-info">
                                     ${imageHtml}
                                     <div class="cart-item-details">
-                                        <div class="cart-item-title">${escapeHtml(item.description || item.title)}</div>
+                                        <div class="cart-item-title">${escapeHtml(displayTitle)}</div>
                                         ${item.barcode ? `<div class="cart-item-sku">SKU: ${escapeHtml(item.barcode)}</div>` : ''}
                                     </div>
                                 </div>
@@ -313,13 +319,6 @@
                 return;
             }
             
-            // Check if we have enough stock
-            const accessory = allAccessories.find(a => a.id == item.accessoryId);
-            if (accessory && newQuantity > accessory.count) {
-                showNotification(`Only ${accessory.count} available in stock`, 'error');
-                return;
-            }
-            
             item.quantity = newQuantity;
             
             // Recalculate cart.total
@@ -340,25 +339,33 @@
             const existingItem = cart.items.find(item => item.accessoryId == accessory.id);
             
             if (existingItem) {
-                // Check if we have enough stock
-                if (existingItem.quantity >= accessory.count) {
-                    showNotification('No more stock available', 'error');
-                    return false;
-                }
-                
                 // Increment quantity
                 existingItem.quantity += 1;
                 showNotification('Item quantity updated in cart!', 'success');
             } else {
+                // Extract size from description if it's a tee
+                let size = '';
+                let title = accessory.description;
+                
+                // Parse size from description (e.g., "Tee black XS" -> "XS")
+                const description = accessory.description || '';
+                const sizeMatch = description.match(/\b(XS|S|M|L|XL|XXL)\b/);
+                if (sizeMatch) {
+                    size = sizeMatch[1];
+                    // Remove size from title for cleaner display
+                    title = description.replace(/\s+(XS|S|M|L|XL|XXL)$/, '');
+                }
+                
                 // Add new item
                 cart.items.push({
                     accessoryId: accessory.id,
-                    title: accessory.description,
+                    title: title,
                     description: accessory.description,
                     price: accessory.store_price,
                     image_url: accessory.image_url,
                     barcode: accessory.bar_code,
-                    quantity: 1
+                    quantity: 1,
+                    size: size
                 });
                 showNotification('Item added to cart!', 'success');
             }
@@ -425,7 +432,7 @@
             document.getElementById('cartOverlay').classList.remove('active');
         }
 
-        // Load accessories from API
+        // Load accessories from API and group them
         async function loadAccessories() {
             try {
                 console.log('Loading merchandise from API...');
@@ -442,7 +449,10 @@
                 if (data.status === 'success') {
                     allAccessories = data.accessories || [];
                     console.log(`Loaded ${allAccessories.length} merchandise items`);
-                    displayAccessories(allAccessories);
+                    
+                    // Group accessories
+                    groupAccessories();
+                    displayGroupedMerch(groupedMerch);
                 } else {
                     throw new Error('Invalid response from server: ' + JSON.stringify(data));
                 }
@@ -469,144 +479,291 @@
             }
         }
 
-        // Display accessories in catalog
-        function displayAccessories(accessories) {
+        // Group accessories by type (tees by color, stickers individually)
+        function groupAccessories() {
+            groupedMerch = [];
+            
+            // Separate tees and stickers
+            const tees = allAccessories.filter(a => a.description.toLowerCase().includes('tee'));
+            const stickers = allAccessories.filter(a => a.description.toLowerCase().includes('sticker'));
+            
+            // Group tees by color
+            const teeGroups = {};
+            tees.forEach(tee => {
+                // Extract color from description (e.g., "Tee black XS" -> "black")
+                const description = tee.description || '';
+                let color = 'unknown';
+                
+                if (description.includes('black')) {
+                    color = 'black';
+                } else if (description.includes('yellow')) {
+                    color = 'yellow';
+                } else {
+                    // If no color found, try to extract the second word
+                    const parts = description.split(' ');
+                    if (parts.length > 1) {
+                        color = parts[1].toLowerCase();
+                    }
+                }
+                
+                if (!teeGroups[color]) {
+                    teeGroups[color] = {
+                        type: 'tee',
+                        color: color,
+                        items: [],
+                        image_url: tee.image_url,
+                        price: tee.store_price // All same price per tee color
+                    };
+                }
+                teeGroups[color].items.push(tee);
+            });
+            
+            // Add tee groups to groupedMerch
+            Object.values(teeGroups).forEach(group => {
+                // Sort sizes in correct order
+                const sizeOrder = { 'XS': 1, 'S': 2, 'M': 3, 'L': 4, 'XL': 5, 'XXL': 6 };
+                group.items.sort((a, b) => {
+                    const sizeA = a.description.match(/\b(XS|S|M|L|XL|XXL)\b/)?.[1] || '';
+                    const sizeB = b.description.match(/\b(XS|S|M|L|XL|XXL)\b/)?.[1] || '';
+                    return (sizeOrder[sizeA] || 99) - (sizeOrder[sizeB] || 99);
+                });
+                groupedMerch.push(group);
+            });
+            
+            // Add stickers as individual items - simplified without SKU and date
+            stickers.forEach(sticker => {
+                groupedMerch.push({
+                    type: 'sticker',
+                    description: sticker.description,
+                    id: sticker.id,
+                    store_price: sticker.store_price,
+                    image_url: sticker.image_url
+                });
+            });
+            
+            console.log(`Grouped into ${groupedMerch.length} items: ${Object.keys(teeGroups).length} tee colors and ${stickers.length} stickers`);
+        }
+
+        // Display grouped merchandise
+        function displayGroupedMerch(groups) {
             const container = document.getElementById('catalogContainer');
             container.innerHTML = ''; // Clear loading message
 
-            if (!accessories || accessories.length === 0) {
+            if (!groups || groups.length === 0) {
                 container.innerHTML = '<div class="no-items">No merchandise found in the database.</div>';
                 return;
             }
 
-            console.log(`Displaying ${accessories.length} merchandise items`);
+            console.log(`Displaying ${groups.length} merchandise groups`);
 
             // Create a gallery container
             const gallery = document.createElement('div');
             gallery.className = 'merch-gallery';
 
-            accessories.forEach(accessory => {
-                const card = createAccessoryCard(accessory);
+            groups.forEach(item => {
+                const card = createMerchCard(item);
                 gallery.appendChild(card);
             });
 
             container.appendChild(gallery);
         }
 
-        // Create a card for an accessory
-        function createAccessoryCard(accessory) {
+        // Create a card for merchandise (tee group or sticker)
+        function createMerchCard(item) {
             const card = document.createElement('div');
             card.className = 'merch-card';
             
-            // Set data attributes for filtering
-            card.setAttribute('data-description', (accessory.description || '').toLowerCase());
-            card.setAttribute('data-barcode', (accessory.bar_code || '').toLowerCase());
+            let title = '';
+            let imageUrl = '';
+            let priceDisplay = '';
+            let detailsHtml = '';
             
-            // Handle image display - use CSS background if no image
-            const imageHtml = accessory.image_url ? 
-                `<img src="${accessory.image_url}" alt="${accessory.description}" onload="this.parentElement.classList.remove('loading')" onerror="this.parentElement.innerHTML='<div class=\\'default-merch-bg\\'></div>';">` : 
+            if (item.type === 'tee') {
+                // Tee group
+                title = `Tee (${item.color})`;
+                imageUrl = item.image_url;
+                
+                // Get available sizes (all sizes are available)
+                const allSizes = item.items.map(tee => {
+                    const size = tee.description.match(/\b(XS|S|M|L|XL|XXL)\b/)?.[1] || '';
+                    return size;
+                }).filter(Boolean);
+                
+                priceDisplay = `$${parseFloat(item.price).toFixed(2)}`;
+                
+                // Create sizes HTML
+                detailsHtml = `
+                    <div class="sizes-available">
+                        <span class="sizes-label">Sizes:</span>
+                        <span class="sizes-list">${allSizes.join(' • ')}</span>
+                    </div>
+                `;
+                
+                // Set data attributes for search
+                card.setAttribute('data-description', `tee ${item.color}`.toLowerCase());
+                card.setAttribute('data-type', 'tee');
+                
+            } else {
+                // Sticker - simplified, no SKU or date
+                title = item.description || 'Sticker';
+                imageUrl = item.image_url || '';
+                priceDisplay = `$${parseFloat(item.store_price).toFixed(2)}`;
+                
+                detailsHtml = ''; // No additional details
+                
+                // Set data attributes for search
+                card.setAttribute('data-description', item.description.toLowerCase());
+                card.setAttribute('data-type', 'sticker');
+            }
+            
+            // Handle image display
+            const imageHtml = imageUrl ? 
+                `<img src="${imageUrl}" alt="${title}" onload="this.parentElement.classList.remove('loading')" onerror="this.parentElement.innerHTML='<div class=\\'default-merch-bg\\'></div>';">` : 
                 '';
             
-            // Check if already in cart
-            const inCart = isInCart(accessory.id);
-            
             card.innerHTML = `
-                <div class="merch-image ${!accessory.image_url ? 'default-merch-bg' : 'loading'}">
+                <div class="merch-image ${!imageUrl ? 'default-merch-bg' : 'loading'}">
                     ${imageHtml}
                 </div>
                 <div class="merch-info">
-                    <h3>${escapeHtml(accessory.description)}</h3>
+                    <h3>${escapeHtml(title)}</h3>
                     
                     <div class="merch-details">
-                        <span class="merch-price">$${parseFloat(accessory.store_price).toFixed(2)}</span>
+                        <span class="merch-price">${priceDisplay}</span>
                     </div>
                     
-                    ${accessory.bar_code ? `<p class="merch-sku">SKU: ${escapeHtml(accessory.bar_code)}</p>` : ''}
-                    
-                    <button class="add-to-cart-btn ${inCart ? 'in-cart' : ''}" 
-                            data-accessory-id="${accessory.id}"
-                            style="margin-top: 10px; padding: 8px; background: #ff6b6b; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: 600; transition: all 0.2s;">
-                        <i class="fas ${inCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
-                        ${inCart ? 'In Cart' : 'Add to Cart'}
-                    </button>
+                    ${detailsHtml}
                 </div>
             `;
             
-            // Add click handler for add to cart button
-            const addBtn = card.querySelector('.add-to-cart-btn');
-            addBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!inCart) {
-                    addToCart(accessory);
-                    
-                    // Update button state
-                    addBtn.classList.add('in-cart');
-                    addBtn.innerHTML = '<i class="fas fa-check"></i> In Cart';
-                }
-            });
-            
-            // Add click handler to show details modal
+            // Add click handler to show sizes popup for tees
             card.addEventListener('click', function(e) {
-                // Don't trigger if clicking on add to cart button
-                if (e.target.closest('.add-to-cart-btn')) return;
-                
-                // Show details modal
-                showItemDetails(accessory);
+                if (item.type === 'tee') {
+                    showSizesPopup(item);
+                } else {
+                    // For stickers, show details modal
+                    showStickerDetails(item);
+                }
             });
             
             return card;
         }
 
-        // Show item details modal
-        function showItemDetails(accessory) {
+        // Show sizes popup for tee groups
+        function showSizesPopup(teeGroup) {
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.className = 'copies-modal-overlay';
+            
+            // All sizes are available
+            const allItems = teeGroup.items;
+            
+            // Handle image display
+            const imageHtml = teeGroup.image_url ? 
+                `<img src="${teeGroup.image_url}" alt="Tee (${teeGroup.color})" onerror="this.parentElement.classList.add('default-merch-bg'); this.style.display='none';">` : 
+                '';
+            
+            modal.innerHTML = `
+                <div class="copies-modal">
+                    <div class="copies-modal-header">
+                        <h3>Tee (${teeGroup.color}) - Select Size</h3>
+                        <button class="copies-modal-close">&times;</button>
+                    </div>
+                    <div class="copies-modal-content">
+                        <div class="modal-album-image ${!teeGroup.image_url ? 'default-merch-bg' : ''}">
+                            ${imageHtml}
+                        </div>
+                        <div class="copies-list-with-image">
+                            ${allItems.map(tee => {
+                                // Extract size from description
+                                const size = tee.description.match(/\b(XS|S|M|L|XL|XXL)\b/)?.[1] || 'OS';
+                                
+                                return `
+                                    <div class="copy-item">
+                                        <div class="copy-item-content">
+                                            <span class="copy-condition">
+                                                <span class="condition-indicator">Size ${size}</span>
+                                            </span>
+                                        </div>
+                                        <button class="add-to-cart-btn" 
+                                                data-accessory-id="${tee.id}" 
+                                                data-size="${size}">
+                                            <i class="fas fa-cart-plus"></i> 
+                                            Add to Cart
+                                        </button>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    <div class="copies-modal-footer">
+                        <span class="footer-price">$${parseFloat(teeGroup.price).toFixed(2)} each</span>
+                    </div>
+                </div>
+            `;
+            
+            // Add click handler to close button
+            const closeBtn = modal.querySelector('.copies-modal-close');
+            closeBtn.addEventListener('click', () => {
+                modal.remove();
+            });
+            
+            // Add click outside to close
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            // Add event listeners for add to cart buttons
+            modal.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    
+                    const accessoryId = btn.dataset.accessoryId;
+                    const accessory = allAccessories.find(a => a.id == accessoryId);
+                    
+                    if (accessory) {
+                        addToCart(accessory);
+                        // Don't disable button or change text - allow multiple additions
+                    }
+                });
+            });
+            
+            document.body.appendChild(modal);
+        }
+
+        // Show sticker details modal - simplified without SKU and date
+        function showStickerDetails(sticker) {
             const modal = document.getElementById('merchModal');
             const modalTitle = document.getElementById('modalTitle');
             const modalContent = document.getElementById('modalContent');
             
-            modalTitle.textContent = accessory.description;
-            
-            const inCart = isInCart(accessory.id);
+            modalTitle.textContent = sticker.description;
             
             // Handle image display
-            const imageHtml = accessory.image_url ? 
-                `<img src="${accessory.image_url}" alt="${accessory.description}" style="width: 100%; height: 100%; object-fit: cover;" onload="this.parentElement.classList.remove('loading')" onerror="this.parentElement.innerHTML='<div class=\\'default-merch-bg\\'></div>';">` : 
+            const imageHtml = sticker.image_url ? 
+                `<img src="${sticker.image_url}" alt="${sticker.description}" style="width: 100%; height: 100%; object-fit: cover;" onload="this.parentElement.classList.remove('loading')" onerror="this.parentElement.innerHTML='<div class=\\'default-merch-bg\\'></div>';">` : 
                 '';
             
             modalContent.innerHTML = `
                 <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                    <div class="modal-image ${!accessory.image_url ? 'default-merch-bg' : 'loading'}" style="width: 150px; height: 150px; flex-shrink: 0;">
+                    <div class="modal-image ${!sticker.image_url ? 'default-merch-bg' : 'loading'}" style="width: 150px; height: 150px; flex-shrink: 0;">
                         ${imageHtml}
                     </div>
                     <div style="flex: 1; min-width: 200px;">
-                        <p style="font-size: 1.1rem; margin-bottom: 15px; font-weight: 600;">${escapeHtml(accessory.description)}</p>
+                        <p style="font-size: 1.1rem; margin-bottom: 15px; font-weight: 600;">${escapeHtml(sticker.description)}</p>
                         
                         <div style="margin-bottom: 10px; display: flex;">
                             <span style="width: 80px; color: #666;">Price:</span>
-                            <span style="font-weight: 600; color: #28a745;">$${parseFloat(accessory.store_price).toFixed(2)}</span>
+                            <span style="font-weight: 600; color: #28a745;">$${parseFloat(sticker.store_price).toFixed(2)}</span>
                         </div>
                         
-                        <div style="margin-bottom: 10px; display: flex;">
-                            <span style="width: 80px; color: #666;">SKU:</span>
-                            <span>${escapeHtml(accessory.bar_code || 'N/A')}</span>
-                        </div>
-                        
-                        <div style="margin-bottom: 10px; display: flex;">
-                            <span style="width: 80px; color: #666;">Added:</span>
-                            <span>${new Date(accessory.created_at).toLocaleDateString()}</span>
-                        </div>
-                        
-                        ${accessory.updated_at ? `
-                        <div style="margin-bottom: 10px; display: flex;">
-                            <span style="width: 80px; color: #666;">Updated:</span>
-                            <span>${new Date(accessory.updated_at).toLocaleDateString()}</span>
-                        </div>
-                        ` : ''}
-                        
-                        <button class="add-to-cart-btn ${inCart ? 'in-cart' : ''}" 
-                                data-accessory-id="${accessory.id}"
-                                style="margin-top: 15px; width: 100%; padding: 10px; background: #ff6b6b; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: 600;">
-                            <i class="fas ${inCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
-                            ${inCart ? 'In Cart' : 'Add to Cart'}
+                        <button class="add-to-cart-btn" 
+                                data-accessory-id="${sticker.id}"
+                                style="margin-top: 15px; width: 100%; padding: 10px; background: #ff6b6b; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: 600; transition: all 0.2s;">
+                            <i class="fas fa-cart-plus"></i> 
+                            Add to Cart
                         </button>
                     </div>
                 </div>
@@ -616,25 +773,8 @@
             const modalAddBtn = modalContent.querySelector('.add-to-cart-btn');
             if (modalAddBtn) {
                 modalAddBtn.addEventListener('click', () => {
-                    if (!inCart) {
-                        addToCart(accessory);
-                        
-                        // Update button state
-                        modalAddBtn.classList.add('in-cart');
-                        modalAddBtn.innerHTML = '<i class="fas fa-check"></i> In Cart';
-                        
-                        // Also update the card button if it exists
-                        const cardBtn = document.querySelector(`.add-to-cart-btn[data-accessory-id="${accessory.id}"]`);
-                        if (cardBtn) {
-                            cardBtn.classList.add('in-cart');
-                            cardBtn.innerHTML = '<i class="fas fa-check"></i> In Cart';
-                        }
-                        
-                        // Close modal after 1 second
-                        setTimeout(() => {
-                            modal.style.display = 'none';
-                        }, 1000);
-                    }
+                    addToCart(sticker);
+                    // Don't close modal or change button - allow multiple additions
                 });
             }
             

@@ -222,36 +222,6 @@ body {
     transform: scale(1.05);
 }
 
-/* Stock badge */
-.stock-badge {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    z-index: 2;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-
-.stock-badge.in-stock {
-    background: #28a745;
-    color: white;
-}
-
-.stock-badge.low-stock {
-    background: #ffc107;
-    color: #333;
-}
-
-.stock-badge.out-of-stock {
-    background: #dc3545;
-    color: white;
-}
-
 .merch-info {
     padding: 15px;
     flex: 1;
@@ -269,13 +239,6 @@ body {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-}
-
-.merch-info .description {
-    font-size: 14px;
-    color: #666;
-    margin-bottom: 8px;
-    font-weight: 500;
 }
 
 /* Merch details section */
@@ -299,6 +262,24 @@ body {
     margin: 5px 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+/* Sizes available styling */
+.sizes-available {
+    margin: 5px 0;
+    font-size: 13px;
+    color: #666;
+}
+
+.sizes-label {
+    font-weight: 600;
+    color: #333;
+    margin-right: 5px;
+}
+
+.sizes-list {
+    color: #ff6b6b;
+    font-weight: 500;
 }
 
 /* No items message */
@@ -556,16 +537,6 @@ body {
     object-fit: cover;
     border-radius: 4px;
     background: #f8f9fa;
-}
-
-.default-merch-bg {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 12px;
-    text-align: center;
 }
 
 .cart-item-details {
@@ -1097,6 +1068,177 @@ body {
     }
 }
 
+/* Copy item styling for size popup */
+.copy-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+    transition: background 0.2s;
+    border-radius: 6px;
+}
+
+.copy-item:hover {
+    background: #f8f9fa;
+}
+
+.copy-item-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.copy-condition {
+    display: flex;
+    align-items: center;
+}
+
+.condition-indicator {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #f0f0f0;
+    color: #333;
+}
+
+/* Add to cart button styling */
+.add-to-cart-btn {
+    background: #ff6b6b;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+    margin-left: 10px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.add-to-cart-btn:hover {
+    background: #ff5252;
+    transform: scale(1.02);
+}
+
+.add-to-cart-btn i {
+    font-size: 11px;
+}
+
+/* Modal styles for size popup */
+.copies-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    backdrop-filter: blur(3px);
+}
+
+.copies-modal {
+    background: white;
+    border-radius: 12px;
+    width: 650px;
+    max-width: 95%;
+    max-height: 85vh;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+
+.copies-modal-header {
+    background: #f8f9fa;
+    padding: 15px 20px;
+    border-bottom: 2px solid #ff6b6b;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.copies-modal-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.copies-modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #999;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.copies-modal-close:hover {
+    color: #ff6b6b;
+}
+
+.copies-modal-content {
+    display: flex;
+    flex-direction: row;
+    max-height: calc(85vh - 120px);
+}
+
+.modal-album-image {
+    width: 150px;
+    flex-shrink: 0;
+    padding: 20px 0 20px 20px;
+}
+
+.modal-album-image img {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.modal-album-image.default-merch-bg {
+    background-image: url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'150\' height=\'150\' viewBox=\'0 0 150 150\'%3E%3Crect width=\'150\' height=\'150\' fill=\'%23f8f9fa\'/%3E%3Ctext x=\'75\' y=\'70\' font-family=\'Arial\' font-size=\'14\' fill=\'%23999\' text-anchor=\'middle\' dy=\'.3em\'%3EMERCHANDISE%3C/text%3E%3Ccircle cx=\'75\' cy=\'110\' r=\'25\' fill=\'%23ff6b6b\'/%3E%3C/svg%3E');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    width: 150px;
+    height: 150px;
+    border-radius: 4px;
+}
+
+.copies-list-with-image {
+    flex: 1;
+    padding: 20px 20px 20px 15px;
+    max-height: calc(85vh - 120px);
+    overflow-y: auto;
+    background: white;
+}
+
+.copies-modal-footer {
+    padding: 12px 20px;
+    background: #f8f9fa;
+    border-top: 1px solid #ddd;
+    text-align: right;
+}
+
+.footer-price {
+    font-size: 14px;
+    color: #28a745;
+    font-weight: 600;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .header-section {
@@ -1117,6 +1259,26 @@ body {
     .form-row {
         flex-direction: column;
         gap: 0;
+    }
+    
+    .copies-modal-content {
+        flex-direction: column;
+    }
+    
+    .modal-album-image {
+        width: 100%;
+        padding: 20px 20px 0 20px;
+    }
+    
+    .modal-album-image img,
+    .modal-album-image.default-merch-bg {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto;
+    }
+    
+    .copies-list-with-image {
+        padding: 15px;
     }
 }
 
@@ -1147,6 +1309,23 @@ body {
     
     .item-price-cell {
         padding-left: 5px;
+    }
+    
+    .copy-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .copy-item-content {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .add-to-cart-btn {
+        margin-left: 0;
+        width: 100%;
+        justify-content: center;
     }
 }
 
@@ -1276,7 +1455,7 @@ body {
     }
     
     .cart-icon-wrapper {
-        background: #007bff;
+        background: #ff6b6b;
         width: 56px;
         height: 56px;
         border-radius: 50%;
