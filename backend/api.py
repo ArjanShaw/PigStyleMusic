@@ -117,7 +117,6 @@ def get_db():
     return conn
 
 # ==================== SQUARE API HELPER FUNCTIONS ====================
-
 @app.route('/api/discogs/auth', methods=['GET'])
 def discogs_auth():
     """Start Discogs OAuth flow"""
@@ -129,11 +128,21 @@ def discogs_auth():
         consumer_secret = os.environ.get('DISCOGS_CONSUMER_SECRET')
         callback_url = os.environ.get('DISCOGS_CALLBACK_URL', f"{request.host_url.rstrip('/')}/api/discogs/callback")
         
-        app.logger.info(f"Starting Discogs auth with callback: {callback_url}")
+        app.logger.info("=== DISCOGS AUTH START ===")
+        app.logger.info(f"Consumer Key present: {bool(consumer_key)}")
+        app.logger.info(f"Consumer Secret present: {bool(consumer_secret)}")
+        app.logger.info(f"Callback URL: {callback_url}")
+        app.logger.info(f"Request host_url: {request.host_url}")
         
         if not consumer_key or not consumer_secret:
             app.logger.error("Discogs credentials not configured")
-            return jsonify({'error': 'Discogs credentials not configured'}), 500
+            return jsonify({
+                'error': 'Discogs credentials not configured',
+                'debug': {
+                    'has_key': bool(consumer_key),
+                    'has_secret': bool(consumer_secret)
+                }
+            }), 500
         
         # Initialize client
         d = discogs_client.Client(
@@ -142,24 +151,40 @@ def discogs_auth():
             consumer_secret=consumer_secret
         )
         
-        # Get request token and authorization URL - CORRECT METHOD
+        # Get request token and authorization URL
         request_token, request_token_secret, auth_url = d.get_authorize_url(callback_url=callback_url)
+        
+        app.logger.info(f"Got request token: {request_token[:10]}...")
+        app.logger.info(f"Got auth URL: {auth_url}")
         
         # Store in session
         session['discogs_request_token'] = request_token
         session['discogs_request_token_secret'] = request_token_secret
         
-        app.logger.info(f"Got auth URL: {auth_url}")
+        # Force session save
+        session.modified = True
+        
+        app.logger.info(f"Stored tokens in session. Session keys: {list(session.keys())}")
         
         return jsonify({
             'success': True,
-            'auth_url': auth_url
+            'auth_url': auth_url,
+            'debug': {
+                'callback_url': callback_url,
+                'session_stored': True
+            }
         })
         
     except Exception as e:
         app.logger.error(f"Discogs auth error: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+         
 
 @app.route('/api/discogs/callback', methods=['GET'])
 def discogs_callback():
@@ -4789,15 +4814,28 @@ def get_dropoff_records():
 
 # ==================== CATALOG ENDPOINTS ====================
 
+
 @app.route('/catalog/grouped-by-release', methods=['GET'])
 def get_catalog_grouped_by_release():
     """
     Returns catalog data grouped by unique releases (artist + title combination)
+    with price-weighted randomness for group ordering
     Each group contains all copies of that release with their details
     """
     conn = get_db()
     cursor = conn.cursor()
 
+    # Get price weighting from config
+    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'CATALOG_PRICE_WEIGHTING'")
+    weighting_result = cursor.fetchone()
+    
+    if not weighting_result:
+        raise Exception("CATALOG_PRICE_WEIGHTING not found in app_config table")
+    
+    price_weighting = float(weighting_result[0])
+    price_weighting = max(0.0, min(1.0, price_weighting))
+
+    # Get all in-stock records
     cursor.execute('''
         SELECT 
             r.id,
@@ -4822,13 +4860,12 @@ def get_catalog_grouped_by_release():
         AND r.artist != '' AND r.title != ''
         AND r.store_price IS NOT NULL
         AND r.status_id = 2
-        ORDER BY r.created_at DESC
     ''')
 
     records = cursor.fetchall()
     conn.close()
 
-    groups = {}
+    # Define condition order for sorting copies within groups
     condition_order = {
         'Mint (M)': 1,
         'Near Mint (NM or M-)': 2,
@@ -4840,8 +4877,11 @@ def get_catalog_grouped_by_release():
         'Poor (P)': 8
     }
 
+    # Group records by release
+    groups = {}
     total_copies = 0
     unique_releases = 0
+    all_prices = []  # Track all prices for min/max calculation
 
     for record in records:
         record_dict = dict(record)
@@ -4853,8 +4893,10 @@ def get_catalog_grouped_by_release():
             
         key = f"{artist.lower()}|{title.lower()}"
         
+        # Convert price to float
         if 'store_price' in record_dict and record_dict['store_price'] is not None:
             record_dict['store_price'] = float(record_dict['store_price'])
+            all_prices.append(record_dict['store_price'])
         
         if key not in groups:
             unique_releases += 1
@@ -4868,10 +4910,12 @@ def get_catalog_grouped_by_release():
                     'min': float('inf'),
                     'max': 0
                 },
+                'all_prices': [],  # Store all prices for this group
                 'copies': [],
                 'created_at': record_dict.get('created_at')
             }
         
+        # Prepare copy data with condition ranks for sorting
         copy_data = {
             'id': record_dict['id'],
             'sleeve_condition': record_dict.get('sleeve_condition', 'Unknown'),
@@ -4887,45 +4931,106 @@ def get_catalog_grouped_by_release():
         
         groups[key]['copies'].append(copy_data)
         groups[key]['total_copies'] += 1
+        groups[key]['all_prices'].append(record_dict['store_price'])
         total_copies += 1
         
+        # Update price range
         price = record_dict['store_price']
         if price > 0:
             groups[key]['price_range']['min'] = min(groups[key]['price_range']['min'], price)
             groups[key]['price_range']['max'] = max(groups[key]['price_range']['max'], price)
         
+        # Track earliest creation date for the group
         if record_dict.get('created_at') and (
             not groups[key]['created_at'] or 
             record_dict['created_at'] < groups[key]['created_at']
         ):
             groups[key]['created_at'] = record_dict['created_at']
     
-    result = []
+    # Fix groups with no valid prices
     for group in groups.values():
         if group['price_range']['min'] == float('inf'):
             group['price_range'] = {'min': 0, 'max': 0}
+    
+    # Calculate min and max prices across ALL records for normalization
+    valid_prices = [p for p in all_prices if p > 0]
+    if valid_prices:
+        global_min_price = min(valid_prices)
+        global_max_price = max(valid_prices)
+        price_range = global_max_price - global_min_price
+    else:
+        global_min_price = 0
+        global_max_price = 0
+        price_range = 0
+
+    # Prepare groups with scores for sorting
+    scored_groups = []
+    
+    for group in groups.values():
+        # Calculate representative price for the group (using minimum price)
+        # You could also use average, median, or maximum - minimum is often used 
+        # as it represents the entry price for this release
+        representative_price = group['price_range']['min']
         
+        # Skip groups with no valid price
+        if representative_price <= 0:
+            continue
+        
+        # Normalize price to 0-1 range
+        if price_range > 0:
+            normalized_price = (representative_price - global_min_price) / price_range
+        else:
+            normalized_price = 0.5
+        
+        # Generate random factor
+        random_factor = random.random()
+        
+        # Calculate score using same formula as grouped-records endpoint
+        score = (price_weighting * normalized_price) + ((1 - price_weighting) * random_factor)
+        
+        # Sort copies within the group by condition (best first) and price (highest first)
         group['copies'].sort(key=lambda x: (x['sleeve_condition_rank'], -x['store_price']))
         
+        # Clean up temporary fields and create combined condition for display
         for copy in group['copies']:
             del copy['sleeve_condition_rank']
             del copy['disc_condition_rank']
-            # Add a combined condition field for display
+            
+            # Create a combined condition field for display
             if copy['sleeve_condition'] == copy['disc_condition']:
                 copy['condition'] = copy['sleeve_condition']
             else:
                 copy['condition'] = f"Sleeve: {copy['sleeve_condition']}, Disc: {copy['disc_condition']}"
         
-        result.append(group)
+        # Add scoring info to group (will be removed before sending)
+        group['_score'] = score
+        group['_representative_price'] = representative_price
+        group['_normalized_price'] = normalized_price
+        group['_random_factor'] = random_factor
+        
+        scored_groups.append(group)
     
-    result.sort(key=lambda x: (x['artist'] or '').lower())
+    # Sort groups by score (higher scores first)
+    scored_groups.sort(key=lambda x: x['_score'], reverse=True)
+    
+    # Remove temporary scoring fields before sending
+    for group in scored_groups:
+        del group['_score']
+        del group['_representative_price']
+        del group['_normalized_price']
+        del group['_random_factor']
+        del group['all_prices']  # Remove temporary price list
 
     return jsonify({
         'status': 'success',
-        'total_unique_releases': unique_releases,
+        'total_unique_releases': len(scored_groups),
         'total_copies': total_copies,
-        'groups': result
+        'price_weighting': price_weighting,
+        'global_min_price': global_min_price,
+        'global_max_price': global_max_price,
+        'groups': scored_groups
     })
+
 
 @app.route('/catalog/grouped-records', methods=['GET'])
 def get_catalog_grouped_records():
