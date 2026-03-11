@@ -80,7 +80,7 @@ window.getStatusText = function(statusId) {
 // ============================================================================
 
 function validateConsignorCommission(item) {
-    if (item.consignor_id) {
+    if (item.consignor_id && item.consignor_id !== 1) {
         if (!item.commission_rate && item.commission_rate !== 0) {
             throw new Error(
                 `Consignor item missing commission rate: ${item.artist || 'Unknown'} - ${item.title || 'Unknown'} (ID: ${item.id})`
@@ -1615,7 +1615,7 @@ async function processSquarePaymentSuccess() {
                 successCount++;
                 soldItems.push(item);
                 
-                if (item.consignor_id) {
+                if (item.consignor_id && item.consignor_id !== 1) {
                     const commissionRate = parseFloat(item.commission_rate);
                     if (isNaN(commissionRate)) {
                         throw new Error(`Invalid commission rate for consignor item: ${item.artist} - ${item.title}`);
@@ -1992,7 +1992,7 @@ window.processCashPayment = async function() {
                     successCount++;
                     soldItems.push(item);
                     
-                    if (item.consignor_id) {
+                    if (item.consignor_id && item.consignor_id !== 1) {
                         const commissionRate = parseFloat(item.commission_rate);
                         if (isNaN(commissionRate)) {
                             throw new Error(`Invalid commission rate for consignor item: ${item.artist} - ${item.title}`);
