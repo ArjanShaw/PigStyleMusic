@@ -217,20 +217,16 @@ const UsersModule = (function() {
                 continue;
             }
             
-            let consignorShare;
-            if (commissionRate > 1) {
-                consignorShare = storePrice * ((100 - commissionRate) / 100);
-            } else {
-                consignorShare = storePrice * (1 - commissionRate);
-            }
-            
+            // FIXED: commissionRate is stored as a fraction (0.1 = 10%)
+            // Consignor gets (1 - commissionRate) of the price
+            const consignorShare = storePrice * (1 - commissionRate);
             totalOwed += consignorShare;
         }
         
         return totalOwed;
     }
     
-    // New function to show sold records details for a consignor
+    // FIXED: showSoldRecordsDetails function with correct consignor credit calculation
     window.showSoldRecordsDetails = function(consignorId, consignorName) {
         const consignorRecords = allRecords.filter(record => {
             return record.consignor_id == consignorId && record.status_id === 3;
@@ -250,11 +246,9 @@ const UsersModule = (function() {
             const commissionRate = Number(record.commission_rate);
             
             if (!isNaN(storePrice) && !isNaN(commissionRate)) {
-                if (commissionRate > 1) {
-                    totalOwed += storePrice * ((100 - commissionRate) / 100);
-                } else {
-                    totalOwed += storePrice * (1 - commissionRate);
-                }
+                // FIXED: commissionRate is a fraction (0.1 = 10%)
+                // Consignor gets (1 - commissionRate) of the price
+                totalOwed += storePrice * (1 - commissionRate);
             }
         });
         
@@ -268,14 +262,9 @@ const UsersModule = (function() {
                 const storePrice = Number(record.store_price);
                 const commissionRate = Number(record.commission_rate);
                 
-                let consignorShare = 0;
-                if (!isNaN(storePrice) && !isNaN(commissionRate)) {
-                    if (commissionRate > 1) {
-                        consignorShare = storePrice * ((100 - commissionRate) / 100);
-                    } else {
-                        consignorShare = storePrice * (1 - commissionRate);
-                    }
-                }
+                // FIXED: Calculate correctly - commissionRate is a fraction
+                const storeCut = storePrice * commissionRate;           // Store gets commissionRate (e.g., 0.1 = 10%)
+                const consignorShare = storePrice * (1 - commissionRate); // Consignor gets the rest
                 
                 const soldDate = record.sold_date || record.updated_at || record.created_at;
                 const formattedDate = soldDate ? new Date(soldDate).toLocaleDateString() : 'Unknown';
@@ -286,8 +275,8 @@ const UsersModule = (function() {
                         <td>${escapeHtml(record.title || 'Unknown')}</td>
                         <td>${escapeHtml(record.catalog_number || '—')}</td>
                         <td>$${storePrice.toFixed(2)}</td>
-                        <td>${commissionRate}%</td>
-                        <td>$${(storePrice * (commissionRate / 100)).toFixed(2)}</td>
+                        <td>${(commissionRate * 100).toFixed(1)}%</td>  <!-- FIXED: Multiply by 100 for display -->
+                        <td>$${storeCut.toFixed(2)}</td>
                         <td>$${consignorShare.toFixed(2)}</td>
                         <td>${formattedDate}</td>
                     </tr>
@@ -415,11 +404,8 @@ const UsersModule = (function() {
                         const commissionRate = Number(record.commission_rate);
                         
                         if (!isNaN(storePrice) && !isNaN(commissionRate)) {
-                            if (commissionRate > 1) {
-                                totalAdminCommission += storePrice * (commissionRate / 100);
-                            } else {
-                                totalAdminCommission += storePrice * commissionRate;
-                            }
+                            // FIXED: commissionRate is a fraction
+                            totalAdminCommission += storePrice * commissionRate;
                         }
                     }
                 });
@@ -892,11 +878,8 @@ const UsersModule = (function() {
                             const commissionRate = Number(record.commission_rate);
                             
                             if (!isNaN(storePrice) && !isNaN(commissionRate)) {
-                                if (commissionRate > 1) {
-                                    totalAdminCommission += storePrice * (commissionRate / 100);
-                                } else {
-                                    totalAdminCommission += storePrice * commissionRate;
-                                }
+                                // FIXED: commissionRate is a fraction
+                                totalAdminCommission += storePrice * commissionRate;
                             }
                         }
                     });
