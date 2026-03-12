@@ -1271,22 +1271,13 @@ def get_all_artist_genres():
     return jsonify([dict(artist) for artist in artists])
 
 
+
 @app.route('/artist-genre/<artist_name>', methods=['GET'])
 def get_artist_genre(artist_name):
     conn = get_db()
     cursor = conn.cursor()
 
-    # First, log all artists in the database for debugging
-    cursor.execute('''
-        SELECT artist, genre_id FROM artist_genre ORDER BY artist
-    ''')
-    all_artists = cursor.fetchall()
-    app.logger.info("=== ALL ARTISTS IN DATABASE ===")
-    for artist_row in all_artists:
-        app.logger.info(f"Artist: '{artist_row['artist']}', Genre ID: {artist_row['genre_id']}")
-    app.logger.info(f"Looking for exact match: '{artist_name}'")
-
-    # Now try to find the specific artist
+    # Search for the specific artist directly
     cursor.execute('''
         SELECT ag.artist, ag.genre_id, g.genre_name
         FROM artist_genre ag
@@ -1298,12 +1289,9 @@ def get_artist_genre(artist_name):
     conn.close()
 
     if not artist:
-        app.logger.info(f"❌ Artist '{artist_name}' not found in database")
         return jsonify({'status': 'error', 'error': 'Artist not found'}), 404
 
-    app.logger.info(f"✅ Found artist '{artist_name}' with genre ID {artist['genre_id']}")
     return jsonify(dict(artist))
-
 
 
 @app.route('/print-receipt', methods=['POST'])
