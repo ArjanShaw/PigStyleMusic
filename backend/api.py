@@ -688,21 +688,49 @@ def process_checkout():
         line_items = []
         item_ids = []  # Track IDs for metadata
         
+        # Build a formatted note with clear delimiters
+        # Format: barcode | artist | title (trimmed to 50 chars each) || next item
+        record_descriptions = []
+        
+        # Helper function to trim string to max length
+        def trim_string(s, max_length=50):
+            if not s:
+                return ''
+            s = str(s)
+            if len(s) <= max_length:
+                return s
+            return s[:max_length-3] + '...'
+        
         for item in items:
             # For accessories, use description as name
             if item_type == 'accessory':
                 item_name = item.get('description') or item.get('title', 'Merchandise')
-                artist_name = ''
+                barcode = item.get('barcode') or item.get('bar_code') or 'NO-BARCODE'
+                trimmed_name = trim_string(item_name)
+                record_descriptions.append(f"{barcode} | ACC: {trimmed_name}")
             else:
-                # For records, use artist - title format
+                # For records, get barcode, artist, title
+                barcode = item.get('barcode') or item.get('bar_code') or 'NO-BARCODE'
+                artist = item.get('artist', 'Unknown Artist')
+                title = item.get('title', 'Unknown Title')
+                
+                # Trim artist and title to 50 chars max
+                trimmed_artist = trim_string(artist)
+                trimmed_title = trim_string(title)
+                
+                # Format: barcode | artist | title
+                record_descriptions.append(f"{barcode} | {trimmed_artist} | {trimmed_title}")
+            
+            # Build the display name for line item
+            if item_type == 'accessory':
+                display_name = item_name
+            else:
                 artist_name = item.get('artist', '')
                 item_name = item.get('title', 'Unknown')
-            
-            # Build the display name
-            if artist_name:
-                display_name = f"{artist_name} - {item_name}"
-            else:
-                display_name = item_name
+                if artist_name:
+                    display_name = f"{artist_name} - {item_name}"
+                else:
+                    display_name = item_name
             
             line_items.append({
                 "name": display_name,
@@ -742,6 +770,13 @@ def process_checkout():
             })
             app.logger.info(f"✅ Added tax line item: ${tax_amount}")
         
+        # Join multiple records with " || " delimiter
+        formatted_note = " || ".join(record_descriptions)
+        
+        # Truncate if too long (Square has 500 char limit)
+        if len(formatted_note) > 500:
+            formatted_note = formatted_note[:497] + "..."
+        
         # Prepare metadata
         metadata = {
             'order_id': str(order_id),
@@ -776,7 +811,7 @@ def process_checkout():
                 "line_items": line_items,
                 "reference_id": str(order_id)
             },
-            "payment_note": f"PigStyle Order {order_number}",
+            "payment_note": formatted_note,  # Now uses barcode | artist | title format with 50 char trim
             "metadata": metadata,
             "checkout_options": {
                 "redirect_url": redirect_url
@@ -786,6 +821,7 @@ def process_checkout():
         square_base_url = 'https://connect.squareup.com'
         
         app.logger.info(f"Sending to Square with reference_id: {order_id}")
+        app.logger.info(f"Payment note: {formatted_note}")
         app.logger.info(f"Line items: {json.dumps(line_items, indent=2)}")
         
         response = requests.post(
