@@ -692,6 +692,11 @@ class AddEditDeleteManager {
             return `<option value="${genre.id}">${genre.genre_name}</option>`;
         }).join('');
         
+        const consignorOptions = this.consignors.map(consignor => {
+            const selected = consignor.id === this.selectedConsignorId ? 'selected' : '';
+            return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
+        }).join('');
+        
         const user = JSON.parse(localStorage.getItem('user')) || {};
         
         return `
@@ -788,6 +793,35 @@ class AddEditDeleteManager {
                                     <button class="btn btn-sm btn-info estimate-now-btn" style="margin-top: 5px; font-size: 12px; display: ${this.autoEstimatePrice ? 'none' : 'inline-block'};">
                                         <i class="fas fa-calculator"></i> Estimate Price
                                     </button>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">
+                                        <i class="fas fa-user"></i> Consignor
+                                    </label>
+                                    <select class="form-control consignor-select">
+                                        <option value="">None</option>
+                                        ${consignorOptions}
+                                    </select>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Default consignor pre-selected
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">
+                                        <i class="fas fa-percentage"></i> Consignment Rate (%)
+                                    </label>
+                                    <input type="number" 
+                                           class="form-control commission-input" 
+                                           value="${this.selectedCommissionRate}" 
+                                           step="10" 
+                                           min="0" 
+                                           max="100"
+                                           placeholder="Commission %">
+                                    <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Store's cut (step: 10%)
+                                    </div>
                                 </div>
                             </div>
                             
@@ -1119,7 +1153,7 @@ class AddEditDeleteManager {
             discSelect.dispatchEvent(changeEvent);
         }
         
-        const discConditionId = discSelect.value;
+        const discConditionId = discSelect ? discSelect.value : null;
         
         let record;
         if (isEditMode) {
@@ -1584,14 +1618,15 @@ class AddEditDeleteManager {
         const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
         const discConditionSelect = card.querySelector('.disc-condition-select');
         const priceInput = card.querySelector('.price-input');
+        const consignorSelect = card.querySelector('.consignor-select');
+        const commissionInput = card.querySelector('.commission-input');
         
         const genreId = genreSelect.value;
         const sleeveConditionId = sleeveConditionSelect.value;
         const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
-        
-        const consignorId = this.selectedConsignorId;
-        const commissionRate = this.selectedCommissionRate / 100;
+        const consignorId = consignorSelect ? consignorSelect.value : this.selectedConsignorId;
+        const commissionRate = commissionInput ? parseFloat(commissionInput.value) / 100 : this.selectedCommissionRate / 100;
         
         const errors = [];
         if (!genreId) errors.push('Please select a genre');
@@ -1625,8 +1660,8 @@ class AddEditDeleteManager {
         console.log('Sleeve Condition ID:', sleeveConditionId);
         console.log('Disc Condition ID:', discConditionId);
         console.log('Final Price:', price);
-        console.log('Consignor ID (from global settings):', consignorId);
-        console.log('Commission Rate (from global settings):', commissionRate);
+        console.log('Consignor ID (from dropdown):', consignorId);
+        console.log('Commission Rate (from dropdown):', commissionRate);
         
         const recordData = {
             artist: discogsRecord.artist,
@@ -1641,7 +1676,7 @@ class AddEditDeleteManager {
             condition_disc_id: parseInt(discConditionId),
             store_price: price,
             youtube_url: '',
-            consignor_id: consignorId || user.id || null,
+            consignor_id: consignorId ? parseInt(consignorId) : null,
             commission_rate: commissionRate,
             status_id: 1,
         };
