@@ -962,6 +962,8 @@ def process_checkout():
             'error': f'Server error: {str(e)}'
         }), 500
  
+
+ 
 @app.route('/api/order/complete', methods=['POST'])
 def order_complete():
     """Update order status and mark records as sold after successful payment"""
@@ -1437,6 +1439,139 @@ def list_printers():
         'printers': result
     })
  
+# ==================== SQUARE PAYMENTS ENDPOINTS ====================
+
+@app.route('/api/square/payments', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_square_payments():
+    """Get Square payments with optional date filters"""
+    try:
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            return jsonify({
+                'status': 'error',
+                'error': 'SQUARE_ACCESS_TOKEN not configured'
+            }), 500
+        
+        environment = os.environ.get('SQUARE_ENVIRONMENT', 'production')
+        base_url = 'https://connect.squareup.com' if environment == 'production' else 'https://connect.squareupsandbox.com'
+        
+        # Get query parameters
+        begin_time = request.args.get('begin_time')
+        end_time = request.args.get('end_time')
+        cursor = request.args.get('cursor')
+        limit = request.args.get('limit', 100)
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        params = {
+            'limit': limit
+        }
+        
+        if begin_time:
+            params['begin_time'] = begin_time
+        if end_time:
+            params['end_time'] = end_time
+        if cursor:
+            params['cursor'] = cursor
+        
+        app.logger.info(f"Fetching Square payments with params: {params}")
+        
+        response = requests.get(
+            f'{base_url}/v2/payments',
+            headers=headers,
+            params=params
+        )
+        
+        if response.status_code != 200:
+            app.logger.error(f"Square API error: {response.text}")
+            return jsonify({
+                'status': 'error',
+                'error': f"Square API error: {response.status_code}"
+            }), response.status_code
+        
+        data = response.json()
+        
+        # Format payments for response
+        payments = data.get('payments', [])
+        
+        app.logger.info(f"Found {len(payments)} payments")
+        
+        return jsonify({
+            'status': 'success',
+            'payments': payments,
+            'cursor': data.get('cursor'),
+            'count': len(payments)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching Square payments: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/square/payments/<payment_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_square_payment(payment_id):
+    """Get a single Square payment by ID"""
+    try:
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            return jsonify({
+                'status': 'error',
+                'error': 'SQUARE_ACCESS_TOKEN not configured'
+            }), 500
+        
+        environment = os.environ.get('SQUARE_ENVIRONMENT', 'production')
+        base_url = 'https://connect.squareup.com' if environment == 'production' else 'https://connect.squareupsandbox.com'
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        response = requests.get(
+            f'{base_url}/v2/payments/{payment_id}',
+            headers=headers
+        )
+        
+        if response.status_code != 200:
+            return jsonify({
+                'status': 'error',
+                'error': f"Square API error: {response.status_code}"
+            }), response.status_code
+        
+        data = response.json()
+        payment = data.get('payment')
+        
+        if not payment:
+            return jsonify({
+                'status': 'error',
+                'error': 'Payment not found'
+            }), 404
+        
+        return jsonify({
+            'status': 'success',
+            'payment': payment
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching Square payment: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
 # ==================== ACCESSORIES ENDPOINTS ====================
 
 @app.route('/accessories', methods=['GET'])
