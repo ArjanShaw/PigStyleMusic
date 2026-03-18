@@ -152,6 +152,26 @@
                 font-size: 1rem;
             }
         }
+
+        /* Gift card button style */
+        .gift-card-link {
+            background-color: #ff6b6b;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        .gift-card-link:hover {
+            background-color: #ff5252;
+        }
+        
+        .gift-card-nav {
+            color: #ff6b6b !important;
+            font-weight: bold;
+        }
     </style>
      
     <!-- JavaScript for expandable photos, commission rate, and sticky notes -->
@@ -368,6 +388,8 @@
             <a href="/merch" style="color: white; text-decoration: none;">Merch</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
             <a href="/consignment" style="color: white; text-decoration: none;">Consign</a>
+            <!-- Added Gift Cards link to navigation -->
+            <a href="https://app.squareup.com/gift/MLV1G6XV2N93F/order" target="_blank" style="color: #ff6b6b; text-decoration: none; font-weight: bold;">🎁 Gift Cards</a>
             <div id="auth-section">
                 
             </div>
@@ -418,11 +440,15 @@
                 <li>
                     Find your next favorite album on my <a href="streaming.html">vinyl streaming station</a>
                 </li>
+                <!-- Added Gift Cards item to the main list -->
+                <li>
+                    Now offering <a href="https://app.squareup.com/gift/MLV1G6XV2N93F/order" target="_blank" style="color: #ff6b6b; font-weight: bold;"> gift cards</a>
+                </li>
                 <li id="consignment-item">
                     Sell your record collection on <a href="consignment.html">consignment</a>
                 </li>
                 <li>
-                    Sell your record collection for cash - drop off your records for an offer</a>
+                    Sell your record collection for cash - drop off your records for an offer
                 </li>
             </ul>
         </div>
