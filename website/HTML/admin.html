@@ -26,6 +26,11 @@
         .status-badge.paid { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .status-badge.cancelled { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         
+        /* Batch Status Badges */
+        .status-badge.batch-active { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+        .status-badge.batch-completed { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-badge.batch-cancelled { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        
         /* Price Input Step Styling */
         input[type="number"][step="1"] {
             -moz-appearance: textfield;
@@ -1823,7 +1828,9 @@
             <div class="tab" data-tab="accessories">
                 <i class="fas fa-headphones"></i> Accessories
             </div>
-            
+            <div class="tab" data-tab="batches">
+                <i class="fas fa-layer-group"></i> Batches
+            </div>
             <div class="tab" data-tab="admin-config">
                 <i class="fas fa-sliders-h"></i> Admin Config
             </div>
@@ -2470,7 +2477,115 @@
             </div>
         </div>
 
-         
+        <!-- Batches Tab -->
+        <div id="batches-tab" class="tab-content">
+            <h2><i class="fas fa-layer-group"></i> Batch Management</h2>
+            
+            <!-- Stats Cards -->
+            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Batches</h3>
+                    <p class="stat-number" id="total-batches" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Active Batches</h3>
+                    <p class="stat-number" id="active-batches" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Completed</h3>
+                    <p class="stat-number" id="completed-batches" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Records in Batches</h3>
+                    <p class="stat-number" id="records-in-batches" style="font-size: 28px; font-weight: bold; color: #17a2b8; margin: 0;">0</p>
+                </div>
+            </div>
+            
+            <!-- Filters -->
+            <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                <div class="filter-group" style="flex: 1;">
+                    <label for="batch-status-filter"><i class="fas fa-filter"></i> Status:</label>
+                    <select id="batch-status-filter" class="filter-select" onchange="filterBatches()">
+                        <option value="all">All Batches</option>
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="flex: 2;">
+                    <label for="batch-search"><i class="fas fa-search"></i> Search:</label>
+                    <input type="text" id="batch-search" class="search-input" placeholder="Search by seller name or contact..." onkeyup="filterBatches()">
+                </div>
+                <div class="filter-group">
+                    <button class="btn btn-primary" onclick="loadBatches()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Batches Table -->
+            <div class="records-table-container">
+                <table class="records-table" id="batches-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Seller Name</th>
+                            <th>Contact</th>
+                            <th>Percentage</th>
+                            <th>Items</th>
+                            <th>Total Store</th>
+                            <th>Total Offer</th>
+                            <th>Start Date</th>
+                            <th>End Date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batches-body">
+                        <tr><td colspan="11" style="text-align:center; padding:40px;">Loading batches...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button class="page-btn" onclick="goToBatchesPage(1)" id="batches-first-btn" disabled>
+                    <i class="fas fa-angle-double-left"></i>
+                </button>
+                <button class="page-btn" onclick="goToBatchesPage(batchesCurrentPage - 1)" id="batches-prev-btn" disabled>
+                    <i class="fas fa-angle-left"></i>
+                </button>
+                
+                <span class="pagination-info">
+                    Page <input type="number" class="page-input" id="batches-current-page" min="1" value="1" 
+                        onchange="goToBatchesPage(parseInt(this.value))" onblur="goToBatchesPage(parseInt(this.value))" 
+                        style="width: 50px; text-align: center;"> 
+                    of <span id="batches-total-pages">1</span>
+                </span>
+                
+                <button class="page-btn" onclick="goToBatchesPage(batchesCurrentPage + 1)" id="batches-next-btn" disabled>
+                    <i class="fas fa-angle-right"></i>
+                </button>
+                <button class="page-btn" onclick="goToBatchesPage(batchesTotalPages)" id="batches-last-btn" disabled>
+                    <i class="fas fa-angle-double-right"></i>
+                </button>
+                
+                <div class="records-per-page" style="margin-left: auto;">
+                    <span>Show:</span>
+                    <select id="batches-page-size" onchange="changeBatchesPageSize(parseInt(this.value))">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div class="loading" id="batches-loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>Loading batches...</p>
+            </div>
+        </div>
         
         <!-- Admin Config Tab -->
         <div id="admin-config-tab" class="tab-content">
@@ -3642,7 +3757,8 @@
     <script src="/static/js/users.js"></script>
     <script src="/static/js/artists.js"></script>
     <script src="/static/js/accessories.js"></script>
-     <script src="/static/js/admin-orders.js"></script>
+    <script src="/static/js/batches.js"></script>
+    <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/db-query.js"></script>
     <script src="/static/js/discogs.js"></script>
     <!-- Square Payments Module -->
