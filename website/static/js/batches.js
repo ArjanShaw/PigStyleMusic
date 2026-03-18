@@ -1,0 +1,568 @@
+// ============================================================================
+// batches.js - Batch Management Tab Functionality
+// ============================================================================
+
+class BatchManager {
+    constructor() {
+        this.batches = [];
+        this.filteredBatches = [];
+        this.currentPage = 1;
+        this.pageSize = 20;
+        this.totalPages = 1;
+        this.statusFilter = 'all';
+        this.searchTerm = '';
+        
+        this.init();
+    }
+
+    async init() {
+        await this.loadStats();
+        await this.loadBatches();
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        // Status filter change
+        const statusFilter = document.getElementById('batch-status-filter');
+        if (statusFilter) {
+            statusFilter.addEventListener('change', () => {
+                this.statusFilter = statusFilter.value;
+                this.currentPage = 1;
+                this.filterBatches();
+            });
+        }
+
+        // Search input
+        const searchInput = document.getElementById('batch-search');
+        if (searchInput) {
+            searchInput.addEventListener('keyup', () => {
+                this.searchTerm = searchInput.value.toLowerCase();
+                this.currentPage = 1;
+                this.filterBatches();
+            });
+        }
+
+        // Page size change
+        const pageSize = document.getElementById('batches-page-size');
+        if (pageSize) {
+            pageSize.addEventListener('change', () => {
+                this.pageSize = parseInt(pageSize.value);
+                this.currentPage = 1;
+                this.renderTable();
+            });
+        }
+    }
+
+    async loadStats() {
+        try {
+            const response = await APIUtils.get('/api/batches/stats');
+            
+            if (response.status === 'success' && response.stats) {
+                document.getElementById('total-batches').textContent = response.stats.total_batches || 0;
+                document.getElementById('active-batches').textContent = response.stats.active_batches || 0;
+                document.getElementById('completed-batches').textContent = response.stats.completed_batches || 0;
+                document.getElementById('records-in-batches').textContent = response.stats.total_records_in_batches || 0;
+            }
+        } catch (error) {
+            console.error('Error loading batch stats:', error);
+        }
+    }
+
+    async loadBatches() {
+        this.showLoading(true);
+        
+        try {
+            const params = {};
+            if (this.statusFilter !== 'all') {
+                params.status = this.statusFilter;
+            }
+            if (this.searchTerm) {
+                params.search = this.searchTerm;
+            }
+            
+            const response = await APIUtils.get('/api/batches', params);
+            
+            if (response.status === 'success') {
+                this.batches = response.batches || [];
+                this.filteredBatches = [...this.batches];
+                this.totalPages = Math.ceil(this.filteredBatches.length / this.pageSize) || 1;
+                this.renderTable();
+            } else {
+                showMessage('Error loading batches: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error loading batches:', error);
+            showMessage('Error loading batches: ' + error.message, 'error');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    filterBatches() {
+        this.filteredBatches = this.batches.filter(batch => {
+            // Status filter
+            if (this.statusFilter !== 'all' && batch.status !== this.statusFilter) {
+                return false;
+            }
+            
+            // Search filter
+            if (this.searchTerm) {
+                const searchLower = this.searchTerm.toLowerCase();
+                return (batch.seller_name && batch.seller_name.toLowerCase().includes(searchLower)) ||
+                       (batch.seller_contact && batch.seller_contact.toLowerCase().includes(searchLower)) ||
+                       (batch.notes && batch.notes.toLowerCase().includes(searchLower));
+            }
+            
+            return true;
+        });
+        
+        this.totalPages = Math.ceil(this.filteredBatches.length / this.pageSize) || 1;
+        this.currentPage = 1;
+        this.renderTable();
+        this.updatePaginationControls();
+    }
+
+    renderTable() {
+        const tbody = document.getElementById('batches-body');
+        if (!tbody) return;
+        
+        if (this.filteredBatches.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:40px;">No batches found</td></tr>`;
+            this.updatePaginationControls();
+            return;
+        }
+        
+        const start = (this.currentPage - 1) * this.pageSize;
+        const end = Math.min(start + this.pageSize, this.filteredBatches.length);
+        const pageBatches = this.filteredBatches.slice(start, end);
+        
+        let html = '';
+        pageBatches.forEach(batch => {
+            const startDate = batch.start_datetime ? new Date(batch.start_datetime).toLocaleString() : 'N/A';
+            const endDate = batch.end_datetime ? new Date(batch.end_datetime).toLocaleString() : '—';
+            
+            const statusClass = `batch-${batch.status}`;
+            const statusDisplay = batch.status ? batch.status.charAt(0).toUpperCase() + batch.status.slice(1) : 'Unknown';
+            
+            html += `
+                <tr>
+                    <td>${batch.id}</td>
+                    <td>${this.escapeHtml(batch.seller_name || '')}</td>
+                    <td>${this.escapeHtml(batch.seller_contact || '')}</td>
+                    <td>${batch.offer_percentage || 0}%</td>
+                    <td>${batch.record_count || 0}</td>
+                    <td>$${(batch.total_store_value || 0).toFixed(2)}</td>
+                    <td>$${(batch.total_offer_amount || 0).toFixed(2)}</td>
+                    <td>${startDate}</td>
+                    <td>${endDate}</td>
+                    <td><span class="status-badge ${statusClass}">${statusDisplay}</span></td>
+                    <td>
+                        <div class="table-actions">
+                            <button class="table-action-btn view-batch-btn" title="View Details" onclick="window.batchManager.viewBatch(${batch.id})">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="table-action-btn print-batch-btn" title="Print Bill of Sale" onclick="window.batchManager.printBatch(${batch.id})">
+                                <i class="fas fa-print"></i>
+                            </button>
+                            ${batch.status === 'active' ? `
+                                <button class="table-action-btn" style="color: #28a745;" title="Complete Batch" onclick="window.batchManager.completeBatch(${batch.id})">
+                                    <i class="fas fa-check-circle"></i>
+                                </button>
+                            ` : ''}
+                            ${batch.status !== 'cancelled' ? `
+                                <button class="table-action-btn delete-btn" title="Cancel Batch" onclick="window.batchManager.cancelBatch(${batch.id})">
+                                    <i class="fas fa-times-circle"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = html;
+        this.updatePaginationControls();
+    }
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    updatePaginationControls() {
+        const totalFiltered = this.filteredBatches.length;
+        const start = (this.currentPage - 1) * this.pageSize + 1;
+        const end = Math.min(start + this.pageSize - 1, totalFiltered);
+        
+        document.getElementById('batches-current-page').value = this.currentPage;
+        document.getElementById('batches-total-pages').textContent = this.totalPages;
+        
+        document.getElementById('batches-first-btn').disabled = this.currentPage <= 1;
+        document.getElementById('batches-prev-btn').disabled = this.currentPage <= 1;
+        document.getElementById('batches-next-btn').disabled = this.currentPage >= this.totalPages;
+        document.getElementById('batches-last-btn').disabled = this.currentPage >= this.totalPages;
+    }
+
+    showLoading(show) {
+        const loading = document.getElementById('batches-loading');
+        if (loading) {
+            loading.style.display = show ? 'block' : 'none';
+        }
+    }
+
+    async viewBatch(batchId) {
+        try {
+            const response = await APIUtils.get(`/api/batches/${batchId}`);
+            
+            if (response.status === 'success' && response.batch) {
+                this.showBatchDetails(response.batch);
+            } else {
+                showMessage('Error loading batch details: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error loading batch details:', error);
+            showMessage('Error loading batch details: ' + error.message, 'error');
+        }
+    }
+
+    showBatchDetails(batch) {
+        // Create modal for batch details
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        
+        const startDate = batch.start_datetime ? new Date(batch.start_datetime).toLocaleString() : 'N/A';
+        const endDate = batch.end_datetime ? new Date(batch.end_datetime).toLocaleString() : 'Not completed';
+        
+        let recordsHtml = '';
+        if (batch.records && batch.records.length > 0) {
+            batch.records.forEach((record, index) => {
+                recordsHtml += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${this.escapeHtml(record.artist)}</td>
+                        <td>${this.escapeHtml(record.title)}</td>
+                        <td>${record.catalog_number || '—'}</td>
+                        <td>$${(record.store_price || 0).toFixed(2)}</td>
+                        <td>$${((record.store_price * (batch.offer_percentage / 100)) || 0).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+        } else {
+            recordsHtml = '<tr><td colspan="6" style="text-align:center;">No records in this batch</td></tr>';
+        }
+        
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 900px;">
+                <div class="modal-header">
+                    <h3 class="modal-title"><i class="fas fa-layer-group"></i> Batch #${batch.id} Details</h3>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <div>
+                            <strong>Seller:</strong> ${this.escapeHtml(batch.seller_name || '')}
+                        </div>
+                        <div>
+                            <strong>Contact:</strong> ${this.escapeHtml(batch.seller_contact || '')}
+                        </div>
+                        <div>
+                            <strong>Offer %:</strong> ${batch.offer_percentage || 0}%
+                        </div>
+                        <div>
+                            <strong>Start Date:</strong> ${startDate}
+                        </div>
+                        <div>
+                            <strong>End Date:</strong> ${endDate}
+                        </div>
+                        <div>
+                            <strong>Status:</strong> 
+                            <span class="status-badge batch-${batch.status}">${batch.status}</span>
+                        </div>
+                    </div>
+                    
+                    <h4>Records in Batch (${batch.records ? batch.records.length : 0})</h4>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        <table class="records-table" style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Artist</th>
+                                    <th>Title</th>
+                                    <th>Catalog #</th>
+                                    <th>Store Price</th>
+                                    <th>Offer Price</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${recordsHtml}
+                            </tbody>
+                            ${batch.records && batch.records.length > 0 ? `
+                                <tfoot style="font-weight: bold; background: #f8f9fa;">
+                                    <tr>
+                                        <td colspan="4" style="text-align: right;">Totals:</td>
+                                        <td>$${(batch.total_store_value || 0).toFixed(2)}</td>
+                                        <td>$${(batch.total_offer_amount || 0).toFixed(2)}</td>
+                                    </tr>
+                                </tfoot>
+                            ` : ''}
+                        </table>
+                    </div>
+                    
+                    ${batch.notes ? `
+                        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                            <strong>Notes:</strong>
+                            <p>${this.escapeHtml(batch.notes)}</p>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+                    <button class="btn btn-success" onclick="window.batchManager.printBatch(${batch.id}); this.closest('.modal-overlay').remove()">
+                        <i class="fas fa-print"></i> Print Bill of Sale
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    }
+
+    async printBatch(batchId) {
+        try {
+            const response = await APIUtils.get(`/api/batches/${batchId}/print`);
+            
+            if (response.status === 'success' && response.print_data) {
+                this.generateBillOfSale(response.print_data);
+            } else {
+                showMessage('Error getting batch print data: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error printing batch:', error);
+            showMessage('Error printing batch: ' + error.message, 'error');
+        }
+    }
+
+    generateBillOfSale(printData) {
+        const printWindow = window.open('', '_blank');
+        const today = new Date().toLocaleDateString();
+        
+        let itemsHtml = '';
+        printData.items.forEach((item, index) => {
+            itemsHtml += `
+                <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${index + 1}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(item.artist)} - ${this.escapeHtml(item.title)}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(item.store_price || 0).toFixed(2)}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(item.offer_price || 0).toFixed(2)}</td>
+                </tr>
+            `;
+        });
+
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Bill of Sale - Batch #${printData.batch_id}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { margin-bottom: 5px; color: #333; }
+                    .header h2 { margin-top: 0; color: #666; font-weight: normal; }
+                    .seller-info { margin-bottom: 30px; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+                    .seller-info p { margin: 5px 0; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+                    th { background: #333; color: white; padding: 10px; text-align: left; }
+                    td { padding: 10px; border-bottom: 1px solid #ddd; }
+                    .totals { text-align: right; margin-bottom: 40px; }
+                    .totals p { font-size: 16px; margin: 5px 0; }
+                    .totals .total-offer { font-size: 20px; font-weight: bold; color: #28a745; }
+                    .signature-section { margin-top: 50px; }
+                    .signature-line { display: flex; justify-content: space-between; margin-top: 30px; }
+                    .signature-item { width: 45%; }
+                    .signature-item .line { border-bottom: 1px solid #000; margin-top: 5px; width: 100%; }
+                    .footer { margin-top: 30px; font-size: 12px; color: #666; text-align: center; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>PIGSTYLE MUSIC</h1>
+                    <h2>BILL OF SALE</h2>
+                    <p>Batch #${printData.batch_id} | Date: ${today}</p>
+                </div>
+                
+                <div class="seller-info">
+                    <h3>Seller Information:</h3>
+                    <p><strong>Name:</strong> ${this.escapeHtml(printData.seller_name || '')}</p>
+                    <p><strong>Contact:</strong> ${this.escapeHtml(printData.seller_contact || '')}</p>
+                    <p><strong>Offer Percentage:</strong> ${printData.offer_percentage || 0}% of store price</p>
+                    <p><strong>Batch Date:</strong> ${new Date(printData.start_date).toLocaleDateString()}</p>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Item</th>
+                            <th>Store Price</th>
+                            <th>Offer Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsHtml}
+                    </tbody>
+                </table>
+                
+                <div class="totals">
+                    <p><strong>Total Store Value:</strong> $${printData.total_store_value.toFixed(2)}</p>
+                    <p class="total-offer"><strong>Total Offer Amount:</strong> $${printData.total_offer_amount.toFixed(2)}</p>
+                </div>
+                
+                <div class="signature-section">
+                    <p>I, <strong>${this.escapeHtml(printData.seller_name || '')}</strong>, agree to sell the above items to PigStyle Music for the total amount of <strong>$${printData.total_offer_amount.toFixed(2)}</strong>.</p>
+                    
+                    <div class="signature-line">
+                        <div class="signature-item">
+                            <p>Seller Signature:</p>
+                            <div class="line"></div>
+                        </div>
+                        <div class="signature-item">
+                            <p>Date:</p>
+                            <div class="line"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="signature-line">
+                        <div class="signature-item">
+                            <p>PigStyle Representative:</p>
+                            <div class="line"></div>
+                        </div>
+                        <div class="signature-item">
+                            <p>Date:</p>
+                            <div class="line"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    <p>This document serves as a bill of sale for the items listed above. The seller agrees to transfer ownership of these items to PigStyle Music in exchange for the total offer amount.</p>
+                </div>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+    }
+
+    async completeBatch(batchId) {
+        if (!confirm('Are you sure you want to complete this batch? This will mark it as finished and records will remain in inventory.')) {
+            return;
+        }
+        
+        try {
+            const response = await APIUtils.post(`/api/batches/${batchId}/complete`, {});
+            
+            if (response.status === 'success') {
+                showMessage('Batch completed successfully!', 'success');
+                await this.loadBatches();
+                await this.loadStats();
+            } else {
+                showMessage('Error completing batch: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error completing batch:', error);
+            showMessage('Error completing batch: ' + error.message, 'error');
+        }
+    }
+
+    async cancelBatch(batchId) {
+        if (!confirm('WARNING: Cancelling this batch will delete ALL records that were added during this batch. This action CANNOT be undone. Are you sure?')) {
+            return;
+        }
+        
+        if (!confirm('FINAL WARNING: This will permanently delete records from the database. Type "DELETE" in the prompt to confirm.')) {
+            return;
+        }
+        
+        const confirmation = prompt('Type "DELETE" to confirm permanent deletion of all records in this batch:');
+        if (confirmation !== 'DELETE') {
+            showMessage('Cancellation aborted - incorrect confirmation', 'warning');
+            return;
+        }
+        
+        try {
+            const response = await APIUtils.post(`/api/batches/${batchId}/cancel`, {
+                delete_records: true
+            });
+            
+            if (response.status === 'success') {
+                showMessage(`Batch cancelled and ${response.deleted_records || 0} records deleted`, 'warning');
+                await this.loadBatches();
+                await this.loadStats();
+            } else {
+                showMessage('Error cancelling batch: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error cancelling batch:', error);
+            showMessage('Error cancelling batch: ' + error.message, 'error');
+        }
+    }
+
+    goToPage(page) {
+        page = parseInt(page);
+        if (isNaN(page) || page < 1 || page > this.totalPages) {
+            this.currentPage = Math.max(1, Math.min(this.totalPages, page || 1));
+        } else {
+            this.currentPage = page;
+        }
+        this.renderTable();
+    }
+
+    changePageSize(size) {
+        this.pageSize = size;
+        this.totalPages = Math.ceil(this.filteredBatches.length / this.pageSize) || 1;
+        this.currentPage = 1;
+        this.renderTable();
+    }
+}
+
+// Initialize when tab is activated
+document.addEventListener('tabChanged', function(e) {
+    if (e.detail.tabName === 'batches') {
+        if (!window.batchManager) {
+            window.batchManager = new BatchManager();
+        } else {
+            window.batchManager.loadBatches();
+            window.batchManager.loadStats();
+        }
+    }
+});
+
+// Global functions for HTML onclick handlers
+function goToBatchesPage(page) {
+    if (window.batchManager) {
+        window.batchManager.goToPage(page);
+    }
+}
+
+function changeBatchesPageSize(size) {
+    if (window.batchManager) {
+        window.batchManager.changePageSize(size);
+    }
+}
+
+function filterBatches() {
+    if (window.batchManager) {
+        window.batchManager.filterBatches();
+    }
+}
+
+function loadBatches() {
+    if (window.batchManager) {
+        window.batchManager.loadBatches();
+    }
+}

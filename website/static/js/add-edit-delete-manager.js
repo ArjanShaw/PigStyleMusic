@@ -194,6 +194,7 @@ class AddEditDeleteManager {
         this.selectedConsignorId = null;
         this.selectedCommissionRate = 20.0;
         this.autoEstimatePrice = true;
+        this.activeBatch = null;
         
         this.init();
     }
@@ -204,9 +205,601 @@ class AddEditDeleteManager {
         await this.loadGenres();
         await this.loadConditions();
         await this.loadConsignors();
+        await this.checkActiveBatch();
         this.loadSavedSettings();
         this.setupEventListeners();
         this.renderGlobalSettings();
+        this.renderBatchSection();
+    }
+
+    async checkActiveBatch() {
+        try {
+            const response = await APIUtils.get('/api/batches/current-active');
+            
+            if (response.status === 'success' && response.has_active) {
+                this.activeBatch = response.batch;
+                console.log('Active batch found:', this.activeBatch);
+            } else {
+                this.activeBatch = null;
+            }
+        } catch (error) {
+            console.error('Error checking active batch:', error);
+            this.activeBatch = null;
+        }
+    }
+
+    renderBatchSection() {
+        const searchSection = document.querySelector('.search-section');
+        if (!searchSection) return;
+        
+        let batchSection = document.getElementById('batch-section');
+        if (batchSection) {
+            batchSection.remove();
+        }
+        
+        batchSection = document.createElement('div');
+        batchSection.id = 'batch-section';
+        batchSection.style.marginTop = '15px';
+        batchSection.style.marginBottom = '15px';
+        batchSection.style.borderRadius = '8px';
+        batchSection.style.overflow = 'hidden';
+        batchSection.style.border = '1px solid #dee2e6';
+        
+        const header = document.createElement('div');
+        
+        if (this.activeBatch) {
+            header.style.cssText = `
+                background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+                color: white;
+                padding: 12px 15px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-weight: 500;
+            `;
+            header.innerHTML = `
+                <span><i class="fas fa-layer-group"></i> Active Batch #${this.activeBatch.id} - ${this.activeBatch.seller_name} (${this.activeBatch.offer_percentage}%)</span>
+                <span class="batch-toggle"><i class="fas fa-chevron-down"></i></span>
+            `;
+        } else {
+            header.style.cssText = `
+                background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+                color: white;
+                padding: 12px 15px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-weight: 500;
+            `;
+            header.innerHTML = `
+                <span><i class="fas fa-layer-group"></i> No Active Batch - Start a new batch to track seller information</span>
+                <span class="batch-toggle"><i class="fas fa-chevron-down"></i></span>
+            `;
+        }
+        
+        const content = document.createElement('div');
+        content.style.cssText = `
+            background: #f8f9fa;
+            padding: 15px;
+            border-top: 1px solid #dee2e6;
+            display: none;
+        `;
+        
+        if (this.activeBatch) {
+            content.innerHTML = this.renderActiveBatchContent();
+        } else {
+            content.innerHTML = this.renderNewBatchContent();
+        }
+        
+        batchSection.appendChild(header);
+        batchSection.appendChild(content);
+        
+        header.addEventListener('click', () => {
+            const isVisible = content.style.display !== 'none';
+            content.style.display = isVisible ? 'none' : 'block';
+            header.querySelector('.batch-toggle i').className = isVisible ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
+        });
+        
+        const radioGroup = searchSection.querySelector('.radio-group');
+        if (radioGroup) {
+            radioGroup.after(batchSection);
+        } else {
+            searchSection.appendChild(batchSection);
+        }
+        
+        this.attachBatchEventListeners();
+    }
+
+    renderNewBatchContent() {
+        return `
+            <div style="margin-bottom: 15px;">
+                <h4 style="margin: 0 0 10px 0; color: #333;">Start New Batch</h4>
+                <p style="margin: 0 0 15px 0; font-size: 13px; color: #666;">
+                    Start a batch to track records from a seller. All records added while the batch is active will be associated with this seller.
+                </p>
+            </div>
+            
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
+                <div style="flex: 2; min-width: 250px;">
+                    <label for="batch-seller-name" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-user"></i> Seller Name *
+                    </label>
+                    <input type="text" 
+                           id="batch-seller-name" 
+                           class="search-input" 
+                           placeholder="Enter seller's full name"
+                           style="width: 100%;">
+                </div>
+                
+                <div style="flex: 2; min-width: 250px;">
+                    <label for="batch-seller-contact" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-phone-alt"></i> Phone or Email *
+                    </label>
+                    <input type="text" 
+                           id="batch-seller-contact" 
+                           class="search-input" 
+                           placeholder="Enter phone number or email"
+                           style="width: 100%;">
+                </div>
+                
+                <div style="flex: 1; min-width: 150px;">
+                    <label for="batch-offer-percentage" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-percent"></i> Offer Percentage (%)
+                    </label>
+                    <input type="number" 
+                           id="batch-offer-percentage" 
+                           class="search-input" 
+                           value="50"
+                           min="0" 
+                           max="100"
+                           step="5"
+                           style="width: 100%;">
+                </div>
+                
+                <div style="flex: 2; min-width: 300px;">
+                    <label for="batch-notes" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-sticky-note"></i> Notes (Optional)
+                    </label>
+                    <input type="text" 
+                           id="batch-notes" 
+                           class="search-input" 
+                           placeholder="Any additional notes about this batch"
+                           style="width: 100%;">
+                </div>
+                
+                <div style="flex: 0 0 auto;">
+                    <button class="btn btn-success" id="start-batch-btn">
+                        <i class="fas fa-play"></i> Start Batch
+                    </button>
+                </div>
+            </div>
+            
+            <p style="margin-top: 15px; margin-bottom: 0; font-size: 0.85rem; color: #666; border-top: 1px solid #dee2e6; padding-top: 10px;">
+                <i class="fas fa-info-circle"></i> 
+                After starting a batch, all records you add will be associated with this seller. Remember to complete the batch when you're done adding records.
+            </p>
+        `;
+    }
+
+    renderActiveBatchContent() {
+        if (!this.activeBatch) return '';
+        
+        return `
+            <div style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4 style="margin: 0; color: #333;">Active Batch #${this.activeBatch.id}</h4>
+                    <span class="status-badge batch-active">Active</span>
+                </div>
+                
+                <div style="background: white; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
+                    <p style="margin: 5px 0;"><strong>Seller:</strong> ${this.escapeHtml(this.activeBatch.seller_name || '')}</p>
+                    <p style="margin: 5px 0;"><strong>Contact:</strong> ${this.escapeHtml(this.activeBatch.seller_contact || '')}</p>
+                    <p style="margin: 5px 0;"><strong>Offer Percentage:</strong> ${this.activeBatch.offer_percentage || 0}%</p>
+                    <p style="margin: 5px 0;"><strong>Started:</strong> ${new Date(this.activeBatch.start_datetime).toLocaleString()}</p>
+                    <p style="margin: 5px 0;"><strong>Records in Batch:</strong> ${this.activeBatch.record_count || 0}</p>
+                    ${this.activeBatch.notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${this.escapeHtml(this.activeBatch.notes)}</p>` : ''}
+                </div>
+                
+                <div style="background: #e9ecef; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; font-weight: 500;">
+                        <span>Total Store Value:</span>
+                        <span>$${(this.activeBatch.total_store_value || 0).toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-weight: 700; color: #28a745; font-size: 1.2rem;">
+                        <span>Total Offer Amount:</span>
+                        <span>$${(this.activeBatch.total_offer_amount || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-success" id="complete-batch-btn">
+                        <i class="fas fa-check-circle"></i> Complete Batch
+                    </button>
+                    <button class="btn btn-warning" id="print-batch-btn">
+                        <i class="fas fa-print"></i> Print Bill of Sale
+                    </button>
+                    <button class="btn btn-danger" id="cancel-batch-btn">
+                        <i class="fas fa-times-circle"></i> Cancel Batch
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    attachBatchEventListeners() {
+        const startBtn = document.getElementById('start-batch-btn');
+        if (startBtn) {
+            startBtn.addEventListener('click', async () => {
+                const name = document.getElementById('batch-seller-name').value.trim();
+                const contact = document.getElementById('batch-seller-contact').value.trim();
+                const percentage = parseFloat(document.getElementById('batch-offer-percentage').value);
+                const notes = document.getElementById('batch-notes').value.trim();
+                
+                if (!name) {
+                    showMessage('Please enter seller name', 'error');
+                    return;
+                }
+                if (!contact) {
+                    showMessage('Please enter seller contact (phone or email)', 'error');
+                    return;
+                }
+                if (isNaN(percentage) || percentage < 0 || percentage > 100) {
+                    showMessage('Please enter a valid percentage (0-100)', 'error');
+                    return;
+                }
+                
+                await this.startBatch(name, contact, percentage, notes);
+            });
+        }
+        
+        const completeBtn = document.getElementById('complete-batch-btn');
+        if (completeBtn) {
+            completeBtn.addEventListener('click', async () => {
+                await this.completeBatch();
+            });
+        }
+        
+        const printBtn = document.getElementById('print-batch-btn');
+        if (printBtn) {
+            printBtn.addEventListener('click', async () => {
+                if (this.activeBatch) {
+                    if (window.batchManager) {
+                        window.batchManager.printBatch(this.activeBatch.id);
+                    } else {
+                        // If batchManager not loaded, load it temporarily
+                        const response = await APIUtils.get(`/api/batches/${this.activeBatch.id}/print`);
+                        if (response.status === 'success' && response.print_data) {
+                            this.generateBillOfSale(response.print_data);
+                        }
+                    }
+                }
+            });
+        }
+        
+        const cancelBtn = document.getElementById('cancel-batch-btn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', async () => {
+                if (!this.activeBatch) return;
+                
+                if (!confirm('WARNING: Cancelling this batch will delete ALL records added during this batch. This action CANNOT be undone. Are you sure?')) {
+                    return;
+                }
+                
+                if (!confirm('FINAL WARNING: This will permanently delete records. Type "DELETE" to confirm.')) {
+                    return;
+                }
+                
+                const confirmation = prompt('Type "DELETE" to confirm permanent deletion of all records in this batch:');
+                if (confirmation !== 'DELETE') {
+                    showMessage('Cancellation aborted - incorrect confirmation', 'warning');
+                    return;
+                }
+                
+                try {
+                    const response = await APIUtils.post(`/api/batches/${this.activeBatch.id}/cancel`, {
+                        delete_records: true
+                    });
+                    
+                    if (response.status === 'success') {
+                        showMessage(`Batch cancelled and ${response.deleted_records || 0} records deleted`, 'warning');
+                        this.activeBatch = null;
+                        this.renderBatchSection();
+                    } else {
+                        showMessage('Error cancelling batch: ' + (response.error || 'Unknown error'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Error cancelling batch:', error);
+                    showMessage('Error cancelling batch: ' + error.message, 'error');
+                }
+            });
+        }
+    }
+
+    async startBatch(name, contact, percentage, notes) {
+        try {
+            const response = await APIUtils.post('/api/batches', {
+                seller_name: name,
+                seller_contact: contact,
+                offer_percentage: percentage,
+                notes: notes
+            });
+            
+            if (response.status === 'success') {
+                showMessage(`Batch #${response.batch_id} started successfully!`, 'success');
+                await this.checkActiveBatch();
+                this.renderBatchSection();
+            } else {
+                showMessage('Error starting batch: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error starting batch:', error);
+            showMessage('Error starting batch: ' + error.message, 'error');
+        }
+    }
+
+    async completeBatch() {
+        if (!this.activeBatch) return;
+        
+        if (!confirm('Are you sure you want to complete this batch? This will mark it as finished and records will remain in inventory.')) {
+            return;
+        }
+        
+        try {
+            const response = await APIUtils.post(`/api/batches/${this.activeBatch.id}/complete`, {});
+            
+            if (response.status === 'success') {
+                showMessage('Batch completed successfully!', 'success');
+                this.activeBatch = null;
+                this.renderBatchSection();
+            } else {
+                showMessage('Error completing batch: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error completing batch:', error);
+            showMessage('Error completing batch: ' + error.message, 'error');
+        }
+    }
+
+    generateBillOfSale(printData) {
+        const printWindow = window.open('', '_blank');
+        const today = new Date().toLocaleDateString();
+        
+        let itemsHtml = '';
+        printData.items.forEach((item, index) => {
+            itemsHtml += `
+                <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${index + 1}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(item.artist)} - ${this.escapeHtml(item.title)}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(item.store_price || 0).toFixed(2)}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(item.offer_price || 0).toFixed(2)}</td>
+                </tr>
+            `;
+        });
+
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Bill of Sale - Batch #${printData.batch_id}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { margin-bottom: 5px; color: #333; }
+                    .header h2 { margin-top: 0; color: #666; font-weight: normal; }
+                    .seller-info { margin-bottom: 30px; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+                    .seller-info p { margin: 5px 0; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+                    th { background: #333; color: white; padding: 10px; text-align: left; }
+                    td { padding: 10px; border-bottom: 1px solid #ddd; }
+                    .totals { text-align: right; margin-bottom: 40px; }
+                    .totals p { font-size: 16px; margin: 5px 0; }
+                    .totals .total-offer { font-size: 20px; font-weight: bold; color: #28a745; }
+                    .signature-section { margin-top: 50px; }
+                    .signature-line { display: flex; justify-content: space-between; margin-top: 30px; }
+                    .signature-item { width: 45%; }
+                    .signature-item .line { border-bottom: 1px solid #000; margin-top: 5px; width: 100%; }
+                    .footer { margin-top: 30px; font-size: 12px; color: #666; text-align: center; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>PIGSTYLE MUSIC</h1>
+                    <h2>BILL OF SALE</h2>
+                    <p>Batch #${printData.batch_id} | Date: ${today}</p>
+                </div>
+                
+                <div class="seller-info">
+                    <h3>Seller Information:</h3>
+                    <p><strong>Name:</strong> ${this.escapeHtml(printData.seller_name || '')}</p>
+                    <p><strong>Contact:</strong> ${this.escapeHtml(printData.seller_contact || '')}</p>
+                    <p><strong>Offer Percentage:</strong> ${printData.offer_percentage || 0}% of store price</p>
+                    <p><strong>Batch Date:</strong> ${new Date(printData.start_date).toLocaleDateString()}</p>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Item</th>
+                            <th>Store Price</th>
+                            <th>Offer Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsHtml}
+                    </tbody>
+                </table>
+                
+                <div class="totals">
+                    <p><strong>Total Store Value:</strong> $${printData.total_store_value.toFixed(2)}</p>
+                    <p class="total-offer"><strong>Total Offer Amount:</strong> $${printData.total_offer_amount.toFixed(2)}</p>
+                </div>
+                
+                <div class="signature-section">
+                    <p>I, <strong>${this.escapeHtml(printData.seller_name || '')}</strong>, agree to sell the above items to PigStyle Music for the total amount of <strong>$${printData.total_offer_amount.toFixed(2)}</strong>.</p>
+                    
+                    <div class="signature-line">
+                        <div class="signature-item">
+                            <p>Seller Signature:</p>
+                            <div class="line"></div>
+                        </div>
+                        <div class="signature-item">
+                            <p>Date:</p>
+                            <div class="line"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="signature-line">
+                        <div class="signature-item">
+                            <p>PigStyle Representative:</p>
+                            <div class="line"></div>
+                        </div>
+                        <div class="signature-item">
+                            <p>Date:</p>
+                            <div class="line"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    <p>This document serves as a bill of sale for the items listed above. The seller agrees to transfer ownership of these items to PigStyle Music in exchange for the total offer amount.</p>
+                </div>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+    }
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async loadMinimumPrice() {
+        try {
+            const response = await APIUtils.get('/config/MIN_STORE_PRICE');
+            this.minimumPrice = parseFloat(response.config_value) || 1.99;
+            console.log(`MIN_PRICE: Minimum store price loaded: $${this.minimumPrice.toFixed(2)}`);
+        } catch (error) {
+            console.warn('MIN_PRICE: Could not load MIN_STORE_PRICE, using default:', error);
+            this.minimumPrice = 1.99;
+        }
+    }
+
+    async loadStats() {
+        try {
+            const response = await APIUtils.get('/records/count');
+            const recordsCount = response.count || 0;
+            document.getElementById('total-records').textContent = recordsCount;
+
+            const commissionResponse = await APIUtils.get('/api/commission-rate');
+            this.commissionRate = commissionResponse.commission_rate / 100;
+            document.getElementById('commission-rate').textContent = 
+                `${commissionResponse.commission_rate}%`;
+
+            const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
+            const capacity = parseInt(configResponse.config_value);
+            const fillPercentage = (recordsCount / capacity * 100).toFixed(1);
+            document.getElementById('store-fill').textContent = `${fillPercentage}%`;
+
+            await this.loadLastAddedRecord();
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+
+    async loadLastAddedRecord() {
+        try {
+            const response = await APIUtils.get('/records', { 
+                limit: 1, 
+                order_by: 'created_at', 
+                order: 'desc' 
+            });
+            
+            if (response.records && response.records.length > 0) {
+                const record = response.records[0];
+                document.getElementById('last-added').textContent = 
+                    `${record.artist.substring(0, 15)}...`;
+            }
+        } catch (error) {
+            console.error('Error loading last added record:', error);
+        }
+    }
+
+    async loadGenres() {
+        console.log('LOAD_GENRES: Starting to load genres from /genres endpoint');
+        try {
+            const response = await APIUtils.get('/genres');
+            console.log('LOAD_GENRES: Raw API response:', response);
+            
+            if (response && response.genres) {
+                this.genres = response.genres;
+                console.log('LOAD_GENRES: Genres loaded successfully:', this.genres);
+            } else {
+                console.error('LOAD_GENRES: Invalid response format:', response);
+                this.genres = [];
+            }
+        } catch (error) {
+            console.error('Error loading genres:', error);
+            this.genres = [];
+        }
+    }
+
+    async loadConditions() {
+        console.log('LOAD_CONDITIONS: Loading conditions from /api/conditions');
+        try {
+            const response = await APIUtils.get('/api/conditions');
+            console.log('LOAD_CONDITIONS: Raw API response:', response);
+            
+            if (response && response.conditions) {
+                this.conditions = response.conditions;
+                console.log('LOAD_CONDITIONS: Conditions loaded successfully:', this.conditions);
+            } else {
+                console.error('LOAD_CONDITIONS: Invalid response format:', response);
+                this.conditions = [];
+            }
+        } catch (error) {
+            console.error('Error loading conditions:', error);
+            this.conditions = [
+                { id: 1, condition_name: 'Mint (M)', display_name: 'Mint (M)', abbreviation: 'M', quality_index: 0 },
+                { id: 2, condition_name: 'Near Mint (NM or M-)', display_name: 'Near Mint (NM or M-)', abbreviation: 'NM', quality_index: 1 },
+                { id: 3, condition_name: 'Very Good Plus (VG+)', display_name: 'Very Good Plus (VG+)', abbreviation: 'VG+', quality_index: 2 },
+                { id: 4, condition_name: 'Very Good (VG)', display_name: 'Very Good (VG)', abbreviation: 'VG', quality_index: 3 },
+                { id: 5, condition_name: 'Good Plus (G+)', display_name: 'Good Plus (G+)', abbreviation: 'G+', quality_index: 4 },
+                { id: 6, condition_name: 'Good (G)', display_name: 'Good (G)', abbreviation: 'G', quality_index: 5 },
+                { id: 7, condition_name: 'Fair (F)', display_name: 'Fair (F)', abbreviation: 'F', quality_index: 6 },
+                { id: 8, condition_name: 'Poor (P)', display_name: 'Poor (P)', abbreviation: 'P', quality_index: 7 }
+            ];
+            console.log('LOAD_CONDITIONS: Using fallback conditions:', this.conditions);
+        }
+    }
+
+    async loadConsignors() {
+        console.log('LOAD_CONSIGNORS: Starting to load consignors from /users endpoint');
+        try {
+            const response = await APIUtils.get('/users');
+            console.log('LOAD_CONSIGNORS: Raw API response:', response);
+            
+            if (response && response.users) {
+                this.consignors = response.users
+                    .filter(user => user.role === 'consignor')
+                    .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+                console.log('LOAD_CONSIGNORS: Consignors loaded successfully:', this.consignors);
+            } else {
+                console.error('LOAD_CONSIGNORS: Invalid response format:', response);
+                this.consignors = [];
+            }
+        } catch (error) {
+            console.error('Error loading consignors:', error);
+            this.consignors = [];
+        }
     }
 
     loadSavedSettings() {
@@ -406,126 +999,6 @@ class AddEditDeleteManager {
         });
     }
 
-    async loadMinimumPrice() {
-        try {
-            const response = await APIUtils.get('/config/MIN_STORE_PRICE');
-            this.minimumPrice = parseFloat(response.config_value) || 1.99;
-            console.log(`MIN_PRICE: Minimum store price loaded: $${this.minimumPrice.toFixed(2)}`);
-        } catch (error) {
-            console.warn('MIN_PRICE: Could not load MIN_STORE_PRICE, using default:', error);
-            this.minimumPrice = 1.99;
-        }
-    }
-
-    async loadStats() {
-        try {
-            const response = await APIUtils.get('/records/count');
-            const recordsCount = response.count || 0;
-            document.getElementById('total-records').textContent = recordsCount;
-
-            const commissionResponse = await APIUtils.get('/api/commission-rate');
-            this.commissionRate = commissionResponse.commission_rate / 100;
-            document.getElementById('commission-rate').textContent = 
-                `${commissionResponse.commission_rate}%`;
-
-            const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
-            const capacity = parseInt(configResponse.config_value);
-            const fillPercentage = (recordsCount / capacity * 100).toFixed(1);
-            document.getElementById('store-fill').textContent = `${fillPercentage}%`;
-
-            await this.loadLastAddedRecord();
-        } catch (error) {
-            console.error('Error loading stats:', error);
-        }
-    }
-
-    async loadLastAddedRecord() {
-        try {
-            const response = await APIUtils.get('/records', { 
-                limit: 1, 
-                order_by: 'created_at', 
-                order: 'desc' 
-            });
-            
-            if (response.records && response.records.length > 0) {
-                const record = response.records[0];
-                document.getElementById('last-added').textContent = 
-                    `${record.artist.substring(0, 15)}...`;
-            }
-        } catch (error) {
-            console.error('Error loading last added record:', error);
-        }
-    }
-
-    async loadGenres() {
-        console.log('LOAD_GENRES: Starting to load genres from /genres endpoint');
-        try {
-            const response = await APIUtils.get('/genres');
-            console.log('LOAD_GENRES: Raw API response:', response);
-            
-            if (response && response.genres) {
-                this.genres = response.genres;
-                console.log('LOAD_GENRES: Genres loaded successfully:', this.genres);
-            } else {
-                console.error('LOAD_GENRES: Invalid response format:', response);
-                this.genres = [];
-            }
-        } catch (error) {
-            console.error('Error loading genres:', error);
-            this.genres = [];
-        }
-    }
-
-    async loadConditions() {
-        console.log('LOAD_CONDITIONS: Loading conditions from /api/conditions');
-        try {
-            const response = await APIUtils.get('/api/conditions');
-            console.log('LOAD_CONDITIONS: Raw API response:', response);
-            
-            if (response && response.conditions) {
-                this.conditions = response.conditions;
-                console.log('LOAD_CONDITIONS: Conditions loaded successfully:', this.conditions);
-            } else {
-                console.error('LOAD_CONDITIONS: Invalid response format:', response);
-                this.conditions = [];
-            }
-        } catch (error) {
-            console.error('Error loading conditions:', error);
-            this.conditions = [
-                { id: 1, condition_name: 'Mint (M)', display_name: 'Mint (M)', abbreviation: 'M', quality_index: 0 },
-                { id: 2, condition_name: 'Near Mint (NM or M-)', display_name: 'Near Mint (NM or M-)', abbreviation: 'NM', quality_index: 1 },
-                { id: 3, condition_name: 'Very Good Plus (VG+)', display_name: 'Very Good Plus (VG+)', abbreviation: 'VG+', quality_index: 2 },
-                { id: 4, condition_name: 'Very Good (VG)', display_name: 'Very Good (VG)', abbreviation: 'VG', quality_index: 3 },
-                { id: 5, condition_name: 'Good Plus (G+)', display_name: 'Good Plus (G+)', abbreviation: 'G+', quality_index: 4 },
-                { id: 6, condition_name: 'Good (G)', display_name: 'Good (G)', abbreviation: 'G', quality_index: 5 },
-                { id: 7, condition_name: 'Fair (F)', display_name: 'Fair (F)', abbreviation: 'F', quality_index: 6 },
-                { id: 8, condition_name: 'Poor (P)', display_name: 'Poor (P)', abbreviation: 'P', quality_index: 7 }
-            ];
-            console.log('LOAD_CONDITIONS: Using fallback conditions:', this.conditions);
-        }
-    }
-
-    async loadConsignors() {
-        console.log('LOAD_CONSIGNORS: Starting to load consignors from /users endpoint');
-        try {
-            const response = await APIUtils.get('/users');
-            console.log('LOAD_CONSIGNORS: Raw API response:', response);
-            
-            if (response && response.users) {
-                this.consignors = response.users
-                    .filter(user => user.role === 'consignor')
-                    .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
-                console.log('LOAD_CONSIGNORS: Consignors loaded successfully:', this.consignors);
-            } else {
-                console.error('LOAD_CONSIGNORS: Invalid response format:', response);
-                this.consignors = [];
-            }
-        } catch (error) {
-            console.error('Error loading consignors:', error);
-            this.consignors = [];
-        }
-    }
-
     setupEventListeners() {
         document.querySelectorAll('input[name="searchType"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
@@ -678,6 +1151,7 @@ class AddEditDeleteManager {
 
     renderDiscogsResults() {
         const resultsCount = this.currentResults.length;
+        const hasActiveBatch = this.activeBatch !== null;
         
         const findGenreIndex = (genreId) => {
             if (!this.genres || !genreId) return -1;
@@ -832,13 +1306,16 @@ class AddEditDeleteManager {
                             
                             <div id="calculation-${record.discogs_id || record.id}" class="calculation-container" style="margin-top: 15px;"></div>
                             
-                            <div style="margin-top: 15px;">
+                            <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
                                 <button class="btn btn-primary add-record-btn">
                                     <i class="fas fa-plus"></i> Add to Inventory
                                 </button>
-                                <span class="form-hint" style="margin-left: 10px; font-size: 12px; color: #666;">
-                                    * Required fields
-                                </span>
+                                
+                                ${hasActiveBatch ? `
+                                    <span class="form-hint" style="margin-left: 10px; font-size: 12px; color: #28a745;">
+                                        <i class="fas fa-check-circle"></i> Record will be added to active batch
+                                    </span>
+                                ` : ''}
                             </div>
                         </div>
                     </div>
@@ -1687,7 +2164,12 @@ class AddEditDeleteManager {
             const response = await APIUtils.post('/records', recordData);
             
             if (response.status === 'success') {
-                showMessage(`Record added successfully! Barcode: ${pigstyleBarcode}. Price: $${price.toFixed(2)}`, 'success');
+                let batchMessage = '';
+                if (this.activeBatch) {
+                    batchMessage = ` (added to active batch #${this.activeBatch.id})`;
+                }
+                
+                showMessage(`Record added successfully! Barcode: ${pigstyleBarcode}. Price: $${price.toFixed(2)}${batchMessage}`, 'success');
                 
                 // Save artist to artist_genre table if it doesn't exist
                 if (discogsRecord.artist && genreId) {
@@ -1695,6 +2177,12 @@ class AddEditDeleteManager {
                 }
                 
                 await this.loadStats();
+                
+                // Refresh active batch stats if there is one
+                if (this.activeBatch) {
+                    await this.checkActiveBatch();
+                    this.renderBatchSection();
+                }
                 
                 this.clearResults();
                 document.getElementById('searchInput').value = '';
@@ -1845,6 +2333,9 @@ document.addEventListener('tabChanged', function(e) {
     if (e.detail.tabName === 'add-edit-delete') {
         if (!window.addEditDeleteManager) {
             window.addEditDeleteManager = new AddEditDeleteManager();
+        } else {
+            window.addEditDeleteManager.checkActiveBatch();
+            window.addEditDeleteManager.renderBatchSection();
         }
     }
 });

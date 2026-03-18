@@ -5859,6 +5859,588 @@ def health_check():
         'service': 'PigStyle API'
     })
 
+
+# ==================== BATCHES ENDPOINTS ====================
+
+@app.route('/api/batches', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_batches():
+    """Get all batches with optional filtering"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        status = request.args.get('status')
+        search = request.args.get('search', '')
+        
+        query = '''
+            SELECT 
+                b.*,
+                u.username as created_by_name,
+                COUNT(r.id) as record_count,
+                COALESCE(SUM(r.store_price), 0) as total_store_value,
+                COALESCE(SUM(r.store_price * (b.offer_percentage / 100)), 0) as total_offer_amount
+            FROM batches b
+            LEFT JOIN users u ON b.created_by = u.id
+            LEFT JOIN records r ON r.created_at BETWEEN b.start_datetime AND COALESCE(b.end_datetime, datetime('now'))
+            WHERE 1=1
+        '''
+        params = []
+        
+        if status:
+            query += ' AND b.status = ?'
+            params.append(status)
+        
+        if search:
+            query += ' AND (b.seller_name LIKE ? OR b.seller_contact LIKE ? OR b.notes LIKE ?)'
+            search_term = f'%{search}%'
+            params.extend([search_term, search_term, search_term])
+        
+        query += ' GROUP BY b.id ORDER BY b.start_datetime DESC'
+        
+        cursor.execute(query, params)
+        batches = cursor.fetchall()
+        conn.close()
+        
+        batches_list = []
+        for batch in batches:
+            batch_dict = dict(batch)
+            
+            # Format dates for JSON
+            for key in ['start_datetime', 'end_datetime', 'created_at', 'updated_at']:
+                if batch_dict.get(key):
+                    batch_dict[key] = batch_dict[key]
+            
+            batches_list.append(batch_dict)
+        
+        return jsonify({
+            'status': 'success',
+            'batches': batches_list,
+            'count': len(batches_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting batches: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/batches/<int:batch_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_batch(batch_id):
+    """Get a single batch by ID with its records"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get batch info
+        cursor.execute('''
+            SELECT 
+                b.*,
+                u.username as created_by_name,
+                COUNT(r.id) as record_count,
+                COALESCE(SUM(r.store_price), 0) as total_store_value,
+                COALESCE(SUM(r.store_price * (b.offer_percentage / 100)), 0) as total_offer_amount
+            FROM batches b
+            LEFT JOIN users u ON b.created_by = u.id
+            LEFT JOIN records r ON r.created_at BETWEEN b.start_datetime AND COALESCE(b.end_datetime, datetime('now'))
+            WHERE b.id = ?
+            GROUP BY b.id
+        ''', (batch_id,))
+        
+        batch = cursor.fetchone()
+        
+        if not batch:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Batch not found'
+            }), 404
+        
+        batch_dict = dict(batch)
+        
+        # Get records in this batch
+        if batch_dict['end_datetime']:
+            # Completed batch - use end_datetime
+            cursor.execute('''
+                SELECT 
+                    r.id,
+                    r.artist,
+                    r.title,
+                    r.catalog_number,
+                    r.barcode,
+                    r.store_price,
+                    r.created_at,
+                    cs.condition_name as sleeve_condition,
+                    cd.condition_name as disc_condition,
+                    g.genre_name
+                FROM records r
+                LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+                LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+                LEFT JOIN genres g ON r.genre_id = g.id
+                WHERE r.created_at BETWEEN ? AND ?
+                ORDER BY r.created_at ASC
+            ''', (batch_dict['start_datetime'], batch_dict['end_datetime']))
+        else:
+            # Active batch - use current time as end
+            cursor.execute('''
+                SELECT 
+                    r.id,
+                    r.artist,
+                    r.title,
+                    r.catalog_number,
+                    r.barcode,
+                    r.store_price,
+                    r.created_at,
+                    cs.condition_name as sleeve_condition,
+                    cd.condition_name as disc_condition,
+                    g.genre_name
+                FROM records r
+                LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+                LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+                LEFT JOIN genres g ON r.genre_id = g.id
+                WHERE r.created_at >= ?
+                ORDER BY r.created_at ASC
+            ''', (batch_dict['start_datetime'],))
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        records_list = []
+        for record in records:
+            record_dict = dict(record)
+            if record_dict.get('sleeve_condition'):
+                record_dict['condition'] = record_dict['sleeve_condition']
+            records_list.append(record_dict)
+        
+        batch_dict['records'] = records_list
+        
+        return jsonify({
+            'status': 'success',
+            'batch': batch_dict
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting batch: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/batches', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_batch():
+    """Create a new batch (start offer)"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['seller_name', 'seller_contact', 'offer_percentage']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'{field} required'
+                }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO batches (
+                seller_name,
+                seller_contact,
+                offer_percentage,
+                start_datetime,
+                status,
+                notes,
+                created_by
+            ) VALUES (?, ?, ?, datetime('now'), 'active', ?, ?)
+        ''', (
+            data['seller_name'],
+            data['seller_contact'],
+            float(data['offer_percentage']),
+            data.get('notes', ''),
+            session.get('user_id')
+        ))
+        
+        batch_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Batch {batch_id} created by user {session.get('user_id')}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Batch started successfully',
+            'batch_id': batch_id
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error creating batch: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/batches/<int:batch_id>/complete', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def complete_batch(batch_id):
+    """Mark a batch as completed (finish adding records)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if batch exists and is active
+        cursor.execute('SELECT id, status FROM batches WHERE id = ?', (batch_id,))
+        batch = cursor.fetchone()
+        
+        if not batch:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Batch not found'
+            }), 404
+        
+        if batch['status'] != 'active':
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Batch is already {batch["status"]}'
+            }), 400
+        
+        # Update batch
+        cursor.execute('''
+            UPDATE batches 
+            SET end_datetime = datetime('now'),
+                status = 'completed',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'active'
+        ''', (batch_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Batch {batch_id} completed")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Batch completed successfully'
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error completing batch: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/batches/<int:batch_id>/cancel', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def cancel_batch(batch_id):
+    """Cancel a batch and optionally delete its records"""
+    try:
+        data = request.get_json()
+        delete_records = data.get('delete_records', True)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Start transaction
+        cursor.execute("BEGIN TRANSACTION")
+        
+        # Check if batch exists
+        cursor.execute('''
+            SELECT id, start_datetime, end_datetime, status 
+            FROM batches 
+            WHERE id = ?
+        ''', (batch_id,))
+        
+        batch = cursor.fetchone()
+        
+        if not batch:
+            conn.rollback()
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Batch not found'
+            }), 404
+        
+        if batch['status'] != 'active' and batch['status'] != 'completed':
+            conn.rollback()
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Batch is already {batch["status"]}'
+            }), 400
+        
+        # If delete_records is True, delete all records in this batch
+        if delete_records:
+            if batch['end_datetime']:
+                # Completed batch - use end_datetime
+                cursor.execute('''
+                    DELETE FROM records 
+                    WHERE created_at BETWEEN ? AND ?
+                ''', (batch['start_datetime'], batch['end_datetime']))
+            else:
+                # Active batch - use current time
+                cursor.execute('''
+                    DELETE FROM records 
+                    WHERE created_at >= ?
+                ''', (batch['start_datetime'],))
+            
+            deleted_count = cursor.rowcount
+            app.logger.info(f"Deleted {deleted_count} records from batch {batch_id}")
+        
+        # Update batch status to cancelled
+        cursor.execute('''
+            UPDATE batches 
+            SET status = 'cancelled',
+                end_datetime = COALESCE(end_datetime, datetime('now')),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (batch_id,))
+        
+        conn.commit()
+        
+        message = f'Batch cancelled'
+        if delete_records:
+            message += f' and {deleted_count} records deleted'
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': message,
+            'deleted_records': deleted_count if delete_records else 0
+        }), 200
+        
+    except Exception as e:
+        conn.rollback()
+        app.logger.error(f"Error cancelling batch: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/batches/<int:batch_id>/print', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_batch_print_data(batch_id):
+    """Get data formatted for printing bill of sale"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get batch with records
+        cursor.execute('''
+            SELECT 
+                b.*,
+                u.username as created_by_name,
+                COUNT(r.id) as record_count,
+                COALESCE(SUM(r.store_price), 0) as total_store_value,
+                COALESCE(SUM(r.store_price * (b.offer_percentage / 100)), 0) as total_offer_amount
+            FROM batches b
+            LEFT JOIN users u ON b.created_by = u.id
+            LEFT JOIN records r ON r.created_at BETWEEN b.start_datetime AND COALESCE(b.end_datetime, datetime('now'))
+            WHERE b.id = ?
+            GROUP BY b.id
+        ''', (batch_id,))
+        
+        batch = cursor.fetchone()
+        
+        if not batch:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Batch not found'
+            }), 404
+        
+        batch_dict = dict(batch)
+        
+        # Get all records in this batch
+        if batch_dict['end_datetime']:
+            cursor.execute('''
+                SELECT 
+                    r.id,
+                    r.artist,
+                    r.title,
+                    r.catalog_number,
+                    r.barcode,
+                    r.store_price,
+                    r.created_at
+                FROM records r
+                WHERE r.created_at BETWEEN ? AND ?
+                ORDER BY r.artist, r.title
+            ''', (batch_dict['start_datetime'], batch_dict['end_datetime']))
+        else:
+            cursor.execute('''
+                SELECT 
+                    r.id,
+                    r.artist,
+                    r.title,
+                    r.catalog_number,
+                    r.barcode,
+                    r.store_price,
+                    r.created_at
+                FROM records r
+                WHERE r.created_at >= ?
+                ORDER BY r.artist, r.title
+            ''', (batch_dict['start_datetime'],))
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        records_list = [dict(record) for record in records]
+        
+        # Calculate offer amounts
+        offer_percentage = batch_dict['offer_percentage']
+        for record in records_list:
+            record['offer_price'] = round(record['store_price'] * (offer_percentage / 100), 2)
+        
+        batch_dict['records'] = records_list
+        
+        # Format for printing
+        print_data = {
+            'batch_id': batch_dict['id'],
+            'seller_name': batch_dict['seller_name'],
+            'seller_contact': batch_dict['seller_contact'],
+            'offer_percentage': batch_dict['offer_percentage'],
+            'start_date': batch_dict['start_datetime'],
+            'end_date': batch_dict['end_datetime'],
+            'created_by': batch_dict['created_by_name'],
+            'notes': batch_dict['notes'],
+            'items': records_list,
+            'total_store_value': sum(r['store_price'] for r in records_list),
+            'total_offer_amount': sum(r['offer_price'] for r in records_list),
+            'item_count': len(records_list)
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'print_data': print_data
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting batch print data: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/batches/stats', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_batch_stats():
+    """Get batch statistics"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_batches,
+                SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_batches,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_batches,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_batches,
+                COALESCE(SUM(
+                    SELECT COUNT(*) 
+                    FROM records r 
+                    WHERE r.created_at BETWEEN b.start_datetime AND COALESCE(b.end_datetime, datetime('now'))
+                ), 0) as total_records_in_batches
+            FROM batches b
+        ''')
+        
+        stats = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'stats': {
+                'total_batches': stats['total_batches'] or 0,
+                'active_batches': stats['active_batches'] or 0,
+                'completed_batches': stats['completed_batches'] or 0,
+                'cancelled_batches': stats['cancelled_batches'] or 0,
+                'total_records_in_batches': stats['total_records_in_batches'] or 0
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting batch stats: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/batches/current-active', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_current_active_batch():
+    """Get the currently active batch (if any)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                b.*,
+                u.username as created_by_name,
+                COUNT(r.id) as record_count,
+                COALESCE(SUM(r.store_price), 0) as total_store_value,
+                COALESCE(SUM(r.store_price * (b.offer_percentage / 100)), 0) as total_offer_amount
+            FROM batches b
+            LEFT JOIN users u ON b.created_by = u.id
+            LEFT JOIN records r ON r.created_at >= b.start_datetime
+            WHERE b.status = 'active'
+            GROUP BY b.id
+            ORDER BY b.start_datetime DESC
+            LIMIT 1
+        ''')
+        
+        batch = cursor.fetchone()
+        conn.close()
+        
+        if not batch:
+            return jsonify({
+                'status': 'success',
+                'has_active': False
+            })
+        
+        batch_dict = dict(batch)
+        
+        return jsonify({
+            'status': 'success',
+            'has_active': True,
+            'batch': batch_dict
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting current active batch: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
 # ==================== MAIN ====================
 
 if __name__ == '__main__':
