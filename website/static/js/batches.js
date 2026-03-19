@@ -405,7 +405,6 @@ class BatchManager {
                     <h3>Seller Information:</h3>
                     <p><strong>Name:</strong> ${this.escapeHtml(printData.seller_name || '')}</p>
                     <p><strong>Contact:</strong> ${this.escapeHtml(printData.seller_contact || '')}</p>
-                    <p><strong>Offer Percentage:</strong> ${printData.offer_percentage || 0}% of store price</p>
                     <p><strong>Batch Date:</strong> ${new Date(printData.start_date).toLocaleDateString()}</p>
                 </div>
                 
