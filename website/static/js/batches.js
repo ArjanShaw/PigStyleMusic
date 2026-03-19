@@ -618,7 +618,6 @@ class BatchManager {
                     </div>
                     
                     <div class="summary-box">
-                        <p class="total-store" style="font-size: 24px; margin: 0 0 20px 0;">$${totalStoreValue.toFixed(2)}</p>
                         <p style="font-size: 18px; margin: 0 0 10px 0;">Total Offer Amount</p>
                         <p class="amount">$${totalOfferAmount.toFixed(2)}</p>
                     </div>
