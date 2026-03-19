@@ -572,7 +572,6 @@ class AddEditDeleteManager {
                 <tr>
                     <td style="padding: 8px; border-bottom: 1px solid #ddd;">${index + 1}</td>
                     <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(item.artist)} - ${this.escapeHtml(item.title)}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(item.store_price || 0).toFixed(2)}</td>
                     <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(item.offer_price || 0).toFixed(2)}</td>
                 </tr>
             `;
@@ -584,7 +583,7 @@ class AddEditDeleteManager {
             <head>
                 <title>Bill of Sale - Batch #${printData.batch_id}</title>
                 <style>
-                    body { font-family: Arial, sans-serif; margin: 40px; }
+                    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
                     .header { text-align: center; margin-bottom: 30px; }
                     .header h1 { margin-bottom: 5px; color: #333; }
                     .header h2 { margin-top: 0; color: #666; font-weight: normal; }
@@ -596,6 +595,15 @@ class AddEditDeleteManager {
                     .totals { text-align: right; margin-bottom: 40px; }
                     .totals p { font-size: 16px; margin: 5px 0; }
                     .totals .total-offer { font-size: 20px; font-weight: bold; color: #28a745; }
+                    .ownership-declaration { 
+                        margin: 40px 0; 
+                        padding: 20px; 
+                        background: #f0f7ff; 
+                        border-left: 4px solid #007bff;
+                        border-radius: 4px;
+                    }
+                    .ownership-declaration h3 { margin-top: 0; color: #007bff; }
+                    .ownership-declaration p { margin: 10px 0; }
                     .signature-section { margin-top: 50px; }
                     .signature-line { display: flex; justify-content: space-between; margin-top: 30px; }
                     .signature-item { width: 45%; }
@@ -606,7 +614,7 @@ class AddEditDeleteManager {
             <body>
                 <div class="header">
                     <h1>PIGSTYLE MUSIC</h1>
-                    <h2>BILL OF SALE</h2>
+                    <h2>BILL OF SALE AND OWNERSHIP DECLARATION</h2>
                     <p>Batch #${printData.batch_id} | Date: ${today}</p>
                 </div>
                 
@@ -622,8 +630,7 @@ class AddEditDeleteManager {
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th>Item</th>
-                            <th>Store Price</th>
+                            <th>Item Description</th>
                             <th>Offer Price</th>
                         </tr>
                     </thead>
@@ -633,12 +640,21 @@ class AddEditDeleteManager {
                 </table>
                 
                 <div class="totals">
-                    <p><strong>Total Store Value:</strong> $${printData.total_store_value.toFixed(2)}</p>
-                    <p class="total-offer"><strong>Total Offer Amount:</strong> $${printData.total_offer_amount.toFixed(2)}</p>
+                    <p class="total-offer"><strong>TOTAL OFFER AMOUNT:</strong> $${printData.total_offer_amount.toFixed(2)}</p>
+                </div>
+                
+                <div class="ownership-declaration">
+                    <h3>OWNERSHIP DECLARATION</h3>
+                    <p>I, <strong>${this.escapeHtml(printData.seller_name || '')}</strong>, hereby declare and warrant that:</p>
+                    <p>1. I am the lawful owner of the records listed above and have full legal authority to sell them.</p>
+                    <p>2. All items are free and clear of any liens, claims, or encumbrances.</p>
+                    <p>3. To the best of my knowledge, these items are authentic and not counterfeit or stolen property.</p>
+                    <p>4. I have the right to transfer full ownership of these items to PigStyle Music.</p>
+                    <p>5. I agree to indemnify and hold PigStyle Music harmless from any claims arising from the sale of these items.</p>
                 </div>
                 
                 <div class="signature-section">
-                    <p>I, <strong>${this.escapeHtml(printData.seller_name || '')}</strong>, agree to sell the above items to PigStyle Music for the total amount of <strong>$${printData.total_offer_amount.toFixed(2)}</strong>.</p>
+                    <p>I agree to sell the above items to PigStyle Music for the total amount of <strong>$${printData.total_offer_amount.toFixed(2)}</strong> and declare that all information provided is true and accurate.</p>
                     
                     <div class="signature-line">
                         <div class="signature-item">
@@ -664,7 +680,7 @@ class AddEditDeleteManager {
                 </div>
                 
                 <div class="footer">
-                    <p>This document serves as a bill of sale for the items listed above. The seller agrees to transfer ownership of these items to PigStyle Music in exchange for the total offer amount.</p>
+                    <p>This document serves as a bill of sale and legal declaration of ownership for the items listed above. The seller agrees to transfer ownership of these items to PigStyle Music in exchange for the total offer amount.</p>
                 </div>
             </body>
             </html>
