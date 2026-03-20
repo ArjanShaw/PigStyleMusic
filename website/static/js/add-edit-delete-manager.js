@@ -27,6 +27,7 @@ class GenrePredictor {
         
         return null;
     }
+    
     async getArtistGenre(artist) {
         // Check cache first
         if (this.artistGenreCache[artist]) {
@@ -114,6 +115,34 @@ class GenrePredictor {
             }
         } catch (error) {
             console.error('Error saving artist genre:', error);
+        }
+        return null;
+    }
+
+    // NEW METHOD: Update existing artist genre
+    async updateArtistGenre(artist, genreId, genreName) {
+        if (!artist || !genreId) return null;
+        
+        try {
+            const data = {
+                artist: artist,
+                genre_id: genreId
+            };
+            
+            const response = await APIUtils.put(`/artist-genre/${encodeURIComponent(artist)}`, data);
+            
+            if (response.status === 'success') {
+                this.artistGenreCache[artist] = {
+                    artist: artist,
+                    genre_id: genreId,
+                    genre_name: genreName
+                };
+                
+                console.log(`ARTIST_GENRE: Updated artist "${artist}" -> ${genreName}`);
+                return response;
+            }
+        } catch (error) {
+            console.error('Error updating artist genre:', error);
         }
         return null;
     }
@@ -1933,30 +1962,30 @@ class AddEditDeleteManager {
                                 <th>Search Query</th>
                                 <td>${searchQuery}</td>
                             </tr>
-                            <tr>
+                             <tr>
                                 <th>Total Listings</th>
                                 <td>${estimate.ebay_summary.total_listings || 0}</td>
-                            </tr>
-                            <tr>
+                             </tr>
+                             <tr>
                                 <th>Condition Listings</th>
                                 <td>${estimate.ebay_summary.condition_listings || 0}</td>
-                            </tr>
-                            <tr>
+                             </tr>
+                             <tr>
                                 <th>Condition Median</th>
                                 <td>$${(estimate.ebay_summary.condition_median || 0).toFixed(2)}</td>
-                            </tr>
-                            <tr>
+                             </tr>
+                             <tr>
                                 <th>Generic Median</th>
                                 <td>$${(estimate.ebay_summary.generic_median || 0).toFixed(2)}</td>
-                            </tr>
-                            <tr>
+                             </tr>
+                             <tr>
                                 <th>Price Range</th>
                                 <td>$${(estimate.ebay_summary.price_range?.[0] || 0).toFixed(2)} - $${(estimate.ebay_summary.price_range?.[1] || 0).toFixed(2)}</td>
-                            </tr>
-                            <tr>
+                             </tr>
+                             <tr>
                                 <th>Average Price</th>
                                 <td>$${(estimate.ebay_summary.average_price || 0).toFixed(2)}</td>
-                            </tr>
+                             </tr>
                         </table>
                     </div>
                 </div>
@@ -1975,14 +2004,14 @@ class AddEditDeleteManager {
                     <div class="table-scroll-container">
                         <table class="ebay-listings-table">
                             <thead>
-                                <tr>
+                                 <tr>
                                     <th>Price</th>
                                     <th>Shipping</th>
                                     <th>Total</th>
                                     <th>Condition</th>
                                     <th>Title</th>
                                     <th>Link</th>
-                                </tr>
+                                 </tr>
                             </thead>
                             <tbody>
                                 ${estimate.ebay_listings.map(listing => `
@@ -2227,9 +2256,24 @@ class AddEditDeleteManager {
         const commissionInput = card.querySelector('.edit-commission-input');
         
         const updates = {};
+        let genreChanged = false;
+        let newGenreId = null;
+        let newGenreName = null;
+        
+        // Get the current record to compare genre changes
+        const currentRecord = this.currentResults.find(r => r.id == recordId);
         
         if (genreSelect && genreSelect.value) {
-            updates.genre_id = parseInt(genreSelect.value);
+            newGenreId = parseInt(genreSelect.value);
+            updates.genre_id = newGenreId;
+            
+            // Check if genre has changed from original
+            if (currentRecord && currentRecord.genre_id != newGenreId) {
+                genreChanged = true;
+                // Get the genre name for the new genre ID
+                const genre = this.genres.find(g => g.id == newGenreId);
+                newGenreName = genre ? genre.genre_name : '';
+            }
         }
         
         if (sleeveConditionSelect && sleeveConditionSelect.value) {
@@ -2296,6 +2340,17 @@ class AddEditDeleteManager {
                 }
                 
                 showMessage(`Record updated successfully! Price: $${(updatedPrice || 0).toFixed(2)}`, 'success');
+                
+                // If genre was changed and we have an artist, update the artist_genre table
+                if (genreChanged && currentRecord && currentRecord.artist && newGenreId) {
+                    console.log(`Genre changed for artist "${currentRecord.artist}" from ${currentRecord.genre_id} to ${newGenreId}`);
+                    const updateResult = await this.genrePredictor.updateArtistGenre(currentRecord.artist, newGenreId, newGenreName);
+                    if (updateResult) {
+                        showMessage(`Artist genre association updated for "${currentRecord.artist}"`, 'success');
+                    } else {
+                        console.warn(`Could not update artist genre for "${currentRecord.artist}"`);
+                    }
+                }
                 
                 const currentSearch = document.getElementById('searchInput').value;
                 if (currentSearch) {
