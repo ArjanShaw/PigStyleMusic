@@ -201,22 +201,19 @@
                 }
             });
 
-            // Fetch and display commission rate AND update the merged sell line
+            // Fetch and display commission rate
             async function fetchCommissionRate() {
                 try {
                     // Check if AppConfig is loaded
                     if (typeof AppConfig === 'undefined') {
                         console.warn('AppConfig not loaded yet, retrying...');
-                        // Try again in 500ms
                         setTimeout(fetchCommissionRate, 500);
                         return;
                     }
                     
-                    // Get the API URL using AppConfig
                     const apiUrl = AppConfig.getUrl('commissionRate');
                     console.log('Fetching commission rate from:', apiUrl);
                     
-                    // Make the API request
                     const response = await fetch(apiUrl, {
                         method: 'GET',
                         headers: {
@@ -231,13 +228,10 @@
                     
                     const data = await response.json();
                     
-                    // Check if we got the expected data
                     if (data && data.commission_rate_percent) {
-                        // Update the merged consignment + cash line with the current rate
                         const sellLineItem = document.getElementById('sell-records-line');
                         if (sellLineItem) {
                             sellLineItem.innerHTML = `Sell your records for cash or on <a href="consignment.html">consignment</a> - Current rate: <strong>${data.commission_rate_percent}</strong>`;
-                            console.log('Commission rate displayed in merged line:', data.commission_rate_percent);
                         }
                     } else {
                         throw new Error('Invalid response format: missing commission_rate_percent');
@@ -246,15 +240,12 @@
                 } catch (error) {
                     console.error('Error fetching commission rate:', error);
                     
-                    // Show fallback message in the merged line
                     const sellLineItem = document.getElementById('sell-records-line');
                     if (sellLineItem) {
                         sellLineItem.innerHTML = `Sell your records for cash or on <a href="consignment.html">consignment</a> - Rate info currently unavailable`;
                     }
                     
-                    // Try direct fetch as fallback (without AppConfig)
                     try {
-                        console.log('Trying direct fetch as fallback...');
                         const isLocalhost = window.location.hostname === 'localhost' || 
                                         window.location.hostname === '127.0.0.1';
                         const fallbackUrl = isLocalhost 
@@ -280,14 +271,11 @@
             // Fetch and display sticky notes
             async function fetchStickyNotes() {
                 try {
-                    // Determine the API URL
                     const isLocalhost = window.location.hostname === 'localhost' || 
                                       window.location.hostname === '127.0.0.1';
                     const apiUrl = isLocalhost 
                         ? 'http://localhost:5000/api/sticky-notes'
                         : `https://${window.location.hostname}/api/sticky-notes`;
-                    
-                    console.log('Fetching sticky notes from:', apiUrl);
                     
                     const response = await fetch(apiUrl, {
                         method: 'GET',
@@ -304,7 +292,6 @@
                     const data = await response.json();
                     
                     if (data.status === 'success' && data.notes && data.notes.length > 0) {
-                        // Create or get the sticky notes container
                         let container = document.querySelector('.sticky-notes-container');
                         if (!container) {
                             container = document.createElement('div');
@@ -312,39 +299,21 @@
                             document.body.appendChild(container);
                         }
                         
-                        // Clear existing notes
                         container.innerHTML = '';
                         
-                        // Add each note to the container
                         data.notes.forEach(note => {
                             const noteElement = document.createElement('div');
                             noteElement.className = 'sticky-note';
                             noteElement.textContent = note.note_text;
                             container.appendChild(noteElement);
                         });
-                        
-                        console.log(`Displayed ${data.notes.length} sticky notes`);
-                    } else {
-                        console.log('No sticky notes to display');
                     }
                     
                 } catch (error) {
                     console.error('Error fetching sticky notes:', error);
-                    // Optionally show a default note if API fails
-                    // You can uncomment this if you want a fallback
-                    /*
-                    let container = document.querySelector('.sticky-notes-container');
-                    if (!container) {
-                        container = document.createElement('div');
-                        container.className = 'sticky-notes-container';
-                        document.body.appendChild(container);
-                    }
-                    container.innerHTML = '<div class="sticky-note">📌 Welcome to PigStyle!</div>';
-                    */
                 }
             }
 
-            // Call the functions
             fetchCommissionRate();
             fetchStickyNotes();
         });
@@ -355,19 +324,16 @@
     <!-- Sticky Notes Container (will be populated by JavaScript) -->
     <div class="sticky-notes-container"></div>
     
-    <!-- NAVIGATION BAR: Removed "Consign" tab as requested -->
     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
         <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
             <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
-             
         </a>
         <div style="display: flex; gap: 20px; align-items: center;">
             <a href="/shop" style="color: white; text-decoration: none;">Browse</a>
             <a href="/merch" style="color: white; text-decoration: none;">Merch</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
-            <!-- CONSIGN TAB REMOVED -->
+            <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
             <div id="auth-section">
-                
             </div>
         </div>
     </nav>
@@ -416,15 +382,12 @@
                 <li>
                     Find your next favorite album on my <a href="streaming.html">vinyl streaming station</a>
                 </li>
-                <!-- Added Gift Cards item to the main list -->
                 <li>
                     Now offering <a href="https://app.squareup.com/gift/MLV1G6XV2N93F/order" target="_blank" style="color: #ff6b6b; font-weight: bold;"> gift cards!</a>
                 </li>
-                <!-- MERGED LINE: combines consignment + cash offer with dynamic commission rate -->
                 <li id="sell-records-line">
                     Sell your records for cash or on <a href="consignment.html">consignment</a> - Current rate: <strong>loading...</strong>
                 </li>
-                <!-- Original separate lines removed as requested -->
             </ul>
         </div>
 

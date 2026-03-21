@@ -6441,6 +6441,389 @@ def get_current_active_batch():
             'error': str(e)
         }), 500
 
+
+# ==================== FEEDBACK ENDPOINTS ====================
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    """
+    Submit feedback (general or event suggestion)
+    Expected JSON:
+    {
+        "contact_info": "email or phone (optional)",
+        "type_of_feedback": "event" or "general",
+        "content": "the actual feedback text",
+        "event_name": "custom event name or one of the hardcoded options (optional)"
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data:
+            return jsonify({
+                'status': 'error',
+                'error': 'No data provided'
+            }), 400
+        
+        if 'type_of_feedback' not in data:
+            return jsonify({
+                'status': 'error',
+                'error': 'type_of_feedback is required (event or general)'
+            }), 400
+        
+        if 'content' not in data:
+            return jsonify({
+                'status': 'error',
+                'error': 'content is required'
+            }), 400
+        
+        type_of_feedback = data['type_of_feedback']
+        if type_of_feedback not in ['event', 'general']:
+            return jsonify({
+                'status': 'error',
+                'error': 'type_of_feedback must be "event" or "general"'
+            }), 400
+        
+        # Prepare data
+        contact_info = data.get('contact_info', '')
+        content = data['content']
+        event_name = data.get('event_name', '')
+        
+        # Validate event_name for event feedback
+        if type_of_feedback == 'event' and not event_name:
+            # If no event name provided, use the content as event name
+            event_name = content
+            content = f"Event suggestion: {content}"
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO feedback (contact_info, type_of_feedback, content, event_name, created_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (contact_info, type_of_feedback, content, event_name))
+        
+        feedback_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Feedback submitted: ID={feedback_id}, type={type_of_feedback}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Thank you for your feedback!',
+            'feedback_id': feedback_id
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error submitting feedback: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': f'Server error: {str(e)}'
+        }), 500
+
+
+@app.route('/api/feedback', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_all_feedback():
+    """
+    Get all feedback entries (admin only)
+    Query params:
+        type: filter by type (event/general)
+        status: filter by status (new/read/archived)
+        limit: max number of results
+        offset: pagination offset
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        type_filter = request.args.get('type')
+        status_filter = request.args.get('status', 'new')
+        limit = request.args.get('limit', 100, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        
+        query = "SELECT * FROM feedback WHERE 1=1"
+        params = []
+        
+        if type_filter and type_filter in ['event', 'general']:
+            query += " AND type_of_feedback = ?"
+            params.append(type_filter)
+        
+        if status_filter and status_filter in ['new', 'read', 'archived']:
+            query += " AND status = ?"
+            params.append(status_filter)
+        
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        cursor.execute(query, params)
+        feedback = cursor.fetchall()
+        
+        # Get total count for pagination
+        count_query = "SELECT COUNT(*) as total FROM feedback WHERE 1=1"
+        count_params = []
+        if type_filter and type_filter in ['event', 'general']:
+            count_query += " AND type_of_feedback = ?"
+            count_params.append(type_filter)
+        if status_filter and status_filter in ['new', 'read', 'archived']:
+            count_query += " AND status = ?"
+            count_params.append(status_filter)
+        
+        cursor.execute(count_query, count_params)
+        total = cursor.fetchone()['total']
+        
+        conn.close()
+        
+        feedback_list = [dict(f) for f in feedback]
+        
+        return jsonify({
+            'status': 'success',
+            'feedback': feedback_list,
+            'total': total,
+            'limit': limit,
+            'offset': offset
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting feedback: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/feedback/<int:feedback_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_feedback(feedback_id):
+    """Get a single feedback entry by ID"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM feedback WHERE id = ?', (feedback_id,))
+        feedback = cursor.fetchone()
+        conn.close()
+        
+        if not feedback:
+            return jsonify({
+                'status': 'error',
+                'error': 'Feedback not found'
+            }), 404
+        
+        return jsonify({
+            'status': 'success',
+            'feedback': dict(feedback)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting feedback: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/feedback/<int:feedback_id>/status', methods=['PATCH'])
+@login_required
+@role_required(['admin'])
+def update_feedback_status(feedback_id):
+    """Update the status of a feedback entry"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'status' not in data:
+            return jsonify({
+                'status': 'error',
+                'error': 'status is required'
+            }), 400
+        
+        new_status = data['status']
+        if new_status not in ['new', 'read', 'archived']:
+            return jsonify({
+                'status': 'error',
+                'error': 'status must be new, read, or archived'
+            }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE feedback 
+            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (new_status, feedback_id))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Feedback not found'
+            }), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Feedback status updated to {new_status}'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error updating feedback status: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/feedback/<int:feedback_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_feedback(feedback_id):
+    """Delete a feedback entry (admin only)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM feedback WHERE id = ?', (feedback_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Feedback not found'
+            }), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Feedback deleted successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting feedback: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/feedback/events/suggestions', methods=['GET'])
+def get_event_suggestions():
+    """
+    Get all event-related feedback suggestions
+    Returns both the hardcoded options and user-submitted event suggestions
+    """
+    try:
+        # Hardcoded event options
+        hardcoded_events = [
+            {'id': 'open_mic', 'name': 'Open Mic Night', 'type': 'hardcoded'},
+            {'id': 'bring_your_record', 'name': 'Bring Your Favorite Record - Listening Evening', 'type': 'hardcoded'},
+            {'id': '78s_listening', 'name': "78's Listening Evening", 'type': 'hardcoded'}
+        ]
+        
+        # Get user-submitted event suggestions from feedback
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, event_name, content, contact_info, created_at
+            FROM feedback
+            WHERE type_of_feedback = 'event' 
+            AND event_name IS NOT NULL 
+            AND event_name != ''
+            AND status != 'archived'
+            ORDER BY created_at DESC
+        ''')
+        
+        user_events = cursor.fetchall()
+        conn.close()
+        
+        user_suggestions = []
+        for event in user_events:
+            user_suggestions.append({
+                'id': f"user_{event['id']}",
+                'name': event['event_name'],
+                'type': 'user_suggestion',
+                'feedback_id': event['id'],
+                'details': event['content'],
+                'contact_info': event['contact_info'],
+                'created_at': event['created_at']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'hardcoded_events': hardcoded_events,
+            'user_suggestions': user_suggestions,
+            'total_suggestions': len(user_suggestions)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting event suggestions: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/feedback/stats', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_feedback_stats():
+    """Get feedback statistics (admin only)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN type_of_feedback = 'event' THEN 1 ELSE 0 END) as event_count,
+                SUM(CASE WHEN type_of_feedback = 'general' THEN 1 ELSE 0 END) as general_count,
+                SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_count,
+                SUM(CASE WHEN status = 'read' THEN 1 ELSE 0 END) as read_count,
+                SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) as archived_count,
+                COUNT(DISTINCT CASE WHEN contact_info IS NOT NULL AND contact_info != '' THEN contact_info END) as unique_contacts
+            FROM feedback
+        ''')
+        
+        stats = cursor.fetchone()
+        
+        # Get last 7 days trend
+        cursor.execute('''
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as count,
+                SUM(CASE WHEN type_of_feedback = 'event' THEN 1 ELSE 0 END) as event_count
+            FROM feedback
+            WHERE created_at >= DATE('now', '-7 days')
+            GROUP BY DATE(created_at)
+            ORDER BY date DESC
+        ''')
+        
+        trend = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'stats': dict(stats),
+            'trend': [dict(t) for t in trend]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting feedback stats: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
 # ==================== MAIN ====================
 
 if __name__ == '__main__':
