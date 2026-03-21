@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/images/PigStyle.ico">
+    <title>Connect - PigStyle Music Loveland</title>
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- CSS FILE - All styles here -->
+    <link rel="stylesheet" href="/static/css/index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <style>
+        /* Connect Page Styles - Matching merchandise.css style */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: #f5f5f5;
+            min-height: 100vh;
+        }
+        
+        /* Background */
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        .background-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+        }
+        
+        .connect-page-container {
+            max-width: 1200px;
+            margin: 100px auto 40px;
+            padding: 20px;
+        }
+        
+        .connect-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .connect-header h1 {
+            color: #ff6b6b;
+            font-size: 48px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .connect-header p {
+            color: #ccc;
+            font-size: 18px;
+        }
+        
+        .connect-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+        
+        .info-card, .feedback-card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        .info-card:hover, .feedback-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(255,107,107,0.15);
+            border-color: #ff6b6b;
+        }
+        
+        .info-card h2, .feedback-card h2 {
+            color: #333;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #ff6b6b;
+            display: inline-block;
+            padding-bottom: 8px;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .info-card h2 i, .feedback-card h2 i {
+            color: #ff6b6b;
+            margin-right: 8px;
+        }
+        
+        .contact-details {
+            margin: 30px 0;
+        }
+        
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: transform 0.2s, background 0.2s;
+        }
+        
+        .contact-item:hover {
+            transform: translateX(5px);
+            background: #fff0f0;
+        }
+        
+        .contact-item i {
+            font-size: 22px;
+            color: #ff6b6b;
+            width: 35px;
+            text-align: center;
+        }
+        
+        .contact-item span, .contact-item a {
+            color: #333;
+            text-decoration: none;
+            font-size: 15px;
+        }
+        
+        .contact-item a:hover {
+            color: #ff6b6b;
+        }
+        
+        .hours-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .hours-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .hours-section h3 i {
+            color: #ff6b6b;
+            margin-right: 8px;
+        }
+        
+        .hours-text {
+            font-size: 15px;
+            color: #333;
+            padding: 10px 0;
+        }
+        
+        .social-links-page {
+            display: flex;
+            gap: 20px;
+            margin-top: 30px;
+            justify-content: center;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .social-links-page a {
+            color: #666;
+            font-size: 28px;
+            transition: color 0.2s, transform 0.2s;
+        }
+        
+        .social-links-page a:hover {
+            color: #ff6b6b;
+            transform: scale(1.1);
+        }
+        
+        .feedback-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .form-group label {
+            font-weight: 500;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        .form-group label .optional {
+            font-weight: normal;
+            color: #999;
+            font-size: 12px;
+        }
+        
+        .form-group label .required {
+            color: #ff6b6b;
+            font-size: 12px;
+        }
+        
+        .form-group input, .form-group select, .form-group textarea {
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid #eee;
+            background: white;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #ff6b6b;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .radio-group {
+            display: flex;
+            gap: 25px;
+            margin-top: 5px;
+            flex-wrap: wrap;
+        }
+        
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: normal;
+            color: #333;
+            cursor: pointer;
+            padding: 8px 15px;
+            background: #f8f9fa;
+            border-radius: 25px;
+            transition: background 0.2s;
+        }
+        
+        .radio-group label:hover {
+            background: #fff0f0;
+        }
+        
+        .radio-group input {
+            margin: 0;
+            width: auto;
+            accent-color: #ff6b6b;
+        }
+        
+        .event-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 10px;
+        }
+        
+        .event-option {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .event-option:hover {
+            background: #fff0f0;
+        }
+        
+        .event-option input {
+            margin: 0;
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+            accent-color: #ff6b6b;
+        }
+        
+        .event-option label {
+            cursor: pointer;
+            margin: 0;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .custom-event {
+            margin-top: 12px;
+            display: none;
+        }
+        
+        .custom-event.active {
+            display: block;
+        }
+        
+        .custom-event input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        
+        .submit-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 10px;
+        }
+        
+        .submit-btn:hover {
+            background: #ff5252;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255,107,107,0.3);
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+            text-align: center;
+            font-weight: 500;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .back-to-home {
+            text-align: center;
+            margin-top: 40px;
+        }
+        
+        .back-to-home a {
+            color: #ff6b6b;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: white;
+            border-radius: 25px;
+            transition: background 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .back-to-home a:hover {
+            background: #fff0f0;
+        }
+        
+        .optional-note {
+            font-size: 12px;
+            color: #999;
+            margin-top: -5px;
+            margin-bottom: 5px;
+        }
+        
+        @media (max-width: 768px) {
+            .connect-grid {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+            
+            .connect-page-container {
+                margin-top: 80px;
+                padding: 15px;
+            }
+            
+            .connect-header h1 {
+                font-size: 32px;
+            }
+            
+            .info-card, .feedback-card {
+                padding: 20px;
+            }
+            
+            .radio-group {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Background -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+    
+    <!-- Navbar - Matches exactly the style from merchandise.html and other pages -->
+    <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
+        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
+            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+        </a>
+        <div style="display: flex; gap: 20px; align-items: center;">
+            <a href="/shop" style="color: white; text-decoration: none;">Browse</a>
+            <a href="/merch" style="color: white; text-decoration: none;">Merch</a>
+            <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
+            <a href="/connect" style="color: #ff6b6b; text-decoration: none; font-weight: bold;">Connect</a>
+            <div id="auth-section">
+            </div>
+        </div>
+    </nav>
+    <script src="../static/js/app-config.js"></script>
+    
+    <div class="connect-page-container">
+        
+        <div class="connect-grid">
+            <!-- Contact Info Card -->
+            <div class="info-card">
+                <h2><i class="fas fa-store"></i> Visit</h2>
+                <div class="contact-details">
+                    <div class="contact-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>100 E 3rd St, Loveland, CO 80537</span>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-phone"></i>
+                        <a href="tel:9704925630">(970) 492-5630</a>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-envelope"></i>
+                        <a href="mailto:pigstyle.loveland@gmail.com">pigstyle.loveland@gmail.com</a>
+                    </div>
+                </div>
+                
+                <div class="hours-section">
+                    <h3><i class="fas fa-clock"></i> Store Hours</h3>
+                    <div class="hours-text">Wednesday - Sunday: 10am - 6pm</div>
+                </div>
+                
+                <div class="social-links-page">
+                    <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank" aria-label="Facebook"><i class="fab fa-facebook"></i></a>
+                    <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                </div>
+            </div>
+            
+            <!-- Feedback & Poll Card -->
+            <div class="feedback-card">
+                <h2><i class="fas fa-comments"></i> Share Your Thoughts</h2>
+                <form id="feedbackForm" class="feedback-form">
+                    <!-- Name row - label left, input fills rest -->
+                    <div class="form-group">
+                        <label>Name <span class="optional">(optional)</span></label>
+                        <input type="text" id="nameInput" placeholder="Your name">
+                    </div>
+                    
+                    <!-- Contact Info row - label left, input fills rest -->
+                    <div class="form-group">
+                        <label>Contact Info <span class="optional">(optional)</span></label>
+                        <input type="text" id="contactInfo" placeholder="Email or phone number">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Feedback Type</label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="feedbackType" value="general" checked> General Feedback
+                            </label>
+                            <label>
+                                <input type="radio" name="feedbackType" value="event"> Event Suggestion
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" id="eventOptionsGroup" style="display: none;">
+                        <label>Event Suggestions</label>
+                        <div class="event-options" id="eventOptions">
+                            <div class="event-option">
+                                <input type="radio" name="eventChoice" value="open_mic" id="openMic">
+                                <label for="openMic">🎤 Open Mic Night</label>
+                            </div>
+                            <div class="event-option">
+                                <input type="radio" name="eventChoice" value="bring_record" id="bringRecord">
+                                <label for="bringRecord">🎵 Bring Your Favorite Record - Listening Evening</label>
+                            </div>
+                            <div class="event-option">
+                                <input type="radio" name="eventChoice" value="78s" id="seventyEights">
+                                <label for="seventyEights">📀 78's Listening Evening</label>
+                            </div>
+                            <div class="event-option">
+                                <input type="radio" name="eventChoice" value="custom" id="customEvent">
+                                <label for="customEvent">✨ Custom Event Idea</label>
+                            </div>
+                        </div>
+                        <div class="custom-event" id="customEventInput">
+                            <input type="text" id="customEventName" placeholder="Enter your event idea...">
+                        </div>
+                        <div class="optional-note" id="eventOptionalNote">Note: Selecting an event is enough - additional feedback is optional.</div>
+                    </div>
+                    
+                    <div class="form-group" id="feedbackContentGroup">
+                        <label>Your Feedback <span id="feedbackRequired" class="required">*</span></label>
+                        <textarea id="feedbackContent" placeholder="Tell us what you think. Suggestions for events, music, store improvements, or just say hello."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="submit-btn">Submit Feedback</button>
+                    <div id="message" class="message"></div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="back-to-home">
+            <a href="/"><i class="fas fa-arrow-left"></i> Back to Home</a>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const feedbackForm = document.getElementById('feedbackForm');
+            const feedbackTypeRadios = document.querySelectorAll('input[name="feedbackType"]');
+            const eventOptionsGroup = document.getElementById('eventOptionsGroup');
+            const feedbackContent = document.getElementById('feedbackContent');
+            const feedbackRequired = document.getElementById('feedbackRequired');
+            const customEventInput = document.getElementById('customEventInput');
+            const customEventName = document.getElementById('customEventName');
+            const messageDiv = document.getElementById('message');
+            const nameInput = document.getElementById('nameInput');
+            const contactInfoInput = document.getElementById('contactInfo');
+            const eventRadios = document.querySelectorAll('input[name="eventChoice"]');
+            
+            // Show/hide event options based on feedback type
+            feedbackTypeRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.value === 'event') {
+                        eventOptionsGroup.style.display = 'block';
+                        feedbackContent.placeholder = 'Additional comments (optional)';
+                        feedbackRequired.style.display = 'none';
+                        feedbackContent.required = false;
+                    } else {
+                        eventOptionsGroup.style.display = 'none';
+                        feedbackContent.placeholder = 'Tell us what you think. Suggestions for events, music, store improvements, or just say hello.';
+                        feedbackRequired.style.display = 'inline';
+                        feedbackContent.required = true;
+                    }
+                });
+            });
+            
+            // Handle custom event option
+            const customRadio = document.getElementById('customEvent');
+            customRadio.addEventListener('change', function() {
+                if (this.checked) {
+                    customEventInput.classList.add('active');
+                } else {
+                    customEventInput.classList.remove('active');
+                }
+            });
+            
+            // Handle other radio selections
+            eventRadios.forEach(radio => {
+                if (radio.id !== 'customEvent') {
+                    radio.addEventListener('change', function() {
+                        if (this.checked) {
+                            customEventInput.classList.remove('active');
+                        }
+                    });
+                }
+            });
+            
+            // Combine name and contact info into one string
+            function getCombinedContactInfo() {
+                const name = nameInput.value.trim();
+                const contact = contactInfoInput.value.trim();
+                
+                if (name && contact) {
+                    return `${name} | ${contact}`;
+                } else if (name) {
+                    return name;
+                } else if (contact) {
+                    return contact;
+                }
+                return '';
+            }
+            
+            // Submit feedback
+            feedbackForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                messageDiv.className = 'message';
+                messageDiv.style.display = 'none';
+                
+                const feedbackType = document.querySelector('input[name="feedbackType"]:checked').value;
+                const combinedContactInfo = getCombinedContactInfo();
+                let content = feedbackContent.value.trim();
+                let eventName = '';
+                
+                // Validate based on feedback type
+                if (feedbackType === 'general') {
+                    if (!content) {
+                        showMessage('Please enter your feedback', 'error');
+                        return;
+                    }
+                } else if (feedbackType === 'event') {
+                    const selectedEvent = document.querySelector('input[name="eventChoice"]:checked');
+                    if (!selectedEvent) {
+                        showMessage('Please select an event option', 'error');
+                        return;
+                    }
+                    
+                    const eventValue = selectedEvent.value;
+                    if (eventValue === 'custom') {
+                        eventName = customEventName.value.trim();
+                        if (!eventName) {
+                            showMessage('Please enter your custom event idea', 'error');
+                            return;
+                        }
+                        // For custom events, content is required (the event name is already captured)
+                        if (!content) {
+                            content = `Custom event suggestion: ${eventName}`;
+                        } else {
+                            content = `Custom event suggestion: ${eventName} - ${content}`;
+                        }
+                    } else {
+                        const eventLabels = {
+                            'open_mic': 'Open Mic Night',
+                            'bring_record': 'Bring Your Favorite Record - Listening Evening',
+                            '78s': "78's Listening Evening"
+                        };
+                        eventName = eventLabels[eventValue] || eventValue;
+                        // For predefined events, content is optional
+                        if (!content) {
+                            content = `Interested in: ${eventName}`;
+                        } else {
+                            content = `${eventName} - ${content}`;
+                        }
+                    }
+                }
+                
+                const payload = {
+                    type_of_feedback: feedbackType,
+                    content: content,
+                    contact_info: combinedContactInfo
+                };
+                
+                if (feedbackType === 'event' && eventName) {
+                    payload.event_name = eventName;
+                }
+                
+                try {
+                    const isLocalhost = window.location.hostname === 'localhost' || 
+                                      window.location.hostname === '127.0.0.1';
+                    const apiUrl = isLocalhost 
+                        ? 'http://localhost:5000/api/feedback'
+                        : `https://${window.location.hostname}/api/feedback`;
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        showMessage('Thank you for your feedback!', 'success');
+                        feedbackForm.reset();
+                        eventOptionsGroup.style.display = 'none';
+                        customEventInput.classList.remove('active');
+                        document.querySelector('input[name="feedbackType"][value="general"]').checked = true;
+                        feedbackContent.placeholder = 'Tell us what you think. Suggestions for events, music, store improvements, or just say hello.';
+                        feedbackRequired.style.display = 'inline';
+                        feedbackContent.required = true;
+                    } else {
+                        showMessage('Error: ' + (result.error || 'Something went wrong'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    showMessage('Network error. Please try again.', 'error');
+                }
+            });
+            
+            function showMessage(text, type) {
+                messageDiv.textContent = text;
+                messageDiv.className = `message ${type}`;
+                messageDiv.style.display = 'block';
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+</html>

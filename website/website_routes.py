@@ -24,6 +24,10 @@ def streaming():
 def consignment():
     return send_from_directory('HTML', 'consignment.html')
 
+@app.route('/connect')
+def connect():
+    return send_from_directory('HTML', 'connect.html')
+
 @app.route('/login')
 def login():
     return send_from_directory('HTML', 'login.html')
