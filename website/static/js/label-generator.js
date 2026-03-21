@@ -131,15 +131,17 @@ async function generatePriceTagsPDF(records, consignorCache, getConsignorInfo) {
 }
 
 /**
- * Generate custom text labels PDF
- * @param {Array} labels - Array of {text, x, y} objects
+ * Generate custom text labels PDF with starting position
+ * @param {Array} labels - Array of {text} objects
+ * @param {Object} options - Options {startRow, startCol}
  * @returns {Promise<Blob>} PDF blob
  */
-async function generateCustomLabelsPDF(labels) {
+async function generateCustomLabelsPDF(labels, options = {}) {
     const { jsPDF } = window.jspdf;
     
     console.log('📄 Generating Custom Labels PDF');
     console.log(`📊 Total labels: ${labels.length}`);
+    console.log(`📍 Starting position: Row ${options.startRow || 1}, Col ${options.startCol || 1}`);
     
     // Get configuration values
     const config = await loadLabelConfig();
@@ -156,20 +158,33 @@ async function generateCustomLabelsPDF(labels) {
     const cols = 4;
     const labelsPerPage = rows * cols;
     
-    let currentLabel = 0;
+    // Starting position (1-indexed, convert to 0-indexed)
+    const startRow = (options.startRow || 1) - 1;
+    const startCol = (options.startCol || 1) - 1;
     
-    for (const label of labels) {
+    // Calculate starting index
+    let startIndex = (startRow * cols) + startCol;
+    let currentLabel = 0;
+    let pageNumber = 0;
+    
+    for (let i = 0; i < labels.length; i++) {
+        const label = labels[i];
         if (!label || !label.text) continue;
         
+        // Calculate absolute position on sheet
+        const absoluteIndex = startIndex + currentLabel;
+        const pageIndex = absoluteIndex % labelsPerPage;
+        const pageNum = Math.floor(absoluteIndex / labelsPerPage);
+        
         // Add new page if needed
-        if (currentLabel > 0 && currentLabel % labelsPerPage === 0) {
+        if (pageNum > pageNumber) {
             doc.addPage();
+            pageNumber = pageNum;
         }
         
-        // Calculate position based on x,y coordinates (1-indexed)
-        // x = column (1-4), y = row (1-15)
-        const col = (label.x - 1) || 0;
-        const row = (label.y - 1) || 0;
+        // Calculate row and column
+        const row = Math.floor(pageIndex / cols);
+        const col = pageIndex % cols;
         
         const x = config.leftMarginPt + (col * (config.labelWidthPt + config.gutterSpacingPt));
         const y = config.topMarginPt + (row * config.labelHeightPt);
@@ -218,6 +233,8 @@ async function generateCustomLabelsPDF(labels) {
         
         currentLabel++;
     }
+    
+    console.log(`✅ Generated ${currentLabel} labels starting at position (${startRow + 1}, ${startCol + 1})`);
     
     return doc.output('blob');
 }

@@ -1,5 +1,5 @@
 // ============================================================================
-// price-tags.js - Price Tags Tab Functionality with Range Selection
+// price-tags.js - Price Tags Tab Functionality with Starting Position
 // ============================================================================
 
 // Use window object to avoid redeclaration errors
@@ -37,6 +37,15 @@ if (typeof window.recentlyPrintedIds === 'undefined') {
 
 // Print Queue - array to maintain order
 window.printQueue = window.printQueue || [];
+
+// Starting position for printing
+if (typeof window.printStartRow === 'undefined') {
+    window.printStartRow = 1;
+}
+
+if (typeof window.printStartCol === 'undefined') {
+    window.printStartCol = 1;
+}
 
 // Range selection state
 window.rangeMode = false;
@@ -102,6 +111,35 @@ function showStatus(message, type = 'info') {
             statusEl.style.display = 'none';
         }, 5000);
     }
+}
+
+// Update starting position display
+function updatePrintStartPosition() {
+    const rowInput = document.getElementById('print-start-row');
+    const colInput = document.getElementById('print-start-col');
+    
+    if (rowInput) {
+        let newRow = parseInt(rowInput.value);
+        if (isNaN(newRow)) newRow = 1;
+        newRow = Math.max(1, Math.min(15, newRow));
+        window.printStartRow = newRow;
+        rowInput.value = newRow;
+    }
+    
+    if (colInput) {
+        let newCol = parseInt(colInput.value);
+        if (isNaN(newCol)) newCol = 1;
+        newCol = Math.max(1, Math.min(4, newCol));
+        window.printStartCol = newCol;
+        colInput.value = newCol;
+    }
+    
+    const displayEl = document.getElementById('print-start-display');
+    if (displayEl) {
+        displayEl.textContent = `${window.printStartRow}, ${window.printStartCol}`;
+    }
+    
+    showStatus(`Price tags will start at position (${window.printStartRow}, ${window.printStartCol})`, 'info');
 }
 
 // Load consignors for filter
@@ -870,9 +908,159 @@ function changePageSize(newSize) {
     renderCurrentPage();
 }
 
-// PDF Generation using shared generator
-async function generatePriceTagsPDF(records) {
-    return await window.labelGenerator.generatePriceTagsPDF(records, window.consignorCache, getConsignorInfo);
+// PDF Generation with starting position support
+async function generatePDF(records) {
+    const { jsPDF } = window.jspdf;
+    
+    console.log('📄 Generating Price Tags PDF');
+    console.log(`📍 Starting at position: Row ${window.printStartRow}, Col ${window.printStartCol}`);
+    console.log(`📊 Total records: ${records.length}`);
+    
+    try {
+        if (typeof window.getConfigValue !== 'function') {
+            throw new Error('getConfigValue function not available');
+        }
+        
+        const labelWidthMM = await window.getConfigValue('LABEL_WIDTH_MM');
+        const labelHeightMM = await window.getConfigValue('LABEL_HEIGHT_MM');
+        const leftMarginMM = await window.getConfigValue('LEFT_MARGIN_MM');
+        const gutterSpacingMM = await window.getConfigValue('GUTTER_SPACING_MM');
+        const topMarginMM = await window.getConfigValue('TOP_MARGIN_MM');
+        const priceFontSize = await window.getConfigValue('PRICE_FONT_SIZE');
+        const textFontSize = await window.getConfigValue('TEXT_FONT_SIZE');
+        const barcodeHeightMM = await window.getConfigValue('BARCODE_HEIGHT');
+        const printBorders = await window.getConfigValue('PRINT_BORDERS');
+        const priceYPosMM = await window.getConfigValue('PRICE_Y_POS');
+        const barcodeYPosMM = await window.getConfigValue('BARCODE_Y_POS');
+        const infoYPosMM = await window.getConfigValue('INFO_Y_POS');
+        
+        const mmToPt = 2.83465;
+        const labelWidthPt = parseFloat(labelWidthMM) * mmToPt;
+        const labelHeightPt = parseFloat(labelHeightMM) * mmToPt;
+        const leftMarginPt = parseFloat(leftMarginMM) * mmToPt;
+        const gutterSpacingPt = parseFloat(gutterSpacingMM) * mmToPt;
+        const topMarginPt = parseFloat(topMarginMM) * mmToPt;
+        const barcodeHeightPt = parseFloat(barcodeHeightMM) * mmToPt;
+        
+        const priceYPosPt = parseFloat(priceYPosMM) * mmToPt;
+        const barcodeYPosPt = parseFloat(barcodeYPosMM) * mmToPt;
+        const infoYPosPt = parseFloat(infoYPosMM) * mmToPt;
+        
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'pt',
+            format: 'letter'
+        });
+        
+        const rows = 15;
+        const cols = 4;
+        const labelsPerPage = rows * cols;
+        
+        // Calculate starting index (0-indexed)
+        const startIndex = ((window.printStartRow - 1) * cols) + (window.printStartCol - 1);
+        let currentLabel = 0;
+        let pageNumber = 0;
+        
+        for (let i = 0; i < records.length; i++) {
+            const record = records[i];
+            if (!record) continue;
+            if (record.status_id === 3) continue;
+            
+            // Calculate absolute position
+            const absoluteIndex = startIndex + currentLabel;
+            const pageIndex = absoluteIndex % labelsPerPage;
+            const pageNum = Math.floor(absoluteIndex / labelsPerPage);
+            
+            if (pageNum > pageNumber) {
+                doc.addPage();
+                pageNumber = pageNum;
+            }
+            
+            const row = Math.floor(pageIndex / cols);
+            const col = pageIndex % cols;
+            
+            const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
+            const y = topMarginPt + (row * labelHeightPt);
+            
+            if (printBorders === 'true' || printBorders === true) {
+                doc.setDrawColor(0);
+                doc.setLineWidth(0.5);
+                doc.rect(x, y, labelWidthPt, labelHeightPt);
+            }
+            
+            // Get consignor initials
+            let consignorInitials = '';
+            if (record.consignor_id) {
+                const consignorInfo = await getConsignorInfo(record.consignor_id);
+                consignorInitials = consignorInfo.initials || '';
+            }
+            
+            const artist = record.artist || 'Unknown';
+            const genre = record.genre_name || record.genre || 'Unknown';
+            const initialsText = consignorInitials ? ` (${consignorInitials})` : '';
+            const infoText = `${genre} | ${artist}${initialsText}`;
+            
+            doc.setFontSize(parseInt(textFontSize));
+            doc.setFont('helvetica', 'normal');
+            
+            let displayText = infoText;
+            const maxWidth = labelWidthPt - 10;
+            if (doc.getTextWidth(displayText) > maxWidth) {
+                while (doc.getTextWidth(displayText + '…') > maxWidth && displayText.length > 0) {
+                    displayText = displayText.slice(0, -1);
+                }
+                displayText += '…';
+            }
+            
+            const infoWidth = doc.getTextWidth(displayText);
+            const infoX = x + (labelWidthPt - infoWidth) / 2;
+            const infoY = y + infoYPosPt;
+            doc.text(displayText, infoX, infoY);
+            
+            const price = record.store_price || 0;
+            const priceText = `$${price.toFixed(2)}`;
+            doc.setFontSize(parseInt(priceFontSize));
+            doc.setFont('helvetica', 'bold');
+            
+            const priceWidth = doc.getTextWidth(priceText);
+            const priceX = x + (labelWidthPt - priceWidth) / 2;
+            const priceY = y + priceYPosPt;
+            doc.text(priceText, priceX, priceY);
+            
+            const barcodeNum = record.barcode;
+            if (barcodeNum) {
+                try {
+                    const canvas = document.createElement('canvas');
+                    JsBarcode(canvas, barcodeNum, {
+                        format: "CODE128",
+                        displayValue: false,
+                        height: 30,
+                        width: 2,
+                        margin: 0
+                    });
+                    
+                    const barcodeData = canvas.toDataURL('image/png');
+                    const barcodeWidth = 40;
+                    const barcodeX = x + (labelWidthPt - barcodeWidth) / 2;
+                    const barcodeY = y + barcodeYPosPt;
+                    
+                    doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeightPt);
+                } catch (barcodeError) {
+                    console.error('Error generating barcode:', barcodeError);
+                }
+            }
+            
+            currentLabel++;
+        }
+        
+        console.log(`✅ Generated ${currentLabel} labels starting at position (${window.printStartRow}, ${window.printStartCol})`);
+        return doc.output('blob');
+        
+    } catch (error) {
+        console.error('PDF generation failed:', error);
+        showStatus(`PDF generation failed: ${error.message}`, 'error');
+        throw error;
+    }
 }
 
 // Modal Functions
@@ -888,6 +1076,11 @@ function showPrintConfirmation() {
     
     const printCountEl = document.getElementById('print-count');
     if (printCountEl) printCountEl.textContent = selectedRecordsList.length;
+    
+    const startPositionEl = document.getElementById('print-start-position-summary');
+    if (startPositionEl) {
+        startPositionEl.textContent = `(${window.printStartRow}, ${window.printStartCol})`;
+    }
     
     const summaryList = document.getElementById('print-summary-list');
     if (summaryList) {
@@ -935,10 +1128,10 @@ async function confirmPrint() {
         return;
     }
     
-    console.log(`Generating PDF for ${selectedRecordsList.length} records`);
+    console.log(`Generating PDF for ${selectedRecordsList.length} records starting at (${window.printStartRow}, ${window.printStartCol})`);
     
     try {
-        const pdfBlob = await generatePriceTagsPDF(selectedRecordsList);
+        const pdfBlob = await generatePDF(selectedRecordsList);
         
         // Download the PDF
         const url = URL.createObjectURL(pdfBlob);
@@ -955,7 +1148,7 @@ async function confirmPrint() {
             window.recentlyPrintedIds.add(record.id.toString());
         });
         
-        showStatus(`PDF generated for ${selectedRecordsList.length} records.`, 'success');
+        showStatus(`PDF generated for ${selectedRecordsList.length} records starting at (${window.printStartRow}, ${window.printStartCol}).`, 'success');
     } catch (error) {
         console.error('PDF generation failed:', error);
         showStatus(`PDF generation failed: ${error.message}`, 'error');
@@ -1155,6 +1348,12 @@ if (!window.priceTagsModule.initialized) {
             console.log('Price tags tab activated, loading users and records...');
             loadConsignorsForPriceTags();
             loadRecordsForPriceTags();
+            
+            // Initialize starting position display
+            const startRowInput = document.getElementById('print-start-row');
+            const startColInput = document.getElementById('print-start-col');
+            if (startRowInput) startRowInput.value = window.printStartRow;
+            if (startColInput) startColInput.value = window.printStartCol;
         }
     });
     
@@ -1164,6 +1363,12 @@ if (!window.priceTagsModule.initialized) {
             console.log('Price tags tab is active on load, loading users and records...');
             loadConsignorsForPriceTags();
             loadRecordsForPriceTags();
+            
+            // Initialize starting position display
+            const startRowInput = document.getElementById('print-start-row');
+            const startColInput = document.getElementById('print-start-col');
+            if (startRowInput) startRowInput.value = window.printStartRow;
+            if (startColInput) startColInput.value = window.printStartCol;
         }
         
         const searchInput = document.getElementById('record-locator-search');
@@ -1190,6 +1395,7 @@ window.goToPreviousPage = goToPreviousPage;
 window.goToNextPage = goToNextPage;
 window.goToLastPage = goToLastPage;
 window.changePageSize = changePageSize;
+window.updatePrintStartPosition = updatePrintStartPosition;
 
 // Queue functions
 window.addToQueue = addToQueue;

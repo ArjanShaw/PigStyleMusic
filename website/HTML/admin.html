@@ -385,6 +385,16 @@
             font-size: 12px;
         }
 
+        .btn-light {
+            background: #f8f9fa;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+
+        .btn-light:hover {
+            background: #e2e6ea;
+        }
+
         .inventory-table-container {
             overflow-x: auto;
             background: white;
@@ -1727,8 +1737,6 @@
             opacity: 0.7;
         }
 
-        
-
         .bulk-actions-bar {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -1790,6 +1798,15 @@
             color: #999;
             margin-top: 2px;
         }
+
+        /* Starting Position Styles */
+        .starting-position-section {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -1810,7 +1827,7 @@
     <div class="admin-container">
         <h1><i class="fas fa-cogs"></i> Admin Panel</h1>
         
-        <!-- Tabs with data-tab attributes (NO onclick) -->
+        <!-- Tabs with data-tab attributes -->
         <div class="tab-container">
             <div class="tab" data-tab="add-edit-delete">
                 <i class="fas fa-edit"></i> Add/Edit/Delete
@@ -1848,7 +1865,6 @@
             <div class="tab" data-tab="discogs">
                 <i class="fab fa-discogs"></i> Discogs
             </div>
-            <!-- Square Payments Tab -->
             <div class="tab" data-tab="square-payments">
                 <i class="fas fa-credit-card"></i> Square Payments
             </div>
@@ -2319,7 +2335,7 @@
                         <tr><td colspan="5" style="text-align:center; padding:40px;">
                             <i class="fas fa-music" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
                             Loading artists...
-                        </td></tr>
+                         </td>
                     </tbody>
                 </table>
             </div>
@@ -2667,9 +2683,31 @@
             </div>
         </div>
 
-        <!-- Price Tags Tab -->
+        <!-- Price Tags Tab with Starting Position -->
         <div id="price-tags-tab" class="tab-content">
             <h2><i class="fas fa-tags"></i> Print Price Tags</h2>
+            
+            <!-- Starting Position Selector -->
+            <div class="starting-position-section">
+                <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-flag-checkered" style="font-size: 24px;"></i>
+                        <span style="font-weight: bold;">Start Printing At:</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label style="font-weight: 500;">Row:</label>
+                        <input type="number" id="print-start-row" min="1" max="15" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
+                        <label style="font-weight: 500;">Column:</label>
+                        <input type="number" id="print-start-col" min="1" max="4" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
+                        <button class="btn btn-light btn-small" onclick="updatePrintStartPosition()" style="background: white; color: #28a745;">
+                            <i class="fas fa-sync-alt"></i> Update
+                        </button>
+                    </div>
+                    <div style="font-size: 12px; opacity: 0.9;">
+                        <i class="fas fa-info-circle"></i> Price tags will start at position <strong id="print-start-display">1, 1</strong> on the sheet
+                    </div>
+                </div>
+            </div>
             
             <!-- Filter Controls -->
             <div class="filter-controls" style="margin-bottom: 20px;">
@@ -2684,7 +2722,7 @@
                     <label for="status-filter"><i class="fas fa-filter"></i> Filter by Status:</label>
                     <select id="status-filter" class="filter-select" onchange="filterRecords()">
                         <option value="all">All Statuses</option>
-                        <option value="inactive">Inactive Only</option>
+                        <option value="new">New Only</option>
                         <option value="active">Active Only</option>
                         <option value="sold">Sold Only</option>
                     </select>
@@ -2704,7 +2742,7 @@
                     <p class="stat-number" id="total-records-print" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
                 </div>
                 <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Inactive Records</h3>
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">New Records</h3>
                     <p class="stat-number" id="inactive-records" style="font-size: 28px; font-weight: bold; color: #dc3545; margin: 0;">0</p>
                 </div>
                 <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
@@ -3099,6 +3137,7 @@
                 </div>
             </div>
         </div>
+        
         <!-- Discogs Tab -->
         <div id="discogs-tab" class="tab-content">
             <h2><i class="fab fa-discogs"></i> Discogs Inventory Management</h2>
@@ -3128,7 +3167,7 @@
                 <h3><i class="fas fa-filter"></i> Filter Inventory</h3>
                 
                 <div class="filters-row" style="display: flex; gap: 30px; align-items: flex-end; flex-wrap: wrap;">
-                    <!-- Sleeve Condition Filter - Will be populated by JavaScript -->
+                    <!-- Sleeve Condition Filter -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="sleeve-condition-filter"><i class="fas fa-box"></i> Minimal Sleeve Condition:</label>
                         <select id="sleeve-condition-filter" class="filter-select" onchange="filterDiscogsInventory()">
@@ -3136,7 +3175,7 @@
                         </select>
                     </div>
                     
-                    <!-- Disc Condition Filter - Will be populated by JavaScript -->
+                    <!-- Disc Condition Filter -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="disc-condition-filter"><i class="fas fa-compact-disc"></i> Minimal Disc Condition:</label>
                         <select id="disc-condition-filter" class="filter-select" onchange="filterDiscogsInventory()">
@@ -3153,12 +3192,12 @@
                             <option value="unlisted">Not Listed</option>
                         </select>
                     </div>
-                    <!-- Add this in the Discogs tab's filters-row div -->
+                    
+                    <!-- Consignor Filter -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="consignor-filter"><i class="fas fa-user"></i> Consignor:</label>
                         <select id="consignor-filter" class="filter-select" onchange="filterDiscogsInventory()">
                             <option value="all">All Consignors</option>
-                            <!-- Dynamically populated by JavaScript -->
                         </select>
                     </div>
                     
@@ -3411,7 +3450,6 @@
             <!-- Error Message -->
             <div id="square-payments-error" class="status-message status-error" style="display: none;"></div>
         </div>
-         
     </div>
 
     <!-- Modals -->
@@ -3424,10 +3462,8 @@
             <div class="modal-body">
                 <div class="print-summary">
                     <h4>Print Summary</h4>
-                    <p>You are about to print price tags for <strong id="print-count">0</strong> records in the queue.</p>
-                    <div id="print-summary-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                        <!-- Will be populated dynamically -->
-                    </div>
+                    <p>You are about to print price tags for <strong id="print-count">0</strong> records starting at position <strong id="print-start-position-summary">(1, 1)</strong>.</p>
+                    <div id="print-summary-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;"></div>
                     <p>After printing successfully, you should mark these records as <strong>Active</strong> using the "Mark Queue as Active" button.</p>
                 </div>
             </div>
@@ -3450,9 +3486,7 @@
                 <div class="print-summary">
                     <h4>Confirmation Required</h4>
                     <p>You are about to mark <strong id="mark-active-count">0</strong> records in the queue as <strong>Active</strong>.</p>
-                    <div id="mark-active-summary-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                        <!-- Will be populated dynamically -->
-                    </div>
+                    <div id="mark-active-summary-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;"></div>
                     <p><strong>Important:</strong> Only mark records as Active <em>after</em> you have successfully printed their price tags.</p>
                     <p>This will change their status from "Inactive" to "Active" in the system.</p>
                 </div>
@@ -3476,9 +3510,7 @@
                 <h3 class="modal-title"><i class="fas fa-square"></i> Square Terminal Checkout</h3>
                 <button class="modal-close" onclick="closeTerminalCheckoutModal()">&times;</button>
             </div>
-            <div class="modal-body" id="terminal-checkout-body">
-                <!-- Content will be dynamically populated -->
-            </div>
+            <div class="modal-body" id="terminal-checkout-body"></div>
         </div>
     </div>
 
@@ -3489,9 +3521,7 @@
                 <button class="modal-close" onclick="closeTerminalSelectionModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div id="terminal-selection-list" class="terminal-device-selector">
-                    <!-- Terminal selection will be populated here -->
-                </div>
+                <div id="terminal-selection-list" class="terminal-device-selector"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeTerminalSelectionModal()">Cancel</button>
@@ -3505,17 +3535,13 @@
     <div id="tender-modal" class="tender-modal">
         <div class="tender-content">
             <h3 style="text-align: center; margin-bottom: 20px;"><i class="fas fa-money-bill-wave"></i> Cash Payment</h3>
-            
             <div style="text-align: center; margin-bottom: 10px;">Total Due:</div>
             <div class="tender-amount" id="tender-total-due">$0.00</div>
-            
             <input type="number" id="tender-amount" class="tender-input" placeholder="Enter amount received" min="0" step="0.01" autofocus>
-            
             <div id="change-display-container" style="display: none;">
                 <div style="text-align: center; margin-bottom: 5px;">Change:</div>
                 <div class="change-display" id="change-amount">$0.00</div>
             </div>
-            
             <div class="action-buttons" style="justify-content: center; margin-top: 20px;">
                 <button class="btn btn-secondary" onclick="closeTenderModal()">Cancel</button>
                 <button class="btn btn-success" onclick="processCashPayment()" id="complete-payment-btn" disabled>
@@ -3526,9 +3552,7 @@
     </div>
 
     <div id="receipt-modal" class="receipt-modal">
-        <div class="receipt-content" id="receipt-content">
-            <!-- Receipt will be dynamically generated here -->
-        </div>
+        <div class="receipt-content" id="receipt-content"></div>
     </div>
 
     <div id="print-artists-confirmation-modal" class="modal-overlay">
@@ -3541,9 +3565,7 @@
                 <div class="print-summary">
                     <h4>Print Summary</h4>
                     <p>You are about to print artist names for <strong id="print-artists-count">0</strong> selected artists.</p>
-                    <ul id="print-artists-summary-list">
-                        <!-- Will be populated dynamically -->
-                    </ul>
+                    <ul id="print-artists-summary-list"></ul>
                 </div>
             </div>
             <div class="modal-footer">
@@ -3576,11 +3598,7 @@
                         <input type="number" id="edit-accessory-count" min="0" class="filter-select">
                     </div>
                 </div>
-                
-                <div class="barcode-preview" id="edit-barcode-preview">
-                    <!-- Barcode will be shown here -->
-                </div>
-                
+                <div class="barcode-preview" id="edit-barcode-preview"></div>
                 <div class="info-message" style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px;">
                     <i class="fas fa-info-circle"></i> Barcode is automatically generated and can't be edited directly. Click "Regenerate Barcode" to create a new one.
                 </div>
@@ -3627,14 +3645,8 @@
                 <button class="modal-close" onclick="closeRefundModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div id="refund-receipt-info" style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
-                    <!-- Receipt info will be populated here -->
-                </div>
-                
-                <div id="refund-items-container" style="margin-bottom: 20px; max-height: 300px; overflow-y: auto;">
-                    <!-- Items will be populated here -->
-                </div>
-                
+                <div id="refund-receipt-info" style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;"></div>
+                <div id="refund-items-container" style="margin-bottom: 20px; max-height: 300px; overflow-y: auto;"></div>
                 <div style="margin-bottom: 20px;">
                     <label for="refund-terminal-select" style="display: block; margin-bottom: 5px; font-weight: 500;">
                         <i class="fas fa-square"></i> Select Terminal (for Square refunds):
@@ -3643,25 +3655,12 @@
                         <option value="">Loading terminals...</option>
                     </select>
                 </div>
-                
                 <div style="margin-bottom: 20px;">
-                    <label for="refund-amount" style="display: block; margin-bottom: 5px; font-weight: 500;">
-                        Refund Amount:
-                    </label>
-                    <input type="number" 
-                           id="refund-amount" 
-                           class="tender-input" 
-                           placeholder="0.00"
-                           min="0.01"
-                           step="0.01"
-                           style="width: 100%;"
-                           readonly>
+                    <label for="refund-amount" style="display: block; margin-bottom: 5px; font-weight: 500;">Refund Amount:</label>
+                    <input type="number" id="refund-amount" class="tender-input" placeholder="0.00" min="0.01" step="0.01" style="width: 100%;" readonly>
                 </div>
-                
                 <div style="margin-bottom: 20px;">
-                    <label for="refund-reason" style="display: block; margin-bottom: 5px; font-weight: 500;">
-                        Reason:
-                    </label>
+                    <label for="refund-reason" style="display: block; margin-bottom: 5px; font-weight: 500;">Reason:</label>
                     <select id="refund-reason" class="filter-select" style="width: 100%;">
                         <option value="Customer request">Customer request</option>
                         <option value="Defective item">Defective item</option>
@@ -3670,7 +3669,6 @@
                         <option value="Other">Other</option>
                     </select>
                 </div>
-                
                 <div id="refund-error" class="status-message status-error" style="display: none;"></div>
             </div>
             <div class="modal-footer">
@@ -3691,34 +3689,26 @@
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 15px; color: #666;">Choose which columns to include in the printed report:</p>
-                
                 <div style="display: flex; flex-direction: column; gap: 12px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="print-col-date" checked> 
-                        <i class="fas fa-calendar-alt" style="width: 20px; color: #007bff;"></i> Date
+                        <input type="checkbox" id="print-col-date" checked> <i class="fas fa-calendar-alt" style="width: 20px; color: #007bff;"></i> Date
                     </label>
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="print-col-amount" checked> 
-                        <i class="fas fa-dollar-sign" style="width: 20px; color: #28a745;"></i> Amount
+                        <input type="checkbox" id="print-col-amount" checked> <i class="fas fa-dollar-sign" style="width: 20px; color: #28a745;"></i> Amount
                     </label>
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="print-col-status" checked> 
-                        <i class="fas fa-check-circle" style="width: 20px; color: #ffc107;"></i> Status
+                        <input type="checkbox" id="print-col-status" checked> <i class="fas fa-check-circle" style="width: 20px; color: #ffc107;"></i> Status
                     </label>
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="print-col-method" checked> 
-                        <i class="fas fa-credit-card" style="width: 20px; color: #17a2b8;"></i> Payment Method
+                        <input type="checkbox" id="print-col-method" checked> <i class="fas fa-credit-card" style="width: 20px; color: #17a2b8;"></i> Payment Method
                     </label>
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="print-col-card" checked> 
-                        <i class="fas fa-id-card" style="width: 20px; color: #6c757d;"></i> Card Details
+                        <input type="checkbox" id="print-col-card" checked> <i class="fas fa-id-card" style="width: 20px; color: #6c757d;"></i> Card Details
                     </label>
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="print-col-note" checked> 
-                        <i class="fas fa-sticky-note" style="width: 20px; color: #fd7e14;"></i> Note
+                        <input type="checkbox" id="print-col-note" checked> <i class="fas fa-sticky-note" style="width: 20px; color: #fd7e14;"></i> Note
                     </label>
                 </div>
-                
                 <div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px; font-size: 12px; color: #666;">
                     <i class="fas fa-info-circle"></i> The report will include a summary section with totals and filter information.
                 </div>
@@ -3742,18 +3732,11 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     
-    <!-- Admin JavaScript Modules - ORDER MATTERS! -->
-    <!-- Tab Manager MUST come first -->
+    <!-- Admin JavaScript Modules -->
     <script src="/static/js/tab-manager.js"></script>
-    
-    <!-- Core Utilities -->
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/config-manager.js"></script>
     <script src="/static/js/config-value-manager.js"></script>
-    
-    <script src="/static/js/label-generator.js"></script>
-
-    <!-- Tab Modules -->
     <script src="/static/js/add-edit-delete-manager.js"></script>
     <script src="/static/js/price-tags.js"></script>
     <script src="/static/js/checkout.js"></script>
@@ -3765,113 +3748,272 @@
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/db-query.js"></script>
     <script src="/static/js/discogs.js"></script>
-    <!-- Square Payments Module -->
     <script src="/static/js/square-payments.js"></script>
     
-    <!-- Config Initializer - Uses getConfigValues for all needed configs -->
     <script>
-    // Initialize global config object
+    // Starting position variables for price tags
+    window.printStartRow = 1;
+    window.printStartCol = 1;
+
+    function updatePrintStartPosition() {
+        const rowInput = document.getElementById('print-start-row');
+        const colInput = document.getElementById('print-start-col');
+        
+        if (rowInput) {
+            let newRow = parseInt(rowInput.value);
+            if (isNaN(newRow)) newRow = 1;
+            newRow = Math.max(1, Math.min(15, newRow));
+            window.printStartRow = newRow;
+            rowInput.value = newRow;
+        }
+        
+        if (colInput) {
+            let newCol = parseInt(colInput.value);
+            if (isNaN(newCol)) newCol = 1;
+            newCol = Math.max(1, Math.min(4, newCol));
+            window.printStartCol = newCol;
+            colInput.value = newCol;
+        }
+        
+        document.getElementById('print-start-display').textContent = `${window.printStartRow}, ${window.printStartCol}`;
+        showStatus(`Price tags will start at position (${window.printStartRow}, ${window.printStartCol})`, 'info');
+    }
+
+    // Override the generatePDF function in price-tags.js to use starting position
+    // This needs to be called after price-tags.js loads
+    document.addEventListener('DOMContentLoaded', function() {
+        // Wait for price-tags.js to load
+        setTimeout(function() {
+            if (typeof window.generatePDF === 'function') {
+                // Store original function
+                const originalGeneratePDF = window.generatePDF;
+                
+                // Override with starting position support
+                window.generatePDF = async function(records) {
+                    const { jsPDF } = window.jspdf;
+                    
+                    console.log('📄 Generating Price Tags PDF with starting position');
+                    console.log(`📍 Starting at: Row ${window.printStartRow}, Col ${window.printStartCol}`);
+                    console.log(`📊 Total records: ${records.length}`);
+                    
+                    try {
+                        if (typeof window.getConfigValue !== 'function') {
+                            throw new Error('getConfigValue function not available');
+                        }
+                        
+                        const labelWidthMM = await window.getConfigValue('LABEL_WIDTH_MM');
+                        const labelHeightMM = await window.getConfigValue('LABEL_HEIGHT_MM');
+                        const leftMarginMM = await window.getConfigValue('LEFT_MARGIN_MM');
+                        const gutterSpacingMM = await window.getConfigValue('GUTTER_SPACING_MM');
+                        const topMarginMM = await window.getConfigValue('TOP_MARGIN_MM');
+                        const priceFontSize = await window.getConfigValue('PRICE_FONT_SIZE');
+                        const textFontSize = await window.getConfigValue('TEXT_FONT_SIZE');
+                        const barcodeHeightMM = await window.getConfigValue('BARCODE_HEIGHT');
+                        const printBorders = await window.getConfigValue('PRINT_BORDERS');
+                        const priceYPosMM = await window.getConfigValue('PRICE_Y_POS');
+                        const barcodeYPosMM = await window.getConfigValue('BARCODE_Y_POS');
+                        const infoYPosMM = await window.getConfigValue('INFO_Y_POS');
+                        
+                        const mmToPt = 2.83465;
+                        const labelWidthPt = parseFloat(labelWidthMM) * mmToPt;
+                        const labelHeightPt = parseFloat(labelHeightMM) * mmToPt;
+                        const leftMarginPt = parseFloat(leftMarginMM) * mmToPt;
+                        const gutterSpacingPt = parseFloat(gutterSpacingMM) * mmToPt;
+                        const topMarginPt = parseFloat(topMarginMM) * mmToPt;
+                        const barcodeHeightPt = parseFloat(barcodeHeightMM) * mmToPt;
+                        
+                        const priceYPosPt = parseFloat(priceYPosMM) * mmToPt;
+                        const barcodeYPosPt = parseFloat(barcodeYPosMM) * mmToPt;
+                        const infoYPosPt = parseFloat(infoYPosMM) * mmToPt;
+                        
+                        const doc = new jsPDF({
+                            orientation: 'portrait',
+                            unit: 'pt',
+                            format: 'letter'
+                        });
+                        
+                        const rows = 15;
+                        const cols = 4;
+                        const labelsPerPage = rows * cols;
+                        
+                        // Calculate starting index (0-indexed)
+                        const startIndex = ((window.printStartRow - 1) * cols) + (window.printStartCol - 1);
+                        let currentLabel = 0;
+                        let pageNumber = 0;
+                        
+                        for (let i = 0; i < records.length; i++) {
+                            const record = records[i];
+                            if (!record) continue;
+                            if (record.status_id === 3) continue;
+                            
+                            // Calculate absolute position
+                            const absoluteIndex = startIndex + currentLabel;
+                            const pageIndex = absoluteIndex % labelsPerPage;
+                            const pageNum = Math.floor(absoluteIndex / labelsPerPage);
+                            
+                            if (pageNum > pageNumber) {
+                                doc.addPage();
+                                pageNumber = pageNum;
+                            }
+                            
+                            const row = Math.floor(pageIndex / cols);
+                            const col = pageIndex % cols;
+                            
+                            const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
+                            const y = topMarginPt + (row * labelHeightPt);
+                            
+                            if (printBorders === 'true' || printBorders === true) {
+                                doc.setDrawColor(0);
+                                doc.setLineWidth(0.5);
+                                doc.rect(x, y, labelWidthPt, labelHeightPt);
+                            }
+                            
+                            // Get consignor info
+                            let consignorInitials = '';
+                            if (record.consignor_id && typeof window.getConsignorInfo === 'function') {
+                                const consignorInfo = await window.getConsignorInfo(record.consignor_id);
+                                consignorInitials = consignorInfo.initials || '';
+                            }
+                            
+                            const artist = record.artist || 'Unknown';
+                            const genre = record.genre_name || record.genre || 'Unknown';
+                            const initialsText = consignorInitials ? ` (${consignorInitials})` : '';
+                            const infoText = `${genre} | ${artist}${initialsText}`;
+                            
+                            doc.setFontSize(parseInt(textFontSize));
+                            doc.setFont('helvetica', 'normal');
+                            
+                            let displayText = infoText;
+                            const maxWidth = labelWidthPt - 10;
+                            if (doc.getTextWidth(displayText) > maxWidth) {
+                                while (doc.getTextWidth(displayText + '…') > maxWidth && displayText.length > 0) {
+                                    displayText = displayText.slice(0, -1);
+                                }
+                                displayText += '…';
+                            }
+                            
+                            const infoWidth = doc.getTextWidth(displayText);
+                            const infoX = x + (labelWidthPt - infoWidth) / 2;
+                            const infoY = y + infoYPosPt;
+                            doc.text(displayText, infoX, infoY);
+                            
+                            const price = record.store_price || 0;
+                            const priceText = `$${price.toFixed(2)}`;
+                            doc.setFontSize(parseInt(priceFontSize));
+                            doc.setFont('helvetica', 'bold');
+                            
+                            const priceWidth = doc.getTextWidth(priceText);
+                            const priceX = x + (labelWidthPt - priceWidth) / 2;
+                            const priceY = y + priceYPosPt;
+                            doc.text(priceText, priceX, priceY);
+                            
+                            const barcodeNum = record.barcode;
+                            if (barcodeNum) {
+                                try {
+                                    const canvas = document.createElement('canvas');
+                                    JsBarcode(canvas, barcodeNum, {
+                                        format: "CODE128",
+                                        displayValue: false,
+                                        height: 30,
+                                        width: 2,
+                                        margin: 0
+                                    });
+                                    
+                                    const barcodeData = canvas.toDataURL('image/png');
+                                    const barcodeWidth = 40;
+                                    const barcodeX = x + (labelWidthPt - barcodeWidth) / 2;
+                                    const barcodeY = y + barcodeYPosPt;
+                                    
+                                    doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeightPt);
+                                } catch (barcodeError) {
+                                    console.error('Error generating barcode:', barcodeError);
+                                }
+                            }
+                            
+                            currentLabel++;
+                        }
+                        
+                        console.log(`✅ Generated ${currentLabel} labels starting at position (${window.printStartRow}, ${window.printStartCol})`);
+                        return doc.output('blob');
+                        
+                    } catch (error) {
+                        console.error('PDF generation failed:', error);
+                        throw error;
+                    }
+                };
+                
+                console.log('✅ PDF generation overridden with starting position support');
+            }
+        }, 1000);
+    });
+    
     window.dbConfigValues = window.dbConfigValues || {};
 
     (async function initializePageConfig() {
         console.log('🔄 Initializing global configuration for admin panel...');
         
         try {
-            // Make sure AppConfig is available
             if (typeof AppConfig === 'undefined') {
                 console.error('AppConfig not loaded yet, waiting...');
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
             
-            // Make sure config-value-manager is loaded
             if (typeof getConfigValue === 'undefined' && typeof getConfigValues === 'undefined') {
                 console.error('config-value-manager.js not loaded yet, waiting...');
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
             
-            // Define the config keys needed for initial admin panel display
             const requiredConfigKeys = [
-                'MIN_STORE_PRICE',
-                'STORE_CAPACITY',
-                'TAX_RATE',
-                'STORE_NAME',
-                'STORE_ADDRESS',
-                'STORE_PHONE',
-                'RECEIPT_FOOTER',
-                'LABEL_WIDTH_MM',
-                'LABEL_HEIGHT_MM',
-                'LEFT_MARGIN_MM',
-                'GUTTER_SPACING_MM',
-                'TOP_MARGIN_MM',
-                'PRICE_FONT_SIZE',
-                'TEXT_FONT_SIZE',
-                'BARCODE_HEIGHT',
-                'PRINT_BORDERS',
-                'PRICE_Y_POS',
-                'BARCODE_Y_POS',
-                'INFO_Y_POS'
+                'MIN_STORE_PRICE', 'STORE_CAPACITY', 'TAX_RATE', 'STORE_NAME', 'STORE_ADDRESS',
+                'STORE_PHONE', 'RECEIPT_FOOTER', 'LABEL_WIDTH_MM', 'LABEL_HEIGHT_MM', 'LEFT_MARGIN_MM',
+                'GUTTER_SPACING_MM', 'TOP_MARGIN_MM', 'PRICE_FONT_SIZE', 'TEXT_FONT_SIZE', 'BARCODE_HEIGHT',
+                'PRINT_BORDERS', 'PRICE_Y_POS', 'BARCODE_Y_POS', 'INFO_Y_POS'
             ];
             
             let configLoaded = false;
             
-            // Try using batch endpoint if getConfigValues exists (preferred)
             if (typeof getConfigValues === 'function') {
                 console.log('Loading config via getConfigValues()...');
                 try {
                     const configs = await getConfigValues(requiredConfigKeys);
                     if (configs && Object.keys(configs).length > 0) {
-                        // Store in global object for backward compatibility
                         Object.keys(configs).forEach(key => {
-                            window.dbConfigValues[key] = { 
-                                value: configs[key],
-                                description: '' // Descriptions not returned by batch endpoint
-                            };
+                            window.dbConfigValues[key] = { value: configs[key], description: '' };
                         });
                         configLoaded = true;
-                        console.log('✅ Config loaded via getConfigValues, keys:', Object.keys(window.dbConfigValues));
+                        console.log('✅ Config loaded via getConfigValues');
                     }
                 } catch (batchError) {
                     console.error('Batch config load failed:', batchError);
                 }
             } 
             
-            // If batch failed or not available, try individual fetches
             if (!configLoaded && typeof getConfigValue === 'function') {
                 console.log('Loading config via individual getConfigValue() calls...');
-                
-                // Load each required config individually
                 for (const key of requiredConfigKeys) {
                     try {
                         const value = await getConfigValue(key);
-                        window.dbConfigValues[key] = { 
-                            value: value,
-                            description: '' // Descriptions not available via this method
-                        };
+                        window.dbConfigValues[key] = { value: value, description: '' };
                     } catch (keyError) {
                         console.warn(`Could not load config key "${key}":`, keyError.message);
-                        // Continue loading other keys even if one fails
                     }
                 }
-                
                 configLoaded = true;
-                console.log('✅ Config loaded via individual getConfigValue calls, keys:', Object.keys(window.dbConfigValues));
+                console.log('✅ Config loaded via individual getConfigValue calls');
             }
             
-            // If neither method worked, try direct API call as last resort
             if (!configLoaded) {
                 console.log('Making direct API call to /config...');
                 try {
                     const response = await fetch(`${AppConfig.baseUrl}/config`, {
                         credentials: 'include',
                         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
+                            'Content-Type': 'application/json', 'Accept': 'application/json'
                         }
                     });
                     
                     if (response.ok) {
                         const data = await response.json();
-                        
                         if (data.status === 'success') {
                             if (data.configs) {
                                 Object.keys(data.configs).forEach(key => {
@@ -3880,14 +4022,12 @@
                             } else if (data.config) {
                                 data.config.forEach(item => {
                                     window.dbConfigValues[item.config_key] = {
-                                        value: item.config_value,
-                                        description: item.description || ''
+                                        value: item.config_value, description: item.description || ''
                                     };
                                 });
                             }
-                            
                             configLoaded = true;
-                            console.log('✅ Config loaded via direct API call, keys:', Object.keys(window.dbConfigValues));
+                            console.log('✅ Config loaded via direct API call');
                         }
                     }
                 } catch (directError) {
@@ -3897,16 +4037,11 @@
             
             if (configLoaded) {
                 console.log('✅ Configuration loaded successfully!');
-                console.log('Config values:', window.dbConfigValues);
-                
-                // Dispatch event that config is ready
                 window.dispatchEvent(new CustomEvent('configReady', {
                     detail: { config: window.dbConfigValues }
                 }));
             } else {
                 console.warn('⚠️ Could not load configuration. Some features may not work correctly.');
-                
-                // Show a warning message to the user
                 const statusEl = document.getElementById('checkout-status-message');
                 if (statusEl) {
                     statusEl.textContent = 'Warning: Could not load configuration. Some features may be unavailable.';
@@ -3917,8 +4052,6 @@
             
         } catch (error) {
             console.error('❌ Failed to initialize configuration:', error);
-            
-            // Show error message
             const statusEl = document.getElementById('checkout-status-message');
             if (statusEl) {
                 statusEl.textContent = `Error loading configuration: ${error.message}`;
@@ -3928,7 +4061,6 @@
         }
     })();
 
-    // Initialize TabManager after everything is loaded
     document.addEventListener('DOMContentLoaded', function() {
         console.log('🟢 DOM fully loaded, initializing TabManager...');
         setTimeout(function() {
@@ -3939,27 +4071,23 @@
                 console.error('❌ TabManager not found!');
                 alert('❌ ERROR: TabManager not loaded!');
             }
-        }, 500); // Small delay to ensure all modules are loaded
+        }, 500);
     });
 
-    // Safety check
     document.addEventListener('DOMContentLoaded', function() {
         console.log('DOM fully loaded, checking config...');
         setTimeout(function() {
             if (!window.dbConfigValues || Object.keys(window.dbConfigValues).length === 0) {
                 console.warn('Config still not loaded, attempting final reload...');
                 if (typeof getConfigValue === 'function') {
-                    // Try to load at least the most critical configs
                     const criticalKeys = ['MIN_STORE_PRICE', 'STORE_CAPACITY'];
-                    Promise.all(criticalKeys.map(key => 
-                        getConfigValue(key).catch(() => null)
-                    )).then(values => {
+                    Promise.all(criticalKeys.map(key => getConfigValue(key).catch(() => null))).then(values => {
                         criticalKeys.forEach((key, index) => {
                             if (values[index] !== null) {
                                 window.dbConfigValues[key] = { value: values[index] };
                             }
                         });
-                        console.log('✅ Critical configs loaded on safety check:', Object.keys(window.dbConfigValues));
+                        console.log('✅ Critical configs loaded on safety check');
                     }).catch(err => {
                         console.error('Safety check config load failed:', err);
                     });
