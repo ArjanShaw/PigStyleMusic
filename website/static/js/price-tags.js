@@ -804,9 +804,7 @@ function renderCurrentPage() {
         }
         
         tr.innerHTML = `
-            <td>
-                ${buttonHtml}
-            </td>
+            <td>${buttonHtml}</td>
             <td>${globalIndex + 1}</td>
             <td><strong>${formatDate(record.created_at)}</strong></td>
             <td>${truncateText(escapeHtml(record.artist) || 'Unknown', 25)}</td>
@@ -821,9 +819,7 @@ function renderCurrentPage() {
                     '<span style="color: #999;">None</span>'}
             </td>
             <td>
-                <span>
-                    ${record.status_id}
-                </span>
+                <span>${record.status_id}</span>
                 ${isRecentlyPrinted ? '<br><small style="color: #27ae60; font-size: 10px;">(Printed)</small>' : ''}
             </td>
         `;
@@ -874,6 +870,11 @@ function changePageSize(newSize) {
     renderCurrentPage();
 }
 
+// PDF Generation using shared generator
+async function generatePriceTagsPDF(records) {
+    return await window.labelGenerator.generatePriceTagsPDF(records, window.consignorCache, getConsignorInfo);
+}
+
 // Modal Functions
 function showPrintConfirmation() {
     if (window.printQueue.length === 0) {
@@ -883,7 +884,7 @@ function showPrintConfirmation() {
     
     const selectedRecordsList = window.printQueue.map(id => 
         window.allRecords.find(r => r.id.toString() === id)
-    ).filter(r => r); // Remove any undefined
+    ).filter(r => r);
     
     const printCountEl = document.getElementById('print-count');
     if (printCountEl) printCountEl.textContent = selectedRecordsList.length;
@@ -934,15 +935,10 @@ async function confirmPrint() {
         return;
     }
     
-    // REMOVED: fetchAllConfigValues call - now handled by getConfigValue in generatePDF
-    console.log('Configuration will be loaded on-demand via getConfigValue() in generatePDF');
-    
-    console.log('========== STARTING PDF GENERATION ==========');
     console.log(`Generating PDF for ${selectedRecordsList.length} records`);
     
     try {
-        const pdfBlob = await generatePDF(selectedRecordsList);
-        console.log('PDF generation complete, downloading...');
+        const pdfBlob = await generatePriceTagsPDF(selectedRecordsList);
         
         // Download the PDF
         const url = URL.createObjectURL(pdfBlob);
@@ -1130,7 +1126,7 @@ async function confirmMarkActive() {
     // Remove successfully marked records from queue
     window.printQueue = window.printQueue.filter(id => {
         const record = window.allRecords.find(r => r.id.toString() === id);
-        return record && record.status_id !== 2; // Keep if not marked as active
+        return record && record.status_id !== 2;
     });
     
     // Remove from recently printed
@@ -1150,221 +1146,6 @@ async function confirmMarkActive() {
     }
     
     showLoading(false);
-}
-
-// PDF Generation with extensive logging - NO DEFAULTS
-async function generatePDF(records) {
-    return new Promise(async (resolve, reject) => {
-        const { jsPDF } = window.jspdf;
-        
-        console.log('📄 PDF Generation Started');
-        console.log(`📊 Total records to process: ${records.length}`);
-        
-        try {
-            // Get configuration values - these will throw if missing
-            // But we'll use getConfigValue which will handle caching
-            if (typeof window.getConfigValue !== 'function') {
-                throw new Error('getConfigValue function not available. Make sure config-value-manager.js is loaded.');
-            }
-            
-            const labelWidthMM = await window.getConfigValue('LABEL_WIDTH_MM');
-            const labelHeightMM = await window.getConfigValue('LABEL_HEIGHT_MM');
-            const leftMarginMM = await window.getConfigValue('LEFT_MARGIN_MM');
-            const gutterSpacingMM = await window.getConfigValue('GUTTER_SPACING_MM');
-            const topMarginMM = await window.getConfigValue('TOP_MARGIN_MM');
-            const priceFontSize = await window.getConfigValue('PRICE_FONT_SIZE');
-            const textFontSize = await window.getConfigValue('TEXT_FONT_SIZE');
-            const barcodeHeightMM = await window.getConfigValue('BARCODE_HEIGHT');
-            const printBorders = await window.getConfigValue('PRINT_BORDERS');
-            const priceYPosMM = await window.getConfigValue('PRICE_Y_POS');
-            const barcodeYPosMM = await window.getConfigValue('BARCODE_Y_POS');
-            const infoYPosMM = await window.getConfigValue('INFO_Y_POS');
-            
-            console.log('⚙️ Configuration values (mm):');
-            console.log(`   - Label: ${labelWidthMM}mm x ${labelHeightMM}mm`);
-            console.log(`   - Margins: Left=${leftMarginMM}mm, Top=${topMarginMM}mm, Gutter=${gutterSpacingMM}mm`);
-            console.log(`   - Y Positions (from top of label): Price=${priceYPosMM}mm, Info=${infoYPosMM}mm, Barcode=${barcodeYPosMM}mm`);
-            console.log(`   - Font Sizes: Price=${priceFontSize}pt, Info=${textFontSize}pt`);
-            console.log(`   - Print Borders: ${printBorders}`);
-            
-            // Convert mm to points (1 mm = 2.83465 points)
-            const mmToPt = 2.83465;
-            const labelWidthPt = parseFloat(labelWidthMM) * mmToPt;
-            const labelHeightPt = parseFloat(labelHeightMM) * mmToPt;
-            const leftMarginPt = parseFloat(leftMarginMM) * mmToPt;
-            const gutterSpacingPt = parseFloat(gutterSpacingMM) * mmToPt;
-            const topMarginPt = parseFloat(topMarginMM) * mmToPt;
-            const barcodeHeightPt = parseFloat(barcodeHeightMM) * mmToPt;
-            
-            // Convert Y positions from mm to points
-            const priceYPosPt = parseFloat(priceYPosMM) * mmToPt;
-            const barcodeYPosPt = parseFloat(barcodeYPosMM) * mmToPt;
-            const infoYPosPt = parseFloat(infoYPosMM) * mmToPt;
-            
-            console.log('📐 Converted to points:');
-            console.log(`   - Label: ${labelWidthPt.toFixed(2)}pt x ${labelHeightPt.toFixed(2)}pt`);
-            console.log(`   - Margins: Left=${leftMarginPt.toFixed(2)}pt, Top=${topMarginPt.toFixed(2)}pt, Gutter=${gutterSpacingPt.toFixed(2)}pt`);
-            console.log(`   - Y Positions (points from top of label): Price=${priceYPosPt.toFixed(2)}pt, Info=${infoYPosPt.toFixed(2)}pt, Barcode=${barcodeYPosPt.toFixed(2)}pt`);
-            
-            // Create PDF with letter size (612 x 792 points)
-            const doc = new jsPDF({
-                orientation: 'portrait',
-                unit: 'pt',
-                format: 'letter'
-            });
-            
-            console.log(`📄 PDF created - Page size: 612pt x 792pt`);
-            
-            // 15 rows, 4 columns = 60 labels per page
-            const rows = 15;
-            const cols = 4;
-            const labelsPerPage = rows * cols;
-            
-            console.log(`📊 Layout: ${rows} rows, ${cols} columns, ${labelsPerPage} labels per page`);
-            
-            let currentLabel = 0;
-            
-            for (const record of records) {
-                // Skip if record is undefined
-                if (!record) {
-                    console.warn('⚠️ Skipping undefined record');
-                    continue;
-                }
-                
-                // Skip sold records
-                if (record.status_id === 3) {
-                    console.log(`⚠️ Skipping sold record: ${record.artist} - ${record.title}`);
-                    continue;
-                }
-                
-                // Add new page if needed
-                if (currentLabel > 0 && currentLabel % labelsPerPage === 0) {
-                    doc.addPage();
-                    console.log(`📄 Added new page ${Math.floor(currentLabel / labelsPerPage) + 1}`);
-                }
-                
-                // Calculate position on page
-                const pageIndex = currentLabel % labelsPerPage;
-                const row = Math.floor(pageIndex / cols);
-                const col = pageIndex % cols;
-                
-                // Calculate exact position
-                const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
-                const y = topMarginPt + (row * labelHeightPt);
-                
-                console.log(`\n🏷️ Label #${currentLabel + 1}:`);
-                console.log(`   - Record: ${record.artist} - ${record.title} (ID: ${record.id})`);
-                console.log(`   - Position: Row ${row + 1}, Col ${col + 1}`);
-                console.log(`   - Label Top-Left: (${x.toFixed(2)}, ${y.toFixed(2)})`);
-                console.log(`   - Label Bottom-Right: (${(x + labelWidthPt).toFixed(2)}, ${(y + labelHeightPt).toFixed(2)})`);
-                
-                // Draw border if enabled
-                if (printBorders === 'true' || printBorders === true) {
-                    doc.setDrawColor(0);
-                    doc.setLineWidth(0.5);
-                    doc.rect(x, y, labelWidthPt, labelHeightPt);
-                    console.log(`   - Drew border at (${x.toFixed(2)}, ${y.toFixed(2)}) size ${labelWidthPt.toFixed(2)}x${labelHeightPt.toFixed(2)}`);
-                }
-                
-                // Regular price tag mode
-                const consignorId = record.consignor_id;
-                let consignorInitials = '';
-                if (consignorId) {
-                    const consignorInfo = await getConsignorInfo(consignorId);
-                    consignorInitials = consignorInfo.initials || '';
-                }
-                
-                // Print info FIRST (at the top)
-                const artist = record.artist || 'Unknown';
-                const genre = record.genre_name || record.genre || 'Unknown';
-                
-                const initialsText = consignorInitials ? ` (${consignorInitials})` : '';
-                const infoText = `${genre} | ${artist}${initialsText}`;
-                
-                doc.setFontSize(parseInt(textFontSize));
-                doc.setFont('helvetica', 'normal');
-                
-                // Truncate if too long
-                let displayText = infoText;
-                const maxWidth = labelWidthPt - 10;
-                if (doc.getTextWidth(displayText) > maxWidth) {
-                    console.log(`   ✂️ Text too long (${doc.getTextWidth(displayText).toFixed(2)}pt > ${maxWidth.toFixed(2)}pt), truncating...`);
-                    while (doc.getTextWidth(displayText + '…') > maxWidth && displayText.length > 0) {
-                        displayText = displayText.slice(0, -1);
-                    }
-                    displayText += '…';
-                }
-                
-                const infoWidth = doc.getTextWidth(displayText);
-                const infoX = x + (labelWidthPt - infoWidth) / 2;
-                const infoY = y + infoYPosPt;  // Converted from mm to points
-                
-                console.log(`   📝 Info: "${displayText}" at (${infoX.toFixed(2)}, ${infoY.toFixed(2)})`);
-                doc.text(displayText, infoX, infoY);
-                
-                // Print price (in the middle)
-                const price = record.store_price || 0;
-                const priceText = `$${price.toFixed(2)}`;
-                doc.setFontSize(parseInt(priceFontSize));
-                doc.setFont('helvetica', 'bold');
-                
-                const priceWidth = doc.getTextWidth(priceText);
-                const priceX = x + (labelWidthPt - priceWidth) / 2;
-                const priceY = y + priceYPosPt;  // Converted from mm to points
-                
-                console.log(`   💰 Price: "${priceText}" at (${priceX.toFixed(2)}, ${priceY.toFixed(2)})`);
-                doc.text(priceText, priceX, priceY);
-                
-                // Print barcode (at the bottom)
-                const barcodeNum = record.barcode;
-                if (barcodeNum) {
-                    try {
-                        console.log(`   🔳 Barcode: ${barcodeNum}`);
-                        
-                        // Create barcode canvas
-                        const canvas = document.createElement('canvas');
-                        JsBarcode(canvas, barcodeNum, {
-                            format: "CODE128",
-                            displayValue: false,
-                            height: 30,
-                            width: 2,
-                            margin: 0
-                        });
-                        
-                        const barcodeData = canvas.toDataURL('image/png');
-                        
-                        // Position barcode - 40pt wide, barcodeHeightPt tall
-                        const barcodeWidth = 40;
-                        const barcodeX = x + (labelWidthPt - barcodeWidth) / 2;
-                        const barcodeY = y + barcodeYPosPt;  // Converted from mm to points
-                        
-                        console.log(`   🔳 Barcode position: (${barcodeX.toFixed(2)}, ${barcodeY.toFixed(2)}) size ${barcodeWidth}pt x ${barcodeHeightPt.toFixed(2)}pt`);
-                        
-                        doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeightPt);
-                        console.log(`   ✅ Barcode added successfully`);
-                    } catch (barcodeError) {
-                        console.error(`   ❌ Error generating barcode:`, barcodeError);
-                    }
-                } else {
-                    console.log(`   ⚠️ No barcode for record ${record.id}`);
-                }
-                
-                currentLabel++;
-            }
-            
-            console.log(`\n✅ PDF Generation Complete - Total labels: ${currentLabel}`);
-            console.log(`========================================`);
-            
-            // Generate PDF blob
-            const pdfBlob = doc.output('blob');
-            resolve(pdfBlob);
-            
-        } catch (error) {
-            console.error('❌ PDF Generation failed:', error);
-            showStatus(`PDF Generation failed: ${error.message}`, 'error');
-            reject(error);
-        }
-    });
 }
 
 // Initialize when tab is activated
