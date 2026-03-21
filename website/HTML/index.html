@@ -201,7 +201,7 @@
                 }
             });
 
-            // Fetch and display commission rate
+            // Fetch and display commission rate AND update the merged sell line
             async function fetchCommissionRate() {
                 try {
                     // Check if AppConfig is loaded
@@ -233,12 +233,11 @@
                     
                     // Check if we got the expected data
                     if (data && data.commission_rate_percent) {
-                        // Update the consignment item with the commission rate
-                        const consignmentItem = document.getElementById('consignment-item');
-                        if (consignmentItem) {
-                            consignmentItem.innerHTML = 
-                                `Sell your record collection on <a href="consignment.html">consignment</a> - Current rate: <strong>${data.commission_rate_percent}</strong>`;
-                            console.log('Commission rate displayed:', data.commission_rate_percent);
+                        // Update the merged consignment + cash line with the current rate
+                        const sellLineItem = document.getElementById('sell-records-line');
+                        if (sellLineItem) {
+                            sellLineItem.innerHTML = `Sell your records for cash or on <a href="consignment.html">consignment</a> - Current rate: <strong>${data.commission_rate_percent}</strong>`;
+                            console.log('Commission rate displayed in merged line:', data.commission_rate_percent);
                         }
                     } else {
                         throw new Error('Invalid response format: missing commission_rate_percent');
@@ -247,11 +246,10 @@
                 } catch (error) {
                     console.error('Error fetching commission rate:', error);
                     
-                    // Show fallback message
-                    const consignmentItem = document.getElementById('consignment-item');
-                    if (consignmentItem) {
-                        consignmentItem.innerHTML = 
-                            `Sell your record collection on <a href="consignment.html">consignment</a> - Rate info currently unavailable`;
+                    // Show fallback message in the merged line
+                    const sellLineItem = document.getElementById('sell-records-line');
+                    if (sellLineItem) {
+                        sellLineItem.innerHTML = `Sell your records for cash or on <a href="consignment.html">consignment</a> - Rate info currently unavailable`;
                     }
                     
                     // Try direct fetch as fallback (without AppConfig)
@@ -267,10 +265,9 @@
                         if (fallbackResponse.ok) {
                             const fallbackData = await fallbackResponse.json();
                             if (fallbackData.commission_rate_percent) {
-                                const consignmentItem = document.getElementById('consignment-item');
-                                if (consignmentItem) {
-                                    consignmentItem.innerHTML = 
-                                        `Sell your record collection on <a href="consignment.html">consignment</a> - Current rate: <strong>${fallbackData.commission_rate_percent}</strong>`;
+                                const sellLineItem = document.getElementById('sell-records-line');
+                                if (sellLineItem) {
+                                    sellLineItem.innerHTML = `Sell your records for cash or on <a href="consignment.html">consignment</a> - Current rate: <strong>${fallbackData.commission_rate_percent}</strong>`;
                                 }
                             }
                         }
@@ -358,7 +355,8 @@
     <!-- Sticky Notes Container (will be populated by JavaScript) -->
     <div class="sticky-notes-container"></div>
     
-     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
+    <!-- NAVIGATION BAR: Removed "Consign" tab as requested -->
+    <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
         <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
             <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
              
@@ -367,7 +365,7 @@
             <a href="/shop" style="color: white; text-decoration: none;">Browse</a>
             <a href="/merch" style="color: white; text-decoration: none;">Merch</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
-            <a href="/consignment" style="color: white; text-decoration: none;">Consign</a>
+            <!-- CONSIGN TAB REMOVED -->
             <div id="auth-section">
                 
             </div>
@@ -422,12 +420,11 @@
                 <li>
                     Now offering <a href="https://app.squareup.com/gift/MLV1G6XV2N93F/order" target="_blank" style="color: #ff6b6b; font-weight: bold;"> gift cards!</a>
                 </li>
-                <li id="consignment-item">
-                    Sell your record collection on <a href="consignment.html">consignment</a>
+                <!-- MERGED LINE: combines consignment + cash offer with dynamic commission rate -->
+                <li id="sell-records-line">
+                    Sell your records for cash or on <a href="consignment.html">consignment</a> - Current rate: <strong>loading...</strong>
                 </li>
-                <li>
-                    Sell your record collection for cash - drop off your records for an offer
-                </li>
+                <!-- Original separate lines removed as requested -->
             </ul>
         </div>
 
