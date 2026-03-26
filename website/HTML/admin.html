@@ -1807,26 +1807,6 @@
             margin-bottom: 20px;
             color: white;
         }
-
-        /* Custom Labels Tab Grid Styles */
-        .label-sheet-cell {
-            transition: all 0.2s ease;
-        }
-        
-        .label-sheet-cell:hover {
-            transform: scale(1.02);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        }
-        
-        /* Custom Labels Input Field Styles */
-        .label-sheet-cell input {
-            transition: font-size 0.1s ease;
-        }
-        
-        .label-sheet-cell input:focus {
-            outline: 2px solid #007bff;
-            outline-offset: 2px;
-        }
     </style>
 </head>
 <body>
@@ -1884,9 +1864,6 @@
             </div>
             <div class="tab" data-tab="discogs">
                 <i class="fab fa-discogs"></i> Discogs
-            </div>
-            <div class="tab" data-tab="custom-labels">
-                <i class="fas fa-tag"></i> Custom Labels
             </div>
             <div class="tab" data-tab="square-payments">
                 <i class="fas fa-credit-card"></i> Square Payments
@@ -2272,7 +2249,7 @@
             <div class="records-table-container">
                 <table class="records-table" id="users-table">
                     <thead>
-                        60tr
+                        <tr>
                             <th>ID</th>
                             <th>Username</th>
                             <th>Email</th>
@@ -2346,19 +2323,19 @@
             <div class="records-table-container">
                 <table class="records-table" id="artists-table">
                     <thead>
-                        60tr
+                        <tr>
                             <th><input type="checkbox" id="select-all-artists"></th>
                             <th>#</th>
                             <th>Artist Name</th>
                             <th>Record Count</th>
                             <th>Actions</th>
-                          </tr>
+                        </tr>
                     </thead>
                     <tbody id="artists-body">
                         <tr><td colspan="5" style="text-align:center; padding:40px;">
                             <i class="fas fa-music" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
                             Loading artists...
-                        </td></tr>
+                         </td>
                     </tbody>
                 </table>
             </div>
@@ -2976,7 +2953,7 @@
             <div class="records-table-container">
                 <table class="records-table" id="orders-table">
                     <thead>
-                        60tr
+                        <tr>
                             <th onclick="sortOrders('id')" id="sort-id" style="cursor: pointer;">ID <span class="sort-indicator"></span></th>
                             <th onclick="sortOrders('square_order_id')" id="sort-square_order_id" style="cursor: pointer;">Order ID</th>
                             <th onclick="sortOrders('created_at')" id="sort-created_at" style="cursor: pointer;">Date</th>
@@ -3273,7 +3250,7 @@
             <div class="records-table-container">
                 <table class="records-table" id="discogs-inventory-table">
                     <thead>
-                        60tr
+                        <tr>
                             <th style="width: 40px;"><input type="checkbox" id="discogs-select-all" onchange="toggleAllDiscogsRecords()"></th>
                             <th>ID</th>
                             <th>Artist</th>
@@ -3341,86 +3318,6 @@
             <!-- Status Message -->
             <div id="discogs-status-message" class="status-message" style="margin-top: 20px; display: none;"></div>
         </div>
-
-        <!-- Custom Labels Tab -->
-        <div id="custom-labels-tab" class="tab-content">
-            <h2><i class="fas fa-tag"></i> Custom Label Placer</h2>
-            <p style="color: #666; margin-bottom: 20px;">Type directly into any label cell. Text will automatically scale to fill the space. Empty cells will be skipped when printing.</p>
-            
-            <!-- Starting Position Selector -->
-            <div class="starting-position-section">
-                <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-flag-checkered" style="font-size: 24px;"></i>
-                        <span style="font-weight: bold;">Start Printing At:</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <label style="font-weight: 500;">Row:</label>
-                        <input type="number" id="start-row" min="1" max="15" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
-                        <label style="font-weight: 500;">Column:</label>
-                        <input type="number" id="start-col" min="1" max="4" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
-                        <button class="btn btn-light btn-small" onclick="updateStartingPosition()" style="background: white; color: #28a745;">
-                            <i class="fas fa-sync-alt"></i> Update
-                        </button>
-                    </div>
-                    <div style="font-size: 12px; opacity: 0.9;">
-                        <i class="fas fa-info-circle"></i> Labels will start at position <strong id="start-row-display">1</strong>, <strong id="start-col-display">1</strong> on the sheet
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Label Sheet Grid Display -->
-            <div class="label-sheet-container" style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; overflow-x: auto;">
-                <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <h3 style="margin: 0;"><i class="fas fa-th"></i> Label Sheet Grid</h3>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-secondary btn-small" onclick="refreshLabelSheet()">
-                            <i class="fas fa-sync-alt"></i> Refresh Grid
-                        </button>
-                        <button class="btn btn-info btn-small" onclick="showSheetInfo()">
-                            <i class="fas fa-info-circle"></i> Sheet Info
-                        </button>
-                        <button class="btn btn-danger btn-small" onclick="clearAllLabels()">
-                            <i class="fas fa-trash"></i> Clear All
-                        </button>
-                    </div>
-                </div>
-                <div id="label-sheet-grid" style="min-height: 400px; overflow-x: auto; padding: 10px;">
-                    <div style="text-align: center; padding: 40px; color: #999;">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <p>Loading label sheet configuration...</p>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Print Queue Section -->
-            <div class="queue-container">
-                <div class="queue-header">
-                    <h3><i class="fas fa-list-ol"></i> Labels with Text <span class="queue-badge" id="custom-labels-queue-count">0</span></h3>
-                </div>
-                <div class="queue-content" id="custom-labels-queue-content">
-                    <div class="queue-empty">
-                        <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 10px; opacity: 0.5;"></i>
-                        <p>No labels placed on the sheet</p>
-                        <p style="font-size: 12px;">Type directly into any cell in the grid above to add text</p>
-                    </div>
-                </div>
-                <div class="queue-actions">
-                    <button class="btn btn-success" onclick="showPrintConfirmation()" id="print-custom-queue-btn" disabled>
-                        <i class="fas fa-print"></i> Print Sheet (<span id="print-custom-queue-count">0</span>)
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Loading Indicator -->
-            <div class="loading" id="custom-labels-loading" style="display: none;">
-                <div class="loading-spinner"></div>
-                <p>Generating PDF...</p>
-            </div>
-            
-            <!-- Status Message -->
-            <div id="custom-labels-status" class="status-message" style="margin-top: 20px; display: none;"></div>
-        </div>
         
         <!-- Square Payments Tab -->
         <div id="square-payments-tab" class="tab-content">
@@ -3485,7 +3382,7 @@
             <div class="records-table-container">
                 <table class="records-table" id="square-payments-table">
                     <thead>
-                        60tr
+                        <tr>
                             <th>Date</th>
                             <th>Amount</th>
                             <th>Status</th>
@@ -3825,30 +3722,6 @@
         </div>
     </div>
 
-    <!-- Custom Labels Print Confirmation Modal -->
-    <div id="custom-print-confirmation-modal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-print"></i> Print Custom Labels</h3>
-                <button class="modal-close" onclick="closePrintConfirmation()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="print-summary">
-                    <h4>Print Summary</h4>
-                    <p>You are about to print <strong id="custom-print-count">0</strong> labels starting at position <strong id="custom-print-start-position">(1, 1)</strong>.</p>
-                    <div id="custom-print-summary-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;"></div>
-                    <p><strong>Note:</strong> Text will automatically scale to fit each label. Empty cells are skipped.</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closePrintConfirmation()">Cancel</button>
-                <button class="btn btn-success" onclick="confirmPrint()">
-                    <i class="fas fa-print"></i> Print Now
-                </button>
-            </div>
-        </div>
-    </div>
-
     <div id="barcode-print-container" style="display: none;"></div>
 
     <!-- Scripts -->
@@ -3864,7 +3737,6 @@
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/config-manager.js"></script>
     <script src="/static/js/config-value-manager.js"></script>
-    <script src="/static/js/label-generator.js"></script>
     <script src="/static/js/add-edit-delete-manager.js"></script>
     <script src="/static/js/price-tags.js"></script>
     <script src="/static/js/checkout.js"></script>
@@ -3876,7 +3748,6 @@
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/db-query.js"></script>
     <script src="/static/js/discogs.js"></script>
-    <script src="/static/js/custom-labels.js"></script>
     <script src="/static/js/square-payments.js"></script>
     
     <script>
@@ -3909,16 +3780,21 @@
     }
 
     // Override the generatePDF function in price-tags.js to use starting position
+    // This needs to be called after price-tags.js loads
     document.addEventListener('DOMContentLoaded', function() {
+        // Wait for price-tags.js to load
         setTimeout(function() {
             if (typeof window.generatePDF === 'function') {
+                // Store original function
                 const originalGeneratePDF = window.generatePDF;
                 
+                // Override with starting position support
                 window.generatePDF = async function(records) {
                     const { jsPDF } = window.jspdf;
                     
                     console.log('📄 Generating Price Tags PDF with starting position');
                     console.log(`📍 Starting at: Row ${window.printStartRow}, Col ${window.printStartCol}`);
+                    console.log(`📊 Total records: ${records.length}`);
                     
                     try {
                         if (typeof window.getConfigValue !== 'function') {
@@ -3960,6 +3836,7 @@
                         const cols = 4;
                         const labelsPerPage = rows * cols;
                         
+                        // Calculate starting index (0-indexed)
                         const startIndex = ((window.printStartRow - 1) * cols) + (window.printStartCol - 1);
                         let currentLabel = 0;
                         let pageNumber = 0;
@@ -3969,6 +3846,7 @@
                             if (!record) continue;
                             if (record.status_id === 3) continue;
                             
+                            // Calculate absolute position
                             const absoluteIndex = startIndex + currentLabel;
                             const pageIndex = absoluteIndex % labelsPerPage;
                             const pageNum = Math.floor(absoluteIndex / labelsPerPage);
@@ -3990,6 +3868,7 @@
                                 doc.rect(x, y, labelWidthPt, labelHeightPt);
                             }
                             
+                            // Get consignor info
                             let consignorInitials = '';
                             if (record.consignor_id && typeof window.getConsignorInfo === 'function') {
                                 const consignorInfo = await window.getConsignorInfo(record.consignor_id);
