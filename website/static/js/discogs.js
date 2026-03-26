@@ -14,6 +14,7 @@ let discConditionFilter = '';
 let listingStatusFilter = 'all';
 let searchFilter = '';
 let consignorFilter = 'all';
+let barcodeSearchFilter = ''; // New barcode search filter
 
 // Conditions data from database
 let conditionsMap = {
@@ -41,6 +42,8 @@ window.submitToDiscogs = submitToDiscogs;
 window.populateConditionDropdowns = populateConditionDropdowns;
 window.loadConsignors = loadConsignors;
 window.loadDiscogsListings = loadDiscogsListings;
+window.searchDiscogsByBarcode = searchDiscogsByBarcode; // New function
+window.clearBarcodeSearch = clearBarcodeSearch; // New function
 
 /**
  * Load conditions from database
@@ -218,7 +221,7 @@ function loadDiscogsListings() {
     const tableBody = document.getElementById('discogs-response-body');
     
     if (tableBody) {
-        tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading Discogs listings...<\/td>';
+        tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading Discogs listings...</td>';
     }
     
     return fetch(url, {
@@ -252,7 +255,7 @@ function loadDiscogsListings() {
             const listedCountEl = document.getElementById('discogs-listed-count');
             if (listedCountEl) listedCountEl.textContent = listedCount;
         } else {
-            tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No Discogs listings found<\/td>';
+            tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No Discogs listings found</td>';
             const listedCountEl = document.getElementById('discogs-listed-count');
             if (listedCountEl) listedCountEl.textContent = 0;
         }
@@ -260,7 +263,7 @@ function loadDiscogsListings() {
     .catch(error => {
         console.error('Error loading Discogs listings:', error);
         if (tableBody) {
-            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">Error: ${error.message}<\/td>`;
+            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">Error: ${error.message}</td>`;
         }
     });
 }
@@ -277,7 +280,7 @@ function loadDiscogsInventory() {
     if (loadingEl) loadingEl.style.display = 'block';
     
     if (tableBody) {
-        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading local inventory...</p><\/td>';
+        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading local inventory...</p></td>';
     }
     
     Promise.all([
@@ -305,7 +308,7 @@ function loadDiscogsInventory() {
                 <button class="btn btn-primary" onclick="loadDiscogsInventory()">
                     <i class="fas fa-sync-alt"></i> Try Again
                 </button>
-             <\/td>`;
+             </td>`;
         }
     });
 }
@@ -315,6 +318,14 @@ function loadDiscogsInventory() {
  */
 function applyDiscogsFilters() {
     filteredDiscogsInventory = discogsInventory.filter(record => {
+        // Barcode search filter (exact match on barcode)
+        if (barcodeSearchFilter) {
+            const recordBarcode = record.barcode || '';
+            if (recordBarcode !== barcodeSearchFilter) {
+                return false;
+            }
+        }
+        
         // Disc condition filter
         if (discConditionFilter) {
             const discConditionId = record.condition_disc_id;
@@ -350,7 +361,7 @@ function applyDiscogsFilters() {
             if (String(consignorId) !== String(consignorFilter)) return false;
         }
         
-        // Search filter
+        // Search filter (artist, title, catalog, barcode, consignor)
         if (searchFilter) {
             const searchLower = searchFilter.toLowerCase();
             const artist = (record.artist || '').toLowerCase();
@@ -378,8 +389,81 @@ function applyDiscogsFilters() {
     
     renderDiscogsInventory();
     updateDiscogsFilterCounts();
+    
+    // Update barcode search stats
+    updateBarcodeSearchStats();
 }
 
+/**
+ * Search records by barcode
+ */
+function searchDiscogsByBarcode() {
+    const barcodeInput = document.getElementById('discogs-barcode-search');
+    if (!barcodeInput) return;
+    
+    const barcode = barcodeInput.value.trim();
+    
+    if (barcode === '') {
+        clearBarcodeSearch();
+        return;
+    }
+    
+    console.log('🔍 Searching for barcode:', barcode);
+    
+    // Set the barcode filter
+    barcodeSearchFilter = barcode;
+    
+    // Reset to first page and apply filters
+    discogsCurrentPage = 1;
+    applyDiscogsFilters();
+    
+    // Highlight the barcode search field to show it's active
+    barcodeInput.style.borderColor = '#28a745';
+    barcodeInput.style.backgroundColor = '#f0f9f0';
+    
+    // Show clear button
+    const clearBtn = document.getElementById('clear-barcode-search');
+    if (clearBtn) {
+        clearBtn.style.display = 'inline-block';
+    }
+}
+
+/**
+ * Clear barcode search filter
+ */
+function clearBarcodeSearch() {
+    const barcodeInput = document.getElementById('discogs-barcode-search');
+    if (barcodeInput) {
+        barcodeInput.value = '';
+        barcodeInput.style.borderColor = '';
+        barcodeInput.style.backgroundColor = '';
+    }
+    
+    const clearBtn = document.getElementById('clear-barcode-search');
+    if (clearBtn) {
+        clearBtn.style.display = 'none';
+    }
+    
+    barcodeSearchFilter = '';
+    discogsCurrentPage = 1;
+    applyDiscogsFilters();
+}
+
+/**
+ * Update barcode search stats
+ */
+function updateBarcodeSearchStats() {
+    const statsEl = document.getElementById('discogs-barcode-stats');
+    if (!statsEl) return;
+    
+    if (barcodeSearchFilter) {
+        const matchCount = filteredDiscogsInventory.length;
+        statsEl.innerHTML = `<span style="color: #28a745;"><i class="fas fa-barcode"></i> Found ${matchCount} record${matchCount !== 1 ? 's' : ''} with barcode: ${barcodeSearchFilter}</span>`;
+        statsEl.style.display = 'block';
+    } else {
+        statsEl.style.display = 'none';
+    }
+}
 
 /**
  * Render inventory table
@@ -393,7 +477,11 @@ function renderDiscogsInventory() {
     if (!tableBody) return;
     
     if (filteredDiscogsInventory.length === 0) {
-        tableBody.innerHTML = '<td colspan="13" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
+        let message = 'No records match your filters';
+        if (barcodeSearchFilter) {
+            message = `No records found with barcode: ${barcodeSearchFilter}`;
+        }
+        tableBody.innerHTML = `<td colspan="13" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>${message}</p></td>`;
         return;
     }
     
@@ -429,8 +517,11 @@ function renderDiscogsInventory() {
             }
         }
         
+        // Highlight if this record matches the barcode search
+        const isBarcodeMatch = barcodeSearchFilter && record.barcode === barcodeSearchFilter;
+        
         html += `
-            <tr class="${isSelected ? 'record-selected' : ''}">
+            <tr class="${isSelected ? 'record-selected' : ''} ${isBarcodeMatch ? 'barcode-match' : ''}" style="${isBarcodeMatch ? 'background-color: #fff3cd;' : ''}">
                 <td style="text-align: center;">
                     <input type="checkbox" 
                            class="discogs-record-checkbox" 
@@ -449,7 +540,7 @@ function renderDiscogsInventory() {
                 <td>${escapeHtml(consignorDisplay)}</td>
                 <td>${isListed ? '<span class="status-badge paid">Listed</span>' : '<span class="status-badge new">Not Listed</span>'}</td>
                 <td>${discogsListingId ? escapeHtml(String(discogsListingId)) : '-'}</td>
-                <td>${record.catalog_number ? escapeHtml(record.catalog_number) : '-'}</td>
+                <td>${record.barcode ? `<span class="barcode-value" style="font-family: monospace; font-size: 12px;">${escapeHtml(record.barcode)}</span>` : '-'}</td>
             </tr>
         `;
     });
