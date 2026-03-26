@@ -296,6 +296,83 @@ def require_discogs_auth(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
+@app.route('/api/discogs/test-listings', methods=['GET'])
+def test_discogs_listings():
+    """Test endpoint to fetch Discogs listings using Personal Access Token"""
+    try:
+        # Get token from environment variable
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        
+        if not TOKEN:
+            app.logger.error("DISCOGS_USER_TOKEN not set in environment")
+            return jsonify({
+                'success': False,
+                'error': 'Discogs token not configured. Please set DISCOGS_USER_TOKEN in .env file.'
+            }), 500
+        
+        headers = {
+            'Authorization': f'Discogs token={TOKEN}',
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
+        
+        all_listings = []
+        page = 1
+        
+        while True:
+            response = requests.get(
+                f'https://api.discogs.com/users/arjanshaw/inventory',
+                headers=headers,
+                params={'page': page, 'per_page': 100}
+            )
+            
+            if response.status_code != 200:
+                return jsonify({
+                    'success': False,
+                    'error': f'Discogs API error: {response.status_code}',
+                    'response_text': response.text
+                }), response.status_code
+            
+            data = response.json()
+            listings = data.get('listings', [])
+            
+            if not listings:
+                break
+            
+            for listing in listings:
+                release = listing.get('release', {})
+                all_listings.append({
+                    'listing_id': listing.get('id'),
+                    'release_id': listing.get('release_id'),
+                    'artist': release.get('artists_sort', 'Unknown'),
+                    'title': release.get('title', 'Unknown'),
+                    'price': listing.get('price', {}).get('value', 0),
+                    'condition': listing.get('condition', ''),
+                    'sleeve_condition': listing.get('sleeve_condition', ''),
+                    'status': listing.get('status', ''),
+                    'url': f"https://www.discogs.com/sell/item/{listing.get('id')}"
+                })
+            
+            pagination = data.get('pagination', {})
+            if page >= pagination.get('pages', 1):
+                break
+            
+            page += 1
+        
+        return jsonify({
+            'success': True,
+            'listings': all_listings,
+            'count': len(all_listings)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in test_discogs_listings: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+ 
+
 @app.route('/api/discogs/my-listings', methods=['GET'])
 @require_discogs_auth
 def get_my_discogs_listings():

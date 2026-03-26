@@ -3145,7 +3145,7 @@
             <!-- Stats Cards -->
             <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
                 <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Active Records</h3>
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Local Records</h3>
                     <p class="stat-number" id="discogs-total-active" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
                 </div>
                 <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
@@ -3162,28 +3162,64 @@
                 </div>
             </div>
             
-            <!-- Filter Section -->
+            <!-- Load Discogs Listings Button under stats -->
+            <div style="margin-bottom: 20px; text-align: right;">
+                <button class="btn btn-warning" onclick="debugDiscogsAPI()" style="background: #ffc107; color: #333;">
+                    <i class="fab fa-discogs"></i> Load Discogs Listings
+                </button>
+            </div>
+            
+            <!-- Discogs Listings Response Table -->
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin-bottom: 10px;">
+                    <i class="fab fa-discogs"></i> Discogs API Response
+                </h3>
+                <div class="records-table-container">
+                    <table class="records-table" id="discogs-response-table">
+                        <thead>
+                            <tr>
+                                <th>Listing ID</th>
+                                <th>Release ID</th>
+                                <th>Artist</th>
+                                <th>Title</th>
+                                <th>Price</th>
+                                <th>Condition</th>
+                                <th>Sleeve Condition</th>
+                                <th>Status</th>
+                                <th>URL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="discogs-response-body">
+                            <tr>
+                                <td colspan="9" style="text-align: center; padding: 40px;">
+                                    <i class="fab fa-discogs" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
+                                    Click "Load Discogs Listings" to fetch data
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Filter Section (for local records only) -->
             <div class="filters-section" style="margin-bottom: 20px;">
-                <h3><i class="fas fa-filter"></i> Filter Inventory</h3>
+                <h3><i class="fas fa-filter"></i> Filter Local Inventory</h3>
                 
                 <div class="filters-row" style="display: flex; gap: 30px; align-items: flex-end; flex-wrap: wrap;">
-                    <!-- Sleeve Condition Filter -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="sleeve-condition-filter"><i class="fas fa-box"></i> Minimal Sleeve Condition:</label>
                         <select id="sleeve-condition-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="">Loading conditions...</option>
+                            <option value="">All Conditions</option>
                         </select>
                     </div>
                     
-                    <!-- Disc Condition Filter -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="disc-condition-filter"><i class="fas fa-compact-disc"></i> Minimal Disc Condition:</label>
                         <select id="disc-condition-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="">Loading conditions...</option>
+                            <option value="">All Conditions</option>
                         </select>
                     </div>
                     
-                    <!-- Listing Status Filter -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="listing-status-filter"><i class="fas fa-tag"></i> Listing Status:</label>
                         <select id="listing-status-filter" class="filter-select" onchange="filterDiscogsInventory()">
@@ -3193,7 +3229,6 @@
                         </select>
                     </div>
                     
-                    <!-- Consignor Filter -->
                     <div class="filter-group" style="min-width: 200px;">
                         <label for="consignor-filter"><i class="fas fa-user"></i> Consignor:</label>
                         <select id="consignor-filter" class="filter-select" onchange="filterDiscogsInventory()">
@@ -3201,7 +3236,6 @@
                         </select>
                     </div>
                     
-                    <!-- Search Filter -->
                     <div class="filter-group" style="flex: 1; min-width: 300px;">
                         <label for="discogs-search"><i class="fas fa-search"></i> Search:</label>
                         <input type="text" 
@@ -3211,7 +3245,6 @@
                             onkeyup="filterDiscogsInventory()">
                     </div>
                     
-                    <!-- Filter Actions -->
                     <div class="filter-group">
                         <button class="btn btn-secondary" onclick="resetDiscogsFilters()">
                             <i class="fas fa-undo"></i> Reset Filters
@@ -3219,9 +3252,8 @@
                     </div>
                 </div>
                 
-                <!-- Active Filter Display -->
                 <div id="discogs-active-filters" style="margin-top: 15px; font-size: 13px; color: #666;">
-                    <span><i class="fas fa-info-circle"></i> Showing <span id="discogs-filtered-count">0</span> of <span id="discogs-total-filtered">0</span> records</span>
+                    <span><i class="fas fa-info-circle"></i> Showing <span id="discogs-filtered-count">0</span> of <span id="discogs-total-filtered">0</span> local records</span>
                 </div>
             </div>
             
@@ -3238,15 +3270,15 @@
                 </div>
                 <div>
                     <button class="btn btn-success" onclick="submitToDiscogs()" id="submit-to-discogs-btn" disabled>
-                        <i class="fab fa-discogs"></i> Submit to Discogs (<span id="selected-count">0</span>)
-                    </button>
-                    <button class="btn btn-info" onclick="syncDiscogsListings()" id="sync-discogs-btn">
-                        <i class="fas fa-sync-alt"></i> Sync Listings
+                        <i class="fab fa-discogs"></i> Submit Selected to Discogs (<span id="selected-count">0</span>)
                     </button>
                 </div>
             </div>
             
-            <!-- Inventory Table -->
+            <!-- Local Inventory Table -->
+            <h3 style="margin-top: 20px; margin-bottom: 10px;">
+                <i class="fas fa-database"></i> Local Inventory (<span id="local-record-count">0</span> records)
+            </h3>
             <div class="records-table-container">
                 <table class="records-table" id="discogs-inventory-table">
                     <thead>
@@ -3260,23 +3292,18 @@
                             <th>Price</th>
                             <th>Sleeve Condition</th>
                             <th>Disc Condition</th>
+                            <th>Consignor</th>
                             <th>Status</th>
-                            <th>Discogs ID</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="discogs-inventory-body">
-                        <tr>
-                            <td colspan="12" style="text-align: center; padding: 40px;">
-                                <i class="fab fa-discogs" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
-                                Loading inventory...
-                            </td>
-                        </tr>
+                        <tr><td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading local inventory...</td></tr>
                     </tbody>
                 </table>
             </div>
             
-            <!-- Pagination -->
+            <!-- Pagination for local records -->
             <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button class="page-btn" onclick="goToDiscogsPage(1)" id="discogs-first-btn" disabled>
                     <i class="fas fa-angle-double-left"></i>
@@ -3287,8 +3314,7 @@
                 
                 <span class="pagination-info">
                     Page <input type="number" class="page-input" id="discogs-current-page" min="1" value="1" 
-                        onchange="goToDiscogsPage(parseInt(this.value))" onblur="goToDiscogsPage(parseInt(this.value))" 
-                        style="width: 50px; text-align: center;"> 
+                        onchange="goToDiscogsPage(parseInt(this.value))" style="width: 50px; text-align: center;"> 
                     of <span id="discogs-total-pages">1</span>
                 </span>
                 
@@ -3312,7 +3338,7 @@
             <!-- Loading Indicator -->
             <div class="loading" id="discogs-loading" style="display: none;">
                 <div class="loading-spinner"></div>
-                <p>Processing...</p>
+                <p>Loading...</p>
             </div>
             
             <!-- Status Message -->
