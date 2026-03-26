@@ -563,33 +563,25 @@ def create_discogs_listings():
                 app.logger.info(f"Listing response status: {listing_response.status_code}")
                 app.logger.info(f"Listing response body: {listing_response.text}")
                 
-                # Try to parse the response regardless of status code
-                try:
+                # Check if the request was successful
+                if listing_response.status_code == 200 or listing_response.status_code == 201:
                     listing_result = listing_response.json()
                     listing_id = listing_result.get('listing_id')
-                    app.logger.info(f"Parsed listing_id: {listing_id}")
-                except Exception as parse_error:
-                    app.logger.error(f"Failed to parse JSON: {parse_error}")
-                    listing_id = None
-                
-                # ALWAYS try to update the database if we have a listing_id
-                if listing_id:
-                    app.logger.info(f"Attempting to update record {record['id']} with listing_id {listing_id}")
+                    
+                    app.logger.info(f"Got listing ID: {listing_id}")
+                    
+                    # Update local record with Discogs listing ID
                     cursor.execute('''
                         UPDATE records 
                         SET discogs_listing_id = ?,
-                            discogs_listed_date = CURRENT_TIMESTAMP
+                            discogs_listed_date = CURRENT_TIMESTAMP,
+                            updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     ''', (listing_id, record['id']))
                     
                     conn.commit()
                     
-                    app.logger.info(f"Database update completed for record {record['id']}, rows affected: {cursor.rowcount}")
-                    
-                    # Verify the update
-                    cursor.execute('SELECT discogs_listing_id FROM records WHERE id = ?', (record['id'],))
-                    verify = cursor.fetchone()
-                    app.logger.info(f"Verified discogs_listing_id after update: {verify['discogs_listing_id'] if verify else 'None'}")
+                    app.logger.info(f"Database updated for record {record['id']}, rows affected: {cursor.rowcount}")
                     
                     results.append({
                         'record_id': record['id'],
@@ -599,18 +591,18 @@ def create_discogs_listings():
                         'success': True
                     })
                     successful_count += 1
+                    
                     app.logger.info(f"Successfully listed record {record['id']} with listing ID {listing_id}")
                 else:
-                    app.logger.error(f"No listing_id received for record {record['id']}")
+                    app.logger.error(f"Discogs listing failed with status {listing_response.status_code}: {listing_response.text}")
                     results.append({
                         'record_id': record['id'],
                         'success': False,
-                        'error': 'No listing_id in response'
+                        'error': f"Discogs API returned {listing_response.status_code}"
                     })
                 
             except Exception as e:
                 app.logger.error(f"Error creating listing for record {record['id']}: {str(e)}")
-                app.logger.error(traceback.format_exc())
                 results.append({
                     'record_id': record['id'],
                     'success': False,
