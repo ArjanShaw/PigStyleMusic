@@ -297,24 +297,35 @@ def require_discogs_auth(f):
     return decorated_function
 
 
+
 @app.route('/api/discogs/test-listings', methods=['GET'])
 def test_discogs_listings():
-    """Test endpoint to fetch Discogs listings using Personal Access Token"""
+    """Fetch Discogs listings and mark which ones match local records"""
     try:
-        # Get token from environment variable
         TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
         
         if not TOKEN:
-            app.logger.error("DISCOGS_USER_TOKEN not set in environment")
             return jsonify({
                 'success': False,
-                'error': 'Discogs token not configured. Please set DISCOGS_USER_TOKEN in .env file.'
+                'error': 'Discogs token not configured'
             }), 500
         
         headers = {
             'Authorization': f'Discogs token={TOKEN}',
             'User-Agent': 'PigStyleMusic/1.0'
         }
+        
+        # First, get all local records with Discogs listing IDs
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, discogs_listing_id 
+            FROM records 
+            WHERE discogs_listing_id IS NOT NULL
+        ''')
+        local_listings = cursor.fetchall()
+        local_listing_map = {row['discogs_listing_id']: row['id'] for row in local_listings}
+        conn.close()
         
         all_listings = []
         page = 1
@@ -329,8 +340,7 @@ def test_discogs_listings():
             if response.status_code != 200:
                 return jsonify({
                     'success': False,
-                    'error': f'Discogs API error: {response.status_code}',
-                    'response_text': response.text
+                    'error': f'Discogs API error: {response.status_code}'
                 }), response.status_code
             
             data = response.json()
@@ -341,16 +351,32 @@ def test_discogs_listings():
             
             for listing in listings:
                 release = listing.get('release', {})
+                listing_id = listing.get('id')
+                
+                # Check if this listing matches a local record
+                local_record_id = local_listing_map.get(listing_id)
+                
+                # Parse comments to find pigstyle ID if not matched by listing_id
+                comments = listing.get('comments', '')
+                pigstyle_id_match = None
+                if '[PIGSTYLE ID:' in comments:
+                    import re
+                    match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', comments)
+                    if match:
+                        pigstyle_id_match = int(match.group(1))
+                
                 all_listings.append({
-                    'listing_id': listing.get('id'),
+                    'listing_id': listing_id,
                     'release_id': listing.get('release_id'),
-                    'artist': release.get('artists_sort', 'Unknown'),
+                    'artist': release.get('artist', 'Unknown'),
                     'title': release.get('title', 'Unknown'),
                     'price': listing.get('price', {}).get('value', 0),
                     'condition': listing.get('condition', ''),
                     'sleeve_condition': listing.get('sleeve_condition', ''),
                     'status': listing.get('status', ''),
-                    'url': f"https://www.discogs.com/sell/item/{listing.get('id')}"
+                    'url': f"https://www.discogs.com/sell/item/{listing_id}",
+                    'local_record_id': local_record_id,
+                    'pigstyle_id_in_comments': pigstyle_id_match
                 })
             
             pagination = data.get('pagination', {})
@@ -366,7 +392,7 @@ def test_discogs_listings():
         })
         
     except Exception as e:
-        app.logger.error(f"Error in test_discogs_listings: {str(e)}")
+        app.logger.error(f"Error fetching Discogs listings: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -439,7 +465,6 @@ def get_my_discogs_listings():
         app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/api/discogs/create-listings', methods=['POST'])
 def create_discogs_listings():
     """
@@ -465,7 +490,11 @@ def create_discogs_listings():
                 'error': 'Discogs token not configured. Please set DISCOGS_USER_TOKEN in .env file.'
             }), 500
         
+        conn = get_db()
+        cursor = conn.cursor()
+        
         results = []
+        successful_count = 0
         
         for record in records:
             try:
@@ -512,7 +541,7 @@ def create_discogs_listings():
                 release_id = releases[0].get('id')
                 
                 # Now create the listing using the Marketplace API
-                listing_url = f"https://api.discogs.com/marketplace/listings"
+                listing_url = "https://api.discogs.com/marketplace/listings"
                 
                 listing_data = {
                     "release_id": release_id,
@@ -520,11 +549,8 @@ def create_discogs_listings():
                     "sleeve_condition": record.get('sleeve_condition', record.get('media_condition', 'Very Good Plus (VG+)')),
                     "price": float(record.get('price', 0)),
                     "status": "For Sale",
-                    "comments": f"Store ID: {record['id']}"
+                    "comments": f"[PIGSTYLE ID: {record['id']}] {record.get('notes', '')}"
                 }
-                
-                if record.get('notes'):
-                    listing_data['comments'] += f" - {record['notes']}"
                 
                 app.logger.info(f"Creating listing for release {release_id}: {listing_data}")
                 
@@ -534,47 +560,77 @@ def create_discogs_listings():
                     json=listing_data
                 )
                 
-                if listing_response.status_code == 201:
+                app.logger.info(f"Listing response status: {listing_response.status_code}")
+                app.logger.info(f"Listing response body: {listing_response.text}")
+                
+                # Try to parse the response regardless of status code
+                try:
                     listing_result = listing_response.json()
+                    listing_id = listing_result.get('listing_id')
+                    app.logger.info(f"Parsed listing_id: {listing_id}")
+                except Exception as parse_error:
+                    app.logger.error(f"Failed to parse JSON: {parse_error}")
+                    listing_id = None
+                
+                # ALWAYS try to update the database if we have a listing_id
+                if listing_id:
+                    app.logger.info(f"Attempting to update record {record['id']} with listing_id {listing_id}")
+                    cursor.execute('''
+                        UPDATE records 
+                        SET discogs_listing_id = ?,
+                            discogs_listed_date = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    ''', (listing_id, record['id']))
+                    
+                    conn.commit()
+                    
+                    app.logger.info(f"Database update completed for record {record['id']}, rows affected: {cursor.rowcount}")
+                    
+                    # Verify the update
+                    cursor.execute('SELECT discogs_listing_id FROM records WHERE id = ?', (record['id'],))
+                    verify = cursor.fetchone()
+                    app.logger.info(f"Verified discogs_listing_id after update: {verify['discogs_listing_id'] if verify else 'None'}")
+                    
                     results.append({
                         'record_id': record['id'],
-                        'listing_id': listing_result.get('id'),
+                        'listing_id': listing_id,
                         'release_id': release_id,
-                        'url': f"https://www.discogs.com/sell/item/{listing_result.get('id')}",
+                        'url': f"https://www.discogs.com/sell/item/{listing_id}",
                         'success': True
                     })
+                    successful_count += 1
+                    app.logger.info(f"Successfully listed record {record['id']} with listing ID {listing_id}")
                 else:
-                    app.logger.error(f"Discogs listing error: {listing_response.text}")
+                    app.logger.error(f"No listing_id received for record {record['id']}")
                     results.append({
                         'record_id': record['id'],
                         'success': False,
-                        'error': f"Discogs API error: {listing_response.status_code}"
+                        'error': 'No listing_id in response'
                     })
                 
             except Exception as e:
                 app.logger.error(f"Error creating listing for record {record['id']}: {str(e)}")
+                app.logger.error(traceback.format_exc())
                 results.append({
                     'record_id': record['id'],
                     'success': False,
                     'error': str(e)
                 })
         
-        successful = sum(1 for r in results if r['success'])
-        failed = len(results) - successful
+        conn.close()
         
         return jsonify({
             'success': True,
             'results': results,
-            'successful': successful,
-            'failed': failed,
-            'message': f"Successfully listed {successful} items on Discogs"
+            'successful': successful_count,
+            'failed': len(results) - successful_count,
+            'message': f"Successfully listed {successful_count} items on Discogs"
         })
         
     except Exception as e:
         app.logger.error(f"Error creating Discogs listings: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/discogs/listings/<listing_id>', methods=['DELETE'])
 @require_discogs_auth
