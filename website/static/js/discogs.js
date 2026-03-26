@@ -559,16 +559,72 @@ function updateDiscogsSelectionCount() {
         submitBtn.disabled = count === 0;
     }
 }
-
 function submitToDiscogs() {
     const selectedIds = Array.from(discogsSelectedRecords);
     
     if (selectedIds.length === 0) {
-        alert('Please select at least one record to list');
+        showDiscogsStatus('Please select at least one record to list', 'warning');
         return;
     }
     
-    alert(`Would submit ${selectedIds.length} records to Discogs. Discogs integration in progress.`);
+    // Get selected records with required fields
+    const recordsToSubmit = discogsInventory
+        .filter(r => selectedIds.includes(r.id))
+        .map(r => ({
+            id: r.id,
+            artist: r.artist,
+            title: r.title,
+            catalog_number: r.catalog_number || '',
+            media_condition: getConditionName(r.condition_disc_id),
+            sleeve_condition: getConditionName(r.condition_sleeve_id),
+            price: r.store_price,
+            notes: r.notes || ''
+        }));
+    
+    showDiscogsStatus(`Submitting ${recordsToSubmit.length} records to Discogs...`, 'info');
+    
+    fetch(`${window.AppConfig.baseUrl}/api/discogs/create-listings`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: window.AppConfig.getHeaders(),
+        body: JSON.stringify({ records: recordsToSubmit })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showDiscogsStatus(`Successfully listed ${data.successful} items on Discogs`, 'success');
+            discogsSelectedRecords.clear();
+            updateDiscogsSelectionCount();
+            // Optionally reload to update listed status
+            loadDiscogsInventory();
+        } else {
+            showDiscogsStatus(`Error: ${data.error || 'Unknown error'}`, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error submitting to Discogs:', error);
+        showDiscogsStatus(`Error: ${error.message}`, 'error');
+    });
+}
+function showDiscogsStatus(message, type = 'info') {
+    const statusEl = document.getElementById('discogs-status-message');
+    if (!statusEl) return;
+    
+    statusEl.textContent = message;
+    statusEl.className = `status-message status-${type}`;
+    statusEl.style.display = 'block';
+    
+    if (type !== 'error') {
+        setTimeout(() => {
+            statusEl.style.display = 'none';
+        }, 5000);
+    }
+}
+// Helper function to get condition name from condition ID
+function getConditionName(conditionId) {
+    if (!conditionId) return 'Not Specified';
+    const condition = conditionsMap.byId[conditionId];
+    return condition ? condition.condition_name : 'Not Specified';
 }
 
 function debugDiscogsAPI() {
