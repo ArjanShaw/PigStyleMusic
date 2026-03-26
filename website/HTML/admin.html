@@ -3138,6 +3138,7 @@
             </div>
         </div>
         
+        
         <!-- Discogs Tab -->
         <div id="discogs-tab" class="tab-content">
             <h2><i class="fab fa-discogs"></i> Discogs Inventory Management</h2>
@@ -3162,17 +3163,10 @@
                 </div>
             </div>
             
-            <!-- Load Discogs Listings Button under stats -->
-            <div style="margin-bottom: 20px; text-align: right;">
-                <button class="btn btn-warning" onclick="debugDiscogsAPI()" style="background: #ffc107; color: #333;">
-                    <i class="fab fa-discogs"></i> Load Discogs Listings
-                </button>
-            </div>
-            
-            <!-- Discogs Listings Response Table -->
+            <!-- Discogs Listings Table -->
             <div style="margin-bottom: 20px;">
                 <h3 style="margin-bottom: 10px;">
-                    <i class="fab fa-discogs"></i> Discogs API Response
+                    <i class="fab fa-discogs"></i> Discogs Listings
                 </h3>
                 <div class="records-table-container">
                     <table class="records-table" id="discogs-response-table">
@@ -3192,8 +3186,8 @@
                         <tbody id="discogs-response-body">
                             <tr>
                                 <td colspan="9" style="text-align: center; padding: 40px;">
-                                    <i class="fab fa-discogs" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
-                                    Click "Load Discogs Listings" to fetch data
+                                    <i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i>
+                                    <p>Loading Discogs listings...</p>
                                 </td>
                             </tr>
                         </tbody>
@@ -3298,7 +3292,11 @@
                         </tr>
                     </thead>
                     <tbody id="discogs-inventory-body">
-                        <tr><td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading local inventory...</td></tr>
+                        <tr>
+                            <td colspan="12" style="text-align: center; padding: 40px;">
+                                <i class="fas fa-spinner fa-spin"></i> Loading local inventory...
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
