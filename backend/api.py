@@ -441,10 +441,9 @@ def get_my_discogs_listings():
 
 
 @app.route('/api/discogs/create-listings', methods=['POST'])
-@require_discogs_auth
 def create_discogs_listings():
     """
-    Create multiple listings on Discogs from your records
+    Create multiple listings on Discogs using Personal Access Token
     """
     try:
         data = request.json
@@ -456,72 +455,104 @@ def create_discogs_listings():
         if not records:
             return jsonify({'error': 'No records provided'}), 400
         
-        d = get_discogs_client()
-        if not d:
-            app.logger.error("Failed to get authenticated Discogs client")
-            return jsonify({'error': 'Not authenticated'}), 401
+        # Get token from environment variable
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
         
-        # Get user
-        user = d.identity()
-        app.logger.info(f"Authenticated as: {user.username}")
-        
-        # Get inventory folder - CORRECT METHOD
-        # The method is likely 'inventory' not 'inventory_folders'
-        inventory = user.inventory
+        if not TOKEN:
+            app.logger.error("DISCOGS_USER_TOKEN not set in environment")
+            return jsonify({
+                'success': False,
+                'error': 'Discogs token not configured. Please set DISCOGS_USER_TOKEN in .env file.'
+            }), 500
         
         results = []
         
         for record in records:
             try:
-                release_id = record.get('discogs_release_id') or record.get('catalog_number')
-                app.logger.info(f"Processing record {record['id']} with release_id: {release_id}")
+                # First, search for the release on Discogs
+                search_url = "https://api.discogs.com/database/search"
+                search_query = f"{record.get('artist')} {record.get('title')}"
                 
-                if not release_id:
+                if record.get('catalog_number'):
+                    search_query += f" {record.get('catalog_number')}"
+                
+                search_params = {
+                    'q': search_query,
+                    'type': 'release',
+                    'per_page': 1
+                }
+                
+                headers = {
+                    'Authorization': f'Discogs token={TOKEN}',
+                    'User-Agent': 'PigStyleMusic/1.0'
+                }
+                
+                search_response = requests.get(search_url, headers=headers, params=search_params)
+                
+                if search_response.status_code != 200:
+                    app.logger.error(f"Discogs search error: {search_response.text}")
                     results.append({
                         'record_id': record['id'],
                         'success': False,
-                        'error': 'Missing release ID/catalog number'
+                        'error': 'Failed to search Discogs'
                     })
                     continue
                 
-                # Get release by ID
-                release = d.release(int(release_id))
-                app.logger.info(f"Found release: {release.title}")
+                search_data = search_response.json()
+                releases = search_data.get('results', [])
                 
-                # Prepare condition
-                condition = record.get('media_condition', 'Very Good (VG)')
-                sleeve_condition = record.get('sleeve_condition', condition)
+                if not releases:
+                    results.append({
+                        'record_id': record['id'],
+                        'success': False,
+                        'error': 'No matching release found on Discogs'
+                    })
+                    continue
                 
-                # Prepare comments
-                comments = f"Store ID: {record['id']}"
+                release_id = releases[0].get('id')
+                
+                # Now create the listing using the Marketplace API
+                listing_url = f"https://api.discogs.com/marketplace/listings"
+                
+                listing_data = {
+                    "release_id": release_id,
+                    "condition": record.get('media_condition', 'Very Good Plus (VG+)'),
+                    "sleeve_condition": record.get('sleeve_condition', record.get('media_condition', 'Very Good Plus (VG+)')),
+                    "price": float(record.get('price', 0)),
+                    "status": "For Sale",
+                    "comments": f"Store ID: {record['id']}"
+                }
+                
                 if record.get('notes'):
-                    comments += f" - {record['notes']}"
+                    listing_data['comments'] += f" - {record['notes']}"
                 
-                app.logger.info(f"Creating listing with price: {record['price']}, condition: {condition}")
+                app.logger.info(f"Creating listing for release {release_id}: {listing_data}")
                 
-                # Create listing - CORRECT METHOD
-                # Add to inventory
-                listing = inventory.add_listing(
-                    release=release,
-                    condition=condition,
-                    price=float(record['price']),
-                    comments=comments,
-                    sleeve_condition=sleeve_condition
+                listing_response = requests.post(
+                    listing_url,
+                    headers=headers,
+                    json=listing_data
                 )
                 
-                app.logger.info(f"Listing created successfully: {listing.id}")
-                
-                results.append({
-                    'record_id': record['id'],
-                    'listing_id': str(listing.id),
-                    'release_id': str(release.id),
-                    'url': listing.url,
-                    'success': True
-                })
+                if listing_response.status_code == 201:
+                    listing_result = listing_response.json()
+                    results.append({
+                        'record_id': record['id'],
+                        'listing_id': listing_result.get('id'),
+                        'release_id': release_id,
+                        'url': f"https://www.discogs.com/sell/item/{listing_result.get('id')}",
+                        'success': True
+                    })
+                else:
+                    app.logger.error(f"Discogs listing error: {listing_response.text}")
+                    results.append({
+                        'record_id': record['id'],
+                        'success': False,
+                        'error': f"Discogs API error: {listing_response.status_code}"
+                    })
                 
             except Exception as e:
                 app.logger.error(f"Error creating listing for record {record['id']}: {str(e)}")
-                app.logger.error(traceback.format_exc())
                 results.append({
                     'record_id': record['id'],
                     'success': False,
@@ -530,8 +561,6 @@ def create_discogs_listings():
         
         successful = sum(1 for r in results if r['success'])
         failed = len(results) - successful
-        
-        app.logger.info(f"Completed: {successful} successful, {failed} failed")
         
         return jsonify({
             'success': True,

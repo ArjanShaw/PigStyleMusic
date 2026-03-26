@@ -40,7 +40,7 @@ window.deselectAllDiscogsRecords = deselectAllDiscogsRecords;
 window.submitToDiscogs = submitToDiscogs;
 window.populateConditionDropdowns = populateConditionDropdowns;
 window.loadConsignors = loadConsignors;
-window.debugDiscogsAPI = debugDiscogsAPI;
+window.loadDiscogsListings = loadDiscogsListings;
 
 /**
  * Load conditions from database
@@ -211,6 +211,61 @@ function loadLocalInventory() {
 }
 
 /**
+ * Load Discogs listings
+ */
+function loadDiscogsListings() {
+    const url = `${window.AppConfig.baseUrl}/api/discogs/test-listings`;
+    const tableBody = document.getElementById('discogs-response-body');
+    
+    if (tableBody) {
+        tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading Discogs listings...<\/td>';
+    }
+    
+    return fetch(url, {
+        credentials: 'include',
+        headers: window.AppConfig.getHeaders()
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!tableBody) return;
+        
+        if (data.success && data.listings && data.listings.length > 0) {
+            let html = '';
+            data.listings.forEach(listing => {
+                html += `
+                    <tr>
+                        <td>${escapeHtml(String(listing.listing_id || ''))}</td>
+                        <td>${escapeHtml(String(listing.release_id || ''))}</td>
+                        <td>${escapeHtml(listing.artist || 'Unknown')}</td>
+                        <td>${escapeHtml(listing.title || 'Unknown')}</td>
+                        <td>$${parseFloat(listing.price || 0).toFixed(2)}</td>
+                        <td><span class="condition-badge">${escapeHtml(listing.condition || 'Not specified')}</span></td>
+                        <td><span class="condition-badge">${escapeHtml(listing.sleeve_condition || 'Not specified')}</span></td>
+                        <td><span class="status-badge ${listing.status === 'For Sale' ? 'active' : 'sold'}">${escapeHtml(listing.status || 'Unknown')}</span></td>
+                        <td><a href="${listing.url}" target="_blank"><i class="fab fa-discogs"></i> View</a></td>
+                    </tr>
+                `;
+            });
+            tableBody.innerHTML = html;
+            
+            const listedCount = data.listings.filter(l => l.status === 'For Sale').length;
+            const listedCountEl = document.getElementById('discogs-listed-count');
+            if (listedCountEl) listedCountEl.textContent = listedCount;
+        } else {
+            tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No Discogs listings found<\/td>';
+            const listedCountEl = document.getElementById('discogs-listed-count');
+            if (listedCountEl) listedCountEl.textContent = 0;
+        }
+    })
+    .catch(error => {
+        console.error('Error loading Discogs listings:', error);
+        if (tableBody) {
+            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">Error: ${error.message}<\/td>`;
+        }
+    });
+}
+
+/**
  * Load Discogs inventory
  */
 function loadDiscogsInventory() {
@@ -222,12 +277,13 @@ function loadDiscogsInventory() {
     if (loadingEl) loadingEl.style.display = 'block';
     
     if (tableBody) {
-        tableBody.innerHTML = '백<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading local inventory...</p></td>';
+        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading local inventory...</p><\/td>';
     }
     
     Promise.all([
         loadConditions(),
-        loadConsignors()
+        loadConsignors(),
+        loadDiscogsListings()
     ])
     .then(() => {
         return loadLocalInventory();
@@ -249,7 +305,7 @@ function loadDiscogsInventory() {
                 <button class="btn btn-primary" onclick="loadDiscogsInventory()">
                     <i class="fas fa-sync-alt"></i> Try Again
                 </button>
-            </td>`;
+             <\/td>`;
         }
     });
 }
@@ -336,7 +392,7 @@ function renderDiscogsInventory() {
     if (!tableBody) return;
     
     if (filteredDiscogsInventory.length === 0) {
-        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p></td>';
+        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
         return;
     }
     
@@ -479,16 +535,21 @@ function updateDiscogsStats() {
     const totalActive = discogsInventory.length;
     const notListedCount = totalActive;
     
-    document.getElementById('discogs-total-active').textContent = totalActive;
-    document.getElementById('discogs-not-listed').textContent = notListedCount;
-    
+    const totalActiveEl = document.getElementById('discogs-total-active');
+    const notListedEl = document.getElementById('discogs-not-listed');
     const localCountEl = document.getElementById('local-record-count');
+    
+    if (totalActiveEl) totalActiveEl.textContent = totalActive;
+    if (notListedEl) notListedEl.textContent = notListedCount;
     if (localCountEl) localCountEl.textContent = totalActive;
 }
 
 function updateDiscogsFilterCounts() {
-    document.getElementById('discogs-filtered-count').textContent = filteredDiscogsInventory.length;
-    document.getElementById('discogs-total-filtered').textContent = discogsInventory.length;
+    const filteredCountEl = document.getElementById('discogs-filtered-count');
+    const totalFilteredEl = document.getElementById('discogs-total-filtered');
+    
+    if (filteredCountEl) filteredCountEl.textContent = filteredDiscogsInventory.length;
+    if (totalFilteredEl) totalFilteredEl.textContent = discogsInventory.length;
 }
 
 function toggleDiscogsRecordSelection(recordId, selected) {
@@ -551,14 +612,15 @@ function deselectAllDiscogsRecords() {
 
 function updateDiscogsSelectionCount() {
     const count = discogsSelectedRecords.size;
-    document.getElementById('selected-count').textContent = count;
-    document.getElementById('discogs-selected-count').textContent = count;
-    
+    const selectedCountEl = document.getElementById('selected-count');
+    const discogsSelectedCountEl = document.getElementById('discogs-selected-count');
     const submitBtn = document.getElementById('submit-to-discogs-btn');
-    if (submitBtn) {
-        submitBtn.disabled = count === 0;
-    }
+    
+    if (selectedCountEl) selectedCountEl.textContent = count;
+    if (discogsSelectedCountEl) discogsSelectedCountEl.textContent = count;
+    if (submitBtn) submitBtn.disabled = count === 0;
 }
+
 function submitToDiscogs() {
     const selectedIds = Array.from(discogsSelectedRecords);
     
@@ -567,7 +629,6 @@ function submitToDiscogs() {
         return;
     }
     
-    // Get selected records with required fields
     const recordsToSubmit = discogsInventory
         .filter(r => selectedIds.includes(r.id))
         .map(r => ({
@@ -595,7 +656,6 @@ function submitToDiscogs() {
             showDiscogsStatus(`Successfully listed ${data.successful} items on Discogs`, 'success');
             discogsSelectedRecords.clear();
             updateDiscogsSelectionCount();
-            // Optionally reload to update listed status
             loadDiscogsInventory();
         } else {
             showDiscogsStatus(`Error: ${data.error || 'Unknown error'}`, 'error');
@@ -606,6 +666,7 @@ function submitToDiscogs() {
         showDiscogsStatus(`Error: ${error.message}`, 'error');
     });
 }
+
 function showDiscogsStatus(message, type = 'info') {
     const statusEl = document.getElementById('discogs-status-message');
     if (!statusEl) return;
@@ -620,57 +681,11 @@ function showDiscogsStatus(message, type = 'info') {
         }, 5000);
     }
 }
-// Helper function to get condition name from condition ID
+
 function getConditionName(conditionId) {
     if (!conditionId) return 'Not Specified';
     const condition = conditionsMap.byId[conditionId];
     return condition ? condition.condition_name : 'Not Specified';
-}
-
-function debugDiscogsAPI() {
-    const url = `${window.AppConfig.baseUrl}/api/discogs/test-listings`;
-    const tableBody = document.getElementById('discogs-response-body');
-    
-    if (tableBody) {
-        tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td>';
-    }
-    
-    fetch(url, {
-        credentials: 'include',
-        headers: window.AppConfig.getHeaders()
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (!tableBody) return;
-        
-        if (data.success && data.listings && data.listings.length > 0) {
-            let html = '';
-            data.listings.forEach(listing => {
-                html += `
-                    <tr>
-                        <td>${escapeHtml(String(listing.listing_id || ''))}</td>
-                        <td>${escapeHtml(String(listing.release_id || ''))}</td>
-                        <td>${escapeHtml(listing.artist || 'Unknown')}</td>
-                        <td>${escapeHtml(listing.title || 'Unknown')}</td>
-                        <td>$${parseFloat(listing.price || 0).toFixed(2)}</td>
-                        <td><span class="condition-badge">${escapeHtml(listing.condition || 'Not specified')}</span></td>
-                        <td><span class="condition-badge">${escapeHtml(listing.sleeve_condition || 'Not specified')}</span></td>
-                        <td><span class="status-badge ${listing.status === 'For Sale' ? 'active' : 'sold'}">${escapeHtml(listing.status || 'Unknown')}</span></td>
-                        <td><a href="${listing.url}" target="_blank"><i class="fab fa-discogs"></i> View</a></td>
-                    </tr>
-                `;
-            });
-            tableBody.innerHTML = html;
-        } else {
-            tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No listings found</td>';
-        }
-    })
-    .catch(error => {
-        console.error('Error calling API:', error);
-        if (tableBody) {
-            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">Error: ${error.message}</td>`;
-        }
-    });
 }
 
 // Initialize when tab is shown
