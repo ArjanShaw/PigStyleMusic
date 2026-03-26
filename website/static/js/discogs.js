@@ -380,6 +380,7 @@ function applyDiscogsFilters() {
     updateDiscogsFilterCounts();
 }
 
+
 /**
  * Render inventory table
  */
@@ -392,7 +393,7 @@ function renderDiscogsInventory() {
     if (!tableBody) return;
     
     if (filteredDiscogsInventory.length === 0) {
-        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
+        tableBody.innerHTML = '<td colspan="13" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
         return;
     }
     
@@ -400,6 +401,7 @@ function renderDiscogsInventory() {
     pageRecords.forEach(record => {
         const isSelected = discogsSelectedRecords.has(record.id);
         const isListed = record.discogs_listed || false;
+        const discogsListingId = record.discogs_listing_id || '';
         
         const sleeveConditionId = record.condition_sleeve_id;
         const discConditionId = record.condition_disc_id;
@@ -446,6 +448,7 @@ function renderDiscogsInventory() {
                 <td><span class="condition-badge">${escapeHtml(discCondition)}</span></td>
                 <td>${escapeHtml(consignorDisplay)}</td>
                 <td>${isListed ? '<span class="status-badge paid">Listed</span>' : '<span class="status-badge new">Not Listed</span>'}</td>
+                <td>${discogsListingId ? escapeHtml(String(discogsListingId)) : '-'}</td>
                 <td>${record.catalog_number ? escapeHtml(record.catalog_number) : '-'}</td>
             </tr>
         `;
