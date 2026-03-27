@@ -5301,21 +5301,11 @@ def get_dropoff_records():
 def get_catalog_grouped_by_release():
     """
     Returns catalog data grouped by unique releases (artist + title combination)
-    with price-weighted randomness for group ordering
+    Sorted by date added descending (newest first)
     Each group contains all copies of that release with their details
     """
     conn = get_db()
     cursor = conn.cursor()
-
-    # Get price weighting from config
-    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'CATALOG_PRICE_WEIGHTING'")
-    weighting_result = cursor.fetchone()
-    
-    if not weighting_result:
-        raise Exception("CATALOG_PRICE_WEIGHTING not found in app_config table")
-    
-    price_weighting = float(weighting_result[0])
-    price_weighting = max(0.0, min(1.0, price_weighting))
 
     # Get all in-stock records
     cursor.execute('''
@@ -5342,6 +5332,7 @@ def get_catalog_grouped_by_release():
         AND r.artist != '' AND r.title != ''
         AND r.store_price IS NOT NULL
         AND r.status_id = 2
+        ORDER BY r.created_at DESC
     ''')
 
     records = cursor.fetchall()
@@ -5363,7 +5354,6 @@ def get_catalog_grouped_by_release():
     groups = {}
     total_copies = 0
     unique_releases = 0
-    all_prices = []  # Track all prices for min/max calculation
 
     for record in records:
         record_dict = dict(record)
@@ -5378,7 +5368,6 @@ def get_catalog_grouped_by_release():
         # Convert price to float
         if 'store_price' in record_dict and record_dict['store_price'] is not None:
             record_dict['store_price'] = float(record_dict['store_price'])
-            all_prices.append(record_dict['store_price'])
         
         if key not in groups:
             unique_releases += 1
@@ -5392,7 +5381,6 @@ def get_catalog_grouped_by_release():
                     'min': float('inf'),
                     'max': 0
                 },
-                'all_prices': [],  # Store all prices for this group
                 'copies': [],
                 'created_at': record_dict.get('created_at')
             }
@@ -5413,7 +5401,6 @@ def get_catalog_grouped_by_release():
         
         groups[key]['copies'].append(copy_data)
         groups[key]['total_copies'] += 1
-        groups[key]['all_prices'].append(record_dict['store_price'])
         total_copies += 1
         
         # Update price range
@@ -5434,43 +5421,12 @@ def get_catalog_grouped_by_release():
         if group['price_range']['min'] == float('inf'):
             group['price_range'] = {'min': 0, 'max': 0}
     
-    # Calculate min and max prices across ALL records for normalization
-    valid_prices = [p for p in all_prices if p > 0]
-    if valid_prices:
-        global_min_price = min(valid_prices)
-        global_max_price = max(valid_prices)
-        price_range = global_max_price - global_min_price
-    else:
-        global_min_price = 0
-        global_max_price = 0
-        price_range = 0
-
-    # Prepare groups with scores for sorting
-    scored_groups = []
+    # Convert groups dict to list and sort by created_at descending (newest first)
+    groups_list = list(groups.values())
+    groups_list.sort(key=lambda x: x['created_at'] if x['created_at'] else '', reverse=True)
     
-    for group in groups.values():
-        # Calculate representative price for the group (using minimum price)
-        # You could also use average, median, or maximum - minimum is often used 
-        # as it represents the entry price for this release
-        representative_price = group['price_range']['min']
-        
-        # Skip groups with no valid price
-        if representative_price <= 0:
-            continue
-        
-        # Normalize price to 0-1 range
-        if price_range > 0:
-            normalized_price = (representative_price - global_min_price) / price_range
-        else:
-            normalized_price = 0.5
-        
-        # Generate random factor
-        random_factor = random.random()
-        
-        # Calculate score using same formula as grouped-records endpoint
-        score = (price_weighting * normalized_price) + ((1 - price_weighting) * random_factor)
-        
-        # Sort copies within the group by condition (best first) and price (highest first)
+    # Sort copies within each group by condition (best first) and price (highest first)
+    for group in groups_list:
         group['copies'].sort(key=lambda x: (x['sleeve_condition_rank'], -x['store_price']))
         
         # Clean up temporary fields and create combined condition for display
@@ -5483,35 +5439,15 @@ def get_catalog_grouped_by_release():
                 copy['condition'] = copy['sleeve_condition']
             else:
                 copy['condition'] = f"Sleeve: {copy['sleeve_condition']}, Disc: {copy['disc_condition']}"
-        
-        # Add scoring info to group (will be removed before sending)
-        group['_score'] = score
-        group['_representative_price'] = representative_price
-        group['_normalized_price'] = normalized_price
-        group['_random_factor'] = random_factor
-        
-        scored_groups.append(group)
-    
-    # Sort groups by score (higher scores first)
-    scored_groups.sort(key=lambda x: x['_score'], reverse=True)
-    
-    # Remove temporary scoring fields before sending
-    for group in scored_groups:
-        del group['_score']
-        del group['_representative_price']
-        del group['_normalized_price']
-        del group['_random_factor']
-        del group['all_prices']  # Remove temporary price list
 
     return jsonify({
         'status': 'success',
-        'total_unique_releases': len(scored_groups),
+        'total_unique_releases': len(groups_list),
         'total_copies': total_copies,
-        'price_weighting': price_weighting,
-        'global_min_price': global_min_price,
-        'global_max_price': global_max_price,
-        'groups': scored_groups
+        'groups': groups_list
     })
+
+
 
 
 @app.route('/catalog/grouped-records', methods=['GET'])

@@ -21,6 +21,294 @@
     <!-- JavaScript files -->
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/config-value-manager.js"></script>
+    
+    <style>
+        /* Additional styles for date cards and grid layout */
+        .group-gallery {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .date-card, .card {
+            width: 100%;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .card {
+            cursor: pointer;
+        }
+        
+        .card:hover, .date-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        .date-card {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 215px; /* Reduced from 320px (33% reduction) */
+        }
+        
+        .date-card .date-emoji {
+            font-size: 2rem; /* Reduced from 3rem */
+            margin-bottom: 8px;
+        }
+        
+        .date-card .date-label {
+            font-size: 0.95rem; /* Reduced from 1.2rem */
+            font-weight: bold;
+            color: white;
+            margin-bottom: 6px;
+        }
+        
+        .date-card .date-full {
+            font-size: 0.7rem; /* Reduced from 0.85rem */
+            color: rgba(255,255,255,0.9);
+            margin-top: 6px;
+        }
+        
+        .date-card .record-count {
+            font-size: 0.65rem; /* Reduced from 0.8rem */
+            color: rgba(255,255,255,0.8);
+            margin-top: 8px;
+            padding: 3px 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 20px;
+        }
+        
+        .card-image {
+            width: 100%;
+            height: 167px; /* Reduced from 250px (33% reduction) */
+            background-size: cover;
+            background-position: center;
+            background-color: #f0f0f0;
+        }
+        
+        .card-image.default-record-bg {
+            background-image: url('/static/images/default-record.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        
+        .card-info {
+            padding: 8px; /* Reduced from 12px */
+        }
+        
+        .card-info h3 {
+            font-size: 0.8rem; /* Reduced from 0.95rem */
+            margin: 0 0 3px 0;
+            color: #333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .card-info .artist {
+            font-size: 0.7rem; /* Reduced from 0.8rem */
+            color: #666;
+            margin: 0 0 6px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .copy-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 6px 0;
+            font-size: 0.7rem; /* Reduced from 0.8rem */
+        }
+        
+        .copy-count {
+            background: #ff6b6b;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 10px;
+            font-size: 0.6rem; /* Reduced from 0.7rem */
+        }
+        
+        .price-range {
+            font-weight: bold;
+            color: #ff6b6b;
+            font-size: 0.75rem; /* Reduced from 0.85rem */
+        }
+        
+        .genre {
+            font-size: 0.6rem; /* Reduced from 0.7rem */
+            color: #888;
+            margin: 4px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .conditions-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin: 6px 0;
+        }
+        
+        .condition-indicator {
+            font-size: 0.55rem; /* Reduced from 0.65rem */
+            padding: 2px 4px;
+            border-radius: 4px;
+            background: #f0f0f0;
+        }
+        
+        .condition-mint { background: #4caf50; color: white; }
+        .condition-near-mint { background: #8bc34a; color: white; }
+        .condition-very-good-plus { background: #ffc107; color: #333; }
+        .condition-very-good { background: #ff9800; color: white; }
+        .condition-good-plus { background: #f57c00; color: white; }
+        .condition-good { background: #ff5722; color: white; }
+        .condition-fair { background: #f44336; color: white; }
+        .condition-poor { background: #9e9e9e; color: white; }
+        
+        .more-copies {
+            font-size: 0.55rem; /* Reduced from 0.65rem */
+            color: #666;
+            margin-left: 3px;
+        }
+        
+        .youtube-link {
+            display: inline-block;
+            margin-top: 6px;
+            color: #ff6b6b;
+            text-decoration: none;
+            font-size: 0.65rem; /* Reduced from 0.75rem */
+        }
+        
+        .youtube-link:hover {
+            text-decoration: underline;
+        }
+        
+        .no-records-message {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+            grid-column: 1 / -1;
+        }
+        
+        .no-records-message i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: #ff6b6b;
+        }
+        
+        @media (max-width: 1200px) {
+            .group-gallery {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 18px;
+            }
+        }
+        
+        @media (max-width: 992px) {
+            .group-gallery {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 15px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .group-gallery {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+                padding: 15px;
+            }
+            
+            .date-card {
+                min-height: 190px;
+            }
+            
+            .date-card .date-emoji {
+                font-size: 1.8rem;
+            }
+            
+            .date-card .date-label {
+                font-size: 0.85rem;
+            }
+            
+            .card-image {
+                height: 140px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .group-gallery {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Loading animation */
+        .loading-dots {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            padding: 40px;
+        }
+        
+        .loading-dots div {
+            width: 12px;
+            height: 12px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        
+        .loading-dots div:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots div:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        
+        /* Error message styling */
+        .error-message {
+            text-align: center;
+            padding: 50px;
+            background: white;
+            border-radius: 12px;
+            margin: 20px;
+        }
+        
+        .error-message i {
+            font-size: 3rem;
+            color: #ff6b6b;
+            margin-bottom: 15px;
+        }
+        
+        .retry-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 15px;
+            font-size: 1rem;
+        }
+        
+        .retry-btn:hover {
+            background: #ff5252;
+        }
+    </style>
 </head>
 <body>
     <!-- Navbar -->
@@ -60,7 +348,7 @@
         </div>
         
         <div class="filter-section">
-            <!-- Genre Filter -->
+            <!-- Genre Filter Only -->
             <div class="filter-group">
                 <div class="filter-label"><i class="fas fa-music"></i> Genre</div>
                 <div class="filter-controls">
@@ -79,15 +367,6 @@
                             <p>Loading genres...</p>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Date Filter -->
-            <div class="filter-group">
-                <div class="filter-label"><i class="far fa-calendar-alt"></i> Date Added</div>
-                <div class="date-presets">
-                    <button type="button" class="date-preset-btn active" data-days="7">Last 7 days</button>
-                    <button type="button" class="date-preset-btn" id="clearDates">Clear</button>
                 </div>
             </div>
         </div>
@@ -153,9 +432,6 @@
 
         // Debug mode
         let debugMode = true;
-
-        // Default record image constant (empty string - we use CSS backgrounds now)
-        const DEFAULT_RECORD_IMAGE = '';
 
         // Add debug message
         function addDebug(message, type = 'info') {
@@ -469,6 +745,93 @@
             }
         }
 
+        // Helper function to get date category data
+        function getDateCategoryData(createdDate) {
+            if (!createdDate) return null;
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const recordDate = new Date(createdDate);
+            recordDate.setHours(0, 0, 0, 0);
+            
+            const diffDays = Math.floor((today - recordDate) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays === 0) {
+                return { 
+                    label: 'Added Today', 
+                    emoji: '🆕',
+                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                };
+            } else if (diffDays === 1) {
+                return { 
+                    label: 'Added Yesterday', 
+                    emoji: '✨',
+                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                };
+            } else if (diffDays <= 7) {
+                return { 
+                    label: `Added ${diffDays} Days Ago`, 
+                    emoji: '📅',
+                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                };
+            } else if (diffDays <= 14) {
+                return { 
+                    label: 'Added Last Week', 
+                    emoji: '📆',
+                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                };
+            } else if (diffDays <= 30) {
+                return { 
+                    label: 'Added This Month', 
+                    emoji: '🗓️',
+                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                };
+            } else {
+                return { 
+                    label: 'Added Earlier', 
+                    emoji: '💿',
+                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                };
+            }
+        }
+
+        // Group releases by date
+        function groupReleasesByDate(releases) {
+            const groups = [];
+            let currentDateKey = null;
+            let currentDateGroup = null;
+            
+            releases.forEach(release => {
+                const dateData = getDateCategoryData(release.created_at);
+                if (!dateData) return;
+                
+                const dateKey = release.created_at ? new Date(release.created_at).toDateString() : 'unknown';
+                
+                if (dateKey !== currentDateKey) {
+                    // Save previous group if exists
+                    if (currentDateGroup) {
+                        groups.push(currentDateGroup);
+                    }
+                    
+                    // Start new group
+                    currentDateKey = dateKey;
+                    currentDateGroup = {
+                        dateData: dateData,
+                        releases: []
+                    };
+                }
+                
+                currentDateGroup.releases.push(release);
+            });
+            
+            // Push the last group
+            if (currentDateGroup) {
+                groups.push(currentDateGroup);
+            }
+            
+            return groups;
+        }
+
         // Populate genre filter dropdown
         function populateGenreFilter() {
             const container = document.getElementById('genreCheckboxContainer');
@@ -534,46 +897,26 @@
                 // Apply filters
                 applyFilters();
             });
-            
-            // Add click handlers for checkboxes to allow direct selection without Apply
-            document.querySelectorAll('#genreCheckboxContainer input[type="checkbox"]').forEach(cb => {
-                cb.addEventListener('change', () => {
-                    // Optional: auto-apply on change? For now, user must click Apply
-                });
-            });
         }
 
-        // Display releases
-        function displayReleases(releases) {
-            const container = document.getElementById('catalogContainer');
-            container.innerHTML = ''; // Clear loading message
-
-            if (!releases || releases.length === 0) {
-                container.innerHTML = '<div class="no-records">No records found in the database.</div>';
-                return;
-            }
-
-            console.log(`Displaying ${releases.length} releases`);
-
-            // Create a gallery container to maintain same layout
-            const gallery = document.createElement('div');
-            gallery.className = 'group-gallery';
-
-            releases.forEach(release => {
-                const card = createReleaseCard(release);
-                gallery.appendChild(card);
-            });
-
-            container.appendChild(gallery);
+        // Create a date card
+        function createDateCard(dateData, releaseCount) {
+            const card = document.createElement('div');
+            card.className = 'date-card';
+            card.setAttribute('data-date-card', 'true');
             
-            // Apply filters after loading
-            setTimeout(() => {
-                applyFilters();
-            }, 100);
+            card.innerHTML = `
+                <div class="date-emoji">${dateData.emoji}</div>
+                <div class="date-label">${dateData.label}</div>
+                <div class="date-full">${dateData.fullDate}</div>
+                <div class="record-count">${releaseCount} record${releaseCount !== 1 ? 's' : ''}</div>
+            `;
+            
+            return card;
         }
 
-        // Create a card for a release
-        function createReleaseCard(release) {
+        // Create a record card
+        function createRecordCard(release) {
             const card = document.createElement('div');
             card.className = 'card';
             
@@ -581,23 +924,7 @@
             card.setAttribute('data-artist', (release.artist || '').toLowerCase());
             card.setAttribute('data-title', (release.title || '').toLowerCase());
             card.setAttribute('data-genre', (release.genre_name || '').toLowerCase());
-            
-            // Set date attribute for filtering (earliest creation date)
-            if (release.created_at) {
-                card.setAttribute('data-created', release.created_at);
-                
-                // Add "New Arrival" badge for items added in the last 30 days
-                const thirtyDaysAgo = new Date();
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                const createdDate = new Date(release.created_at);
-                
-                if (createdDate >= thirtyDaysAgo) {
-                    const badge = document.createElement('div');
-                    badge.className = 'new-arrival-badge';
-                    badge.textContent = 'NEW';
-                    card.appendChild(badge);
-                }
-            }
+            card.setAttribute('data-created', release.created_at || '');
             
             // Get genre
             const genre = release.genre_name || 'Unknown Genre';
@@ -668,7 +995,7 @@
             
             // Handle image display - use CSS background if no image
             const imageHtml = release.image_url ? 
-                `<img src="${release.image_url}" alt="${release.title}" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
+                `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
                 '';
             
             card.innerHTML = `
@@ -676,15 +1003,15 @@
                     ${imageHtml}
                 </div>
                 <div class="card-info">
-                    <h3>${escapeHtml(release.title)}</h3>
-                    <p class="artist">${escapeHtml(release.artist)}</p>
+                    <h3 title="${escapeHtml(release.title)}">${escapeHtml(release.title)}</h3>
+                    <p class="artist" title="${escapeHtml(release.artist)}">${escapeHtml(release.artist)}</p>
                     
                     <div class="copy-info">
                         ${copyCountHtml}
                         <span class="price-range">${priceDisplay}</span>
                     </div>
                     
-                    <p class="genre">${escapeHtml(genre)}</p>
+                    <p class="genre" title="${escapeHtml(genre)}">${escapeHtml(genre)}</p>
                     
                     ${conditionsHtml}
                     
@@ -706,6 +1033,53 @@
             });
             
             return card;
+        }
+
+        // Display releases with date cards
+        function displayReleases(releases) {
+            const container = document.getElementById('catalogContainer');
+            container.innerHTML = ''; // Clear loading message
+
+            if (!releases || releases.length === 0) {
+                container.innerHTML = '<div class="no-records-message"><i class="fas fa-search"></i><p>No records found in the database.</p></div>';
+                return;
+            }
+
+            console.log(`Displaying ${releases.length} releases`);
+
+            // Sort releases by date added descending (newest first)
+            const sortedReleases = [...releases].sort((a, b) => {
+                const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+                const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+                return dateB - dateA;
+            });
+
+            // Group releases by date
+            const dateGroups = groupReleasesByDate(sortedReleases);
+            
+            // Create gallery container
+            const gallery = document.createElement('div');
+            gallery.className = 'group-gallery';
+
+            // Build the layout with date cards and record cards
+            dateGroups.forEach(group => {
+                // Add date card
+                const dateCard = createDateCard(group.dateData, group.releases.length);
+                gallery.appendChild(dateCard);
+                
+                // Add all record cards for this date
+                group.releases.forEach(release => {
+                    const recordCard = createRecordCard(release);
+                    gallery.appendChild(recordCard);
+                });
+            });
+
+            container.appendChild(gallery);
+            
+            // Apply filters after loading
+            setTimeout(() => {
+                applyFilters();
+            }, 100);
         }
 
         // Helper function to escape HTML
@@ -766,7 +1140,7 @@
             
             // Handle image display - use CSS background if no image
             const imageHtml = release.image_url ? 
-                `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
+                `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
                 '';
             
             // Build footer HTML - only show if more than 1 copy
@@ -913,36 +1287,33 @@
             return null;
         }
 
-        // Apply all filters (search, genre, date)
+        // Apply all filters (search and genre only)
         function applyFilters() {
             const container = document.getElementById('catalogContainer');
-            const cards = container.querySelectorAll('.card');
+            const allCards = container.querySelectorAll('.card, .date-card');
             
             // Get search term
             const searchBox = document.getElementById('searchBox');
             const searchTerm = searchBox ? searchBox.value.toLowerCase().trim() : '';
             
-            // Get active date filter
-            const activeDateBtn = document.querySelector('.date-preset-btn.active');
-            const activeDays = activeDateBtn && activeDateBtn.dataset.days ? parseInt(activeDateBtn.dataset.days) : null;
-            
             let visibleCount = 0;
+            let currentDateGroupHasVisible = false;
+            let lastDateCard = null;
             
-            cards.forEach(card => {
+            allCards.forEach(card => {
+                // Check if it's a date card
+                if (card.classList.contains('date-card')) {
+                    // Store reference to date card and reset group visibility
+                    lastDateCard = card;
+                    currentDateGroupHasVisible = false;
+                    card.style.display = 'flex'; // Date cards always show initially, will hide if no visible records in group
+                    return;
+                }
+                
+                // It's a record card
                 const artist = card.getAttribute('data-artist') || '';
                 const title = card.getAttribute('data-title') || '';
                 const genre = card.getAttribute('data-genre') || '';
-                const createdDate = card.getAttribute('data-created');
-                
-                // Check date filter
-                let dateMatch = true;
-                if (activeDays !== null && createdDate) {
-                    const cutoffDate = new Date();
-                    cutoffDate.setDate(cutoffDate.getDate() - activeDays);
-                    cutoffDate.setHours(0, 0, 0, 0);
-                    const cardDate = new Date(createdDate);
-                    dateMatch = cardDate >= cutoffDate;
-                }
                 
                 // Check search
                 const searchMatch = !searchTerm || 
@@ -955,19 +1326,46 @@
                     genreMatch = selectedGenres.some(g => g.toLowerCase() === genre);
                 }
                 
-                const shouldShow = dateMatch && searchMatch && genreMatch;
+                const shouldShow = searchMatch && genreMatch;
                 
                 card.style.display = shouldShow ? 'block' : 'none';
-                if (shouldShow) visibleCount++;
+                if (shouldShow) {
+                    visibleCount++;
+                    currentDateGroupHasVisible = true;
+                }
+                
+                // Update the date card visibility based on whether any records in its group are visible
+                if (lastDateCard && shouldShow) {
+                    lastDateCard.style.display = 'flex';
+                }
+            });
+            
+            // Hide date cards that have no visible records in their group
+            allCards.forEach(card => {
+                if (card.classList.contains('date-card') && card.style.display !== 'none') {
+                    // Check if there are any visible record cards after this date card and before the next date card
+                    let hasVisibleAfter = false;
+                    let nextElement = card.nextElementSibling;
+                    while (nextElement && !nextElement.classList.contains('date-card')) {
+                        if (nextElement.classList.contains('card') && nextElement.style.display !== 'none') {
+                            hasVisibleAfter = true;
+                            break;
+                        }
+                        nextElement = nextElement.nextElementSibling;
+                    }
+                    if (!hasVisibleAfter) {
+                        card.style.display = 'none';
+                    }
+                }
             });
             
             // Show no results message if needed
-            const existingNoResults = container.querySelector('.no-records');
+            const existingNoResults = container.querySelector('.no-records-message');
             if (visibleCount === 0) {
                 if (!existingNoResults) {
                     const noResultsDiv = document.createElement('div');
-                    noResultsDiv.className = 'no-records';
-                    noResultsDiv.textContent = 'No records match your search criteria.';
+                    noResultsDiv.className = 'no-records-message';
+                    noResultsDiv.innerHTML = '<i class="fas fa-search"></i><p>No records match your search criteria.</p>';
                     container.appendChild(noResultsDiv);
                 }
             } else if (existingNoResults) {
@@ -981,25 +1379,6 @@
             
             // Search functionality
             searchBox.addEventListener('input', applyFilters);
-            
-            // Setup date preset buttons
-            document.querySelectorAll('.date-preset-btn[data-days]').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    // Remove active class from all preset buttons
-                    document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    applyFilters();
-                });
-            });
-            
-            // Clear dates button
-            document.getElementById('clearDates').addEventListener('click', function() {
-                // Remove active class from all preset buttons
-                document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
-                
-                applyFilters();
-            });
             
             // Setup genre filter toggle
             const genreFilterBtn = document.getElementById('genreFilterBtn');
