@@ -1,4 +1,4 @@
-// discogs.js - Cleaned version with only Discogs listings table and local inventory table
+// discogs.js - Cleaned version with Discogs listings table and local inventory table
 
 // State management
 let discogsInventory = [];
@@ -14,7 +14,7 @@ let discConditionFilter = '';
 let listingStatusFilter = 'all';
 let searchFilter = '';
 let consignorFilter = 'all';
-let barcodeSearchFilter = ''; // New barcode search filter
+let discogsStatusFilter = 'all';
 
 // Conditions data from database
 let conditionsMap = {
@@ -39,11 +39,11 @@ window.toggleDiscogsRecordSelection = toggleDiscogsRecordSelection;
 window.selectAllDiscogsRecords = selectAllDiscogsRecords;
 window.deselectAllDiscogsRecords = deselectAllDiscogsRecords;
 window.submitToDiscogs = submitToDiscogs;
+window.deleteDiscogsListing = deleteDiscogsListing;
+window.syncDiscogsStatus = syncDiscogsStatus;
 window.populateConditionDropdowns = populateConditionDropdowns;
 window.loadConsignors = loadConsignors;
 window.loadDiscogsListings = loadDiscogsListings;
-window.searchDiscogsByBarcode = searchDiscogsByBarcode; // New function
-window.clearBarcodeSearch = clearBarcodeSearch; // New function
 
 /**
  * Load conditions from database
@@ -197,7 +197,7 @@ function loadLocalInventory() {
         if (data.status === 'success' && data.records) {
             discogsInventory = data.records.map(record => ({
                 ...record,
-                discogs_listed: false,
+                discogs_listed: record.discogs_listing_id ? true : false,
                 consignor_name: record.consignor_name || 'Unknown',
                 consignor_id: record.consignor_id || null
             }));
@@ -213,15 +213,18 @@ function loadLocalInventory() {
     });
 }
 
+
+
 /**
- * Load Discogs listings
+ * Load Discogs listings and filter to show only orphaned listings
  */
 function loadDiscogsListings() {
     const url = `${window.AppConfig.baseUrl}/api/discogs/test-listings`;
-    const tableBody = document.getElementById('discogs-response-body');
+    const tableBody = document.getElementById('discogs-orphaned-body');
+    const orphanedCountEl = document.getElementById('discogs-orphaned-count');
     
     if (tableBody) {
-        tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading Discogs listings...</td>';
+        tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading Discogs listings...<\/td>';
     }
     
     return fetch(url, {
@@ -233,38 +236,198 @@ function loadDiscogsListings() {
         if (!tableBody) return;
         
         if (data.success && data.listings && data.listings.length > 0) {
-            let html = '';
-            data.listings.forEach(listing => {
-                html += `
-                    <tr>
-                        <td>${escapeHtml(String(listing.listing_id || ''))}</td>
-                        <td>${escapeHtml(String(listing.release_id || ''))}</td>
-                        <td>${escapeHtml(listing.artist || 'Unknown')}</td>
-                        <td>${escapeHtml(listing.title || 'Unknown')}</td>
-                        <td>$${parseFloat(listing.price || 0).toFixed(2)}</td>
-                        <td><span class="condition-badge">${escapeHtml(listing.condition || 'Not specified')}</span></td>
-                        <td><span class="condition-badge">${escapeHtml(listing.sleeve_condition || 'Not specified')}</span></td>
-                        <td><span class="status-badge ${listing.status === 'For Sale' ? 'active' : 'sold'}">${escapeHtml(listing.status || 'Unknown')}</span></td>
-                        <td><a href="${listing.url}" target="_blank"><i class="fab fa-discogs"></i> View</a></td>
-                    </tr>
-                `;
+            // Get all discogs_listing_ids from local records
+            const localDiscogsIds = new Set();
+            discogsInventory.forEach(record => {
+                if (record.discogs_listing_id) {
+                    localDiscogsIds.add(String(record.discogs_listing_id));
+                }
             });
-            tableBody.innerHTML = html;
+            
+            // Filter to show only listings that have no matching local record
+            const orphanedListings = data.listings.filter(listing => {
+                return !localDiscogsIds.has(String(listing.listing_id));
+            });
+            
+            if (orphanedCountEl) orphanedCountEl.textContent = orphanedListings.length;
+            
+            if (orphanedListings.length > 0) {
+                let html = '';
+                orphanedListings.forEach(listing => {
+                    html += `
+                        <tr>
+                            <td>${escapeHtml(String(listing.listing_id || ''))}<\/td>
+                            <td>${escapeHtml(String(listing.release_id || ''))}<\/td>
+                            <td>${escapeHtml(listing.artist || 'Unknown')}<\/td>
+                            <td>${escapeHtml(listing.title || 'Unknown')}<\/td>
+                            <td>$${parseFloat(listing.price || 0).toFixed(2)}<\/td>
+                            <td><span class="condition-badge">${escapeHtml(listing.condition || 'Not specified')}<\/span><\/td>
+                            <td><span class="condition-badge">${escapeHtml(listing.sleeve_condition || 'Not specified')}<\/span><\/td>
+                            <td><span class="status-badge ${listing.status === 'For Sale' ? 'active' : 'sold'}">${escapeHtml(listing.status || 'Unknown')}<\/span><\/td>
+                            <td><a href="${listing.url}" target="_blank"><i class="fab fa-discogs"></i> View<\/a><\/td>
+                        <\/tr>
+                    `;
+                });
+                tableBody.innerHTML = html;
+            } else {
+                tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No orphaned listings found<\/td>';
+            }
             
             const listedCount = data.listings.filter(l => l.status === 'For Sale').length;
             const listedCountEl = document.getElementById('discogs-listed-count');
             if (listedCountEl) listedCountEl.textContent = listedCount;
         } else {
-            tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No Discogs listings found</td>';
+            tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No Discogs listings found<\/td>';
+            if (orphanedCountEl) orphanedCountEl.textContent = 0;
             const listedCountEl = document.getElementById('discogs-listed-count');
             if (listedCountEl) listedCountEl.textContent = 0;
         }
+        
+        return data;
     })
     .catch(error => {
         console.error('Error loading Discogs listings:', error);
         if (tableBody) {
-            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">Error: ${error.message}</td>`;
+            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">Error: ${error.message}<\/td>`;
         }
+        if (orphanedCountEl) orphanedCountEl.textContent = 0;
+        return null;
+    });
+}
+
+/**
+ * Sync Discogs status with local records
+ */
+function syncDiscogsStatus() {
+    showDiscogsStatus('Syncing with Discogs...', 'info');
+    
+    // First, fetch current Discogs listings
+    fetch(`${window.AppConfig.baseUrl}/api/discogs/test-listings`, {
+        credentials: 'include',
+        headers: window.AppConfig.getHeaders()
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            showDiscogsStatus('Failed to fetch Discogs listings', 'error');
+            return;
+        }
+        
+        // Create a set of listing_ids from Discogs
+        const discogsListingIds = new Set();
+        const discogsListingMap = {};
+        if (data.listings && data.listings.length > 0) {
+            data.listings.forEach(listing => {
+                discogsListingIds.add(String(listing.listing_id));
+                discogsListingMap[listing.listing_id] = listing;
+            });
+        }
+        
+        // Fetch all records with discogs_listing_id directly from the database
+        fetch(`${window.AppConfig.baseUrl}/records?status=active&limit=10000`, {
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders()
+        })
+        .then(response => response.json())
+        .then(recordsData => {
+            if (!recordsData.status === 'success' || !recordsData.records) {
+                showDiscogsStatus('Failed to fetch local records', 'error');
+                return;
+            }
+            
+            const recordsWithDiscogsId = recordsData.records.filter(r => r.discogs_listing_id);
+            const allRecordsMap = {};
+            recordsData.records.forEach(r => { allRecordsMap[r.id] = r; });
+            
+            let recordsToClear = [];
+            let listingsToDelete = [];
+            
+            // Check local records against Discogs
+            recordsWithDiscogsId.forEach(record => {
+                const listingId = String(record.discogs_listing_id);
+                if (!discogsListingIds.has(listingId)) {
+                    // Record has listing ID but it's not on Discogs - clear it
+                    recordsToClear.push(record.id);
+                }
+            });
+            
+            // Check Discogs listings against local records
+            data.listings.forEach(listing => {
+                const listingId = String(listing.listing_id);
+                const localRecord = recordsWithDiscogsId.find(r => String(r.discogs_listing_id) === listingId);
+                if (!localRecord) {
+                    // Discogs listing has no matching local record - delete from Discogs
+                    listingsToDelete.push({ id: listingId, artist: listing.artist, title: listing.title });
+                }
+            });
+            
+            let clearedCount = 0;
+            let deletedCount = 0;
+            let promises = [];
+            
+            // Clear discogs_listing_id from local records
+            recordsToClear.forEach(recordId => {
+                promises.push(
+                    fetch(`${window.AppConfig.baseUrl}/records/${recordId}`, {
+                        method: 'PUT',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders(),
+                        body: JSON.stringify({ 
+                            discogs_listing_id: null,
+                            discogs_listed_date: null
+                        })
+                    }).then(() => {
+                        clearedCount++;
+                    }).catch(error => {
+                        console.error(`Error clearing Discogs ID for record ${recordId}:`, error);
+                    })
+                );
+            });
+            
+            // Delete orphaned listings from Discogs
+            listingsToDelete.forEach(listing => {
+                promises.push(
+                    fetch(`${window.AppConfig.baseUrl}/api/discogs/delete-listing/${listing.id}`, {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders()
+                    }).then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            deletedCount++;
+                        }
+                    }).catch(error => {
+                        console.error(`Error deleting listing ${listing.id}:`, error);
+                    })
+                );
+            });
+            
+            // Wait for all updates to complete
+            Promise.all(promises).then(() => {
+                let summaryMessage = 'Sync complete:';
+                if (clearedCount > 0) {
+                    summaryMessage += `\n- ${clearedCount} invalid Discogs IDs cleared from local records`;
+                }
+                if (deletedCount > 0) {
+                    summaryMessage += `\n- ${deletedCount} orphaned Discogs listings deleted`;
+                }
+                if (clearedCount === 0 && deletedCount === 0) {
+                    summaryMessage += ' No changes needed';
+                }
+                
+                alert(summaryMessage);
+                showDiscogsStatus(summaryMessage, 'success');
+                
+                // Reload inventory
+                setTimeout(() => {
+                    loadDiscogsInventory();
+                }, 1000);
+            });
+        });
+    })
+    .catch(error => {
+        console.error('Error syncing Discogs status:', error);
+        showDiscogsStatus(`Sync error: ${error.message}`, 'error');
     });
 }
 
@@ -280,7 +443,7 @@ function loadDiscogsInventory() {
     if (loadingEl) loadingEl.style.display = 'block';
     
     if (tableBody) {
-        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading local inventory...</p></td>';
+        tableBody.innerHTML = '<td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading inventory...</p><\/td>';
     }
     
     Promise.all([
@@ -302,13 +465,13 @@ function loadDiscogsInventory() {
         if (loadingEl) loadingEl.style.display = 'none';
         
         if (tableBody) {
-            tableBody.innerHTML = `<td colspan="12" style="text-align: center; padding: 40px; color: #dc3545;">
+            tableBody.innerHTML = `<td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">
                 <i class="fas fa-exclamation-triangle"></i>
                 <p>Error loading inventory: ${error.message}</p>
                 <button class="btn btn-primary" onclick="loadDiscogsInventory()">
                     <i class="fas fa-sync-alt"></i> Try Again
                 </button>
-             </td>`;
+             <\/td>`;
         }
     });
 }
@@ -318,14 +481,6 @@ function loadDiscogsInventory() {
  */
 function applyDiscogsFilters() {
     filteredDiscogsInventory = discogsInventory.filter(record => {
-        // Barcode search filter (exact match on barcode)
-        if (barcodeSearchFilter) {
-            const recordBarcode = record.barcode || '';
-            if (recordBarcode !== barcodeSearchFilter) {
-                return false;
-            }
-        }
-        
         // Disc condition filter
         if (discConditionFilter) {
             const discConditionId = record.condition_disc_id;
@@ -351,8 +506,14 @@ function applyDiscogsFilters() {
         }
         
         // Listing status filter
-        if (listingStatusFilter === 'listed' && !record.discogs_listed) return false;
-        if (listingStatusFilter === 'unlisted' && record.discogs_listed) return false;
+        if (listingStatusFilter === 'listed' && !record.discogs_listing_id) return false;
+        if (listingStatusFilter === 'unlisted' && record.discogs_listing_id) return false;
+        
+        // Discogs status filter
+        if (discogsStatusFilter !== 'all') {
+            if (discogsStatusFilter === 'active' && record.status_id === 3) return false;
+            if (discogsStatusFilter === 'sold' && record.status_id !== 3) return false;
+        }
         
         // Consignor filter
         if (consignorFilter !== 'all') {
@@ -361,7 +522,7 @@ function applyDiscogsFilters() {
             if (String(consignorId) !== String(consignorFilter)) return false;
         }
         
-        // Search filter (artist, title, catalog, barcode, consignor)
+        // Search filter
         if (searchFilter) {
             const searchLower = searchFilter.toLowerCase();
             const artist = (record.artist || '').toLowerCase();
@@ -389,80 +550,6 @@ function applyDiscogsFilters() {
     
     renderDiscogsInventory();
     updateDiscogsFilterCounts();
-    
-    // Update barcode search stats
-    updateBarcodeSearchStats();
-}
-
-/**
- * Search records by barcode
- */
-function searchDiscogsByBarcode() {
-    const barcodeInput = document.getElementById('discogs-barcode-search');
-    if (!barcodeInput) return;
-    
-    const barcode = barcodeInput.value.trim();
-    
-    if (barcode === '') {
-        clearBarcodeSearch();
-        return;
-    }
-    
-    console.log('🔍 Searching for barcode:', barcode);
-    
-    // Set the barcode filter
-    barcodeSearchFilter = barcode;
-    
-    // Reset to first page and apply filters
-    discogsCurrentPage = 1;
-    applyDiscogsFilters();
-    
-    // Highlight the barcode search field to show it's active
-    barcodeInput.style.borderColor = '#28a745';
-    barcodeInput.style.backgroundColor = '#f0f9f0';
-    
-    // Show clear button
-    const clearBtn = document.getElementById('clear-barcode-search');
-    if (clearBtn) {
-        clearBtn.style.display = 'inline-block';
-    }
-}
-
-/**
- * Clear barcode search filter
- */
-function clearBarcodeSearch() {
-    const barcodeInput = document.getElementById('discogs-barcode-search');
-    if (barcodeInput) {
-        barcodeInput.value = '';
-        barcodeInput.style.borderColor = '';
-        barcodeInput.style.backgroundColor = '';
-    }
-    
-    const clearBtn = document.getElementById('clear-barcode-search');
-    if (clearBtn) {
-        clearBtn.style.display = 'none';
-    }
-    
-    barcodeSearchFilter = '';
-    discogsCurrentPage = 1;
-    applyDiscogsFilters();
-}
-
-/**
- * Update barcode search stats
- */
-function updateBarcodeSearchStats() {
-    const statsEl = document.getElementById('discogs-barcode-stats');
-    if (!statsEl) return;
-    
-    if (barcodeSearchFilter) {
-        const matchCount = filteredDiscogsInventory.length;
-        statsEl.innerHTML = `<span style="color: #28a745;"><i class="fas fa-barcode"></i> Found ${matchCount} record${matchCount !== 1 ? 's' : ''} with barcode: ${barcodeSearchFilter}</span>`;
-        statsEl.style.display = 'block';
-    } else {
-        statsEl.style.display = 'none';
-    }
 }
 
 /**
@@ -477,19 +564,16 @@ function renderDiscogsInventory() {
     if (!tableBody) return;
     
     if (filteredDiscogsInventory.length === 0) {
-        let message = 'No records match your filters';
-        if (barcodeSearchFilter) {
-            message = `No records found with barcode: ${barcodeSearchFilter}`;
-        }
-        tableBody.innerHTML = `<td colspan="13" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>${message}</p></td>`;
+        tableBody.innerHTML = '<td colspan="13" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
         return;
     }
     
     let html = '';
     pageRecords.forEach(record => {
         const isSelected = discogsSelectedRecords.has(record.id);
-        const isListed = record.discogs_listed || false;
+        const isListed = record.discogs_listing_id ? true : false;
         const discogsListingId = record.discogs_listing_id || '';
+        const isSold = record.status_id === 3;
         
         const sleeveConditionId = record.condition_sleeve_id;
         const discConditionId = record.condition_disc_id;
@@ -517,31 +601,51 @@ function renderDiscogsInventory() {
             }
         }
         
-        // Highlight if this record matches the barcode search
-        const isBarcodeMatch = barcodeSearchFilter && record.barcode === barcodeSearchFilter;
+        let statusText = isListed ? 'Listed' : 'Not Listed';
+        if (isSold) statusText = 'Sold';
+        
+        // Create hyperlink for Discogs Listing ID if it exists
+        let discogsListingDisplay = '-';
+        if (discogsListingId) {
+            discogsListingDisplay = `<a href="https://www.discogs.com/sell/item/${discogsListingId}" target="_blank" class="discogs-link" title="View on Discogs">
+                ${escapeHtml(String(discogsListingId))}
+                <i class="fas fa-external-link-alt" style="font-size: 10px; margin-left: 3px;"></i>
+            </a>`;
+        }
         
         html += `
-            <tr class="${isSelected ? 'record-selected' : ''} ${isBarcodeMatch ? 'barcode-match' : ''}" style="${isBarcodeMatch ? 'background-color: #fff3cd;' : ''}">
+            <tr class="${isSelected ? 'record-selected' : ''}">
                 <td style="text-align: center;">
                     <input type="checkbox" 
                            class="discogs-record-checkbox" 
                            data-record-id="${record.id}" 
                            ${isSelected ? 'checked' : ''} 
-                           onchange="toggleDiscogsRecordSelection(${record.id}, this.checked)">
-                </td>
-                <td>${record.id}</td>
-                <td>${escapeHtml(record.artist || '')}</td>
-                <td>${escapeHtml(record.title || '')}</td>
-                <td>${escapeHtml(record.label || '')}</td>
-                <td>${escapeHtml(record.catalog_number || '')}</td>
-                <td>$${parseFloat(record.store_price || 0).toFixed(2)}</td>
-                <td><span class="condition-badge">${escapeHtml(sleeveCondition)}</span></td>
-                <td><span class="condition-badge">${escapeHtml(discCondition)}</span></td>
-                <td>${escapeHtml(consignorDisplay)}</td>
-                <td>${isListed ? '<span class="status-badge paid">Listed</span>' : '<span class="status-badge new">Not Listed</span>'}</td>
-                <td>${discogsListingId ? escapeHtml(String(discogsListingId)) : '-'}</td>
-                <td>${record.barcode ? `<span class="barcode-value" style="font-family: monospace; font-size: 12px;">${escapeHtml(record.barcode)}</span>` : '-'}</td>
-            </tr>
+                           onchange="toggleDiscogsRecordSelection(${record.id}, this.checked)"
+                           ${isListed || isSold ? 'disabled' : ''}>
+                  <\/td>
+                  <td>${record.id}<\/td>
+                  <td>${escapeHtml(record.artist || '')}<\/td>
+                  <td>${escapeHtml(record.title || '')}<\/td>
+                  <td>${escapeHtml(record.label || '')}<\/td>
+                  <td>${escapeHtml(record.catalog_number || '')}<\/td>
+                  <td>$${parseFloat(record.store_price || 0).toFixed(2)}<\/td>
+                  <td><span class="condition-badge">${escapeHtml(sleeveCondition)}<\/span><\/td>
+                  <td><span class="condition-badge">${escapeHtml(discCondition)}<\/span><\/td>
+                  <td>${escapeHtml(consignorDisplay)}<\/td>
+                  <td>${isSold ? '<span class="status-badge sold">Sold</span>' : (isListed ? '<span class="status-badge paid">Listed</span>' : '<span class="status-badge new">Not Listed</span>')}<\/td>
+                  <td>${discogsListingDisplay}<\/td>
+                  <td>
+                    ${!isListed && !isSold ? 
+                        `<button class="btn btn-small btn-info" onclick="viewDiscogsMatch(${record.id})" title="Find on Discogs">
+                            <i class="fab fa-discogs"></i> Find
+                        </button>` : 
+                        (isListed ? 
+                            `<button class="btn btn-small btn-danger" onclick="deleteDiscogsListing(${record.id}, '${discogsListingId}')" title="Delete from Discogs">
+                                <i class="fab fa-discogs"></i> Delete
+                            </button>` : '')
+                    }
+                  <\/td>
+              <\/tr>
         `;
     });
     
@@ -551,9 +655,9 @@ function renderDiscogsInventory() {
     
     const selectAllCheckbox = document.getElementById('discogs-select-all');
     if (selectAllCheckbox) {
-        const unlistedRecords = pageRecords.filter(r => !r.discogs_listed);
+        const unlistedRecords = pageRecords.filter(r => !r.discogs_listing_id && r.status_id !== 3);
         const selectedUnlistedCount = Array.from(discogsSelectedRecords).filter(id => 
-            pageRecords.some(r => r.id === id && !r.discogs_listed)
+            pageRecords.some(r => r.id === id && !r.discogs_listing_id && r.status_id !== 3)
         ).length;
         
         selectAllCheckbox.checked = unlistedRecords.length > 0 && selectedUnlistedCount === unlistedRecords.length;
@@ -603,6 +707,7 @@ function filterDiscogsInventory() {
     listingStatusFilter = document.getElementById('listing-status-filter').value;
     searchFilter = document.getElementById('discogs-search').value;
     consignorFilter = document.getElementById('consignor-filter').value;
+    discogsStatusFilter = document.getElementById('discogs-status-filter').value;
     
     discogsCurrentPage = 1;
     applyDiscogsFilters();
@@ -614,12 +719,14 @@ function resetDiscogsFilters() {
     document.getElementById('listing-status-filter').value = 'all';
     document.getElementById('discogs-search').value = '';
     document.getElementById('consignor-filter').value = 'all';
+    document.getElementById('discogs-status-filter').value = 'all';
     
     sleeveConditionFilter = '';
     discConditionFilter = '';
     listingStatusFilter = 'all';
     searchFilter = '';
     consignorFilter = 'all';
+    discogsStatusFilter = 'all';
     
     discogsCurrentPage = 1;
     applyDiscogsFilters();
@@ -627,13 +734,17 @@ function resetDiscogsFilters() {
 
 function updateDiscogsStats() {
     const totalActive = discogsInventory.length;
-    const notListedCount = totalActive;
+    const listedCount = discogsInventory.filter(r => r.discogs_listing_id && r.status_id !== 3).length;
+    const soldCount = discogsInventory.filter(r => r.status_id === 3).length;
+    const notListedCount = totalActive - listedCount - soldCount;
     
     const totalActiveEl = document.getElementById('discogs-total-active');
+    const listedCountEl = document.getElementById('discogs-listed-count');
     const notListedEl = document.getElementById('discogs-not-listed');
     const localCountEl = document.getElementById('local-record-count');
     
     if (totalActiveEl) totalActiveEl.textContent = totalActive;
+    if (listedCountEl) listedCountEl.textContent = listedCount;
     if (notListedEl) notListedEl.textContent = notListedCount;
     if (localCountEl) localCountEl.textContent = totalActive;
 }
@@ -660,7 +771,7 @@ function toggleDiscogsRecordSelection(recordId, selected) {
         const currentPageRecords = filteredDiscogsInventory.slice(
             (discogsCurrentPage - 1) * discogsPageSize,
             discogsCurrentPage * discogsPageSize
-        ).filter(r => !r.discogs_listed);
+        ).filter(r => !r.discogs_listing_id && r.status_id !== 3);
         
         const selectedOnPage = currentPageRecords.filter(r => discogsSelectedRecords.has(r.id)).length;
         
@@ -678,7 +789,7 @@ function toggleAllDiscogsRecords() {
     const pageRecords = filteredDiscogsInventory.slice(startIndex, endIndex);
     
     pageRecords.forEach(record => {
-        if (!record.discogs_listed) {
+        if (!record.discogs_listing_id && record.status_id !== 3) {
             if (checked) {
                 discogsSelectedRecords.add(record.id);
             } else {
@@ -692,7 +803,7 @@ function toggleAllDiscogsRecords() {
 
 function selectAllDiscogsRecords() {
     filteredDiscogsInventory.forEach(record => {
-        if (!record.discogs_listed) {
+        if (!record.discogs_listing_id && record.status_id !== 3) {
             discogsSelectedRecords.add(record.id);
         }
     });
@@ -761,6 +872,51 @@ function submitToDiscogs() {
     });
 }
 
+function deleteDiscogsListing(recordId, listingId) {
+    if (!listingId) {
+        showDiscogsStatus('No Discogs listing ID found for this record', 'error');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete this listing from Discogs?\n\nRecord ID: ${recordId}\nListing ID: ${listingId}`)) {
+        return;
+    }
+    
+    showDiscogsStatus(`Deleting listing ${listingId} from Discogs...`, 'info');
+    
+    fetch(`${window.AppConfig.baseUrl}/api/discogs/delete-listing/${listingId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: window.AppConfig.getHeaders()
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            fetch(`${window.AppConfig.baseUrl}/records/${recordId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders(),
+                body: JSON.stringify({ discogs_listing_id: null })
+            })
+            .then(() => {
+                showDiscogsStatus(`Successfully deleted listing ${listingId} from Discogs`, 'success');
+                loadDiscogsInventory();
+            })
+            .catch(error => {
+                console.error('Error updating local record:', error);
+                showDiscogsStatus('Listing deleted from Discogs but failed to update local record', 'warning');
+                loadDiscogsInventory();
+            });
+        } else {
+            showDiscogsStatus(`Error deleting listing: ${data.error || 'Unknown error'}`, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting Discogs listing:', error);
+        showDiscogsStatus(`Error: ${error.message}`, 'error');
+    });
+}
+
 function showDiscogsStatus(message, type = 'info') {
     const statusEl = document.getElementById('discogs-status-message');
     if (!statusEl) return;
@@ -780,6 +936,14 @@ function getConditionName(conditionId) {
     if (!conditionId) return 'Not Specified';
     const condition = conditionsMap.byId[conditionId];
     return condition ? condition.condition_name : 'Not Specified';
+}
+
+function viewDiscogsMatch(recordId) {
+    const record = discogsInventory.find(r => r.id == recordId);
+    if (!record) return;
+    
+    const searchQuery = encodeURIComponent(`${record.artist} ${record.title}`);
+    window.open(`https://www.discogs.com/search/?q=${searchQuery}`, '_blank');
 }
 
 // Initialize when tab is shown
