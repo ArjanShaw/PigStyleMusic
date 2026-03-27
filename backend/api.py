@@ -465,6 +465,135 @@ def get_my_discogs_listings():
         app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/discogs/create-listing-single', methods=['POST'])
+def create_discogs_listing_single():
+    """
+    Create a single listing on Discogs with detailed error reporting
+    """
+    try:
+        data = request.json
+        record = data.get('record', {})
+        
+        if not record:
+            return jsonify({'error': 'No record provided'}), 400
+        
+        app.logger.info(f"Processing single record {record.get('id')}: {record.get('artist')} - {record.get('title')}")
+        
+        # Get token from environment variable
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        
+        if not TOKEN:
+            return jsonify({
+                'success': False,
+                'error': 'Discogs token not configured'
+            }), 500
+        
+        headers = {
+            'Authorization': f'Discogs token={TOKEN}',
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
+        
+        # Search for the release on Discogs
+        search_url = "https://api.discogs.com/database/search"
+        search_query = f"{record.get('artist')} {record.get('title')}"
+        
+        if record.get('catalog_number'):
+            search_query += f" {record.get('catalog_number')}"
+        
+        search_params = {
+            'q': search_query,
+            'type': 'release',
+            'per_page': 1
+        }
+        
+        search_response = requests.get(search_url, headers=headers, params=search_params)
+        
+        if search_response.status_code == 429:
+            return jsonify({
+                'success': False,
+                'error': 'Rate limited. Please wait a moment and try again.'
+            }), 429
+        
+        if search_response.status_code != 200:
+            return jsonify({
+                'success': False,
+                'error': f"Search failed: {search_response.status_code}"
+            }), search_response.status_code
+        
+        search_data = search_response.json()
+        releases = search_data.get('results', [])
+        
+        if not releases:
+            return jsonify({
+                'success': False,
+                'error': 'No matching release found on Discogs'
+            })
+        
+        release_id = releases[0].get('id')
+        
+        # Create the listing
+        listing_url = "https://api.discogs.com/marketplace/listings"
+        
+        listing_data = {
+            "release_id": release_id,
+            "condition": record.get('media_condition', 'Very Good Plus (VG+)'),
+            "sleeve_condition": record.get('sleeve_condition', record.get('media_condition', 'Very Good Plus (VG+)')),
+            "price": float(record.get('price', 0)),
+            "status": "For Sale",
+            "comments": f"[PIGSTYLE ID: {record['id']}] {record.get('notes', '')}"
+        }
+        
+        listing_response = requests.post(
+            listing_url,
+            headers=headers,
+            json=listing_data
+        )
+        
+        if listing_response.status_code == 429:
+            return jsonify({
+                'success': False,
+                'error': 'Rate limited. Please wait a moment and try again.'
+            }), 429
+        
+        if listing_response.status_code in [200, 201]:
+            listing_result = listing_response.json()
+            listing_id = listing_result.get('listing_id')
+            
+            # Update local record with Discogs listing ID
+            conn = get_db()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE records 
+                SET discogs_listing_id = ?,
+                    discogs_listed_date = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (listing_id, record['id']))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'listing_id': listing_id,
+                'release_id': release_id,
+                'url': f"https://www.discogs.com/sell/item/{listing_id}",
+                'record_id': record['id']
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f"Discogs API returned {listing_response.status_code}: {listing_response.text[:200]}"
+            })
+        
+    except Exception as e:
+        app.logger.error(f"Error creating single listing: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/discogs/create-listings', methods=['POST'])
 def create_discogs_listings():
     """
