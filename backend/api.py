@@ -624,32 +624,42 @@ def create_discogs_listings():
         app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/discogs/listings/<listing_id>', methods=['DELETE'])
-@require_discogs_auth
+@app.route('/api/discogs/delete-listing/<listing_id>', methods=['DELETE'])
 def delete_discogs_listing(listing_id):
-    """Delete a listing from Discogs"""
+    """Delete a listing from Discogs using Personal Access Token"""
     try:
-        import requests
-        from requests_oauthlib import OAuth1
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
         
-        auth = OAuth1(
-            os.environ.get('DISCOGS_CONSUMER_KEY'),
-            os.environ.get('DISCOGS_CONSUMER_SECRET'),
-            session['discogs_access_token']['oauth_token'],
-            session['discogs_access_token']['oauth_token_secret']
-        )
+        if not TOKEN:
+            return jsonify({
+                'success': False,
+                'error': 'Discogs token not configured'
+            }), 500
+        
+        headers = {
+            'Authorization': f'Discogs token={TOKEN}',
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
         
         url = f"https://api.discogs.com/marketplace/listings/{listing_id}"
-        response = requests.delete(
-            url,
-            auth=auth,
-            headers={'User-Agent': 'PigStyleMusic/1.0'}
-        )
         
-        if response.status_code in [200, 204]:
-            return jsonify({'success': True})
+        response = requests.delete(url, headers=headers)
+        
+        if response.status_code == 204:
+            return jsonify({
+                'success': True,
+                'message': f'Listing {listing_id} deleted successfully'
+            })
+        elif response.status_code == 404:
+            return jsonify({
+                'success': False,
+                'error': f'Listing {listing_id} not found on Discogs'
+            }), 404
         else:
-            return jsonify({'error': f"Failed to delete: {response.status_code}"}), response.status_code
+            return jsonify({
+                'success': False,
+                'error': f'Discogs API returned {response.status_code}: {response.text}'
+            }), response.status_code
             
     except Exception as e:
         app.logger.error(f"Error deleting Discogs listing: {str(e)}")
@@ -4042,7 +4052,7 @@ def get_record(record_id):
         record_dict['condition'] = record_dict['sleeve_condition_name']
 
     return jsonify(record_dict)
-
+ 
 @app.route('/records/<int:record_id>', methods=['PUT'])
 def update_record(record_id):
     """Update a record with support for separate sleeve and disc conditions"""
@@ -4079,7 +4089,9 @@ def update_record(record_id):
         'kill_votes': 'kill_votes',
         'status_id': 'status_id',
         'date_sold': 'date_sold',
-        'date_paid': 'date_paid'
+        'date_paid': 'date_paid',
+        'discogs_listing_id': 'discogs_listing_id',
+        'discogs_listed_date': 'discogs_listed_date'
     }
 
     # Handle backward compatibility - if 'condition' is provided but not condition_sleeve_id

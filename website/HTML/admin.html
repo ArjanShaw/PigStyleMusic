@@ -2329,13 +2329,12 @@
                             <th>Artist Name</th>
                             <th>Record Count</th>
                             <th>Actions</th>
-                        </tr>
-                    </thead>
+                        </thead>
                     <tbody id="artists-body">
-                        <tr><td colspan="5" style="text-align:center; padding:40px;">
+                        <td colspan="5" style="text-align:center; padding:40px;">
                             <i class="fas fa-music" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
                             Loading artists...
-                         </td>
+                        </td>
                     </tbody>
                 </table>
             </div>
@@ -2461,15 +2460,12 @@
                             <th>Count</th>
                             <th>Created</th>
                             <th>Actions</th>
-                        </tr>
-                    </thead>
+                        </thead>
                     <tbody id="accessories-body">
-                        <tr>
-                            <td colspan="8" style="text-align: center; padding: 40px;">
-                                <i class="fas fa-headphones" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
-                                Click "Add New Accessory" to get started
-                            </td>
-                        </tr>
+                        <td colspan="8" style="text-align: center; padding: 40px;">
+                            <i class="fas fa-headphones" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
+                            Click "Add New Accessory" to get started
+                        </td>
                     </tbody>
                 </table>
             </div>
@@ -2557,10 +2553,9 @@
                             <th>End Date</th>
                             <th>Status</th>
                             <th>Actions</th>
-                        </tr>
-                    </thead>
+                        </thead>
                     <tbody id="batches-body">
-                        <tr><td colspan="11" style="text-align:center; padding:40px;">Loading batches...</td></tr>
+                        <td colspan="11" style="text-align:center; padding:40px;">Loading batches...</td>
                     </tbody>
                 </table>
             </div>
@@ -2621,8 +2616,7 @@
                                 <th>Value</th>
                                 <th>Description</th>
                                 <th>Actions</th>
-                            </tr>
-                        </thead>
+                            </thead>
                         <tbody id="print-config-body">
                             <!-- Print config values will be loaded here -->
                         </tbody>
@@ -2642,8 +2636,7 @@
                                 <th>Value</th>
                                 <th>Description</th>
                                 <th>Actions</th>
-                            </tr>
-                        </thead>
+                            </thead>
                         <tbody id="general-config-body">
                             <!-- General config values will be loaded here -->
                         </tbody>
@@ -2837,8 +2830,7 @@
                                 <th>Barcode</th>
                                 <th>Consignor</th>
                                 <th>Status</th>
-                            </tr>
-                        </thead>
+                            </thead>
                         <tbody id="records-body">
                             <!-- Records will be loaded here -->
                         </tbody>
@@ -2963,11 +2955,10 @@
                             <th onclick="sortOrders('total')" id="sort-total" style="cursor: pointer;">Total</th>
                             <th onclick="sortOrders('status')" id="sort-status" style="cursor: pointer;">Status</th>
                             <th>Actions</th>
-                        </tr>
-                    </thead>
+                        </thead>
                     <tbody id="orders-body">
                         <!-- Orders will be loaded here -->
-                        <tr><td colspan="9" style="text-align:center; padding:40px;">Loading orders...</td></tr>
+                        <td colspan="9" style="text-align:center; padding:40px;">Loading orders...</td>
                     </tbody>
                 </table>
                 <div id="orders-empty" style="display: none; text-align: center; padding: 40px;">
@@ -3137,8 +3128,7 @@
                 </div>
             </div>
         </div>
-        
-        
+
         <!-- Discogs Tab -->
 <div id="discogs-tab" class="tab-content">
     <h2><i class="fab fa-discogs"></i> Discogs Inventory Management</h2>
@@ -3163,68 +3153,9 @@
         </div>
     </div>
     
-    <!-- BARCODE SEARCH SECTION - NEW -->
-    <div class="barcode-search-section" style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px;">
-        <h3 style="margin: 0 0 10px 0; color: white;"><i class="fas fa-barcode"></i> Search by Barcode</h3>
-        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 300px;">
-                <input type="text" 
-                       id="discogs-barcode-search" 
-                       class="search-input" 
-                       placeholder="Enter exact barcode number to search..."
-                       style="width: 100%; padding: 10px; font-family: monospace; font-size: 14px;"
-                       onkeypress="if(event.key === 'Enter') searchDiscogsByBarcode()">
-            </div>
-            <div>
-                <button class="btn btn-primary" onclick="searchDiscogsByBarcode()" style="background: white; color: #667eea;">
-                    <i class="fas fa-search"></i> Search
-                </button>
-                <button class="btn btn-light" id="clear-barcode-search" onclick="clearBarcodeSearch()" style="display: none; background: #ffc107; color: #333;">
-                    <i class="fas fa-times"></i> Clear
-                </button>
-            </div>
-        </div>
-        <div id="discogs-barcode-stats" style="margin-top: 8px; font-size: 13px; color: white; display: none;"></div>
-        <p style="margin-top: 8px; margin-bottom: 0; font-size: 12px; color: rgba(255,255,255,0.8);">
-            <i class="fas fa-info-circle"></i> Enter exact barcode to filter records. Multiple records can have the same barcode.
-        </p>
-    </div>
-    
-    <!-- Discogs Listings Table -->
-    <div style="margin-bottom: 20px;">
-        <h3 style="margin-bottom: 10px;">
-            <i class="fab fa-discogs"></i> Discogs Listings
-        </h3>
-        <div class="records-table-container">
-            <table class="records-table" id="discogs-response-table">
-                <thead>
-                    <tr>
-                        <th>Listing ID</th>
-                        <th>Release ID</th>
-                        <th>Artist</th>
-                        <th>Title</th>
-                        <th>Price</th>
-                        <th>Condition</th>
-                        <th>Sleeve Condition</th>
-                        <th>Status</th>
-                        <th>URL</th>
-                    </tr>
-                </thead>
-                <tbody id="discogs-response-body">
-                    <tr>
-                        <td colspan="9" style="text-align: center; padding: 40px;">
-                            <i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i>
-                            <p>Loading Discogs listings...</p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    
-    <!-- Filter Section (for local records only) -->
+    <!-- Filter Section -->
     <div class="filters-section" style="margin-bottom: 20px;">
-        <h3><i class="fas fa-filter"></i> Filter Local Inventory</h3>
+        <h3><i class="fas fa-filter"></i> Filter Inventory</h3>
         
         <div class="filters-row" style="display: flex; gap: 30px; align-items: flex-end; flex-wrap: wrap;">
             <div class="filter-group" style="min-width: 200px;">
@@ -3251,6 +3182,15 @@
             </div>
             
             <div class="filter-group" style="min-width: 200px;">
+                <label for="discogs-status-filter"><i class="fas fa-chart-line"></i> Discogs Status:</label>
+                <select id="discogs-status-filter" class="filter-select" onchange="filterDiscogsInventory()">
+                    <option value="all">All Records</option>
+                    <option value="active">Active on Discogs</option>
+                    <option value="sold">Sold on Discogs</option>
+                </select>
+            </div>
+            
+            <div class="filter-group" style="min-width: 200px;">
                 <label for="consignor-filter"><i class="fas fa-user"></i> Consignor:</label>
                 <select id="consignor-filter" class="filter-select" onchange="filterDiscogsInventory()">
                     <option value="all">All Consignors</option>
@@ -3267,6 +3207,9 @@
             </div>
             
             <div class="filter-group">
+                <button class="btn btn-primary" onclick="syncDiscogsStatus()" style="background: #17a2b8;">
+                    <i class="fas fa-sync-alt"></i> Sync
+                </button>
                 <button class="btn btn-secondary" onclick="resetDiscogsFilters()">
                     <i class="fas fa-undo"></i> Reset Filters
                 </button>
@@ -3296,9 +3239,9 @@
         </div>
     </div>
     
-    <!-- Local Inventory Table -->
+    <!-- Inventory Table -->
     <h3 style="margin-top: 20px; margin-bottom: 10px;">
-        <i class="fas fa-database"></i> Local Inventory (<span id="local-record-count">0</span> records)
+        <i class="fas fa-database"></i> Inventory (<span id="local-record-count">0</span> records)
     </h3>
     <div class="records-table-container">
         <table class="records-table" id="discogs-inventory-table">
@@ -3316,62 +3259,85 @@
                     <th>Consignor</th>
                     <th>Status</th>
                     <th>Discogs Listing ID</th>
-                    <th>Barcode</th>
-                </tr>
-            </thead>
+                    <th>Actions</th>
+                </thead>
             <tbody id="discogs-inventory-body">
-                <tr>
-                    <td colspan="13" style="text-align: center; padding: 40px;">
-                        <i class="fas fa-spinner fa-spin"></i> Loading local inventory...
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    
-    <!-- Pagination for local records -->
-    <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-        <button class="page-btn" onclick="goToDiscogsPage(1)" id="discogs-first-btn" disabled>
-            <i class="fas fa-angle-double-left"></i>
-        </button>
-        <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage - 1)" id="discogs-prev-btn" disabled>
-            <i class="fas fa-angle-left"></i>
-        </button>
-        
-        <span class="pagination-info">
-            Page <input type="number" class="page-input" id="discogs-current-page" min="1" value="1" 
-                onchange="goToDiscogsPage(parseInt(this.value))" style="width: 50px; text-align: center;"> 
-            of <span id="discogs-total-pages">1</span>
-        </span>
-        
-        <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage + 1)" id="discogs-next-btn" disabled>
-            <i class="fas fa-angle-right"></i>
-        </button>
-        <button class="page-btn" onclick="goToDiscogsPage(discogsTotalPages)" id="discogs-last-btn" disabled>
-            <i class="fas fa-angle-double-right"></i>
-        </button>
-        
-        <div class="records-per-page" style="margin-left: auto;">
-            <span>Show:</span>
-            <select id="discogs-page-size" onchange="changeDiscogsPageSize(parseInt(this.value))">
-                <option value="20">20</option>
-                <option value="50" selected>50</option>
-                <option value="100">100</option>
-            </select>
+                <td colspan="13" style="text-align: center; padding: 40px;">
+                    <i class="fas fa-spinner fa-spin"></i> Loading inventory...
+                </tbody>
+            </table>
         </div>
-    </div>
-    
-    <!-- Loading Indicator -->
-    <div class="loading" id="discogs-loading" style="display: none;">
-        <div class="loading-spinner"></div>
-        <p>Loading...</p>
-    </div>
-    
-    <!-- Status Message -->
-    <div id="discogs-status-message" class="status-message" style="margin-top: 20px; display: none;"></div>
-</div>
         
+        <!-- Pagination for inventory -->
+        <div class="pagination" style="margin-top: 20px; margin-bottom: 30px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button class="page-btn" onclick="goToDiscogsPage(1)" id="discogs-first-btn" disabled>
+                <i class="fas fa-angle-double-left"></i>
+            </button>
+            <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage - 1)" id="discogs-prev-btn" disabled>
+                <i class="fas fa-angle-left"></i>
+            </button>
+            
+            <span class="pagination-info">
+                Page <input type="number" class="page-input" id="discogs-current-page" min="1" value="1" 
+                    onchange="goToDiscogsPage(parseInt(this.value))" style="width: 50px; text-align: center;"> 
+                of <span id="discogs-total-pages">1</span>
+            </span>
+            
+            <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage + 1)" id="discogs-next-btn" disabled>
+                <i class="fas fa-angle-right"></i>
+            </button>
+            <button class="page-btn" onclick="goToDiscogsPage(discogsTotalPages)" id="discogs-last-btn" disabled>
+                <i class="fas fa-angle-double-right"></i>
+            </button>
+            
+            <div class="records-per-page" style="margin-left: auto;">
+                <span>Show:</span>
+                <select id="discogs-page-size" onchange="changeDiscogsPageSize(parseInt(this.value))">
+                    <option value="20">20</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+        </div>
         
+        <!-- Discogs Orphaned Listings Table -->
+        <h3 style="margin-top: 20px; margin-bottom: 10px;">
+            <i class="fab fa-discogs"></i> Discogs Orphaned Listings (<span id="discogs-orphaned-count">0</span>)
+        </h3>
+        <div class="records-table-container">
+            <table class="records-table" id="discogs-orphaned-table">
+                <thead>
+                    <tr>
+                        <th>Listing ID</th>
+                        <th>Release ID</th>
+                        <th>Artist</th>
+                        <th>Title</th>
+                        <th>Price</th>
+                        <th>Condition</th>
+                        <th>Sleeve Condition</th>
+                        <th>Status</th>
+                        <th>URL</th>
+                    </tr>
+                </thead>
+                <tbody id="discogs-orphaned-body">
+                    <td colspan="9" style="text-align: center; padding: 40px;">
+                        <i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i>
+                        <p>Loading Discogs listings...</p>
+                    </td>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Loading Indicator -->
+        <div class="loading" id="discogs-loading" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p>Loading...</p>
+        </div>
+        
+        <!-- Status Message -->
+        <div id="discogs-status-message" class="status-message" style="margin-top: 20px; display: none;"></div>
+    </div>
+
         <!-- Square Payments Tab -->
         <div id="square-payments-tab" class="tab-content">
             <h2><i class="fas fa-credit-card"></i> Square Payments</h2>
@@ -3443,10 +3409,9 @@
                             <th>Card Details</th>
                             <th>Note</th>
                             <th>Actions</th>
-                        </tr>
-                    </thead>
+                        </thead>
                     <tbody id="square-payments-body">
-                        <tr><td colspan="7" style="text-align:center; padding:40px;">Click "Load Payments" to fetch from Square</td></tr>
+                        <td colspan="7" style="text-align:center; padding:40px;">Click "Load Payments" to fetch from Square</td>
                     </tbody>
                 </table>
             </div>
