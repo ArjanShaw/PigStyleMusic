@@ -826,6 +826,9 @@ function updateDiscogsSelectionCount() {
     if (submitBtn) submitBtn.disabled = count === 0;
 }
 
+// Global variable to track if submission is cancelled
+let discogsSubmissionCancelled = false;
+
 function submitToDiscogs() {
     const selectedIds = Array.from(discogsSelectedRecords);
     
@@ -834,7 +837,7 @@ function submitToDiscogs() {
         return;
     }
     
-    const recordsToSubmit = discogsInventory
+    const allRecordsToSubmit = discogsInventory
         .filter(r => selectedIds.includes(r.id))
         .map(r => ({
             id: r.id,
@@ -847,39 +850,57 @@ function submitToDiscogs() {
             notes: r.notes || ''
         }));
     
-    // Create a progress container
+    // Reset cancellation flag
+    discogsSubmissionCancelled = false;
+    
+    // Create a progress container with cancel button
     const statusEl = document.getElementById('discogs-status-message');
     if (statusEl) {
-        statusEl.innerHTML = `<div>Submitting ${recordsToSubmit.length} records to Discogs...</div>
-                              <div id="submit-progress" style="margin-top: 10px;"></div>`;
+        statusEl.innerHTML = `
+            <div style="margin-bottom: 10px;">
+                <strong>📤 Submitting ${allRecordsToSubmit.length} records to Discogs...</strong>
+                <button id="cancel-discogs-submit" class="btn btn-danger btn-small" style="margin-left: 15px; padding: 5px 10px;">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+            </div>
+            <div id="submit-progress" style="margin-top: 10px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px;"></div>
+        `;
         statusEl.style.display = 'block';
         statusEl.className = 'status-message status-info';
+        
+        // Add cancel button event listener
+        document.getElementById('cancel-discogs-submit').onclick = () => {
+            discogsSubmissionCancelled = true;
+            const progressEl = document.getElementById('submit-progress');
+            if (progressEl) {
+                progressEl.innerHTML += `<div style="color: #ffc107; margin-top: 10px;">⚠️ Submission cancelled by user</div>`;
+            }
+            if (statusEl) {
+                statusEl.innerHTML = `<div>⏹️ Submission cancelled. ${allRecordsToSubmit.length - processedCount} records not processed.</div>`;
+                statusEl.className = 'status-message status-warning';
+            }
+        };
     }
     
     const progressEl = document.getElementById('submit-progress');
+    let processedCount = 0;
+    let successCount = 0;
+    let failCount = 0;
     
-    fetch(`${window.AppConfig.baseUrl}/api/discogs/create-listings`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: window.AppConfig.getHeaders(),
-        body: JSON.stringify({ records: recordsToSubmit })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Build detailed results message
-            let message = `<strong>Listing Complete!</strong><br>`;
-            message += `✅ Successful: ${data.successful}<br>`;
-            message += `❌ Failed: ${data.failed}<br>`;
-            message += `📊 Total: ${data.total}<br><br>`;
+    function processRecord(index) {
+        if (discogsSubmissionCancelled) {
+            return;
+        }
+        
+        if (index >= allRecordsToSubmit.length) {
+            // All done
+            let message = `<div style="margin-top: 10px;"><strong>✅ Listing Complete!</strong></div>`;
+            message += `<div>✅ Successful: ${successCount}</div>`;
+            message += `<div>❌ Failed: ${failCount}</div>`;
+            message += `<div>📊 Total: ${allRecordsToSubmit.length}</div>`;
             
-            if (data.failed > 0) {
-                message += `<strong>Failed Records:</strong><br>`;
-                data.results.forEach(result => {
-                    if (!result.success) {
-                        message += `- Record ${result.record_id}: ${result.error}<br>`;
-                    }
-                });
+            if (failCount > 0) {
+                message += `<div style="margin-top: 10px;"><strong>Failed Records:</strong></div>`;
             }
             
             if (statusEl) {
@@ -890,14 +911,61 @@ function submitToDiscogs() {
             discogsSelectedRecords.clear();
             updateDiscogsSelectionCount();
             loadDiscogsInventory();
-        } else {
-            showDiscogsStatus(`Error: ${data.error || 'Unknown error'}`, 'error');
+            return;
         }
-    })
-    .catch(error => {
-        console.error('Error submitting to Discogs:', error);
-        showDiscogsStatus(`Error: ${error.message}`, 'error');
-    });
+        
+        const record = allRecordsToSubmit[index];
+        const currentNum = index + 1;
+        
+        if (progressEl) {
+            progressEl.innerHTML += `<div style="color: #007bff;">📤 [${currentNum}/${allRecordsToSubmit.length}] Processing: ${record.artist} - ${record.title} (ID: ${record.id})...</div>`;
+            progressEl.scrollTop = progressEl.scrollHeight;
+        }
+        
+        fetch(`${window.AppConfig.baseUrl}/api/discogs/create-listing-single`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders(),
+            body: JSON.stringify({ record: record })
+        })
+        .then(response => response.json())
+        .then(data => {
+            processedCount++;
+            
+            if (data.success) {
+                successCount++;
+                if (progressEl) {
+                    progressEl.innerHTML += `<div style="color: #28a745;">✅ [${currentNum}/${allRecordsToSubmit.length}] Record ${record.id}: Listed! (Discogs ID: ${data.listing_id})</div>`;
+                }
+            } else {
+                failCount++;
+                if (progressEl) {
+                    progressEl.innerHTML += `<div style="color: #dc3545;">❌ [${currentNum}/${allRecordsToSubmit.length}] Record ${record.id}: ${data.error}</div>`;
+                }
+            }
+            progressEl.scrollTop = progressEl.scrollHeight;
+            
+            // Process next record after delay
+            setTimeout(() => {
+                processRecord(index + 1);
+            }, 2000); // 2 second delay between records
+        })
+        .catch(error => {
+            processedCount++;
+            failCount++;
+            if (progressEl) {
+                progressEl.innerHTML += `<div style="color: #dc3545;">❌ [${currentNum}/${allRecordsToSubmit.length}] Record ${record.id}: Network error - ${error.message}</div>`;
+                progressEl.scrollTop = progressEl.scrollHeight;
+            }
+            
+            setTimeout(() => {
+                processRecord(index + 1);
+            }, 2000);
+        });
+    }
+    
+    // Start processing
+    processRecord(0);
 }
 
 function deleteDiscogsListing(recordId, listingId) {
