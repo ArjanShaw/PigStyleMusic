@@ -9,12 +9,11 @@ let discogsTotalPages = 1;
 let discogsSelectedRecords = new Set();
 
 // Filter state
-let sleeveConditionFilter = '';
-let discConditionFilter = '';
 let listingStatusFilter = 'all';
 let searchFilter = '';
 let consignorFilter = 'all';
 let discogsStatusFilter = 'all';
+let localStatusFilter = 'all';
 
 // Conditions data from database
 let conditionsMap = {
@@ -158,6 +157,7 @@ function populateConsignorDropdown(consignors) {
  * Populate condition dropdowns
  */
 function populateConditionDropdowns(conditions) {
+    // This function is kept for compatibility but dropdowns are hidden in UI
     const sortedConditions = [...conditions].sort((a, b) => a.quality_index - b.quality_index);
     
     const sleeveDropdown = document.getElementById('sleeve-condition-filter');
@@ -213,8 +213,6 @@ function loadLocalInventory() {
     });
 }
 
-
-
 /**
  * Load Discogs listings and filter to show only orphaned listings
  */
@@ -222,6 +220,8 @@ function loadDiscogsListings() {
     const url = `${window.AppConfig.baseUrl}/api/discogs/test-listings`;
     const tableBody = document.getElementById('discogs-orphaned-body');
     const orphanedCountEl = document.getElementById('discogs-orphaned-count');
+    const openOrdersCountEl = document.getElementById('open-orders-count');
+    const salesTotalEl = document.getElementById('sales-total');
     
     if (tableBody) {
         tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading Discogs listings...<\/td>';
@@ -249,6 +249,16 @@ function loadDiscogsListings() {
                 return !localDiscogsIds.has(String(listing.listing_id));
             });
             
+            // Calculate open orders (sold on Discogs but not locally marked as sold)
+            const soldListings = data.listings.filter(listing => {
+                return listing.status === 'Sold' && !localDiscogsIds.has(String(listing.listing_id));
+            });
+            
+            const openOrdersCount = soldListings.length;
+            const salesTotal = soldListings.reduce((sum, listing) => sum + parseFloat(listing.price || 0), 0);
+            
+            if (openOrdersCountEl) openOrdersCountEl.textContent = openOrdersCount;
+            if (salesTotalEl) salesTotalEl.textContent = `$${salesTotal.toFixed(2)}`;
             if (orphanedCountEl) orphanedCountEl.textContent = orphanedListings.length;
             
             if (orphanedListings.length > 0) {
@@ -279,6 +289,8 @@ function loadDiscogsListings() {
         } else {
             tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No Discogs listings found<\/td>';
             if (orphanedCountEl) orphanedCountEl.textContent = 0;
+            if (openOrdersCountEl) openOrdersCountEl.textContent = 0;
+            if (salesTotalEl) salesTotalEl.textContent = '$0.00';
             const listedCountEl = document.getElementById('discogs-listed-count');
             if (listedCountEl) listedCountEl.textContent = 0;
         }
@@ -291,6 +303,8 @@ function loadDiscogsListings() {
             tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">Error: ${error.message}<\/td>`;
         }
         if (orphanedCountEl) orphanedCountEl.textContent = 0;
+        if (openOrdersCountEl) openOrdersCountEl.textContent = 0;
+        if (salesTotalEl) salesTotalEl.textContent = '$0.00';
         return null;
     });
 }
@@ -481,35 +495,18 @@ function loadDiscogsInventory() {
  */
 function applyDiscogsFilters() {
     filteredDiscogsInventory = discogsInventory.filter(record => {
-        // Disc condition filter
-        if (discConditionFilter) {
-            const discConditionId = record.condition_disc_id;
-            if (!discConditionId) return false;
-            
-            const discQuality = conditionsMap.qualityIndexMap[discConditionId];
-            const filterQuality = conditionsMap.qualityIndexMap[discConditionFilter];
-            
-            if (discQuality === undefined || filterQuality === undefined) return false;
-            if (discQuality > filterQuality) return false;
-        }
-        
-        // Sleeve condition filter
-        if (sleeveConditionFilter) {
-            const sleeveConditionId = record.condition_sleeve_id;
-            if (!sleeveConditionId) return false;
-            
-            const sleeveQuality = conditionsMap.qualityIndexMap[sleeveConditionId];
-            const filterQuality = conditionsMap.qualityIndexMap[sleeveConditionFilter];
-            
-            if (sleeveQuality === undefined || filterQuality === undefined) return false;
-            if (sleeveQuality > filterQuality) return false;
-        }
-        
-        // Listing status filter
+        // Listing status filter (Discogs listing status)
         if (listingStatusFilter === 'listed' && !record.discogs_listing_id) return false;
         if (listingStatusFilter === 'unlisted' && record.discogs_listing_id) return false;
         
-        // Discogs status filter
+        // Local status filter
+        if (localStatusFilter !== 'all') {
+            if (localStatusFilter === 'active' && record.status_id !== 1) return false;
+            if (localStatusFilter === 'new' && record.status_id !== 0) return false;
+            if (localStatusFilter === 'sold' && record.status_id !== 3) return false;
+        }
+        
+        // Discogs status filter (sold on Discogs vs active)
         if (discogsStatusFilter !== 'all') {
             if (discogsStatusFilter === 'active' && record.status_id === 3) return false;
             if (discogsStatusFilter === 'sold' && record.status_id !== 3) return false;
@@ -601,8 +598,26 @@ function renderDiscogsInventory() {
             }
         }
         
-        let statusText = isListed ? 'Listed' : 'Not Listed';
-        if (isSold) statusText = 'Sold';
+        // Local status text
+        let localStatusText = '';
+        let localStatusClass = '';
+        if (isSold) {
+            localStatusText = 'Sold';
+            localStatusClass = 'sold';
+        } else if (record.status_id === 0) {
+            localStatusText = 'New';
+            localStatusClass = 'new';
+        } else if (record.status_id === 1) {
+            localStatusText = 'Active';
+            localStatusClass = 'active';
+        } else {
+            localStatusText = 'Unknown';
+            localStatusClass = '';
+        }
+        
+        // Discogs status text
+        let discogsStatusText = isListed ? 'Listed' : 'Not Listed';
+        let discogsStatusClass = isListed ? 'paid' : 'new';
         
         // Create hyperlink for Discogs Listing ID if it exists
         let discogsListingDisplay = '-';
@@ -632,7 +647,8 @@ function renderDiscogsInventory() {
                   <td><span class="condition-badge">${escapeHtml(sleeveCondition)}<\/span><\/td>
                   <td><span class="condition-badge">${escapeHtml(discCondition)}<\/span><\/td>
                   <td>${escapeHtml(consignorDisplay)}<\/td>
-                  <td>${isSold ? '<span class="status-badge sold">Sold</span>' : (isListed ? '<span class="status-badge paid">Listed</span>' : '<span class="status-badge new">Not Listed</span>')}<\/td>
+                  <td><span class="status-badge ${localStatusClass}">${escapeHtml(localStatusText)}<\/span><\/td>
+                  <td><span class="status-badge ${discogsStatusClass}">${escapeHtml(discogsStatusText)}<\/span><\/td>
                   <td>${discogsListingDisplay}<\/td>
                   <td>
                     ${!isListed && !isSold ? 
@@ -702,31 +718,28 @@ function changeDiscogsPageSize(size) {
 }
 
 function filterDiscogsInventory() {
-    sleeveConditionFilter = document.getElementById('sleeve-condition-filter').value;
-    discConditionFilter = document.getElementById('disc-condition-filter').value;
     listingStatusFilter = document.getElementById('listing-status-filter').value;
     searchFilter = document.getElementById('discogs-search').value;
     consignorFilter = document.getElementById('consignor-filter').value;
     discogsStatusFilter = document.getElementById('discogs-status-filter').value;
+    localStatusFilter = document.getElementById('local-status-filter').value;
     
     discogsCurrentPage = 1;
     applyDiscogsFilters();
 }
 
 function resetDiscogsFilters() {
-    document.getElementById('sleeve-condition-filter').value = '';
-    document.getElementById('disc-condition-filter').value = '';
     document.getElementById('listing-status-filter').value = 'all';
     document.getElementById('discogs-search').value = '';
     document.getElementById('consignor-filter').value = 'all';
     document.getElementById('discogs-status-filter').value = 'all';
+    document.getElementById('local-status-filter').value = 'all';
     
-    sleeveConditionFilter = '';
-    discConditionFilter = '';
     listingStatusFilter = 'all';
     searchFilter = '';
     consignorFilter = 'all';
     discogsStatusFilter = 'all';
+    localStatusFilter = 'all';
     
     discogsCurrentPage = 1;
     applyDiscogsFilters();
