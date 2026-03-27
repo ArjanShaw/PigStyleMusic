@@ -847,7 +847,16 @@ function submitToDiscogs() {
             notes: r.notes || ''
         }));
     
-    showDiscogsStatus(`Submitting ${recordsToSubmit.length} records to Discogs...`, 'info');
+    // Create a progress container
+    const statusEl = document.getElementById('discogs-status-message');
+    if (statusEl) {
+        statusEl.innerHTML = `<div>Submitting ${recordsToSubmit.length} records to Discogs...</div>
+                              <div id="submit-progress" style="margin-top: 10px;"></div>`;
+        statusEl.style.display = 'block';
+        statusEl.className = 'status-message status-info';
+    }
+    
+    const progressEl = document.getElementById('submit-progress');
     
     fetch(`${window.AppConfig.baseUrl}/api/discogs/create-listings`, {
         method: 'POST',
@@ -858,7 +867,26 @@ function submitToDiscogs() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showDiscogsStatus(`Successfully listed ${data.successful} items on Discogs`, 'success');
+            // Build detailed results message
+            let message = `<strong>Listing Complete!</strong><br>`;
+            message += `✅ Successful: ${data.successful}<br>`;
+            message += `❌ Failed: ${data.failed}<br>`;
+            message += `📊 Total: ${data.total}<br><br>`;
+            
+            if (data.failed > 0) {
+                message += `<strong>Failed Records:</strong><br>`;
+                data.results.forEach(result => {
+                    if (!result.success) {
+                        message += `- Record ${result.record_id}: ${result.error}<br>`;
+                    }
+                });
+            }
+            
+            if (statusEl) {
+                statusEl.innerHTML = message;
+                statusEl.className = 'status-message status-success';
+            }
+            
             discogsSelectedRecords.clear();
             updateDiscogsSelectionCount();
             loadDiscogsInventory();
