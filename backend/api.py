@@ -574,8 +574,7 @@ def create_discogs_listings():
                     cursor.execute('''
                         UPDATE records 
                         SET discogs_listing_id = ?,
-                            discogs_listed_date = CURRENT_TIMESTAMP,
-                            updated_at = CURRENT_TIMESTAMP
+                            discogs_listed_date = CURRENT_TIMESTAMP
                         WHERE id = ?
                     ''', (listing_id, record['id']))
                     
@@ -6289,8 +6288,7 @@ def complete_batch(batch_id):
         cursor.execute('''
             UPDATE batches 
             SET end_datetime = datetime('now'),
-                status = 'completed',
-                updated_at = CURRENT_TIMESTAMP
+                status = 'completed' 
             WHERE id = ? AND status = 'active'
         ''', (batch_id,))
         
@@ -6375,8 +6373,7 @@ def cancel_batch(batch_id):
         cursor.execute('''
             UPDATE batches 
             SET status = 'cancelled',
-                end_datetime = COALESCE(end_datetime, datetime('now')),
-                updated_at = CURRENT_TIMESTAMP
+                end_datetime = COALESCE(end_datetime, datetime('now')) 
             WHERE id = ?
         ''', (batch_id,))
         
@@ -6820,7 +6817,7 @@ def update_feedback_status(feedback_id):
         
         cursor.execute('''
             UPDATE feedback 
-            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            SET status = ?,  
             WHERE id = ?
         ''', (new_status, feedback_id))
         
