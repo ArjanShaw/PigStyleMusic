@@ -468,7 +468,7 @@ def get_my_discogs_listings():
 @app.route('/api/discogs/create-listings', methods=['POST'])
 def create_discogs_listings():
     """
-    Create multiple listings on Discogs using Personal Access Token
+    Create multiple listings on Discogs using Personal Access Token with progress reporting
     """
     try:
         data = request.json
@@ -495,118 +495,146 @@ def create_discogs_listings():
         
         results = []
         successful_count = 0
+        failed_count = 0
         
-        for record in records:
-            try:
-                # First, search for the release on Discogs
-                search_url = "https://api.discogs.com/database/search"
-                search_query = f"{record.get('artist')} {record.get('title')}"
-                
-                if record.get('catalog_number'):
-                    search_query += f" {record.get('catalog_number')}"
-                
-                search_params = {
-                    'q': search_query,
-                    'type': 'release',
-                    'per_page': 1
-                }
-                
-                headers = {
-                    'Authorization': f'Discogs token={TOKEN}',
-                    'User-Agent': 'PigStyleMusic/1.0'
-                }
-                
-                search_response = requests.get(search_url, headers=headers, params=search_params)
-                
-                if search_response.status_code != 200:
-                    app.logger.error(f"Discogs search error: {search_response.text}")
+        # Process in batches of 5 to avoid rate limiting
+        batch_size = 5
+        total_batches = (len(records) + batch_size - 1) // batch_size
+        
+        for batch_num in range(total_batches):
+            start_idx = batch_num * batch_size
+            end_idx = min(start_idx + batch_size, len(records))
+            batch_records = records[start_idx:end_idx]
+            
+            app.logger.info(f"Processing batch {batch_num + 1} of {total_batches} ({len(batch_records)} records)")
+            
+            for idx, record in enumerate(batch_records):
+                current_num = start_idx + idx + 1
+                try:
+                    app.logger.info(f"[{current_num}/{len(records)}] Processing record {record['id']}: {record.get('artist')} - {record.get('title')}")
+                    
+                    # First, search for the release on Discogs
+                    search_url = "https://api.discogs.com/database/search"
+                    search_query = f"{record.get('artist')} {record.get('title')}"
+                    
+                    if record.get('catalog_number'):
+                        search_query += f" {record.get('catalog_number')}"
+                    
+                    search_params = {
+                        'q': search_query,
+                        'type': 'release',
+                        'per_page': 1
+                    }
+                    
+                    headers = {
+                        'Authorization': f'Discogs token={TOKEN}',
+                        'User-Agent': 'PigStyleMusic/1.0'
+                    }
+                    
+                    search_response = requests.get(search_url, headers=headers, params=search_params)
+                    
+                    if search_response.status_code != 200:
+                        error_msg = f"Search failed: {search_response.status_code}"
+                        app.logger.error(f"[{current_num}/{len(records)}] {error_msg} - {search_response.text}")
+                        results.append({
+                            'record_id': record['id'],
+                            'success': False,
+                            'error': error_msg
+                        })
+                        failed_count += 1
+                        continue
+                    
+                    search_data = search_response.json()
+                    releases = search_data.get('results', [])
+                    
+                    if not releases:
+                        error_msg = "No matching release found on Discogs"
+                        app.logger.warning(f"[{current_num}/{len(records)}] {error_msg}")
+                        results.append({
+                            'record_id': record['id'],
+                            'success': False,
+                            'error': error_msg
+                        })
+                        failed_count += 1
+                        continue
+                    
+                    release_id = releases[0].get('id')
+                    app.logger.info(f"[{current_num}/{len(records)}] Found release ID: {release_id}")
+                    
+                    # Now create the listing using the Marketplace API
+                    listing_url = "https://api.discogs.com/marketplace/listings"
+                    
+                    listing_data = {
+                        "release_id": release_id,
+                        "condition": record.get('media_condition', 'Very Good Plus (VG+)'),
+                        "sleeve_condition": record.get('sleeve_condition', record.get('media_condition', 'Very Good Plus (VG+)')),
+                        "price": float(record.get('price', 0)),
+                        "status": "For Sale",
+                        "comments": f"[PIGSTYLE ID: {record['id']}] {record.get('notes', '')}"
+                    }
+                    
+                    listing_response = requests.post(
+                        listing_url,
+                        headers=headers,
+                        json=listing_data
+                    )
+                    
+                    app.logger.info(f"[{current_num}/{len(records)}] Listing response status: {listing_response.status_code}")
+                    
+                    # Check if the request was successful
+                    if listing_response.status_code in [200, 201]:
+                        listing_result = listing_response.json()
+                        listing_id = listing_result.get('listing_id')
+                        
+                        app.logger.info(f"[{current_num}/{len(records)}] Got listing ID: {listing_id}")
+                        
+                        # Update local record with Discogs listing ID
+                        cursor.execute('''
+                            UPDATE records 
+                            SET discogs_listing_id = ?,
+                                discogs_listed_date = CURRENT_TIMESTAMP 
+                            WHERE id = ?
+                        ''', (listing_id, record['id']))
+                        
+                        conn.commit()
+                        
+                        app.logger.info(f"[{current_num}/{len(records)}] ✅ Successfully listed record {record['id']}")
+                        
+                        results.append({
+                            'record_id': record['id'],
+                            'listing_id': listing_id,
+                            'release_id': release_id,
+                            'url': f"https://www.discogs.com/sell/item/{listing_id}",
+                            'success': True
+                        })
+                        successful_count += 1
+                    else:
+                        error_msg = f"Discogs API returned {listing_response.status_code}: {listing_response.text[:200]}"
+                        app.logger.error(f"[{current_num}/{len(records)}] ❌ {error_msg}")
+                        results.append({
+                            'record_id': record['id'],
+                            'success': False,
+                            'error': error_msg
+                        })
+                        failed_count += 1
+                    
+                    # Small delay between requests to avoid rate limiting
+                    time.sleep(0.5)
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    app.logger.error(f"[{current_num}/{len(records)}] ❌ Exception: {error_msg}")
                     results.append({
                         'record_id': record['id'],
                         'success': False,
-                        'error': 'Failed to search Discogs'
+                        'error': error_msg
                     })
-                    continue
-                
-                search_data = search_response.json()
-                releases = search_data.get('results', [])
-                
-                if not releases:
-                    results.append({
-                        'record_id': record['id'],
-                        'success': False,
-                        'error': 'No matching release found on Discogs'
-                    })
-                    continue
-                
-                release_id = releases[0].get('id')
-                
-                # Now create the listing using the Marketplace API
-                listing_url = "https://api.discogs.com/marketplace/listings"
-                
-                listing_data = {
-                    "release_id": release_id,
-                    "condition": record.get('media_condition', 'Very Good Plus (VG+)'),
-                    "sleeve_condition": record.get('sleeve_condition', record.get('media_condition', 'Very Good Plus (VG+)')),
-                    "price": float(record.get('price', 0)),
-                    "status": "For Sale",
-                    "comments": f"[PIGSTYLE ID: {record['id']}] {record.get('notes', '')}"
-                }
-                
-                app.logger.info(f"Creating listing for release {release_id}: {listing_data}")
-                
-                listing_response = requests.post(
-                    listing_url,
-                    headers=headers,
-                    json=listing_data
-                )
-                
-                app.logger.info(f"Listing response status: {listing_response.status_code}")
-                app.logger.info(f"Listing response body: {listing_response.text}")
-                
-                # Check if the request was successful
-                if listing_response.status_code == 200 or listing_response.status_code == 201:
-                    listing_result = listing_response.json()
-                    listing_id = listing_result.get('listing_id')
-                    
-                    app.logger.info(f"Got listing ID: {listing_id}")
-                    
-                    # Update local record with Discogs listing ID
-                    cursor.execute('''
-                        UPDATE records 
-                        SET discogs_listing_id = ?,
-                            discogs_listed_date = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                    ''', (listing_id, record['id']))
-                    
-                    conn.commit()
-                    
-                    app.logger.info(f"Database updated for record {record['id']}, rows affected: {cursor.rowcount}")
-                    
-                    results.append({
-                        'record_id': record['id'],
-                        'listing_id': listing_id,
-                        'release_id': release_id,
-                        'url': f"https://www.discogs.com/sell/item/{listing_id}",
-                        'success': True
-                    })
-                    successful_count += 1
-                    
-                    app.logger.info(f"Successfully listed record {record['id']} with listing ID {listing_id}")
-                else:
-                    app.logger.error(f"Discogs listing failed with status {listing_response.status_code}: {listing_response.text}")
-                    results.append({
-                        'record_id': record['id'],
-                        'success': False,
-                        'error': f"Discogs API returned {listing_response.status_code}"
-                    })
-                
-            except Exception as e:
-                app.logger.error(f"Error creating listing for record {record['id']}: {str(e)}")
-                results.append({
-                    'record_id': record['id'],
-                    'success': False,
-                    'error': str(e)
-                })
+                    failed_count += 1
+            
+            # Delay between batches
+            if batch_num < total_batches - 1:
+                app.logger.info(f"Batch {batch_num + 1} complete. Waiting 2 seconds before next batch...")
+                time.sleep(2)
         
         conn.close()
         
@@ -614,8 +642,9 @@ def create_discogs_listings():
             'success': True,
             'results': results,
             'successful': successful_count,
-            'failed': len(results) - successful_count,
-            'message': f"Successfully listed {successful_count} items on Discogs"
+            'failed': failed_count,
+            'total': len(records),
+            'message': f"Listed {successful_count} of {len(records)} records on Discogs. Failed: {failed_count}"
         })
         
     except Exception as e:
