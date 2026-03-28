@@ -1,4 +1,5 @@
 // discogs.js - Cleaned version with Discogs listings table and local inventory table
+// Added barcode scanner component with "Show Selected Only" filter
 
 // State management
 let discogsInventory = [];
@@ -14,6 +15,7 @@ let searchFilter = '';
 let consignorFilter = 'all';
 let discogsStatusFilter = 'all'; // 'active' = listed and not sold, 'sold' = listed and sold on Discogs
 let localStatusFilter = 'all';
+let showSelectedOnlyFilter = 'selected'; // 'selected' or 'all'
 
 // Conditions data from database
 let conditionsMap = {
@@ -29,6 +31,10 @@ let consignorsList = [];
 
 // Store Discogs listings with status
 let discogsListingsMap = {}; // Key: listing_id, Value: listing object with status
+let openDiscogsOrders = []; // Store open orders for printing
+
+// Barcode scanner state
+let barcodeScannerTimeout = null;
 
 // Make functions globally available
 window.loadDiscogsInventory = loadDiscogsInventory;
@@ -45,6 +51,8 @@ window.deleteDiscogsListing = deleteDiscogsListing;
 window.syncDiscogsStatus = syncDiscogsStatus;
 window.loadConsignors = loadConsignors;
 window.loadDiscogsListings = loadDiscogsListings;
+window.printDiscogsOrders = printDiscogsOrders;
+window.scanBarcode = scanBarcode;
 
 /**
  * Load conditions from database
@@ -170,7 +178,8 @@ function loadLocalInventory() {
                 discogs_listed: record.discogs_listing_id ? true : false,
                 consignor_name: record.consignor_name || 'Unknown',
                 consignor_id: record.consignor_id || null,
-                discogs_status: null // Will be populated from Discogs listings
+                discogs_status: null, // Will be populated from Discogs listings
+                genre_name: record.genre_name || record.genre || 'Unknown'
             }));
             
             return discogsInventory;
@@ -252,6 +261,28 @@ function loadDiscogsListings() {
                 return localRecord.status_id !== 3;
             });
             
+            // Store open orders for printing with genre info
+            openDiscogsOrders = openOrdersListings.map(listing => {
+                // Try to find the matching local record if it exists
+                const localRecord = discogsInventory.find(r => String(r.discogs_listing_id) === String(listing.listing_id));
+                return {
+                    listing_id: listing.listing_id,
+                    release_id: listing.release_id,
+                    artist: listing.artist,
+                    title: listing.title,
+                    genre: localRecord ? localRecord.genre_name : (listing.genre || 'Unknown'),
+                    price: parseFloat(listing.price || 0),
+                    condition: listing.condition,
+                    sleeve_condition: listing.sleeve_condition,
+                    status: listing.status,
+                    url: listing.url,
+                    order_date: listing.order_date || null,
+                    buyer_username: listing.buyer_username || null,
+                    local_record_id: localRecord ? localRecord.id : null,
+                    local_status: localRecord ? (localRecord.status_id === 3 ? 'sold' : 'active') : 'no_local_record'
+                };
+            });
+            
             const openOrdersCount = openOrdersListings.length;
             const salesTotal = openOrdersListings.reduce((sum, listing) => sum + parseFloat(listing.price || 0), 0);
             
@@ -292,6 +323,7 @@ function loadDiscogsListings() {
             const listedCountEl = document.getElementById('discogs-listed-count');
             if (listedCountEl) listedCountEl.textContent = 0;
             discogsListingsMap = {};
+            openDiscogsOrders = [];
         }
         
         return data;
@@ -306,6 +338,148 @@ function loadDiscogsListings() {
         if (salesTotalEl) salesTotalEl.textContent = '$0.00';
         return null;
     });
+}
+
+/**
+ * Scan barcode - checks matching records and adds to selection
+ */
+function scanBarcode(barcode) {
+    if (!barcode || barcode.trim() === '') {
+        updateScannerStatus('Please enter a barcode', 'warning');
+        return;
+    }
+    
+    barcode = barcode.trim();
+    updateScannerStatus('Searching...', 'info');
+    
+    // Search local inventory for matching barcode
+    const matches = discogsInventory.filter(record => 
+        record.barcode && String(record.barcode).trim() === barcode
+    );
+    
+    if (matches.length === 0) {
+        alert(`No records found for barcode: ${barcode}`);
+        updateScannerStatus(`No records found for barcode: ${barcode}`, 'error');
+        clearBarcodeInput();
+        return;
+    }
+    
+    // Check if any matches are already selected
+    const alreadySelected = matches.filter(record => discogsSelectedRecords.has(record.id));
+    const newMatches = matches.filter(record => !discogsSelectedRecords.has(record.id));
+    
+    if (newMatches.length === 0) {
+        updateScannerStatus(`All ${matches.length} record(s) already selected`, 'warning');
+        clearBarcodeInput();
+        return;
+    }
+    
+    // Add new matches to selection
+    let addedCount = 0;
+    newMatches.forEach(record => {
+        discogsSelectedRecords.add(record.id);
+        addedCount++;
+    });
+    
+    updateDiscogsSelectionCount();
+    
+    // Show success message
+    const message = addedCount === 1 
+        ? `Added: ${newMatches[0].artist} - ${newMatches[0].title}`
+        : `Added ${addedCount} records for barcode: ${barcode}`;
+    updateScannerStatus(message, 'success');
+    
+    // Re-render the table to show the newly selected records
+    applyDiscogsFilters();
+    
+    // Highlight the newly added records
+    setTimeout(() => {
+        newMatches.forEach(record => {
+            highlightRecordRow(record.id);
+            scrollToRecordIfNeeded(record.id);
+        });
+    }, 100);
+    
+    clearBarcodeInput();
+}
+
+/**
+ * Highlight a record row in the table
+ */
+function highlightRecordRow(recordId) {
+    const rows = document.querySelectorAll('#discogs-inventory-body tr');
+    for (let row of rows) {
+        const checkbox = row.querySelector('.discogs-record-checkbox');
+        if (checkbox && checkbox.getAttribute('data-record-id') == recordId) {
+            row.classList.add('highlight-row');
+            setTimeout(() => {
+                row.classList.remove('highlight-row');
+            }, 1500);
+            break;
+        }
+    }
+}
+
+/**
+ * Scroll to a record if it's not on the current page
+ */
+function scrollToRecordIfNeeded(recordId) {
+    // Check if the record is on the current page
+    const recordOnCurrentPage = filteredDiscogsInventory.slice(
+        (discogsCurrentPage - 1) * discogsPageSize,
+        discogsCurrentPage * discogsPageSize
+    ).some(r => r.id === recordId);
+    
+    if (!recordOnCurrentPage) {
+        // Find which page the record is on
+        const recordIndex = filteredDiscogsInventory.findIndex(r => r.id === recordId);
+        if (recordIndex !== -1) {
+            const targetPage = Math.floor(recordIndex / discogsPageSize) + 1;
+            if (targetPage !== discogsCurrentPage) {
+                discogsCurrentPage = targetPage;
+                renderDiscogsInventory();
+                updateDiscogsPagination();
+                
+                // After rendering, highlight the row
+                setTimeout(() => {
+                    highlightRecordRow(recordId);
+                }, 100);
+            }
+        }
+    }
+}
+
+/**
+ * Update scanner status display
+ */
+function updateScannerStatus(message, type = 'info') {
+    const statusEl = document.getElementById('scanner-status');
+    if (!statusEl) return;
+    
+    statusEl.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i> ${escapeHtml(message)}`;
+    statusEl.className = '';
+    statusEl.classList.add(type);
+    
+    // Clear status after 3 seconds for non-info messages
+    if (type !== 'info') {
+        setTimeout(() => {
+            if (statusEl) {
+                statusEl.innerHTML = '<i class="fas fa-info-circle"></i> Ready to scan';
+                statusEl.className = '';
+            }
+        }, 3000);
+    }
+}
+
+/**
+ * Clear barcode input field
+ */
+function clearBarcodeInput() {
+    const input = document.getElementById('batch-barcode-input');
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
 }
 
 /**
@@ -456,7 +630,7 @@ function loadDiscogsInventory() {
     if (loadingEl) loadingEl.style.display = 'block';
     
     if (tableBody) {
-        tableBody.innerHTML = '<td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading inventory...</p><\/td>';
+        tableBody.innerHTML = '<td colspan="14" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading inventory...</p><\/td>';
     }
     
     Promise.all([
@@ -486,13 +660,16 @@ function loadDiscogsInventory() {
         updateDiscogsStats();
         
         if (loadingEl) loadingEl.style.display = 'none';
+        
+        // Set up barcode scanner listener
+        setupBarcodeScanner();
     })
     .catch(error => {
         console.error('Error loading inventory:', error);
         if (loadingEl) loadingEl.style.display = 'none';
         
         if (tableBody) {
-            tableBody.innerHTML = `<td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">
+            tableBody.innerHTML = `<td colspan="14" style="text-align: center; padding: 40px; color: #dc3545;">
                 <i class="fas fa-exclamation-triangle"></i>
                 <p>Error loading inventory: ${error.message}</p>
                 <button class="btn btn-primary" onclick="loadDiscogsInventory()">
@@ -504,22 +681,148 @@ function loadDiscogsInventory() {
 }
 
 /**
+ * Set up barcode scanner input listener
+ */
+function setupBarcodeScanner() {
+    const barcodeInput = document.getElementById('batch-barcode-input');
+    if (!barcodeInput) return;
+    
+    // Remove existing listener to avoid duplicates
+    barcodeInput.removeEventListener('input', handleBarcodeInput);
+    barcodeInput.addEventListener('input', handleBarcodeInput);
+    
+    // Focus the input
+    barcodeInput.focus();
+}
+
+/**
+ * Handle barcode input with debounce
+ */
+function handleBarcodeInput(event) {
+    const value = event.target.value;
+    
+    // Clear previous timeout
+    if (barcodeScannerTimeout) {
+        clearTimeout(barcodeScannerTimeout);
+    }
+    
+    // Debounce to avoid searching on every keystroke
+    barcodeScannerTimeout = setTimeout(() => {
+        if (value && value.trim() !== '') {
+            scanBarcode(value);
+        }
+    }, 300);
+}
+
+/**
+ * Print open Discogs orders
+ */
+function printDiscogsOrders() {
+    if (openDiscogsOrders.length === 0) {
+        showDiscogsStatus('No open orders to print', 'warning');
+        return;
+    }
+    
+    // Create print window
+    const printWindow = window.open('', '_blank', 'width=1200,height=800');
+    
+    // Get current date for report header
+    const now = new Date();
+    const dateStr = now.toLocaleDateString();
+    const timeStr = now.toLocaleTimeString();
+    
+    // Calculate total sales
+    const totalSales = openDiscogsOrders.reduce((sum, order) => sum + order.price, 0);
+    
+    // Generate HTML content
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Discogs Open Orders Report</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: Arial, Helvetica, sans-serif; padding: 20px; background: white; color: #333; }
+                .header { text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #333; }
+                .header h1 { color: #333; margin-bottom: 10px; }
+                .header .date { color: #666; font-size: 14px; }
+                .summary { background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 30px; display: flex; justify-content: space-between; flex-wrap: wrap; }
+                .summary-item { text-align: center; flex: 1; min-width: 150px; }
+                .summary-item .label { font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+                .summary-item .value { font-size: 24px; font-weight: bold; color: #333; }
+                .summary-item .value.sales { color: #28a745; }
+                .orders-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                .orders-table th { background: #f8f9fa; border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold; }
+                .orders-table td { border: 1px solid #ddd; padding: 10px 12px; vertical-align: top; }
+                .status-badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; background: #ffc107; color: #333; }
+                .condition-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; background: #e9ecef; color: #333; }
+                .genre-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; background: #d4edda; color: #155724; }
+                .price { font-weight: bold; color: #28a745; }
+                .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #666; }
+                @media print { .no-print { display: none; } }
+                .btn-small { padding: 4px 8px; font-size: 11px; border: none; border-radius: 3px; cursor: pointer; text-decoration: none; display: inline-block; }
+                .btn-discogs { background: #333; color: white; }
+            </style>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        </head>
+        <body>
+            <div class="header">
+                <h1>🎵 Discogs Open Orders Report</h1>
+                <div class="date">Generated: ${dateStr} at ${timeStr}</div>
+            </div>
+            <div class="summary">
+                <div class="summary-item"><div class="label">Open Orders</div><div class="value">${openDiscogsOrders.length}</div></div>
+                <div class="summary-item"><div class="label">Total Sales</div><div class="value sales">$${totalSales.toFixed(2)}</div></div>
+            </div>
+            <div style="margin-bottom: 15px; text-align: right;">
+                <button class="btn-small btn-discogs no-print" onclick="window.print()">🖨️ Print this page</button>
+            </div>
+            <table class="orders-table">
+                <thead><tr><th>#</th><th>Listing ID</th><th>Artist</th><th>Title</th><th>Genre</th><th>Price</th><th>Media</th><th>Sleeve</th><th>Order Date</th><th>Actions</th></tr></thead>
+                <tbody>
+                    ${openDiscogsOrders.map((order, index) => `
+                        <tr>
+                            <td>${index + 1}<\/td>
+                            <td>${escapeHtml(String(order.listing_id))}<\/td>
+                            <td><strong>${escapeHtml(order.artist)}<\/strong><\/td>
+                            <td>${escapeHtml(order.title)}<\/td>
+                            <td><span class="genre-badge">${escapeHtml(order.genre)}<\/span><\/td>
+                            <td class="price">$${order.price.toFixed(2)}<\/td>
+                            <td><span class="condition-badge">${escapeHtml(order.condition || 'N/A')}<\/span><\/td>
+                            <td><span class="condition-badge">${escapeHtml(order.sleeve_condition || 'N/A')}<\/span><\/td>
+                            <td>${order.order_date ? new Date(order.order_date).toLocaleDateString() : 'Unknown'}<\/td>
+                            <td><a href="${order.url}" target="_blank" class="btn-small btn-discogs"><i class="fab fa-discogs"></i> View<\/a><\/td>
+                        <\/tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            <div class="footer"><p>Generated from PigStyle Music Admin Panel</p></div>
+        </body>
+        </html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+}
+
+/**
  * Apply filters to inventory
  */
 function applyDiscogsFilters() {
-    filteredDiscogsInventory = discogsInventory.filter(record => {
+    // First apply standard filters
+    let filtered = discogsInventory.filter(record => {
         // Listing status filter (Discogs listing status - whether it has a Discogs listing ID)
         if (listingStatusFilter === 'listed' && !record.discogs_listing_id) return false;
         if (listingStatusFilter === 'unlisted' && record.discogs_listing_id) return false;
         
         // Local status filter (status in local database)
         if (localStatusFilter !== 'all') {
-            if (localStatusFilter === 'active' && record.status_id !== 1) return false;
+            if (localStatusFilter === 'active' && record.status_id !== 2) return false;
             if (localStatusFilter === 'new' && record.status_id !== 0) return false;
             if (localStatusFilter === 'sold' && record.status_id !== 3) return false;
         }
         
-        // Discogs status filter - CORRECTED: based on Discogs listing status, not local status
+        // Discogs status filter - based on Discogs listing status, not local status
         if (discogsStatusFilter !== 'all') {
             // Only consider records that have a Discogs listing
             if (!record.discogs_listing_id) return false;
@@ -548,18 +851,27 @@ function applyDiscogsFilters() {
             const catalog = (record.catalog_number || '').toLowerCase();
             const barcode = (record.barcode || '').toLowerCase();
             const consignor = (record.consignor_name || '').toLowerCase();
+            const genre = (record.genre_name || '').toLowerCase();
             
             if (!artist.includes(searchLower) && 
                 !title.includes(searchLower) && 
                 !catalog.includes(searchLower) && 
                 !barcode.includes(searchLower) &&
-                !consignor.includes(searchLower)) {
+                !consignor.includes(searchLower) &&
+                !genre.includes(searchLower)) {
                 return false;
             }
         }
         
         return true;
     });
+    
+    // Apply "Show Selected Only" filter
+    if (showSelectedOnlyFilter === 'selected') {
+        filtered = filtered.filter(record => discogsSelectedRecords.has(record.id));
+    }
+    
+    filteredDiscogsInventory = filtered;
     
     discogsTotalPages = Math.ceil(filteredDiscogsInventory.length / discogsPageSize);
     if (discogsCurrentPage > discogsTotalPages) {
@@ -582,7 +894,7 @@ function renderDiscogsInventory() {
     if (!tableBody) return;
     
     if (filteredDiscogsInventory.length === 0) {
-        tableBody.innerHTML = '<td colspan="13" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
+        tableBody.innerHTML = '<td colspan="14" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
         return;
     }
     
@@ -628,7 +940,7 @@ function renderDiscogsInventory() {
         } else if (record.status_id === 0) {
             localStatusText = 'New';
             localStatusClass = 'new';
-        } else if (record.status_id === 1) {
+        } else if (record.status_id === 2) {
             localStatusText = 'Active';
             localStatusClass = 'active';
         } else {
@@ -636,7 +948,7 @@ function renderDiscogsInventory() {
             localStatusClass = '';
         }
         
-        // Discogs status text - CORRECTED: based on actual Discogs listing status
+        // Discogs status text - based on actual Discogs listing status
         let discogsStatusText = 'Not Listed';
         let discogsStatusClass = 'new';
         
@@ -762,6 +1074,7 @@ function filterDiscogsInventory() {
     consignorFilter = document.getElementById('consignor-filter').value;
     discogsStatusFilter = document.getElementById('discogs-status-filter').value;
     localStatusFilter = document.getElementById('local-status-filter').value;
+    showSelectedOnlyFilter = document.getElementById('show-selected-filter').value;
     
     discogsCurrentPage = 1;
     applyDiscogsFilters();
@@ -773,12 +1086,14 @@ function resetDiscogsFilters() {
     document.getElementById('consignor-filter').value = 'all';
     document.getElementById('discogs-status-filter').value = 'all';
     document.getElementById('local-status-filter').value = 'all';
+    document.getElementById('show-selected-filter').value = 'selected';
     
     listingStatusFilter = 'all';
     searchFilter = '';
     consignorFilter = 'all';
     discogsStatusFilter = 'all';
     localStatusFilter = 'all';
+    showSelectedOnlyFilter = 'selected';
     
     discogsCurrentPage = 1;
     applyDiscogsFilters();
@@ -818,6 +1133,9 @@ function toggleDiscogsRecordSelection(recordId, selected) {
     
     updateDiscogsSelectionCount();
     
+    // Re-apply filters to update the display (important for "Show Selected Only" mode)
+    applyDiscogsFilters();
+    
     const selectAllCheckbox = document.getElementById('discogs-select-all');
     if (selectAllCheckbox) {
         const currentPageRecords = filteredDiscogsInventory.slice(
@@ -850,7 +1168,8 @@ function toggleAllDiscogsRecords() {
         }
     });
     
-    renderDiscogsInventory();
+    // Re-apply filters to update the display
+    applyDiscogsFilters();
 }
 
 function selectAllDiscogsRecords() {
@@ -859,12 +1178,12 @@ function selectAllDiscogsRecords() {
             discogsSelectedRecords.add(record.id);
         }
     });
-    renderDiscogsInventory();
+    applyDiscogsFilters();
 }
 
 function deselectAllDiscogsRecords() {
     discogsSelectedRecords.clear();
-    renderDiscogsInventory();
+    applyDiscogsFilters();
 }
 
 function updateDiscogsSelectionCount() {
