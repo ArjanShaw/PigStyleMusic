@@ -3211,4 +3211,233 @@ select.form-control option {
     .printable-footer button {
         width: 100%;
     }
+
+     /* Barcode Scanner Component Styles */
+    .barcode-scanner-component {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .barcode-scanner-component input {
+        font-size: 18px;
+        padding: 12px 15px;
+        letter-spacing: 1px;
+    }
+    
+    .barcode-scanner-component input:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(255,255,255,0.3);
+    }
+    
+    #scanner-status {
+        transition: all 0.3s ease;
+        white-space: nowrap;
+    }
+    
+    #scanner-status.success {
+        background: #28a745 !important;
+    }
+    
+    #scanner-status.warning {
+        background: #ffc107 !important;
+        color: #333 !important;
+    }
+    
+    #scanner-status.error {
+        background: #dc3545 !important;
+    }
+    
+    /* Badge Styles */
+    .condition-badge {
+        display: inline-block;
+        background: #e9ecef;
+        color: #333;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: capitalize;
+    }
+    
+    .status-badge.active { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .status-badge.new { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+    .status-badge.sold { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+    
+    .record-selected {
+        background-color: #fff3cd !important;
+        border-left: 4px solid #ffc107 !important;
+    }
+    
+    .btn-small {
+        padding: 5px 10px;
+        font-size: 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .btn-info {
+        background: #17a2b8;
+        color: white;
+        border: none;
+    }
+    
+    .btn-info:hover {
+        background: #138496;
+    }
+    
+    .btn-danger {
+        background: #dc3545;
+        color: white;
+        border: none;
+    }
+    
+    .btn-danger:hover {
+        background: #bd2130;
+    }
+    
+    .filters-section {
+        background: #f8f9fa;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+    }
+    
+    .records-table-container {
+        overflow-x: auto;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 0;
+    }
+    
+    .records-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .records-table th {
+        text-align: left;
+        padding: 12px;
+        background: #f8f9fa;
+        color: #333;
+        font-weight: 600;
+        border-bottom: 2px solid #ddd;
+    }
+    
+    .records-table td {
+        padding: 12px;
+        border-bottom: 1px solid #eee;
+        color: #333;
+    }
+    
+    .records-table tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .pagination {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 20px;
+    }
+    
+    .page-btn {
+        background: #f8f9fa;
+        border: 1px solid #ddd;
+        color: #333;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+    
+    .page-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    .page-input {
+        width: 50px;
+        text-align: center;
+        padding: 5px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    
+    .records-per-page {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #666;
+        font-size: 14px;
+    }
+    
+    .status-message {
+        padding: 10px 15px;
+        border-radius: 4px;
+        margin-top: 10px;
+        display: none;
+    }
+    
+    .status-message.status-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .status-message.status-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .status-message.status-warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeeba;
+    }
+    
+    .status-message.status-info {
+        background: #cce5ff;
+        color: #004085;
+        border: 1px solid #b8daff;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .fa-spinner {
+        animation: fa-spin 2s infinite linear;
+    }
+    
+    @keyframes fa-spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .highlight-row {
+        animation: highlight-flash 1s ease;
+    }
+    
+    @keyframes highlight-flash {
+        0% { background-color: #fff3cd; }
+        50% { background-color: #ffe69e; }
+        100% { background-color: transparent; }
+    }
+ 
 }
+
+
