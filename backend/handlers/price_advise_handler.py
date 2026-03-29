@@ -64,7 +64,8 @@ class PriceAdviseHandler:
                           title: str, 
                           selected_condition: str,
                           discogs_genre: str = '',
-                          discogs_id: str = '') -> Dict[str, Any]:
+                          discogs_id: str = '',
+                          discogs_format: str = '') -> Dict[str, Any]:
         """
         Get price estimate from Discogs and eBay
         """
@@ -98,7 +99,8 @@ class PriceAdviseHandler:
             ebay_result = self._get_ebay_price_with_listings(
                 artist=artist, 
                 title=title, 
-                condition=selected_condition
+                condition=selected_condition,
+                format_type=discogs_format
             )
             
             ebay_price = ebay_result.get('estimated_price')
@@ -235,7 +237,8 @@ class PriceAdviseHandler:
     def _get_ebay_price_with_listings(self, 
                                      artist: str, 
                                      title: str, 
-                                     condition: str) -> Dict[str, Any]:
+                                     condition: str,
+                                     format_type: str = '') -> Dict[str, Any]:
         """
         Get eBay price estimate with detailed listings and calculation
         """
@@ -270,18 +273,18 @@ class PriceAdviseHandler:
                 result['calculation'].append("eBay: Failed to get access token")
                 return result
             
-            # Build search query - FIXED: Don't pre-encode the query for params
-            search_query = self._build_ebay_search_query(artist, title)
+            # Build search query
+            search_query = self._build_ebay_search_query(artist, title, format_type)
             result['summary']['search_query'] = search_query
             
             # Keep encoded version for logging only
             encoded_query = urllib.parse.quote(search_query)
             result['summary']['raw_api_query'] = encoded_query
             
-            # Build API URL with filters - FIXED: Pass raw string to params
+            # Build API URL with filters
             url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
             params = {
-                'q': search_query,  # FIXED: Use raw string, not encoded_query
+                'q': search_query,
                 'limit': 50,
                 'filter': 'conditions:{NEW|USED}',
                 'sort': 'price'
@@ -337,17 +340,19 @@ class PriceAdviseHandler:
             data = response.json()
             items = data.get('itemSummaries', [])
             
-            # Filter for vinyl records
-            vinyl_listings = []
+            # Get media keywords based on format_type
+            media_keywords = self._get_media_keywords(format_type)
+            
+            # Filter for the correct media type
+            media_listings = []
             for item in items:
                 title_lower = item.get('title', '').lower()
                 item_description = item.get('shortDescription', '').lower()
                 
-                vinyl_keywords = ['vinyl', 'lp', 'record', '12"', '7"', '45 rpm', '33 rpm']
-                is_vinyl = any(keyword in title_lower or keyword in item_description 
-                              for keyword in vinyl_keywords)
+                is_correct_media = any(keyword in title_lower or keyword in item_description 
+                                       for keyword in media_keywords)
                 
-                if not is_vinyl:
+                if not is_correct_media:
                     continue
                 
                 price_obj = item.get('price', {})
@@ -388,14 +393,14 @@ class PriceAdviseHandler:
                     'free_shipping': shipping_cost == 0.0
                 }
                 
-                vinyl_listings.append(listing)
+                media_listings.append(listing)
             
-            result['summary']['total_listings'] = len(vinyl_listings)
+            result['summary']['total_listings'] = len(media_listings)
             
-            if not vinyl_listings:
+            if not media_listings:
                 return result
             
-            all_totals = [listing['total'] for listing in vinyl_listings if listing['total'] > 0]
+            all_totals = [listing['total'] for listing in media_listings if listing['total'] > 0]
             
             if not all_totals:
                 return result
@@ -414,7 +419,7 @@ class PriceAdviseHandler:
             condition_median = None
             
             if condition:
-                condition_listings = [listing for listing in vinyl_listings if listing['matches_condition']]
+                condition_listings = [listing for listing in media_listings if listing['matches_condition']]
                 result['summary']['condition_listings'] = len(condition_listings)
                 
                 if condition_listings:
@@ -435,7 +440,7 @@ class PriceAdviseHandler:
             result['estimated_price'] = round(estimated_price, 2)
             
             # Sort listings by total price
-            sorted_listings = sorted(vinyl_listings, key=lambda x: x['total'])
+            sorted_listings = sorted(media_listings, key=lambda x: x['total'])
             result['listings'] = sorted_listings[:20]
             
         except Exception as e:
@@ -444,9 +449,9 @@ class PriceAdviseHandler:
         
         return result
     
-    def _build_ebay_search_query(self, artist: str, title: str) -> str:
+    def _build_ebay_search_query(self, artist: str, title: str, format_type: str = '') -> str:
         """
-        Build an optimized search query for eBay
+        Build an optimized search query for eBay based on the media format
         """
         artist_clean = artist.strip()
         title_clean = title.strip()
@@ -463,7 +468,9 @@ class PriceAdviseHandler:
         if title_clean:
             query_parts.append(title_clean)
         
-        query_parts.append("vinyl")
+        # Determine the format keyword based on the format_type
+        format_keyword = self._get_format_keyword(format_type)
+        query_parts.append(format_keyword)
         
         search_query = " ".join(query_parts)
         
@@ -472,6 +479,52 @@ class PriceAdviseHandler:
             search_query = search_query[:97] + "..."
         
         return search_query
+    
+    def _get_format_keyword(self, format_type: str) -> str:
+        """
+        Get the appropriate search keyword for the media format
+        """
+        if not format_type:
+            return "vinyl"  # Default to vinyl if no format specified
+        
+        format_lower = format_type.lower()
+        
+        # Map Discogs formats to eBay search keywords
+        if any(keyword in format_lower for keyword in ['cd', 'compact disc']):
+            return "cd"
+        elif any(keyword in format_lower for keyword in ['vinyl', 'lp', 'record', '12"', '7"']):
+            return "vinyl"
+        elif any(keyword in format_lower for keyword in ['cassette', 'tape']):
+            return "cassette"
+        elif any(keyword in format_lower for keyword in ['dvd', 'blu-ray', 'bluray']):
+            return "dvd"
+        elif any(keyword in format_lower for keyword in ['box set', 'boxset']):
+            return "box set"
+        else:
+            return "vinyl"  # Default to vinyl for unknown formats
+    
+    def _get_media_keywords(self, format_type: str) -> List[str]:
+        """
+        Get a list of keywords to identify the correct media type on eBay
+        """
+        if not format_type:
+            return ['vinyl', 'lp', 'record', '12"', '7"']  # Default for vinyl
+        
+        format_lower = format_type.lower()
+        
+        # Return relevant keywords for the format type
+        if any(keyword in format_lower for keyword in ['cd', 'compact disc']):
+            return ['cd', 'compact disc', 'album']
+        elif any(keyword in format_lower for keyword in ['vinyl', 'lp', 'record', '12"', '7"']):
+            return ['vinyl', 'lp', 'record', '12"', '7"', '33 rpm', '45 rpm']
+        elif any(keyword in format_lower for keyword in ['cassette', 'tape']):
+            return ['cassette', 'tape', 'cassette tape']
+        elif any(keyword in format_lower for keyword in ['dvd', 'blu-ray', 'bluray']):
+            return ['dvd', 'blu-ray', 'bluray']
+        elif any(keyword in format_lower for keyword in ['box set', 'boxset']):
+            return ['box set', 'boxset', 'box']
+        else:
+            return ['vinyl', 'lp', 'record']  # Default
     
     def _get_ebay_shipping_cost(self, item: dict) -> float:
         """

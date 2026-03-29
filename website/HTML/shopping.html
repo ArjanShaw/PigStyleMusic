@@ -23,7 +23,130 @@
     <script src="/static/js/config-value-manager.js"></script>
     
     <style>
-        /* Additional styles for date cards and grid layout */
+        /* Additional styles for format badges */
+        .format-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.6rem;
+            font-weight: bold;
+            margin-left: 5px;
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .format-badge.cd {
+            background: #17a2b8;
+        }
+        
+        .format-badge.cassette {
+            background: #6c757d;
+        }
+        
+        .format-badge.vinyl {
+            background: #ff6b6b;
+        }
+        
+        .formats-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin: 6px 0;
+        }
+        
+        .format-indicator {
+            font-size: 0.6rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #f0f0f0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .format-indicator:hover {
+            background: #e0e0e0;
+        }
+        
+        .format-indicator.active {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .copies-modal .modal-format-section {
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        .modal-format-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .modal-format-title i {
+            font-size: 1rem;
+        }
+        
+        .copies-list-with-format {
+            margin-bottom: 20px;
+        }
+        
+        .copy-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        
+        .copy-item:hover {
+            background: #f0f0f0;
+        }
+        
+        .copy-item-content {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .copy-price {
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+        
+        .add-to-cart-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+        
+        .add-to-cart-btn:hover {
+            background: #218838;
+        }
+        
+        .add-to-cart-btn.in-cart {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .add-to-cart-btn.in-cart:hover {
+            background: #6c757d;
+        }
+        
         .group-gallery {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -58,29 +181,29 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            min-height: 215px; /* Reduced from 320px (33% reduction) */
+            min-height: 215px;
         }
         
         .date-card .date-emoji {
-            font-size: 2rem; /* Reduced from 3rem */
+            font-size: 2rem;
             margin-bottom: 8px;
         }
         
         .date-card .date-label {
-            font-size: 0.95rem; /* Reduced from 1.2rem */
+            font-size: 0.95rem;
             font-weight: bold;
             color: white;
             margin-bottom: 6px;
         }
         
         .date-card .date-full {
-            font-size: 0.7rem; /* Reduced from 0.85rem */
+            font-size: 0.7rem;
             color: rgba(255,255,255,0.9);
             margin-top: 6px;
         }
         
         .date-card .record-count {
-            font-size: 0.65rem; /* Reduced from 0.8rem */
+            font-size: 0.65rem;
             color: rgba(255,255,255,0.8);
             margin-top: 8px;
             padding: 3px 8px;
@@ -90,7 +213,7 @@
         
         .card-image {
             width: 100%;
-            height: 167px; /* Reduced from 250px (33% reduction) */
+            height: 167px;
             background-size: cover;
             background-position: center;
             background-color: #f0f0f0;
@@ -104,11 +227,11 @@
         }
         
         .card-info {
-            padding: 8px; /* Reduced from 12px */
+            padding: 8px;
         }
         
         .card-info h3 {
-            font-size: 0.8rem; /* Reduced from 0.95rem */
+            font-size: 0.8rem;
             margin: 0 0 3px 0;
             color: #333;
             white-space: nowrap;
@@ -117,7 +240,7 @@
         }
         
         .card-info .artist {
-            font-size: 0.7rem; /* Reduced from 0.8rem */
+            font-size: 0.7rem;
             color: #666;
             margin: 0 0 6px 0;
             white-space: nowrap;
@@ -130,7 +253,7 @@
             justify-content: space-between;
             align-items: center;
             margin: 6px 0;
-            font-size: 0.7rem; /* Reduced from 0.8rem */
+            font-size: 0.7rem;
         }
         
         .copy-count {
@@ -138,17 +261,17 @@
             color: white;
             padding: 2px 5px;
             border-radius: 10px;
-            font-size: 0.6rem; /* Reduced from 0.7rem */
+            font-size: 0.6rem;
         }
         
         .price-range {
             font-weight: bold;
             color: #ff6b6b;
-            font-size: 0.75rem; /* Reduced from 0.85rem */
+            font-size: 0.75rem;
         }
         
         .genre {
-            font-size: 0.6rem; /* Reduced from 0.7rem */
+            font-size: 0.6rem;
             color: #888;
             margin: 4px 0;
             white-space: nowrap;
@@ -164,7 +287,7 @@
         }
         
         .condition-indicator {
-            font-size: 0.55rem; /* Reduced from 0.65rem */
+            font-size: 0.55rem;
             padding: 2px 4px;
             border-radius: 4px;
             background: #f0f0f0;
@@ -180,7 +303,7 @@
         .condition-poor { background: #9e9e9e; color: white; }
         
         .more-copies {
-            font-size: 0.55rem; /* Reduced from 0.65rem */
+            font-size: 0.55rem;
             color: #666;
             margin-left: 3px;
         }
@@ -190,7 +313,7 @@
             margin-top: 6px;
             color: #ff6b6b;
             text-decoration: none;
-            font-size: 0.65rem; /* Reduced from 0.75rem */
+            font-size: 0.65rem;
         }
         
         .youtube-link:hover {
@@ -308,6 +431,550 @@
         .retry-btn:hover {
             background: #ff5252;
         }
+        
+        /* Copies Modal Styles */
+        .copies-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        
+        .copies-modal {
+            background: white;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        
+        .copies-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .copies-modal-header h3 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #333;
+        }
+        
+        .copies-modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #999;
+        }
+        
+        .copies-modal-close:hover {
+            color: #ff6b6b;
+        }
+        
+        .copies-modal-content {
+            padding: 20px;
+        }
+        
+        .modal-album-image {
+            width: 100%;
+            height: 150px;
+            background-size: cover;
+            background-position: center;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .modal-album-image.default-record-bg {
+            background-image: url('/static/images/default-record.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-color: #f0f0f0;
+        }
+        
+        .modal-format-section {
+            margin-bottom: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .modal-format-title {
+            background: #f8f9fa;
+            padding: 12px 15px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: #ff6b6b;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .modal-format-title i {
+            font-size: 1rem;
+        }
+        
+        .copies-list-with-format {
+            padding: 10px;
+        }
+        
+        .copy-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        
+        .copy-item:hover {
+            background: #f0f0f0;
+        }
+        
+        .copy-item-content {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .copy-condition {
+            min-width: 120px;
+        }
+        
+        .copy-price {
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+        
+        .copies-modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #eee;
+            text-align: right;
+            background: #f8f9fa;
+        }
+        
+        .footer-total {
+            font-size: 0.85rem;
+            color: #666;
+        }
+        
+        /* Cart Drawer Styles */
+        .cart-drawer {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            z-index: 3000;
+            transition: right 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .cart-drawer.open {
+            right: 0;
+        }
+        
+        .cart-drawer-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .cart-drawer-header h3 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        
+        .cart-drawer-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #999;
+        }
+        
+        .cart-drawer-items {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .empty-cart-message {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .empty-cart-message i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+        
+        .cart-drawer-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .cart-items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .cart-items-table th {
+            text-align: left;
+            padding: 8px;
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: normal;
+        }
+        
+        .cart-items-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .cart-item-info {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .cart-item-image {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        
+        .cart-item-image.default-record-bg {
+            background-image: url('/static/images/default-record.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-color: #f0f0f0;
+        }
+        
+        .cart-item-details {
+            flex: 1;
+        }
+        
+        .cart-item-title {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .cart-item-artist {
+            font-size: 0.7rem;
+            color: #666;
+        }
+        
+        .cart-item-condition {
+            font-size: 0.65rem;
+            padding: 2px 4px;
+            border-radius: 3px;
+            display: inline-block;
+            margin-top: 2px;
+        }
+        
+        .cart-item-price {
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+        
+        .cart-item-remove-btn {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            padding: 5px;
+        }
+        
+        .cart-totals-table {
+            width: 100%;
+            margin-bottom: 15px;
+        }
+        
+        .cart-totals-table td {
+            padding: 5px 0;
+        }
+        
+        .cart-totals-table .label {
+            text-align: left;
+            color: #666;
+        }
+        
+        .cart-totals-table .amount {
+            text-align: right;
+            font-weight: bold;
+        }
+        
+        .cart-totals-table .total-row .amount {
+            font-size: 1.2rem;
+            color: #ff6b6b;
+        }
+        
+        .checkout-btn {
+            width: 100%;
+            padding: 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        
+        .checkout-btn:hover {
+            background: #218838;
+        }
+        
+        .cart-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 2500;
+            display: none;
+        }
+        
+        .cart-overlay.active {
+            display: block;
+        }
+        
+        .cart-icon-wrapper {
+            position: relative;
+            display: inline-block;
+            margin-left: 15px;
+            cursor: pointer;
+        }
+        
+        .cart-badge {
+            position: absolute;
+            top: -8px;
+            right: -12px;
+            background: #ff6b6b;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 0.7rem;
+            min-width: 18px;
+            text-align: center;
+        }
+        
+        /* Notification Styles */
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 3500;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .notification.error {
+            background: #dc3545;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
+        /* Shipping Modal Styles */
+        .payment-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 4000;
+        }
+        
+        .payment-modal {
+            background: white;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            padding: 25px;
+        }
+        
+        .shipping-option {
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .shipping-option.selected {
+            border-color: #ff6b6b;
+            background: #fff5f5;
+        }
+        
+        .shipping-option input {
+            margin-right: 10px;
+        }
+        
+        .shipping-option label {
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .shipping-cost-display {
+            margin-top: 5px;
+            margin-left: 25px;
+            font-size: 0.85rem;
+            color: #666;
+        }
+        
+        .shipping-form {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .shipping-form h4 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .form-row .form-group {
+            flex: 1;
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .cancel-btn {
+            padding: 8px 16px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .continue-btn {
+            padding: 8px 16px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #ff6b6b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .payment-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        
+        .payment-btn-primary {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .payment-btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -321,7 +988,7 @@
             <a href="/merch" style="color: white; text-decoration: none; font-weight: bold;">Merch</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
             <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-             <div id="auth-section"></div>
+            <div id="auth-section"></div>
             
             <!-- Cart drawer toggle button - only shows when items exist -->
             <div id="cartToggleContainer" style="display: none;">
@@ -520,8 +1187,7 @@
                                 <th>Item</th>
                                 <th class="price-column">Price</th>
                                 <th class="action-column"></th>
-                            </tr>
-                        </thead>
+                            </thead>
                         <tbody>
                 `;
                 
@@ -542,6 +1208,7 @@
                                         <div class="cart-item-title">${escapeHtml(item.title)}</div>
                                         <div class="cart-item-artist">${escapeHtml(item.artist)}</div>
                                         <span class="cart-item-condition ${conditionClass}">${item.condition || 'Unknown'}</span>
+                                        ${item.format ? `<div class="cart-item-format" style="font-size: 0.6rem; color: #888; margin-top: 2px;"><i class="fas ${item.format === 'CD' ? 'fa-compact-disc' : 'fa-record-vinyl'}"></i> ${item.format}</div>` : ''}
                                     </div>
                                 </div>
                             </td>
@@ -602,7 +1269,7 @@
         }
 
         // Add item to cart
-        function addToCart(copy, release) {
+        function addToCart(copy, release, format) {
             // Check if item is already in cart
             if (isInCart(copy.id)) {
                 showNotification('This item is already in your cart!', 'error');
@@ -617,6 +1284,7 @@
                 condition: copy.condition,
                 price: copy.store_price,
                 image_url: release.image_url,
+                format: format,
                 quantity: 1
             });
             
@@ -624,7 +1292,7 @@
             cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
             saveCart();
-            showNotification('Item added to cart!', 'success');
+            showNotification(`Added ${format} - ${release.title} to cart!`, 'success');
             return true;
         }
 
@@ -915,7 +1583,7 @@
             return card;
         }
 
-        // Create a record card
+        // Create a record card with format badges
         function createRecordCard(release) {
             const card = document.createElement('div');
             card.className = 'card';
@@ -944,13 +1612,29 @@
                 priceDisplay = 'Price varies';
             }
             
-            // Get all unique conditions from copies
-            const conditions = [...new Set(release.copies.map(c => c.condition).filter(Boolean))];
-            const conditionCounts = {};
-            release.copies.forEach(copy => {
-                if (copy.condition) {
-                    conditionCounts[copy.condition] = (conditionCounts[copy.condition] || 0) + 1;
-                }
+            // Build formats list
+            let formatsHtml = '';
+            if (release.formats && release.formats.length > 0) {
+                formatsHtml = '<div class="formats-list">';
+                release.formats.forEach(format => {
+                    let formatClass = '';
+                    if (format.format.toLowerCase().includes('cd')) formatClass = 'cd';
+                    else if (format.format.toLowerCase().includes('cassette')) formatClass = 'cassette';
+                    else formatClass = 'vinyl';
+                    
+                    formatsHtml += `<span class="format-indicator ${formatClass}" data-format="${format.format}">${format.format} (${format.total_copies})</span>`;
+                });
+                formatsHtml += '</div>';
+            }
+            
+            // Get all unique conditions from all formats
+            const allConditions = [];
+            release.formats.forEach(format => {
+                format.copies.forEach(copy => {
+                    if (copy.condition && !allConditions.includes(copy.condition)) {
+                        allConditions.push(copy.condition);
+                    }
+                });
             });
             
             // Sort conditions by grade
@@ -965,7 +1649,7 @@
                 'Poor (P)': 8
             };
             
-            const sortedConditions = conditions.sort((a, b) => 
+            const sortedConditions = allConditions.sort((a, b) => 
                 (conditionOrder[a] || 99) - (conditionOrder[b] || 99)
             );
             
@@ -976,9 +1660,7 @@
                 sortedConditions.slice(0, 3).forEach(condition => {
                     if (!condition) return;
                     const conditionClass = getConditionClass(condition);
-                    const count = conditionCounts[condition] || '';
-                    const countDisplay = count > 1 ? ` (${count})` : '';
-                    conditionsHtml += `<span class="condition-indicator ${conditionClass}">${condition}${countDisplay}</span>`;
+                    conditionsHtml += `<span class="condition-indicator ${conditionClass}">${condition}</span>`;
                 });
                 if (sortedConditions.length > 3) {
                     conditionsHtml += `<span class="more-copies">+${sortedConditions.length - 3} more</span>`;
@@ -986,14 +1668,13 @@
                 conditionsHtml += '</div>';
             }
             
-            // Copy count display - only show if more than 1 copy
+            // Copy count display
             let copyCountHtml = '';
             if (release.total_copies > 1) {
-                const copyCountText = `${release.total_copies} copies`;
-                copyCountHtml = `<span class="copy-count">${copyCountText}</span>`;
+                copyCountHtml = `<span class="copy-count">${release.total_copies} copies</span>`;
             }
             
-            // Handle image display - use CSS background if no image
+            // Handle image display
             const imageHtml = release.image_url ? 
                 `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
                 '';
@@ -1011,12 +1692,14 @@
                         <span class="price-range">${priceDisplay}</span>
                     </div>
                     
+                    ${formatsHtml}
+                    
                     <p class="genre" title="${escapeHtml(genre)}">${escapeHtml(genre)}</p>
                     
                     ${conditionsHtml}
                     
-                    ${release.copies.some(c => c.youtube_url) ? `
-                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">
+                    ${release.formats.some(f => f.copies.some(c => c.youtube_url)) ? `
+                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.formats.find(f => f.copies.find(c => c.youtube_url))?.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">
                             🎵 Watch Video
                         </a>
                     ` : ''}
@@ -1025,12 +1708,24 @@
             
             // Add click handler to show all copies popup
             card.addEventListener('click', function(e) {
-                // Don't trigger if clicking on YouTube link
+                // Don't trigger if clicking on YouTube link or format indicator
                 if (e.target.closest('.youtube-link')) return;
+                if (e.target.closest('.format-indicator')) return;
                 
-                // Show popup with all copies
+                // Show popup with all copies grouped by format
                 showCopiesPopup(release);
             });
+            
+            // Add click handlers for format indicators
+            setTimeout(() => {
+                card.querySelectorAll('.format-indicator').forEach(indicator => {
+                    indicator.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const format = this.getAttribute('data-format');
+                        showCopiesPopup(release, format);
+                    });
+                });
+            }, 0);
             
             return card;
         }
@@ -1082,6 +1777,144 @@
             }, 100);
         }
 
+        // Show popup with all copies grouped by format
+        function showCopiesPopup(release, filterFormat = null) {
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.className = 'copies-modal-overlay';
+            
+            // Handle image display
+            const imageHtml = release.image_url ? 
+                `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
+                '';
+            
+            // Filter formats if specified
+            let formatsToShow = release.formats;
+            if (filterFormat) {
+                formatsToShow = release.formats.filter(f => f.format === filterFormat);
+            }
+            
+            // Build formats HTML
+            let formatsHtml = '';
+            formatsToShow.forEach(format => {
+                const formatClass = format.format.toLowerCase().includes('cd') ? 'cd' : 
+                                   (format.format.toLowerCase().includes('cassette') ? 'cassette' : 'vinyl');
+                const formatIcon = format.format.toLowerCase().includes('cd') ? 'fa-compact-disc' : 
+                                   (format.format.toLowerCase().includes('cassette') ? 'fa-tape' : 'fa-record-vinyl');
+                
+                let copiesHtml = '';
+                format.copies.forEach(copy => {
+                    const conditionClass = getConditionClass(copy.condition);
+                    const alreadyInCart = isInCart(copy.id);
+                    
+                    copiesHtml += `
+                        <div class="copy-item">
+                            <div class="copy-item-content">
+                                <span class="copy-condition">
+                                    <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
+                                </span>
+                                <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+                                ${copy.barcode ? `<span class="copy-barcode" style="font-size: 0.65rem; color: #888;">${copy.barcode}</span>` : ''}
+                            </div>
+                            <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" 
+                                    data-copy-id="${copy.id}" 
+                                    data-copy-condition="${copy.condition}" 
+                                    data-copy-price="${copy.store_price}"
+                                    data-format="${format.format}"
+                                    ${alreadyInCart ? 'disabled' : ''}>
+                                <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
+                                ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
+                            </button>
+                        </div>
+                    `;
+                });
+                
+                formatsHtml += `
+                    <div class="modal-format-section">
+                        <div class="modal-format-title">
+                            <i class="fas ${formatIcon}"></i>
+                            ${format.format}
+                            <span style="font-size: 0.8rem; font-weight: normal; margin-left: auto;">${format.total_copies} copy${format.total_copies !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div class="copies-list-with-format">
+                            ${copiesHtml}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            // Build footer HTML
+            let footerHtml = '';
+            if (release.total_copies > 1) {
+                footerHtml = `
+                    <div class="copies-modal-footer">
+                        <span class="footer-total">Total Copies: ${release.total_copies}</span>
+                    </div>
+                `;
+            }
+            
+            // Create modal content with image
+            modal.innerHTML = `
+                <div class="copies-modal">
+                    <div class="copies-modal-header">
+                        <h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3>
+                        <button class="copies-modal-close">&times;</button>
+                    </div>
+                    <div class="copies-modal-content">
+                        <div class="modal-album-image ${!release.image_url ? 'default-record-bg' : ''}">
+                            ${imageHtml}
+                        </div>
+                        ${formatsHtml}
+                    </div>
+                    ${footerHtml}
+                </div>
+            `;
+            
+            // Add click handler to close button
+            const closeBtn = modal.querySelector('.copies-modal-close');
+            closeBtn.addEventListener('click', () => {
+                modal.remove();
+            });
+            
+            // Add click outside to close
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+            
+            // Add event listeners for add to cart buttons
+            modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    
+                    const copyId = btn.dataset.copyId;
+                    const format = btn.dataset.format;
+                    
+                    // Find the full copy object
+                    let copy = null;
+                    for (const formatData of release.formats) {
+                        const found = formatData.copies.find(c => c.id == copyId);
+                        if (found) {
+                            copy = found;
+                            break;
+                        }
+                    }
+                    
+                    if (copy) {
+                        const added = addToCart(copy, release, format);
+                        
+                        if (added) {
+                            // Close the modal after adding to cart
+                            modal.remove();
+                        }
+                    }
+                });
+            });
+            
+            document.body.appendChild(modal);
+        }
+
         // Helper function to escape HTML
         function escapeHtml(text) {
             if (!text) return '';
@@ -1111,123 +1944,6 @@
                 return 'condition-poor';
             }
             return '';
-        }
-
-        // Show popup with all copies
-        function showCopiesPopup(release) {
-            // Create modal overlay
-            const modal = document.createElement('div');
-            modal.className = 'copies-modal-overlay';
-            
-            // Sort copies by condition (best first)
-            const conditionOrder = {
-                'Mint (M)': 1,
-                'Near Mint (NM or M-)': 2,
-                'Very Good Plus (VG+)': 3,
-                'Very Good (VG)': 4,
-                'Good Plus (G+)': 5,
-                'Good (G)': 6,
-                'Fair (F)': 7,
-                'Poor (P)': 8
-            };
-            
-            const sortedCopies = [...release.copies].sort((a, b) => {
-                const orderA = conditionOrder[a.condition] || 99;
-                const orderB = conditionOrder[b.condition] || 99;
-                if (orderA !== orderB) return orderA - orderB;
-                return b.store_price - a.store_price; // Higher price first for same condition
-            });
-            
-            // Handle image display - use CSS background if no image
-            const imageHtml = release.image_url ? 
-                `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
-                '';
-            
-            // Build footer HTML - only show if more than 1 copy
-            let footerHtml = '';
-            if (release.total_copies > 1) {
-                footerHtml = `
-                    <div class="copies-modal-footer">
-                        <span class="footer-total">Total Copies: ${release.total_copies}</span>
-                    </div>
-                `;
-            }
-            
-            // Create modal content with image
-            modal.innerHTML = `
-                <div class="copies-modal">
-                    <div class="copies-modal-header">
-                        <h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3>
-                        <button class="copies-modal-close">&times;</button>
-                    </div>
-                    <div class="copies-modal-content">
-                        <div class="modal-album-image ${!release.image_url ? 'default-record-bg' : ''}">
-                            ${imageHtml}
-                        </div>
-                        <div class="copies-list-with-image">
-                            ${sortedCopies.map(copy => {
-                                const conditionClass = getConditionClass(copy.condition);
-                                const alreadyInCart = isInCart(copy.id);
-                                return `
-                                    <div class="copy-item">
-                                        <div class="copy-item-content">
-                                            <span class="copy-condition">
-                                                <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
-                                            </span>
-                                            <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
-                                        </div>
-                                        <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" 
-                                                data-copy-id="${copy.id}" 
-                                                data-copy-condition="${copy.condition}" 
-                                                data-copy-price="${copy.store_price}"
-                                                ${alreadyInCart ? 'disabled' : ''}>
-                                            <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
-                                            ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
-                                        </button>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
-                    ${footerHtml}
-                </div>
-            `;
-            
-            // Add click handler to close button
-            const closeBtn = modal.querySelector('.copies-modal-close');
-            closeBtn.addEventListener('click', () => {
-                modal.remove();
-            });
-            
-            // Add click outside to close
-            modal.addEventListener('click', function(e) {
-                if (e.target === modal) {
-                    modal.remove();
-                }
-            });
-            
-            // Add event listeners for add to cart buttons
-            modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    
-                    const copyId = btn.dataset.copyId;
-                    
-                    // Find the full copy object
-                    const copy = release.copies.find(c => c.id == copyId);
-                    
-                    if (copy) {
-                        const added = addToCart(copy, release);
-                        
-                        if (added) {
-                            // Close the modal after adding to cart
-                            modal.remove();
-                        }
-                    }
-                });
-            });
-            
-            document.body.appendChild(modal);
         }
 
         // Handle YouTube click
@@ -1407,7 +2123,7 @@
                 // Create modal overlay
                 const modal = document.createElement('div');
                 modal.className = 'payment-modal-overlay';
-                modal.style.zIndex = '4000'; // Higher than other modals
+                modal.style.zIndex = '4000';
                 
                 modal.innerHTML = `
                     <div class="payment-modal shipping-modal">
@@ -1554,14 +2270,14 @@
                     // Close modal
                     modal.remove();
                     
-                    // SINGLE STEP: Process checkout with Square (order creation happens on backend)
+                    // Process checkout with Square
                     await processCheckout(shippingData);
                 });
                 
                 // Handle cancel button
                 cancelBtn.addEventListener('click', () => {
                     modal.remove();
-                    resolve(null); // Cancelled
+                    resolve(null);
                 });
                 
                 // Handle click outside
@@ -1606,6 +2322,7 @@
                     artist: item.artist,
                     condition: item.condition,
                     price: item.price,
+                    format: item.format,
                     quantity: item.quantity || 1
                 }));
                 
@@ -1621,7 +2338,7 @@
                     total: totalWithTax,
                     currency: 'USD'
                 };
- 
+                
                 // Add customer info if shipping
                 if (shippingData.method === 'ship') {
                     Object.assign(requestData, {
@@ -1761,8 +2478,6 @@
             
             // Overlay click to close
             document.getElementById('cartOverlay').addEventListener('click', closeCartDrawer);
-            
-            // Note: Checkout button event listener is now attached in updateCartDrawer
         }
 
         // Load the catalog data when page loads
