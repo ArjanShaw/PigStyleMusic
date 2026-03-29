@@ -658,151 +658,153 @@ function getDateCategoryData(createdDate) {
         }
 
         // Create a record card with format badges
-        function createRecordCard(release) {
-            const card = document.createElement('div');
-            card.className = 'card';
-            
-            // Set data attributes for filtering
-            card.setAttribute('data-artist', (release.artist || '').toLowerCase());
-            card.setAttribute('data-title', (release.title || '').toLowerCase());
-            card.setAttribute('data-genre', (release.genre_name || '').toLowerCase());
-            card.setAttribute('data-created', release.created_at || '');
-            
-            // Get genre
-            const genre = release.genre_name || 'Unknown Genre';
-            
-            // Calculate price range display
-            const priceRange = release.price_range;
-            let priceDisplay = '';
-            if (priceRange.min > 0 && priceRange.max > 0) {
-                if (priceRange.min === priceRange.max) {
-                    priceDisplay = `$${priceRange.min.toFixed(2)}`;
-                } else {
-                    priceDisplay = `$${priceRange.min.toFixed(2)} - $${priceRange.max.toFixed(2)}`;
-                }
-            } else if (priceRange.min > 0) {
-                priceDisplay = `$${priceRange.min.toFixed(2)}`;
-            } else {
-                priceDisplay = 'Price varies';
-            }
-            
-            // Build formats list
-            let formatsHtml = '';
-            if (release.formats && release.formats.length > 0) {
-                formatsHtml = '<div class="formats-list">';
-                release.formats.forEach(format => {
-                    let formatClass = '';
-                    if (format.format.toLowerCase().includes('cd')) formatClass = 'cd';
-                    else if (format.format.toLowerCase().includes('cassette')) formatClass = 'cassette';
-                    else formatClass = 'vinyl';
-                    
-                    formatsHtml += `<span class="format-indicator ${formatClass}" data-format="${format.format}">${format.format} (${format.total_copies})</span>`;
-                });
-                formatsHtml += '</div>';
-            }
-            
-            // Get all unique conditions from all formats
-            const allConditions = [];
-            release.formats.forEach(format => {
-                format.copies.forEach(copy => {
-                    if (copy.condition && !allConditions.includes(copy.condition)) {
-                        allConditions.push(copy.condition);
-                    }
-                });
-            });
-            
-            // Sort conditions by grade
-            const conditionOrder = {
-                'Mint (M)': 1,
-                'Near Mint (NM or M-)': 2,
-                'Very Good Plus (VG+)': 3,
-                'Very Good (VG)': 4,
-                'Good Plus (G+)': 5,
-                'Good (G)': 6,
-                'Fair (F)': 7,
-                'Poor (P)': 8
-            };
-            
-            const sortedConditions = allConditions.sort((a, b) => 
-                (conditionOrder[a] || 99) - (conditionOrder[b] || 99)
-            );
-            
-            // Build conditions HTML
-            let conditionsHtml = '';
-            if (sortedConditions.length > 0) {
-                conditionsHtml = '<div class="conditions-list">';
-                sortedConditions.slice(0, 3).forEach(condition => {
-                    if (!condition) return;
-                    const conditionClass = getConditionClass(condition);
-                    conditionsHtml += `<span class="condition-indicator ${conditionClass}">${condition}</span>`;
-                });
-                if (sortedConditions.length > 3) {
-                    conditionsHtml += `<span class="more-copies">+${sortedConditions.length - 3} more</span>`;
-                }
-                conditionsHtml += '</div>';
-            }
-            
-            // Copy count display
-            let copyCountHtml = '';
-            if (release.total_copies > 1) {
-                copyCountHtml = `<span class="copy-count">${release.total_copies} copies</span>`;
-            }
-            
-            // Handle image display
-            const imageHtml = release.image_url ? 
-                `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
-                '';
-            
-            card.innerHTML = `
-                <div class="card-image ${!release.image_url ? 'default-record-bg' : ''}">
-                    ${imageHtml}
-                </div>
-                <div class="card-info">
-                    <h3 title="${escapeHtml(release.title)}">${escapeHtml(release.title)}</h3>
-                    <p class="artist" title="${escapeHtml(release.artist)}">${escapeHtml(release.artist)}</p>
-                    
-                    <div class="copy-info">
-                        ${copyCountHtml}
-                        <span class="price-range">${priceDisplay}</span>
-                    </div>
-                    
-                    ${formatsHtml}
-                    
-                    <p class="genre" title="${escapeHtml(genre)}">${escapeHtml(genre)}</p>
-                    
-                    ${conditionsHtml}
-                    
-                    ${release.formats.some(f => f.copies.some(c => c.youtube_url)) ? `
-                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.formats.find(f => f.copies.find(c => c.youtube_url))?.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">
-                            🎵 Watch Video
-                        </a>
-                    ` : ''}
-                </div>
-            `;
-            
-            // Add click handler to show all copies popup
-            card.addEventListener('click', function(e) {
-                // Don't trigger if clicking on YouTube link or format indicator
-                if (e.target.closest('.youtube-link')) return;
-                if (e.target.closest('.format-indicator')) return;
-                
-                // Show popup with all copies grouped by format
-                showCopiesPopup(release);
-            });
-            
-            // Add click handlers for format indicators
-            setTimeout(() => {
-                card.querySelectorAll('.format-indicator').forEach(indicator => {
-                    indicator.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        const format = this.getAttribute('data-format');
-                        showCopiesPopup(release, format);
-                    });
-                });
-            }, 0);
-            
-            return card;
+function createRecordCard(release) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    
+    // Set data attributes for filtering
+    card.setAttribute('data-artist', (release.artist || '').toLowerCase());
+    card.setAttribute('data-title', (release.title || '').toLowerCase());
+    card.setAttribute('data-genre', (release.genre_name || '').toLowerCase());
+    card.setAttribute('data-created', release.created_at || '');
+    
+    // Get genre
+    const genre = release.genre_name || 'Unknown Genre';
+    
+    // Calculate price range display
+    const priceRange = release.price_range;
+    let priceDisplay = '';
+    if (priceRange.min > 0 && priceRange.max > 0) {
+        if (priceRange.min === priceRange.max) {
+            priceDisplay = `$${priceRange.min.toFixed(2)}`;
+        } else {
+            priceDisplay = `$${priceRange.min.toFixed(2)} - $${priceRange.max.toFixed(2)}`;
         }
+    } else if (priceRange.min > 0) {
+        priceDisplay = `$${priceRange.min.toFixed(2)}`;
+    } else {
+        priceDisplay = 'Price varies';
+    }
+    
+    // Build formats list - ONLY SHOW COUNT IF MORE THAN 1 COPY
+    let formatsHtml = '';
+    if (release.formats && release.formats.length > 0) {
+        formatsHtml = '<div class="formats-list">';
+        release.formats.forEach(format => {
+            let formatClass = '';
+            if (format.format.toLowerCase().includes('cd')) formatClass = 'cd';
+            else if (format.format.toLowerCase().includes('cassette')) formatClass = 'cassette';
+            else formatClass = 'vinyl';
+            
+            // Only show count if more than 1 copy
+            const countDisplay = format.total_copies > 1 ? ` (${format.total_copies})` : '';
+            formatsHtml += `<span class="format-indicator ${formatClass}" data-format="${format.format}">${format.format}${countDisplay}</span>`;
+        });
+        formatsHtml += '</div>';
+    }
+    
+    // Get all unique conditions from all formats
+    const allConditions = [];
+    release.formats.forEach(format => {
+        format.copies.forEach(copy => {
+            if (copy.condition && !allConditions.includes(copy.condition)) {
+                allConditions.push(copy.condition);
+            }
+        });
+    });
+    
+    // Sort conditions by grade
+    const conditionOrder = {
+        'Mint (M)': 1,
+        'Near Mint (NM or M-)': 2,
+        'Very Good Plus (VG+)': 3,
+        'Very Good (VG)': 4,
+        'Good Plus (G+)': 5,
+        'Good (G)': 6,
+        'Fair (F)': 7,
+        'Poor (P)': 8
+    };
+    
+    const sortedConditions = allConditions.sort((a, b) => 
+        (conditionOrder[a] || 99) - (conditionOrder[b] || 99)
+    );
+    
+    // Build conditions HTML
+    let conditionsHtml = '';
+    if (sortedConditions.length > 0) {
+        conditionsHtml = '<div class="conditions-list">';
+        sortedConditions.slice(0, 3).forEach(condition => {
+            if (!condition) return;
+            const conditionClass = getConditionClass(condition);
+            conditionsHtml += `<span class="condition-indicator ${conditionClass}">${condition}</span>`;
+        });
+        if (sortedConditions.length > 3) {
+            conditionsHtml += `<span class="more-copies">+${sortedConditions.length - 3} more</span>`;
+        }
+        conditionsHtml += '</div>';
+    }
+    
+    // Copy count display
+    let copyCountHtml = '';
+    if (release.total_copies > 1) {
+        copyCountHtml = `<span class="copy-count">${release.total_copies} copies</span>`;
+    }
+    
+    // Handle image display
+    const imageHtml = release.image_url ? 
+        `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
+        '';
+    
+    card.innerHTML = `
+        <div class="card-image ${!release.image_url ? 'default-record-bg' : ''}">
+            ${imageHtml}
+        </div>
+        <div class="card-info">
+            <h3 title="${escapeHtml(release.title)}">${escapeHtml(release.title)}</h3>
+            <p class="artist" title="${escapeHtml(release.artist)}">${escapeHtml(release.artist)}</p>
+            
+            <div class="copy-info">
+                ${copyCountHtml}
+                <span class="price-range">${priceDisplay}</span>
+            </div>
+            
+            ${formatsHtml}
+            
+            <p class="genre" title="${escapeHtml(genre)}">${escapeHtml(genre)}</p>
+            
+            ${conditionsHtml}
+            
+            ${release.formats.some(f => f.copies.some(c => c.youtube_url)) ? `
+                <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.formats.find(f => f.copies.find(c => c.youtube_url))?.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">
+                    🎵 Watch Video
+                </a>
+            ` : ''}
+        </div>
+    `;
+    
+    // Add click handler to show all copies popup
+    card.addEventListener('click', function(e) {
+        // Don't trigger if clicking on YouTube link or format indicator
+        if (e.target.closest('.youtube-link')) return;
+        if (e.target.closest('.format-indicator')) return;
+        
+        // Show popup with all copies grouped by format
+        showCopiesPopup(release);
+    });
+    
+    // Add click handlers for format indicators
+    setTimeout(() => {
+        card.querySelectorAll('.format-indicator').forEach(indicator => {
+            indicator.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const format = this.getAttribute('data-format');
+                showCopiesPopup(release, format);
+            });
+        });
+    }, 0);
+    
+    return card;
+}
 
         // Display releases with date cards
         function displayReleases(releases) {
@@ -852,142 +854,147 @@ function getDateCategoryData(createdDate) {
         }
 
         // Show popup with all copies grouped by format
-        function showCopiesPopup(release, filterFormat = null) {
-            // Create modal overlay
-            const modal = document.createElement('div');
-            modal.className = 'copies-modal-overlay';
+        // Show popup with all copies grouped by format
+function showCopiesPopup(release, filterFormat = null) {
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.className = 'copies-modal-overlay';
+    
+    // Handle image display
+    const imageHtml = release.image_url ? 
+        `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
+        '';
+    
+    // Filter formats if specified
+    let formatsToShow = release.formats;
+    if (filterFormat) {
+        formatsToShow = release.formats.filter(f => f.format === filterFormat);
+    }
+    
+    // Build formats HTML
+    let formatsHtml = '';
+    formatsToShow.forEach(format => {
+        const formatClass = format.format.toLowerCase().includes('cd') ? 'cd' : 
+                           (format.format.toLowerCase().includes('cassette') ? 'cassette' : 'vinyl');
+        const formatIcon = format.format.toLowerCase().includes('cd') ? 'fa-compact-disc' : 
+                           (format.format.toLowerCase().includes('cassette') ? 'fa-tape' : 'fa-record-vinyl');
+        
+        let copiesHtml = '';
+        format.copies.forEach(copy => {
+            const conditionClass = getConditionClass(copy.condition);
+            const alreadyInCart = isInCart(copy.id);
             
-            // Handle image display
-            const imageHtml = release.image_url ? 
-                `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
-                '';
-            
-            // Filter formats if specified
-            let formatsToShow = release.formats;
-            if (filterFormat) {
-                formatsToShow = release.formats.filter(f => f.format === filterFormat);
-            }
-            
-            // Build formats HTML
-            let formatsHtml = '';
-            formatsToShow.forEach(format => {
-                const formatClass = format.format.toLowerCase().includes('cd') ? 'cd' : 
-                                   (format.format.toLowerCase().includes('cassette') ? 'cassette' : 'vinyl');
-                const formatIcon = format.format.toLowerCase().includes('cd') ? 'fa-compact-disc' : 
-                                   (format.format.toLowerCase().includes('cassette') ? 'fa-tape' : 'fa-record-vinyl');
-                
-                let copiesHtml = '';
-                format.copies.forEach(copy => {
-                    const conditionClass = getConditionClass(copy.condition);
-                    const alreadyInCart = isInCart(copy.id);
-                    
-                    copiesHtml += `
-                        <div class="copy-item">
-                            <div class="copy-item-content">
-                                <span class="copy-condition">
-                                    <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
-                                </span>
-                                <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
-                                ${copy.barcode ? `<span class="copy-barcode">${copy.barcode}</span>` : ''}
-                            </div>
-                            <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" 
-                                    data-copy-id="${copy.id}" 
-                                    data-copy-condition="${copy.condition}" 
-                                    data-copy-price="${copy.store_price}"
-                                    data-format="${format.format}"
-                                    ${alreadyInCart ? 'disabled' : ''}>
-                                <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
-                                ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
-                            </button>
-                        </div>
-                    `;
-                });
-                
-                formatsHtml += `
-                    <div class="modal-format-section">
-                        <div class="modal-format-title">
-                            <i class="fas ${formatIcon}"></i>
-                            ${format.format}
-                            <span style="font-size: 0.8rem; font-weight: normal; margin-left: auto;">${format.total_copies} copy${format.total_copies !== 1 ? 's' : ''}</span>
-                        </div>
-                        <div class="copies-list-with-format">
-                            ${copiesHtml}
-                        </div>
+            copiesHtml += `
+                <div class="copy-item">
+                    <div class="copy-item-content">
+                        <span class="copy-condition">
+                            <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
+                        </span>
+                        <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+                        ${copy.barcode ? `<span class="copy-barcode">${copy.barcode}</span>` : ''}
                     </div>
-                `;
-            });
-            
-            // Build footer HTML
-            let footerHtml = '';
-            if (release.total_copies > 1) {
-                footerHtml = `
-                    <div class="copies-modal-footer">
-                        <span class="footer-total">Total Copies: ${release.total_copies}</span>
-                    </div>
-                `;
-            }
-            
-            // Create modal content with image
-            modal.innerHTML = `
-                <div class="copies-modal">
-                    <div class="copies-modal-header">
-                        <h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3>
-                        <button class="copies-modal-close">&times;</button>
-                    </div>
-                    <div class="copies-modal-content">
-                        <div class="modal-album-image ${!release.image_url ? 'default-record-bg' : ''}">
-                            ${imageHtml}
-                        </div>
-                        ${formatsHtml}
-                    </div>
-                    ${footerHtml}
+                    <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" 
+                            data-copy-id="${copy.id}" 
+                            data-copy-condition="${copy.condition}" 
+                            data-copy-price="${copy.store_price}"
+                            data-format="${format.format}"
+                            ${alreadyInCart ? 'disabled' : ''}>
+                        <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
+                        ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
+                    </button>
                 </div>
             `;
+        });
+        
+        // Only show count in header if more than 1 copy
+        const countDisplay = format.total_copies > 1 ? 
+            `<span style="font-size: 0.8rem; font-weight: normal; margin-left: auto;">${format.total_copies} copies</span>` : '';
+        
+        formatsHtml += `
+            <div class="modal-format-section">
+                <div class="modal-format-title">
+                    <i class="fas ${formatIcon}"></i>
+                    ${format.format}
+                    ${countDisplay}
+                </div>
+                <div class="copies-list-with-format">
+                    ${copiesHtml}
+                </div>
+            </div>
+        `;
+    });
+    
+    // Build footer HTML - only show total if multiple formats or multiple copies
+    let footerHtml = '';
+    if (release.total_copies > 1) {
+        footerHtml = `
+            <div class="copies-modal-footer">
+                <span class="footer-total">Total Copies: ${release.total_copies}</span>
+            </div>
+        `;
+    }
+    
+    // Create modal content with image
+    modal.innerHTML = `
+        <div class="copies-modal">
+            <div class="copies-modal-header">
+                <h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3>
+                <button class="copies-modal-close">&times;</button>
+            </div>
+            <div class="copies-modal-content">
+                <div class="modal-album-image ${!release.image_url ? 'default-record-bg' : ''}">
+                    ${imageHtml}
+                </div>
+                ${formatsHtml}
+            </div>
+            ${footerHtml}
+        </div>
+    `;
+    
+    // Add click handler to close button
+    const closeBtn = modal.querySelector('.copies-modal-close');
+    closeBtn.addEventListener('click', () => {
+        modal.remove();
+    });
+    
+    // Add click outside to close
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+    
+    // Add event listeners for add to cart buttons
+    modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
             
-            // Add click handler to close button
-            const closeBtn = modal.querySelector('.copies-modal-close');
-            closeBtn.addEventListener('click', () => {
-                modal.remove();
-            });
+            const copyId = btn.dataset.copyId;
+            const format = btn.dataset.format;
             
-            // Add click outside to close
-            modal.addEventListener('click', function(e) {
-                if (e.target === modal) {
+            // Find the full copy object
+            let copy = null;
+            for (const formatData of release.formats) {
+                const found = formatData.copies.find(c => c.id == copyId);
+                if (found) {
+                    copy = found;
+                    break;
+                }
+            }
+            
+            if (copy) {
+                const added = addToCart(copy, release, format);
+                
+                if (added) {
+                    // Close the modal after adding to cart
                     modal.remove();
                 }
-            });
-            
-            // Add event listeners for add to cart buttons
-            modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    
-                    const copyId = btn.dataset.copyId;
-                    const format = btn.dataset.format;
-                    
-                    // Find the full copy object
-                    let copy = null;
-                    for (const formatData of release.formats) {
-                        const found = formatData.copies.find(c => c.id == copyId);
-                        if (found) {
-                            copy = found;
-                            break;
-                        }
-                    }
-                    
-                    if (copy) {
-                        const added = addToCart(copy, release, format);
-                        
-                        if (added) {
-                            // Close the modal after adding to cart
-                            modal.remove();
-                        }
-                    }
-                });
-            });
-            
-            document.body.appendChild(modal);
-        }
+            }
+        });
+    });
+    
+    document.body.appendChild(modal);
+}
 
         // Helper function to escape HTML
         function escapeHtml(text) {
