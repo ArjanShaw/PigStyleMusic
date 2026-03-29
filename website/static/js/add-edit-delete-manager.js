@@ -148,43 +148,75 @@ class GenrePredictor {
     }
 }
 
-// Barcode Generator Class
+// UPDATED Barcode Generator Class - Supports multiple formats
 class BarcodeGenerator {
     constructor() {
-        this.baseCounter = 3290;
-        this.prefix = '22';
-        this.loadCounter();
+        // Separate counters for each format
+        this.counters = {
+            vinyl: 3290,
+            cd: 3290,
+            cassette: 3290
+        };
+        
+        // Prefixes for each format
+        this.prefixes = {
+            vinyl: '22',
+            cd: '33',
+            cassette: '44'
+        };
+        
+        this.loadCounters();
     }
     
-    loadCounter() {
+    loadCounters() {
         try {
-            const savedCounter = localStorage.getItem('pigstyle_barcode_counter');
-            if (savedCounter) {
-                const parsed = parseInt(savedCounter);
-                if (!isNaN(parsed) && parsed > this.baseCounter) {
-                    this.baseCounter = parsed;
-                }
+            const savedCounters = localStorage.getItem('pigstyle_barcode_counters');
+            if (savedCounters) {
+                const parsed = JSON.parse(savedCounters);
+                // Merge saved counters with defaults
+                this.counters = { ...this.counters, ...parsed };
             }
-            console.log('BARCODE: Loaded counter:', this.baseCounter);
+            console.log('BARCODE: Loaded counters:', this.counters);
         } catch (error) {
-            console.warn('BARCODE: Could not load counter:', error);
+            console.warn('BARCODE: Could not load counters:', error);
         }
     }
     
-    saveCounter() {
+    saveCounters() {
         try {
-            localStorage.setItem('pigstyle_barcode_counter', this.baseCounter.toString());
+            localStorage.setItem('pigstyle_barcode_counters', JSON.stringify(this.counters));
         } catch (error) {
-            console.warn('BARCODE: Could not save counter:', error);
+            console.warn('BARCODE: Could not save counters:', error);
         }
     }
     
-    generateBarcode() {
-        const sequence = this.baseCounter.toString().padStart(4, '0');
-        const barcode = `${this.prefix}000000${sequence}`;
-        console.log('BARCODE_GENERATED:', barcode, 'Sequence:', this.baseCounter);
-        this.baseCounter++;
-        this.saveCounter();
+    detectFormat(formatString) {
+        if (!formatString) return 'vinyl';
+        
+        const formatLower = formatString.toLowerCase();
+        
+        if (formatLower.includes('cd') || formatLower === 'compact disc') {
+            return 'cd';
+        } else if (formatLower.includes('cassette') || formatLower.includes('tape')) {
+            return 'cassette';
+        } else {
+            return 'vinyl';
+        }
+    }
+    
+    generateBarcode(format = 'vinyl') {
+        const normalizedFormat = this.detectFormat(format);
+        const prefix = this.prefixes[normalizedFormat];
+        const currentCounter = this.counters[normalizedFormat];
+        const sequence = currentCounter.toString().padStart(4, '0');
+        const barcode = `${prefix}000000${sequence}`;
+        
+        console.log(`BARCODE_GENERATED: Format=${normalizedFormat}, Barcode=${barcode}, Sequence=${currentCounter}`);
+        
+        // Increment the counter for this format
+        this.counters[normalizedFormat]++;
+        this.saveCounters();
+        
         return barcode;
     }
     
@@ -195,14 +227,16 @@ class BarcodeGenerator {
         return /^\d+$/.test(barcode);
     }
     
-    getCurrentCounter() {
-        return this.baseCounter;
+    getCurrentCounter(format = 'vinyl') {
+        const normalizedFormat = this.detectFormat(format);
+        return this.counters[normalizedFormat];
     }
     
-    resetCounter(startFrom = 3290) {
-        this.baseCounter = startFrom;
-        this.saveCounter();
-        console.log('BARCODE: Counter reset to:', startFrom);
+    resetCounter(format = 'vinyl', startFrom = 3290) {
+        const normalizedFormat = this.detectFormat(format);
+        this.counters[normalizedFormat] = startFrom;
+        this.saveCounters();
+        console.log(`BARCODE: ${normalizedFormat} counter reset to:`, startFrom);
     }
 }
 
@@ -1232,7 +1266,7 @@ class AddEditDeleteManager {
                 }
                 
                 return `
-                    <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}" data-artist="${record.artist}">
+                    <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}" data-artist="${record.artist}" data-format="${record.format || ''}">
                         <div class="record-header">
                             ${record.image_url ? `
                                 <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image" 
@@ -1643,7 +1677,8 @@ class AddEditDeleteManager {
                 title: record.title,
                 condition: conditionForEstimate,
                 discogs_genre: record.genre || '',
-                discogs_id: record.discogs_id || ''
+                discogs_id: record.discogs_id || '',
+                discogs_format: record.format || ''
             });
             
             console.log('ESTIMATE_PRICE: API response received');
@@ -2135,6 +2170,7 @@ class AddEditDeleteManager {
         this.addConditionChangeListeners();
     }
 
+    // UPDATED: Add record with format-specific barcode
     async addRecordFromDiscogs(card, discogsRecord) {
         const genreSelect = card.querySelector('.genre-select');
         const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
@@ -2165,7 +2201,9 @@ class AddEditDeleteManager {
         const genre = this.genres.find(g => g.id == genreId);
         const genreName = genre ? genre.genre_name : '';
         
-        const pigstyleBarcode = this.barcodeGenerator.generateBarcode();
+        // Detect format from Discogs result and generate barcode
+        const formatFromDiscogs = discogsRecord.format || '';
+        const pigstyleBarcode = this.barcodeGenerator.generateBarcode(formatFromDiscogs);
         
         if (!this.barcodeGenerator.validateBarcode(pigstyleBarcode)) {
             showMessage('Error: Generated barcode is not valid numeric format', 'error');
@@ -2174,6 +2212,7 @@ class AddEditDeleteManager {
         
         console.log('=== ADDING RECORD ===');
         console.log('Generated PigStyle barcode (numeric):', pigstyleBarcode);
+        console.log('Format detected:', formatFromDiscogs || 'vinyl (default)');
         console.log('Barcode validation:', this.barcodeGenerator.validateBarcode(pigstyleBarcode));
         console.log('Input price:', price);
         console.log('Artist:', discogsRecord.artist);

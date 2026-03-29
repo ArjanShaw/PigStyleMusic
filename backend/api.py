@@ -2757,8 +2757,9 @@ def price_estimate():
         condition = data.get('condition')
         discogs_genre = data.get('discogs_genre', '')
         discogs_id = data.get('discogs_id', '')
+        discogs_format = data.get('discogs_format', '')  # ADD THIS LINE
         
-        app.logger.info(f"Price estimate called: {artist} - {title}")
+        app.logger.info(f"Price estimate called: {artist} - {title} - Format: {discogs_format}")
         
         price_advisor = PriceAdviseHandler(
             discogs_token=app.config.get('DISCOGS_USER_TOKEN'),
@@ -2771,7 +2772,8 @@ def price_estimate():
             title=title,
             selected_condition=condition,
             discogs_genre=discogs_genre,
-            discogs_id=discogs_id
+            discogs_id=discogs_id,
+            discogs_format=discogs_format  # ADD THIS LINE
         )
         
         estimated_price = result['estimated_price'] if result['success'] else 19.99
@@ -5296,13 +5298,13 @@ def get_dropoff_records():
 
 # ==================== CATALOG ENDPOINTS ====================
 
-
 @app.route('/catalog/grouped-by-release', methods=['GET'])
 def get_catalog_grouped_by_release():
     """
     Returns catalog data grouped by unique releases (artist + title combination)
     Sorted by date added descending (newest first)
-    Each group contains all copies of that release with their details
+    Each group contains all copies of that release with their details, grouped by format
+    Format is derived from barcode prefix (22=vinyl, 33=cd, 44=cassette)
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -5313,12 +5315,12 @@ def get_catalog_grouped_by_release():
             r.id,
             r.artist,
             r.title,
+            r.barcode,
             COALESCE(r.image_url, '') as image_url,
             COALESCE(g.genre_name, 'Unknown') as genre_name,
             cs.condition_name as sleeve_condition,
             cd.condition_name as disc_condition,
             r.store_price,
-            r.barcode,
             r.catalog_number,
             r.youtube_url,
             r.created_at,
@@ -5338,6 +5340,21 @@ def get_catalog_grouped_by_release():
     records = cursor.fetchall()
     conn.close()
 
+    # Helper function to get format from barcode
+    def get_format_from_barcode(barcode):
+        if not barcode:
+            return 'Vinyl'  # Default to vinyl if no barcode
+        
+        barcode_str = str(barcode)
+        if barcode_str.startswith('22'):
+            return 'Vinyl'
+        elif barcode_str.startswith('33'):
+            return 'CD'
+        elif barcode_str.startswith('44'):
+            return 'Cassette'
+        else:
+            return 'Vinyl'  # Default fallback
+
     # Define condition order for sorting copies within groups
     condition_order = {
         'Mint (M)': 1,
@@ -5350,7 +5367,7 @@ def get_catalog_grouped_by_release():
         'Poor (P)': 8
     }
 
-    # Group records by release
+    # Group records by release (artist + title)
     groups = {}
     total_copies = 0
     unique_releases = 0
@@ -5369,6 +5386,10 @@ def get_catalog_grouped_by_release():
         if 'store_price' in record_dict and record_dict['store_price'] is not None:
             record_dict['store_price'] = float(record_dict['store_price'])
         
+        # Get format from barcode
+        barcode = record_dict.get('barcode')
+        record_format = get_format_from_barcode(barcode)
+        
         if key not in groups:
             unique_releases += 1
             groups[key] = {
@@ -5377,15 +5398,27 @@ def get_catalog_grouped_by_release():
                 'genre_name': record_dict.get('genre_name', 'Unknown'),
                 'image_url': record_dict.get('image_url', ''),
                 'total_copies': 0,
+                'formats': {},  # Will hold format-specific data
+                'created_at': record_dict.get('created_at'),
                 'price_range': {
                     'min': float('inf'),
                     'max': 0
-                },
-                'copies': [],
-                'created_at': record_dict.get('created_at')
+                }
             }
         
-        # Prepare copy data with condition ranks for sorting
+        # Get or create format group
+        if record_format not in groups[key]['formats']:
+            groups[key]['formats'][record_format] = {
+                'format': record_format,
+                'copies': [],
+                'total_copies': 0,
+                'price_range': {
+                    'min': float('inf'),
+                    'max': 0
+                }
+            }
+        
+        # Add copy to format group
         copy_data = {
             'id': record_dict['id'],
             'sleeve_condition': record_dict.get('sleeve_condition', 'Unknown'),
@@ -5399,12 +5432,20 @@ def get_catalog_grouped_by_release():
             'created_at': record_dict.get('created_at')
         }
         
-        groups[key]['copies'].append(copy_data)
+        groups[key]['formats'][record_format]['copies'].append(copy_data)
+        groups[key]['formats'][record_format]['total_copies'] += 1
         groups[key]['total_copies'] += 1
         total_copies += 1
         
-        # Update price range
+        # Update format price range
         price = record_dict['store_price']
+        if price > 0:
+            if price < groups[key]['formats'][record_format]['price_range']['min']:
+                groups[key]['formats'][record_format]['price_range']['min'] = price
+            if price > groups[key]['formats'][record_format]['price_range']['max']:
+                groups[key]['formats'][record_format]['price_range']['max'] = price
+        
+        # Update overall price range
         if price > 0:
             groups[key]['price_range']['min'] = min(groups[key]['price_range']['min'], price)
             groups[key]['price_range']['max'] = max(groups[key]['price_range']['max'], price)
@@ -5420,25 +5461,36 @@ def get_catalog_grouped_by_release():
     for group in groups.values():
         if group['price_range']['min'] == float('inf'):
             group['price_range'] = {'min': 0, 'max': 0}
+        for format_data in group['formats'].values():
+            if format_data['price_range']['min'] == float('inf'):
+                format_data['price_range'] = {'min': 0, 'max': 0}
     
     # Convert groups dict to list and sort by created_at descending (newest first)
     groups_list = list(groups.values())
     groups_list.sort(key=lambda x: x['created_at'] if x['created_at'] else '', reverse=True)
     
-    # Sort copies within each group by condition (best first) and price (highest first)
+    # Convert formats dict to list and sort copies within each format
     for group in groups_list:
-        group['copies'].sort(key=lambda x: (x['sleeve_condition_rank'], -x['store_price']))
+        # Convert formats from dict to list
+        group['formats'] = list(group['formats'].values())
         
-        # Clean up temporary fields and create combined condition for display
-        for copy in group['copies']:
-            del copy['sleeve_condition_rank']
-            del copy['disc_condition_rank']
+        # Sort formats alphabetically
+        group['formats'].sort(key=lambda x: x['format'])
+        
+        # Sort copies within each format by condition (best first) and price (highest first)
+        for format_data in group['formats']:
+            format_data['copies'].sort(key=lambda x: (x['sleeve_condition_rank'], -x['store_price']))
             
-            # Create a combined condition field for display
-            if copy['sleeve_condition'] == copy['disc_condition']:
-                copy['condition'] = copy['sleeve_condition']
-            else:
-                copy['condition'] = f"Sleeve: {copy['sleeve_condition']}, Disc: {copy['disc_condition']}"
+            # Clean up temporary fields
+            for copy in format_data['copies']:
+                del copy['sleeve_condition_rank']
+                del copy['disc_condition_rank']
+                
+                # Create a combined condition field for display
+                if copy['sleeve_condition'] == copy['disc_condition']:
+                    copy['condition'] = copy['sleeve_condition']
+                else:
+                    copy['condition'] = f"Sleeve: {copy['sleeve_condition']}, Disc: {copy['disc_condition']}"
 
     return jsonify({
         'status': 'success',
@@ -5446,9 +5498,6 @@ def get_catalog_grouped_by_release():
         'total_copies': total_copies,
         'groups': groups_list
     })
-
-
-
 
 @app.route('/catalog/grouped-records', methods=['GET'])
 def get_catalog_grouped_records():
