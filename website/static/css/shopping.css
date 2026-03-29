@@ -390,7 +390,7 @@ nav div a {
     margin: 0 auto;
 }
 
-/* Date Card Styles */
+/* Date Card Styles - RESTORED ORIGINAL */
 .date-card {
     background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
     text-align: center;
@@ -1442,5 +1442,29 @@ nav div a {
     
     .payment-modal {
         padding: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .group-gallery {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        padding: 15px;
+    }
+    
+    .date-card {
+        min-height: 190px;
+    }
+    
+    .date-card .date-emoji {
+        font-size: 1.8rem;
+    }
+    
+    .date-card .date-label {
+        font-size: 0.85rem;
+    }
+    
+    .card-image {
+        height: 140px;
     }
 }

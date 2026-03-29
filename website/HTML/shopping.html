@@ -457,56 +457,85 @@
                 throw error;
             }
         }
-
-        // Helper function to get date category data
-        function getDateCategoryData(createdDate) {
-            if (!createdDate) return null;
-            
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const recordDate = new Date(createdDate);
-            recordDate.setHours(0, 0, 0, 0);
-            
-            const diffDays = Math.floor((today - recordDate) / (1000 * 60 * 60 * 24));
-            
-            if (diffDays === 0) {
-                return { 
-                    label: 'Added Today', 
-                    emoji: '🆕',
-                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                };
-            } else if (diffDays === 1) {
-                return { 
-                    label: 'Added Yesterday', 
-                    emoji: '✨',
-                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                };
-            } else if (diffDays <= 7) {
-                return { 
-                    label: `Added ${diffDays} Days Ago`, 
-                    emoji: '📅',
-                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                };
-            } else if (diffDays <= 14) {
-                return { 
-                    label: 'Added Last Week', 
-                    emoji: '📆',
-                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                };
-            } else if (diffDays <= 30) {
-                return { 
-                    label: 'Added This Month', 
-                    emoji: '🗓️',
-                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                };
-            } else {
-                return { 
-                    label: 'Added Earlier', 
-                    emoji: '💿',
-                    fullDate: recordDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-                };
-            }
-        }
+        // Helper function to get date category data - FIXED TIMEZONE VERSION
+function getDateCategoryData(createdDate) {
+    if (!createdDate) return null;
+    
+    // Parse the date string - handle both UTC and local formats
+    let recordDate;
+    
+    // If it's a string like "2024-03-28 20:59:22" (database format)
+    if (typeof createdDate === 'string' && createdDate.includes(' ')) {
+        // Replace space with T to make it ISO-like, then parse
+        const isoString = createdDate.replace(' ', 'T') + 'Z';
+        recordDate = new Date(isoString);
+    } else {
+        recordDate = new Date(createdDate);
+    }
+    
+    // Check if date is valid
+    if (isNaN(recordDate.getTime())) {
+        console.warn('Invalid date:', createdDate);
+        return null;
+    }
+    
+    // Get today's date at midnight LOCAL time
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Get record date at midnight LOCAL time (not UTC)
+    const recordDateLocal = new Date(recordDate);
+    recordDateLocal.setHours(0, 0, 0, 0);
+    
+    // Calculate difference in days (local time)
+    const diffDays = Math.floor((today - recordDateLocal) / (1000 * 60 * 60 * 24));
+    
+    // Format the full date for display
+    const fullDate = recordDate.toLocaleDateString('en-US', { 
+        month: 'long', 
+        day: 'numeric', 
+        year: 'numeric' 
+    });
+    
+    // If diffDays is negative or zero, show as "Added Today"
+    if (diffDays <= 0) {
+        return { 
+            label: 'Added Today', 
+            emoji: '🆕',
+            fullDate: fullDate
+        };
+    } else if (diffDays === 1) {
+        return { 
+            label: 'Added Yesterday', 
+            emoji: '✨',
+            fullDate: fullDate
+        };
+    } else if (diffDays <= 7) {
+        return { 
+            label: `Added ${diffDays} Days Ago`, 
+            emoji: '📅',
+            fullDate: fullDate
+        };
+    } else if (diffDays <= 14) {
+        return { 
+            label: 'Added Last Week', 
+            emoji: '📆',
+            fullDate: fullDate
+        };
+    } else if (diffDays <= 30) {
+        return { 
+            label: 'Added This Month', 
+            emoji: '🗓️',
+            fullDate: fullDate
+        };
+    } else {
+        return { 
+            label: 'Added Earlier', 
+            emoji: '💿',
+            fullDate: fullDate
+        };
+    }
+}
 
         // Group releases by date
         function groupReleasesByDate(releases) {
