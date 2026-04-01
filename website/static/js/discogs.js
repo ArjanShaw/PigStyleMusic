@@ -513,6 +513,9 @@ function clearBarcodeInput() {
 /**
  * Sync Discogs status with local records
  */
+/**
+ * Sync Discogs status with local records
+ */
 function syncDiscogsStatus() {
     showDiscogsStatus('Syncing with Discogs...', 'info');
     
@@ -580,15 +583,22 @@ function syncDiscogsStatus() {
                 const listingId = String(listing.listing_id);
                 const localRecord = recordsWithDiscogsId.find(r => String(r.discogs_listing_id) === listingId);
                 if (!localRecord) {
-                    listingsToDelete.push({ id: listingId, artist: listing.artist, title: listing.title });
+                    listingsToDelete.push({ 
+                        id: listingId, 
+                        artist: listing.artist, 
+                        title: listing.title,
+                        price: listing.price
+                    });
                 }
             });
             
             let clearedCount = 0;
             let deletedCount = 0;
+            let deletedList = [];
+            let failedDeletions = [];
             let promises = [];
             
-            // Clear discogs_listing_id from local records
+            // Clear discogs_listing_id from local records (remove error handling)
             recordsToClear.forEach(recordId => {
                 promises.push(
                     fetch(`${window.AppConfig.baseUrl}/records/${recordId}`, {
@@ -599,56 +609,98 @@ function syncDiscogsStatus() {
                             discogs_listing_id: null,
                             discogs_listed_date: null
                         })
-                    }).then(() => {
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Failed to clear record ${recordId}: HTTP ${response.status}`);
+                        }
                         clearedCount++;
-                    }).catch(error => {
-                        console.error(`Error clearing Discogs ID for record ${recordId}:`, error);
+                        console.log(`✅ Cleared Discogs ID from record ${recordId}`);
+                        return response.json();
                     })
                 );
             });
             
-            // Delete orphaned listings from Discogs
+            // Delete orphaned listings from Discogs (show ALL errors)
             listingsToDelete.forEach(listing => {
+                console.log(`🗑️ Attempting to delete orphaned listing: ${listing.id} - ${listing.artist} - ${listing.title} ($${listing.price})`);
+                
                 promises.push(
                     fetch(`${window.AppConfig.baseUrl}/api/discogs/delete-listing/${listing.id}`, {
                         method: 'DELETE',
                         credentials: 'include',
                         headers: window.AppConfig.getHeaders()
-                    }).then(response => response.json())
+                    })
+                    .then(response => {
+                        console.log(`Delete response for listing ${listing.id}: HTTP ${response.status}`);
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
                         if (data.success) {
                             deletedCount++;
+                            deletedList.push(`${listing.id} - ${listing.artist} - ${listing.title}`);
+                            console.log(`✅ Deleted listing ${listing.id} from Discogs`);
+                        } else {
+                            throw new Error(data.error || 'Delete failed');
                         }
-                    }).catch(error => {
-                        console.error(`Error deleting listing ${listing.id}:`, error);
+                    })
+                    .catch(error => {
+                        console.error(`❌ FAILED to delete listing ${listing.id}:`, error.message);
+                        failedDeletions.push({
+                            id: listing.id,
+                            artist: listing.artist,
+                            title: listing.title,
+                            error: error.message
+                        });
+                        throw error; // Re-throw to propagate
                     })
                 );
             });
             
             // Wait for all updates to complete
-            Promise.all(promises).then(() => {
-                let summaryMessage = 'Sync complete:';
+            Promise.allSettled(promises).then((results) => {
+                let summaryMessage = '🔍 SYNC RESULTS:\n\n';
+                
                 if (clearedCount > 0) {
-                    summaryMessage += `\n- ${clearedCount} invalid Discogs IDs cleared from local records`;
-                }
-                if (deletedCount > 0) {
-                    summaryMessage += `\n- ${deletedCount} orphaned Discogs listings deleted`;
-                }
-                if (clearedCount === 0 && deletedCount === 0) {
-                    summaryMessage += ' No changes needed';
+                    summaryMessage += `✅ Cleared ${clearedCount} invalid Discogs IDs from local records\n`;
                 }
                 
-                showDiscogsStatus(summaryMessage, 'success');
+                if (deletedCount > 0) {
+                    summaryMessage += `✅ Deleted ${deletedCount} orphaned Discogs listings:\n`;
+                    deletedList.forEach(item => {
+                        summaryMessage += `   - ${item}\n`;
+                    });
+                }
+                
+                if (failedDeletions.length > 0) {
+                    summaryMessage += `\n❌ FAILED to delete ${failedDeletions.length} orphaned listings:\n`;
+                    failedDeletions.forEach(failed => {
+                        summaryMessage += `   - ${failed.id} (${failed.artist} - ${failed.title})\n`;
+                        summaryMessage += `     Error: ${failed.error}\n`;
+                    });
+                }
+                
+                if (clearedCount === 0 && deletedCount === 0 && failedDeletions.length === 0) {
+                    summaryMessage += '✅ No changes needed - everything is in sync!\n';
+                }
+                
+                console.log(summaryMessage);
+                alert(summaryMessage);
+                showDiscogsStatus(`Sync complete: ${deletedCount} deleted, ${failedDeletions.length} failed, ${clearedCount} cleared`, 
+                                 failedDeletions.length > 0 ? 'warning' : 'success');
                 
                 // Reload inventory
                 setTimeout(() => {
                     loadDiscogsInventory();
-                }, 1000);
-            }).catch(error => {
-                showDiscogsStatus(`Sync error: ${error.message}`, 'error');
+                }, 2000);
             });
         })
         .catch(error => {
+            console.error('Error fetching local records:', error);
+            alert(`❌ Error fetching local records: ${error.message}`);
             showDiscogsStatus(`Error fetching local records: ${error.message}`, 'error');
         });
     })
@@ -657,19 +709,18 @@ function syncDiscogsStatus() {
         let errorMessage = error.message;
         
         if (error.message.includes('Failed to fetch')) {
-            errorMessage = 'Network error - Cannot connect to server. Please check your internet connection and try again.';
+            errorMessage = 'Network error - Cannot connect to server. Check your internet connection.';
         } else if (error.message.includes('HTTP 401')) {
-            errorMessage = 'Authentication failed. Please log in again.';
+            errorMessage = 'Authentication failed. Your Discogs token may be invalid.';
         } else if (error.message.includes('HTTP 403')) {
-            errorMessage = 'Permission denied. You don\'t have access to Discogs listings.';
+            errorMessage = 'Permission denied. Your Discogs token may not have permission to view listings.';
         } else if (error.message.includes('HTTP 404')) {
-            errorMessage = 'Discogs API endpoint not found. Please check the configuration.';
+            errorMessage = 'Discogs API endpoint not found. Check your Discogs token configuration.';
         } else if (error.message.includes('HTTP 429')) {
             errorMessage = 'Rate limited by Discogs. Please wait a moment and try again.';
-        } else if (error.message.includes('HTTP 500')) {
-            errorMessage = 'Server error. Please try again later.';
         }
         
+        alert(`❌ Sync Error: ${errorMessage}\n\nTechnical details: ${error.message}`);
         showDiscogsStatus(`Sync error: ${errorMessage}`, 'error');
     });
 }
