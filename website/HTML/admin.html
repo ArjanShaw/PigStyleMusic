@@ -3130,8 +3130,7 @@
         </div>
 
         <!-- Discogs Tab -->
-         <!-- Discogs Tab -->
- <!-- Discogs Tab -->
+     <!-- Discogs Tab -->
 <div id="discogs-tab" class="tab-content">
     <h2><i class="fab fa-discogs"></i> Discogs Inventory Management</h2>
     
@@ -3181,6 +3180,8 @@
             <i class="fas fa-info-circle"></i> Scan barcode to automatically check matching records. Table shows only checked records.
         </p>
     </div>
+    
+   
     
     <!-- Filter Section -->
     <div class="filters-section" style="margin-bottom: 20px;">
@@ -3296,82 +3297,81 @@
                     <th>Local Status</th>
                     <th>Discogs Status</th>
                     <th>Discogs Listing ID</th>
+                    <th>Location</th>
                     <th>Actions</th>
-                </thead>
+                </tr>
+            </thead>
             <tbody id="discogs-inventory-body">
-                <td colspan="14" style="text-align: center; padding: 40px;">
-                    <i class="fas fa-spinner fa-spin"></i> Loading inventory...
-                </tbody>
-            </table>
-        </div>
-        
-        <!-- Pagination for inventory -->
-        <div class="pagination" style="margin-top: 20px; margin-bottom: 30px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <button class="page-btn" onclick="goToDiscogsPage(1)" id="discogs-first-btn" disabled>
-                <i class="fas fa-angle-double-left"></i>
-            </button>
-            <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage - 1)" id="discogs-prev-btn" disabled>
-                <i class="fas fa-angle-left"></i>
-            </button>
-            
-            <span class="pagination-info">
-                Page <input type="number" class="page-input" id="discogs-current-page" min="1" value="1" 
-                    onchange="goToDiscogsPage(parseInt(this.value))" style="width: 50px; text-align: center;"> 
-                of <span id="discogs-total-pages">1</span>
-            </span>
-            
-            <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage + 1)" id="discogs-next-btn" disabled>
-                <i class="fas fa-angle-right"></i>
-            </button>
-            <button class="page-btn" onclick="goToDiscogsPage(discogsTotalPages)" id="discogs-last-btn" disabled>
-                <i class="fas fa-angle-double-right"></i>
-            </button>
-            
-            <div class="records-per-page" style="margin-left: auto;">
-                <span>Show:</span>
-                <select id="discogs-page-size" onchange="changeDiscogsPageSize(parseInt(this.value))">
-                    <option value="20">20</option>
-                    <option value="50" selected>50</option>
-                    <option value="100">100</option>
-                </select>
-            </div>
-        </div>
-        
-        <!-- Discogs Orphaned Listings Table -->
-        <h3 style="margin-top: 20px; margin-bottom: 10px;">
-            <i class="fab fa-discogs"></i> Discogs Orphaned Listings (<span id="discogs-orphaned-count">0</span>)
-        </h3>
-        <div class="records-table-container">
-            <table class="records-table" id="discogs-orphaned-table">
-                <thead>
-                    <tr>
-                        <th>Listing ID</th>
-                        <th>Release ID</th>
-                        <th>Artist</th>
-                        <th>Title</th>
-                        <th>Price</th>
-                        <th>Condition</th>
-                        <th>Sleeve Condition</th>
-                        <th>Status</th>
-                        <th>URL</th>
-                    </thead>
-                <tbody id="discogs-orphaned-body">
-                    <td colspan="9" style="text-align: center; padding: 40px;">
-                        <i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i>
-                        <p>Loading Discogs listings...</p>
-                    </tbody>
-                </table>
-        </div>
-        
-        <!-- Loading Indicator -->
-        <div class="loading" id="discogs-loading" style="display: none;">
-            <div class="loading-spinner"></div>
-            <p>Loading...</p>
-        </div>
-        
-        <!-- Status Message -->
-        <div id="discogs-status-message" class="status-message" style="margin-top: 20px; display: none;"></div>
+                <tr><td colspan="15" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading inventory...</td></tr>
+            </tbody>
+        </table>
     </div>
+    
+    <!-- Pagination for inventory -->
+    <div class="pagination" style="margin-top: 20px; margin-bottom: 30px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <button class="page-btn" onclick="goToDiscogsPage(1)" id="discogs-first-btn" disabled>
+            <i class="fas fa-angle-double-left"></i>
+        </button>
+        <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage - 1)" id="discogs-prev-btn" disabled>
+            <i class="fas fa-angle-left"></i>
+        </button>
+        
+        <span class="pagination-info">
+            Page <input type="number" class="page-input" id="discogs-current-page" min="1" value="1" 
+                onchange="goToDiscogsPage(parseInt(this.value))" style="width: 50px; text-align: center;"> 
+            of <span id="discogs-total-pages">1</span>
+        </span>
+        
+        <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage + 1)" id="discogs-next-btn" disabled>
+            <i class="fas fa-angle-right"></i>
+        </button>
+        <button class="page-btn" onclick="goToDiscogsPage(discogsTotalPages)" id="discogs-last-btn" disabled>
+            <i class="fas fa-angle-double-right"></i>
+        </button>
+        
+        <div class="records-per-page" style="margin-left: auto;">
+            <span>Show:</span>
+            <select id="discogs-page-size" onchange="changeDiscogsPageSize(parseInt(this.value))">
+                <option value="20">20</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+    </div>
+    
+    <!-- Discogs Orphaned Listings Table -->
+    <h3 style="margin-top: 20px; margin-bottom: 10px;">
+        <i class="fab fa-discogs"></i> Discogs Orphaned Listings (<span id="discogs-orphaned-count">0</span>)
+    </h3>
+    <div class="records-table-container">
+        <table class="records-table" id="discogs-orphaned-table">
+            <thead>
+                <tr>
+                    <th>Listing ID</th>
+                    <th>Release ID</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                    <th>Price</th>
+                    <th>Condition</th>
+                    <th>Sleeve Condition</th>
+                    <th>Status</th>
+                    <th>URL</th>
+                </tr>
+            </thead>
+            <tbody id="discogs-orphaned-body">
+                <tr><td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i><p>Loading Discogs listings...</p></td></tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Loading Indicator -->
+    <div class="loading" id="discogs-loading" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>Loading...</p>
+    </div>
+    
+    <!-- Status Message -->
+    <div id="discogs-status-message" class="status-message" style="margin-top: 20px; display: none;"></div>
 </div>
 
 
@@ -4173,5 +4173,46 @@
         }, 1000);
     });
     </script>
+
+    <!-- Discogs Location Modal -->
+    <div id="discogs-location-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-map-marker-alt"></i> Set Location for Records</h3>
+                <button class="modal-close" onclick="closeDiscogsLocationModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px;">You are about to submit <strong id="modal-selected-count">0</strong> records to Discogs.</p>
+                
+                <div style="margin-bottom: 20px;">
+                    <label for="modal-location-input" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                        <i class="fas fa-map-pin"></i> Location:
+                    </label>
+                    <input type="text" 
+                        id="modal-location-input" 
+                        class="search-input" 
+                        placeholder="e.g., A3, Shelf 2, Box 4, Rack B, Row 5..."
+                        style="width: 100%; font-size: 16px; padding: 12px;">
+                    <p style="font-size: 12px; color: #666; margin-top: 8px;">
+                        <i class="fas fa-info-circle"></i> This location will be saved to all selected records and added to Discogs listing comments
+                    </p>
+                </div>
+                
+                <div id="modal-records-preview" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                    <strong>Selected Records:</strong>
+                    <div id="modal-records-list" style="margin-top: 8px; font-size: 13px;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeDiscogsLocationModal()">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button class="btn btn-success" onclick="confirmDiscogsSubmit()" id="modal-submit-btn">
+                    <i class="fab fa-discogs"></i> Submit to Discogs
+                </button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

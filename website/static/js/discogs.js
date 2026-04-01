@@ -1,5 +1,6 @@
 // discogs.js - Cleaned version with Discogs listings table and local inventory table
 // Added barcode scanner component with "Show Selected Only" filter
+// Added location field for records with modal popup
 
 // State management
 let discogsInventory = [];
@@ -36,6 +37,9 @@ let openDiscogsOrders = []; // Store open orders for printing
 // Barcode scanner state
 let barcodeScannerTimeout = null;
 
+// Store records to submit before modal confirmation
+let pendingRecordsToSubmit = [];
+
 // Make functions globally available
 window.loadDiscogsInventory = loadDiscogsInventory;
 window.filterDiscogsInventory = filterDiscogsInventory;
@@ -53,6 +57,8 @@ window.loadConsignors = loadConsignors;
 window.loadDiscogsListings = loadDiscogsListings;
 window.printDiscogsOrders = printDiscogsOrders;
 window.scanBarcode = scanBarcode;
+window.closeDiscogsLocationModal = closeDiscogsLocationModal;
+window.confirmDiscogsSubmit = confirmDiscogsSubmit;
 
 /**
  * Load conditions from database
@@ -179,7 +185,8 @@ function loadLocalInventory() {
                 consignor_name: record.consignor_name || 'Unknown',
                 consignor_id: record.consignor_id || null,
                 discogs_status: null, // Will be populated from Discogs listings
-                genre_name: record.genre_name || record.genre || 'Unknown'
+                genre_name: record.genre_name || record.genre || 'Unknown',
+                location: record.location || '' // Add location field
             }));
             
             return discogsInventory;
@@ -211,7 +218,12 @@ function loadDiscogsListings() {
         credentials: 'include',
         headers: window.AppConfig.getHeaders()
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (!tableBody) return;
         
@@ -316,7 +328,14 @@ function loadDiscogsListings() {
             const listedCountEl = document.getElementById('discogs-listed-count');
             if (listedCountEl) listedCountEl.textContent = listedCount;
         } else {
-            tableBody.innerHTML = '<td colspan="9" style="text-align: center; padding: 40px;">No Discogs listings found<\/td>';
+            const errorMsg = data.error || 'Unknown error from Discogs API';
+            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Error loading Discogs listings: ${escapeHtml(errorMsg)}</p>
+                <button class="btn btn-primary btn-small" onclick="loadDiscogsListings()">
+                    <i class="fas fa-sync-alt"></i> Retry
+                </button>
+                <\/td>`;
             if (orphanedCountEl) orphanedCountEl.textContent = 0;
             if (openOrdersCountEl) openOrdersCountEl.textContent = 0;
             if (salesTotalEl) salesTotalEl.textContent = '$0.00';
@@ -324,6 +343,8 @@ function loadDiscogsListings() {
             if (listedCountEl) listedCountEl.textContent = 0;
             discogsListingsMap = {};
             openDiscogsOrders = [];
+            
+            showDiscogsStatus(`Failed to load Discogs listings: ${errorMsg}`, 'error');
         }
         
         return data;
@@ -331,11 +352,18 @@ function loadDiscogsListings() {
     .catch(error => {
         console.error('Error loading Discogs listings:', error);
         if (tableBody) {
-            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">Error: ${error.message}<\/td>`;
+            tableBody.innerHTML = `<td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Error: ${escapeHtml(error.message)}</p>
+                <button class="btn btn-primary btn-small" onclick="loadDiscogsListings()">
+                    <i class="fas fa-sync-alt"></i> Retry
+                </button>
+                <\/td>`;
         }
         if (orphanedCountEl) orphanedCountEl.textContent = 0;
         if (openOrdersCountEl) openOrdersCountEl.textContent = 0;
         if (salesTotalEl) salesTotalEl.textContent = '$0.00';
+        showDiscogsStatus(`Error loading Discogs listings: ${error.message}`, 'error');
         return null;
     });
 }
@@ -493,11 +521,19 @@ function syncDiscogsStatus() {
         credentials: 'include',
         headers: window.AppConfig.getHeaders()
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (!data.success) {
-            showDiscogsStatus('Failed to fetch Discogs listings', 'error');
-            return;
+            throw new Error(data.error || 'Failed to fetch Discogs listings');
+        }
+        
+        if (!data.listings) {
+            throw new Error('No listings data received from Discogs');
         }
         
         // Create a set of listing_ids from Discogs
@@ -515,16 +551,18 @@ function syncDiscogsStatus() {
             credentials: 'include',
             headers: window.AppConfig.getHeaders()
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(recordsData => {
-            if (!recordsData.status === 'success' || !recordsData.records) {
-                showDiscogsStatus('Failed to fetch local records', 'error');
-                return;
+            if (recordsData.status !== 'success' || !recordsData.records) {
+                throw new Error(recordsData.error || 'Failed to fetch local records');
             }
             
             const recordsWithDiscogsId = recordsData.records.filter(r => r.discogs_listing_id);
-            const allRecordsMap = {};
-            recordsData.records.forEach(r => { allRecordsMap[r.id] = r; });
             
             let recordsToClear = [];
             let listingsToDelete = [];
@@ -533,7 +571,6 @@ function syncDiscogsStatus() {
             recordsWithDiscogsId.forEach(record => {
                 const listingId = String(record.discogs_listing_id);
                 if (!discogsListingIds.has(listingId)) {
-                    // Record has listing ID but it's not on Discogs - clear it
                     recordsToClear.push(record.id);
                 }
             });
@@ -543,7 +580,6 @@ function syncDiscogsStatus() {
                 const listingId = String(listing.listing_id);
                 const localRecord = recordsWithDiscogsId.find(r => String(r.discogs_listing_id) === listingId);
                 if (!localRecord) {
-                    // Discogs listing has no matching local record - delete from Discogs
                     listingsToDelete.push({ id: listingId, artist: listing.artist, title: listing.title });
                 }
             });
@@ -602,19 +638,39 @@ function syncDiscogsStatus() {
                     summaryMessage += ' No changes needed';
                 }
                 
-                alert(summaryMessage);
                 showDiscogsStatus(summaryMessage, 'success');
                 
                 // Reload inventory
                 setTimeout(() => {
                     loadDiscogsInventory();
                 }, 1000);
+            }).catch(error => {
+                showDiscogsStatus(`Sync error: ${error.message}`, 'error');
             });
+        })
+        .catch(error => {
+            showDiscogsStatus(`Error fetching local records: ${error.message}`, 'error');
         });
     })
     .catch(error => {
         console.error('Error syncing Discogs status:', error);
-        showDiscogsStatus(`Sync error: ${error.message}`, 'error');
+        let errorMessage = error.message;
+        
+        if (error.message.includes('Failed to fetch')) {
+            errorMessage = 'Network error - Cannot connect to server. Please check your internet connection and try again.';
+        } else if (error.message.includes('HTTP 401')) {
+            errorMessage = 'Authentication failed. Please log in again.';
+        } else if (error.message.includes('HTTP 403')) {
+            errorMessage = 'Permission denied. You don\'t have access to Discogs listings.';
+        } else if (error.message.includes('HTTP 404')) {
+            errorMessage = 'Discogs API endpoint not found. Please check the configuration.';
+        } else if (error.message.includes('HTTP 429')) {
+            errorMessage = 'Rate limited by Discogs. Please wait a moment and try again.';
+        } else if (error.message.includes('HTTP 500')) {
+            errorMessage = 'Server error. Please try again later.';
+        }
+        
+        showDiscogsStatus(`Sync error: ${errorMessage}`, 'error');
     });
 }
 
@@ -630,7 +686,7 @@ function loadDiscogsInventory() {
     if (loadingEl) loadingEl.style.display = 'block';
     
     if (tableBody) {
-        tableBody.innerHTML = '<td colspan="14" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading inventory...</p><\/td>';
+        tableBody.innerHTML = '<td colspan="15" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p>Loading inventory...</p><\/td>';
     }
     
     Promise.all([
@@ -669,7 +725,7 @@ function loadDiscogsInventory() {
         if (loadingEl) loadingEl.style.display = 'none';
         
         if (tableBody) {
-            tableBody.innerHTML = `<td colspan="14" style="text-align: center; padding: 40px; color: #dc3545;">
+            tableBody.innerHTML = `<td colspan="15" style="text-align: center; padding: 40px; color: #dc3545;">
                 <i class="fas fa-exclamation-triangle"></i>
                 <p>Error loading inventory: ${error.message}</p>
                 <button class="btn btn-primary" onclick="loadDiscogsInventory()">
@@ -778,21 +834,22 @@ function printDiscogsOrders() {
                 <button class="btn-small btn-discogs no-print" onclick="window.print()">🖨️ Print this page</button>
             </div>
             <table class="orders-table">
-                <thead><tr><th>#</th><th>Listing ID</th><th>Artist</th><th>Title</th><th>Genre</th><th>Price</th><th>Media</th><th>Sleeve</th><th>Order Date</th><th>Actions</th></tr></thead>
+                <thead>
+                    <tr><th>#</th><th>Listing ID</th><th>Artist</th><th>Title</th><th>Genre</th><th>Price</th><th>Media</th><th>Sleeve</th><th>Order Date</th><th>Actions</th></thead>
                 <tbody>
                     ${openDiscogsOrders.map((order, index) => `
                         <tr>
-                            <td>${index + 1}<\/td>
-                            <td>${escapeHtml(String(order.listing_id))}<\/td>
-                            <td><strong>${escapeHtml(order.artist)}<\/strong><\/td>
-                            <td>${escapeHtml(order.title)}<\/td>
-                            <td><span class="genre-badge">${escapeHtml(order.genre)}<\/span><\/td>
-                            <td class="price">$${order.price.toFixed(2)}<\/td>
-                            <td><span class="condition-badge">${escapeHtml(order.condition || 'N/A')}<\/span><\/td>
-                            <td><span class="condition-badge">${escapeHtml(order.sleeve_condition || 'N/A')}<\/span><\/td>
-                            <td>${order.order_date ? new Date(order.order_date).toLocaleDateString() : 'Unknown'}<\/td>
-                            <td><a href="${order.url}" target="_blank" class="btn-small btn-discogs"><i class="fab fa-discogs"></i> View<\/a><\/td>
-                        <\/tr>
+                            <td>${index + 1}</td>
+                            <td>${escapeHtml(String(order.listing_id))}</td>
+                            <td><strong>${escapeHtml(order.artist)}</strong></td>
+                            <td>${escapeHtml(order.title)}</td>
+                            <td><span class="genre-badge">${escapeHtml(order.genre)}</span></td>
+                            <td class="price">$${order.price.toFixed(2)}</td>
+                            <td><span class="condition-badge">${escapeHtml(order.condition || 'N/A')}</span></td>
+                            <td><span class="condition-badge">${escapeHtml(order.sleeve_condition || 'N/A')}</span></td>
+                            <td>${order.order_date ? new Date(order.order_date).toLocaleDateString() : 'Unknown'}</td>
+                            <td><a href="${order.url}" target="_blank" class="btn-small btn-discogs"><i class="fab fa-discogs"></i> View</a></td>
+                        </tr>
                     `).join('')}
                 </tbody>
             </table>
@@ -894,7 +951,7 @@ function renderDiscogsInventory() {
     if (!tableBody) return;
     
     if (filteredDiscogsInventory.length === 0) {
-        tableBody.innerHTML = '<td colspan="14" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
+        tableBody.innerHTML = '<td colspan="15" style="text-align: center; padding: 40px;"><i class="fab fa-discogs" style="font-size: 48px; color: #ccc;"></i><p>No records match your filters</p><\/td>';
         return;
     }
     
@@ -999,6 +1056,7 @@ function renderDiscogsInventory() {
                   <td><span class="status-badge ${localStatusClass}">${escapeHtml(localStatusText)}<\/span><\/td>
                   <td><span class="status-badge ${discogsStatusClass}">${escapeHtml(discogsStatusText)}<\/span><\/td>
                   <td>${discogsListingDisplay}<\/td>
+                  <td>${escapeHtml(record.location || '-')}<\/td>
                   <td>
                     ${!isListed && !isSold ? 
                         `<button class="btn btn-small btn-info" onclick="viewDiscogsMatch(${record.id})" title="Find on Discogs">
@@ -1200,6 +1258,9 @@ function updateDiscogsSelectionCount() {
 // Global variable to track if submission is cancelled
 let discogsSubmissionCancelled = false;
 
+/**
+ * Show location modal before submitting to Discogs
+ */
 function submitToDiscogs() {
     const selectedIds = Array.from(discogsSelectedRecords);
     
@@ -1208,18 +1269,85 @@ function submitToDiscogs() {
         return;
     }
     
-    const allRecordsToSubmit = discogsInventory
-        .filter(r => selectedIds.includes(r.id))
-        .map(r => ({
-            id: r.id,
-            artist: r.artist,
-            title: r.title,
-            catalog_number: r.catalog_number || '',
-            media_condition: getConditionName(r.condition_disc_id),
-            sleeve_condition: getConditionName(r.condition_sleeve_id),
-            price: r.store_price,
-            notes: r.notes || ''
-        }));
+    // Prepare records for preview
+    const selectedRecords = discogsInventory.filter(r => selectedIds.includes(r.id));
+    
+    // Store in global variable for modal confirmation
+    pendingRecordsToSubmit = selectedRecords;
+    
+    // Update modal with record count and list
+    const modalSelectedCount = document.getElementById('modal-selected-count');
+    const modalRecordsList = document.getElementById('modal-records-list');
+    
+    if (modalSelectedCount) {
+        modalSelectedCount.textContent = selectedRecords.length;
+    }
+    
+    if (modalRecordsList) {
+        let recordsHtml = '';
+        selectedRecords.slice(0, 10).forEach(record => {
+            recordsHtml += `<div style="margin-bottom: 5px; padding: 4px; border-bottom: 1px solid #eee;">
+                <strong>#${record.id}</strong> - ${escapeHtml(record.artist)} - ${escapeHtml(record.title)}
+            </div>`;
+        });
+        if (selectedRecords.length > 10) {
+            recordsHtml += `<div style="color: #666; margin-top: 5px;">... and ${selectedRecords.length - 10} more</div>`;
+        }
+        modalRecordsList.innerHTML = recordsHtml;
+    }
+    
+    // Clear previous location input
+    const locationInput = document.getElementById('modal-location-input');
+    if (locationInput) {
+        locationInput.value = '';
+        locationInput.focus();
+    }
+    
+    // Show modal
+    const modal = document.getElementById('discogs-location-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+/**
+ * Close the location modal
+ */
+function closeDiscogsLocationModal() {
+    const modal = document.getElementById('discogs-location-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    pendingRecordsToSubmit = [];
+}
+
+/**
+ * Confirm and submit records to Discogs with location
+ */
+function confirmDiscogsSubmit() {
+    const locationInput = document.getElementById('modal-location-input');
+    const locationValue = locationInput ? locationInput.value.trim() : '';
+    
+    // Close modal
+    closeDiscogsLocationModal();
+    
+    if (!pendingRecordsToSubmit || pendingRecordsToSubmit.length === 0) {
+        showDiscogsStatus('No records to submit', 'warning');
+        return;
+    }
+    
+    // Prepare records with location
+    const allRecordsToSubmit = pendingRecordsToSubmit.map(r => ({
+        id: r.id,
+        artist: r.artist,
+        title: r.title,
+        catalog_number: r.catalog_number || '',
+        media_condition: getConditionName(r.condition_disc_id),
+        sleeve_condition: getConditionName(r.condition_sleeve_id),
+        price: r.store_price,
+        notes: r.notes || '',
+        location: locationValue
+    }));
     
     // Reset cancellation flag
     discogsSubmissionCancelled = false;
@@ -1247,7 +1375,7 @@ function submitToDiscogs() {
                 progressEl.innerHTML += `<div style="color: #ffc107; margin-top: 10px;">⚠️ Submission cancelled by user</div>`;
             }
             if (statusEl) {
-                statusEl.innerHTML = `<div>⏹️ Submission cancelled. ${allRecordsToSubmit.length - processedCount} records not processed.</div>`;
+                statusEl.innerHTML = `<div>⏹️ Submission cancelled. ${allRecordsToSubmit.length} records not processed.</div>`;
                 statusEl.className = 'status-message status-warning';
             }
         };
@@ -1388,15 +1516,37 @@ function showDiscogsStatus(message, type = 'info') {
     const statusEl = document.getElementById('discogs-status-message');
     if (!statusEl) return;
     
-    statusEl.textContent = message;
+    // Clear any existing timeout
+    if (window.statusTimeout) {
+        clearTimeout(window.statusTimeout);
+    }
+    
+    // Format the message with appropriate icon
+    let icon = '';
+    if (type === 'success') icon = '✅ ';
+    else if (type === 'error') icon = '❌ ';
+    else if (type === 'warning') icon = '⚠️ ';
+    else if (type === 'info') icon = 'ℹ️ ';
+    
+    statusEl.innerHTML = `${icon}${escapeHtml(message)}`;
     statusEl.className = `status-message status-${type}`;
     statusEl.style.display = 'block';
     
-    if (type !== 'error') {
-        setTimeout(() => {
-            statusEl.style.display = 'none';
-        }, 5000);
+    // Keep error messages visible longer (30 seconds)
+    // Success messages disappear after 5 seconds
+    // Info/warning messages after 10 seconds
+    let timeoutDuration = 5000; // default 5 seconds
+    if (type === 'error') {
+        timeoutDuration = 30000; // 30 seconds for errors
+    } else if (type === 'warning') {
+        timeoutDuration = 10000; // 10 seconds for warnings
+    } else if (type === 'info') {
+        timeoutDuration = 8000; // 8 seconds for info
     }
+    
+    window.statusTimeout = setTimeout(() => {
+        statusEl.style.display = 'none';
+    }, timeoutDuration);
 }
 
 function getConditionName(conditionId) {
