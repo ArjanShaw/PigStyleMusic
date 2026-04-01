@@ -1372,23 +1372,24 @@ function closeDiscogsLocationModal() {
     pendingRecordsToSubmit = [];
 }
 
-/**
- * Confirm and submit records to Discogs with location
- */
 function confirmDiscogsSubmit() {
     const locationInput = document.getElementById('modal-location-input');
     const locationValue = locationInput ? locationInput.value.trim() : '';
     
+    // SAVE the records BEFORE closing modal (critical fix)
+    const recordsToSubmit = pendingRecordsToSubmit;
+    
     // Close modal
     closeDiscogsLocationModal();
     
-    if (!pendingRecordsToSubmit || pendingRecordsToSubmit.length === 0) {
+    // Check using saved reference, not the cleared one
+    if (!recordsToSubmit || recordsToSubmit.length === 0) {
         showDiscogsStatus('No records to submit', 'warning');
         return;
     }
     
     // Prepare records with location
-    const allRecordsToSubmit = pendingRecordsToSubmit.map(r => ({
+    const allRecordsToSubmit = recordsToSubmit.map(r => ({
         id: r.id,
         artist: r.artist,
         title: r.title,
@@ -1498,7 +1499,7 @@ function confirmDiscogsSubmit() {
             // Process next record after delay
             setTimeout(() => {
                 processRecord(index + 1);
-            }, 2000); // 2 second delay between records
+            }, 2000);
         })
         .catch(error => {
             processedCount++;
