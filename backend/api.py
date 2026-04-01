@@ -332,7 +332,7 @@ def test_discogs_listings():
         
         while True:
             response = requests.get(
-                f'https://api.discogs.com/users/arjanshaw/inventory',
+                f'https://api.discogs.com/users/pigstyle/inventory',
                 headers=headers,
                 params={'page': page, 'per_page': 100}
             )
@@ -465,6 +465,7 @@ def get_my_discogs_listings():
         app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """
@@ -534,13 +535,18 @@ def create_discogs_listing_single():
         # Create the listing
         listing_url = "https://api.discogs.com/marketplace/listings"
         
+        # Add location to comments if provided
+        comments = f"[PIGSTYLE ID: {record['id']}] {record.get('notes', '')}"
+        if record.get('location'):
+            comments += f" | Location: {record.get('location')}"
+        
         listing_data = {
             "release_id": release_id,
             "condition": record.get('media_condition', 'Very Good Plus (VG+)'),
             "sleeve_condition": record.get('sleeve_condition', record.get('media_condition', 'Very Good Plus (VG+)')),
             "price": float(record.get('price', 0)),
             "status": "For Sale",
-            "comments": f"[PIGSTYLE ID: {record['id']}] {record.get('notes', '')}"
+            "comments": comments
         }
         
         listing_response = requests.post(
@@ -559,16 +565,38 @@ def create_discogs_listing_single():
             listing_result = listing_response.json()
             listing_id = listing_result.get('listing_id')
             
-            # Update local record with Discogs listing ID
+            # Update local record with Discogs listing ID and location
             conn = get_db()
             cursor = conn.cursor()
             
-            cursor.execute('''
+            # Update the record with Discogs listing ID and location if provided
+            update_query = '''
                 UPDATE records 
                 SET discogs_listing_id = ?,
                     discogs_listed_date = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (listing_id, record['id']))
+            '''
+            params = [listing_id, record['id']]
+            
+            # Add location to update if provided
+            if record.get('location'):
+                update_query = '''
+                    UPDATE records 
+                    SET discogs_listing_id = ?,
+                        discogs_listed_date = CURRENT_TIMESTAMP,
+                        location = ?
+                    WHERE id = ?
+                '''
+                params = [listing_id, record.get('location'), record['id']]
+            else:
+                update_query = '''
+                    UPDATE records 
+                    SET discogs_listing_id = ?,
+                        discogs_listed_date = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                '''
+                params = [listing_id, record['id']]
+            
+            cursor.execute(update_query, params)
             
             conn.commit()
             conn.close()
@@ -592,7 +620,6 @@ def create_discogs_listing_single():
             'success': False,
             'error': str(e)
         }), 500
-
 
 @app.route('/api/discogs/create-listings', methods=['POST'])
 def create_discogs_listings():
