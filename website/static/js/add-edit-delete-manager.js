@@ -11,7 +11,6 @@ class GenrePredictor {
     async predictGenre(artist) {
         console.log(`GENRE_PREDICTION: Predicting for artist="${artist}"`);
         
-        // Only check artist_genre table
         if (artist) {
             const artistGenre = await this.getArtistGenre(artist);
             if (artistGenre) {
@@ -29,7 +28,6 @@ class GenrePredictor {
     }
     
     async getArtistGenre(artist) {
-        // Check cache first
         if (this.artistGenreCache[artist]) {
             console.log(`🔍 CACHE HIT: Artist "${artist}" found in cache:`, this.artistGenreCache[artist]);
             return this.artistGenreCache[artist];
@@ -37,50 +35,27 @@ class GenrePredictor {
         console.log(`🔍 CACHE MISS: Artist "${artist}" not in cache, making API call...`);
         
         try {
-            console.log(`📡 API CALL: GET /artist-genre/${encodeURIComponent(artist)}`);
-            const response = await APIUtils.get(
-                `/artist-genre/${encodeURIComponent(artist)}`
-            );
+            const response = await APIUtils.get(`/artist-genre/${encodeURIComponent(artist)}`);
             
-            console.log(`📡 API RESPONSE:`, response);
-            console.log(`📡 Response type:`, typeof response);
-            console.log(`📡 Response keys:`, Object.keys(response));
-            
-            // Check if the response has artist data (success case)
             if (response && response.artist && response.genre_id) {
                 console.log(`✅ API SUCCESS: Artist "${artist}" found with genre ID ${response.genre_id}`);
-                console.log(`✅ Genre data:`, {
-                    artist: response.artist,
-                    genre_id: response.genre_id,
-                    genre_name: response.genre_name
-                });
-                
                 this.artistGenreCache[artist] = {
                     artist: response.artist,
                     genre_id: response.genre_id,
                     genre_name: response.genre_name
                 };
                 return this.artistGenreCache[artist];
-                
-            } 
-            // Check if it's an error response (artist not found)
-            else if (response && response.status === 'error' && response.error === 'Artist not found') {
+            } else if (response && response.status === 'error' && response.error === 'Artist not found') {
                 console.log(`❌ API RESPONSE: Artist "${artist}" not found in database`);
                 this.artistGenreCache[artist] = null;
                 return null;
-                
-            } 
-            // Any other response format
-            else {
+            } else {
                 console.log(`⚠️ UNEXPECTED API RESPONSE FORMAT:`, response);
                 this.artistGenreCache[artist] = null;
                 return null;
             }
-            
         } catch (error) {
             console.error(`🔥 ERROR fetching artist genre for "${artist}":`, error);
-            console.error(`🔥 Error message:`, error.message);
-            console.error(`🔥 Error stack:`, error.stack);
             return null;
         }
     }
@@ -88,7 +63,6 @@ class GenrePredictor {
     async saveArtistGenre(artist, genreId, genreName) {
         if (!artist || !genreId) return null;
         
-        // First check if artist already has a genre
         const existing = await this.getArtistGenre(artist);
         if (existing) {
             console.log(`Artist "${artist}" already has genre ID ${existing.genre_id}, not overwriting`);
@@ -109,7 +83,6 @@ class GenrePredictor {
                     genre_id: genreId,
                     genre_name: genreName
                 };
-                
                 console.log(`ARTIST_GENRE: Saved artist "${artist}" -> ${genreName}`);
                 return response;
             }
@@ -119,7 +92,6 @@ class GenrePredictor {
         return null;
     }
 
-    // NEW METHOD: Update existing artist genre
     async updateArtistGenre(artist, genreId, genreName) {
         if (!artist || !genreId) return null;
         
@@ -137,7 +109,6 @@ class GenrePredictor {
                     genre_id: genreId,
                     genre_name: genreName
                 };
-                
                 console.log(`ARTIST_GENRE: Updated artist "${artist}" -> ${genreName}`);
                 return response;
             }
@@ -148,17 +119,15 @@ class GenrePredictor {
     }
 }
 
-// UPDATED Barcode Generator Class - Supports multiple formats
+// Barcode Generator Class - Supports multiple formats
 class BarcodeGenerator {
     constructor() {
-        // Separate counters for each format
         this.counters = {
             vinyl: 3290,
             cd: 3290,
             cassette: 3290
         };
         
-        // Prefixes for each format
         this.prefixes = {
             vinyl: '22',
             cd: '33',
@@ -173,7 +142,6 @@ class BarcodeGenerator {
             const savedCounters = localStorage.getItem('pigstyle_barcode_counters');
             if (savedCounters) {
                 const parsed = JSON.parse(savedCounters);
-                // Merge saved counters with defaults
                 this.counters = { ...this.counters, ...parsed };
             }
             console.log('BARCODE: Loaded counters:', this.counters);
@@ -192,9 +160,7 @@ class BarcodeGenerator {
     
     detectFormat(formatString) {
         if (!formatString) return 'vinyl';
-        
         const formatLower = formatString.toLowerCase();
-        
         if (formatLower.includes('cd') || formatLower === 'compact disc') {
             return 'cd';
         } else if (formatLower.includes('cassette') || formatLower.includes('tape')) {
@@ -210,13 +176,9 @@ class BarcodeGenerator {
         const currentCounter = this.counters[normalizedFormat];
         const sequence = currentCounter.toString().padStart(4, '0');
         const barcode = `${prefix}000000${sequence}`;
-        
         console.log(`BARCODE_GENERATED: Format=${normalizedFormat}, Barcode=${barcode}, Sequence=${currentCounter}`);
-        
-        // Increment the counter for this format
         this.counters[normalizedFormat]++;
         this.saveCounters();
-        
         return barcode;
     }
     
@@ -252,10 +214,8 @@ class AddEditDeleteManager {
         this.consignors = [];
         this.genrePredictor = new GenrePredictor();
         this.barcodeGenerator = new BarcodeGenerator();
-        this.commissionRate = 0.20;
         this.minimumPrice = 1.99;
         this.selectedConsignorId = null;
-        this.selectedCommissionRate = 20.0;
         this.autoEstimatePrice = true;
         this.activeBatch = null;
         
@@ -322,7 +282,7 @@ class AddEditDeleteManager {
                 font-weight: 500;
             `;
             header.innerHTML = `
-                <span><i class="fas fa-layer-group"></i> Active Batch #${this.activeBatch.id} - ${this.activeBatch.seller_name} (${this.activeBatch.offer_percentage}%)</span>
+                <span><i class="fas fa-layer-group"></i> Active Batch #${this.activeBatch.id} - ${this.activeBatch.seller_name}</span>
                 <span class="batch-toggle"><i class="fas fa-chevron-down"></i></span>
             `;
         } else {
@@ -337,7 +297,7 @@ class AddEditDeleteManager {
                 font-weight: 500;
             `;
             header.innerHTML = `
-                <span><i class="fas fa-layer-group"></i> No Active Batch - Start a new batch to track seller information</span>
+                <span><i class="fas fa-layer-group"></i> No Active Batch</span>
                 <span class="batch-toggle"><i class="fas fa-chevron-down"></i></span>
             `;
         }
@@ -407,20 +367,6 @@ class AddEditDeleteManager {
                            style="width: 100%;">
                 </div>
                 
-                <div style="flex: 1; min-width: 150px;">
-                    <label for="batch-offer-percentage" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
-                        <i class="fas fa-percent"></i> Offer Percentage (%)
-                    </label>
-                    <input type="number" 
-                           id="batch-offer-percentage" 
-                           class="search-input" 
-                           value="50"
-                           min="0" 
-                           max="100"
-                           step="5"
-                           style="width: 100%;">
-                </div>
-                
                 <div style="flex: 2; min-width: 300px;">
                     <label for="batch-notes" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-sticky-note"></i> Notes (Optional)
@@ -459,7 +405,6 @@ class AddEditDeleteManager {
                 <div style="background: white; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
                     <p style="margin: 5px 0;"><strong>Seller:</strong> ${this.escapeHtml(this.activeBatch.seller_name || '')}</p>
                     <p style="margin: 5px 0;"><strong>Contact:</strong> ${this.escapeHtml(this.activeBatch.seller_contact || '')}</p>
-                    <p style="margin: 5px 0;"><strong>Offer Percentage:</strong> ${this.activeBatch.offer_percentage || 0}%</p>
                     <p style="margin: 5px 0;"><strong>Started:</strong> ${new Date(this.activeBatch.start_datetime).toLocaleString()}</p>
                     <p style="margin: 5px 0;"><strong>Records in Batch:</strong> ${this.activeBatch.record_count || 0}</p>
                     ${this.activeBatch.notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${this.escapeHtml(this.activeBatch.notes)}</p>` : ''}
@@ -469,10 +414,6 @@ class AddEditDeleteManager {
                     <div style="display: flex; justify-content: space-between; font-weight: 500;">
                         <span>Total Store Value:</span>
                         <span>$${(this.activeBatch.total_store_value || 0).toFixed(2)}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-weight: 700; color: #28a745; font-size: 1.2rem;">
-                        <span>Total Offer Amount:</span>
-                        <span>$${(this.activeBatch.total_offer_amount || 0).toFixed(2)}</span>
                     </div>
                 </div>
                 
@@ -497,7 +438,6 @@ class AddEditDeleteManager {
             startBtn.addEventListener('click', async () => {
                 const name = document.getElementById('batch-seller-name').value.trim();
                 const contact = document.getElementById('batch-seller-contact').value.trim();
-                const percentage = parseFloat(document.getElementById('batch-offer-percentage').value);
                 const notes = document.getElementById('batch-notes').value.trim();
                 
                 if (!name) {
@@ -508,12 +448,8 @@ class AddEditDeleteManager {
                     showMessage('Please enter seller contact (phone or email)', 'error');
                     return;
                 }
-                if (isNaN(percentage) || percentage < 0 || percentage > 100) {
-                    showMessage('Please enter a valid percentage (0-100)', 'error');
-                    return;
-                }
                 
-                await this.startBatch(name, contact, percentage, notes);
+                await this.startBatch(name, contact, notes);
             });
         }
         
@@ -530,12 +466,6 @@ class AddEditDeleteManager {
                 if (this.activeBatch) {
                     if (window.batchManager) {
                         window.batchManager.printBatch(this.activeBatch.id);
-                    } else {
-                        // If batchManager not loaded, load it temporarily
-                        const response = await APIUtils.get(`/api/batches/${this.activeBatch.id}/print`);
-                        if (response.status === 'success' && response.print_data) {
-                            this.generateBillOfSale(response.print_data);
-                        }
                     }
                 }
             });
@@ -547,16 +477,6 @@ class AddEditDeleteManager {
                 if (!this.activeBatch) return;
                 
                 if (!confirm('WARNING: Cancelling this batch will delete ALL records added during this batch. This action CANNOT be undone. Are you sure?')) {
-                    return;
-                }
-                
-                if (!confirm('FINAL WARNING: This will permanently delete records. Type "DELETE" to confirm.')) {
-                    return;
-                }
-                
-                const confirmation = prompt('Type "DELETE" to confirm permanent deletion of all records in this batch:');
-                if (confirmation !== 'DELETE') {
-                    showMessage('Cancellation aborted - incorrect confirmation', 'warning');
                     return;
                 }
                 
@@ -580,12 +500,11 @@ class AddEditDeleteManager {
         }
     }
 
-    async startBatch(name, contact, percentage, notes) {
+    async startBatch(name, contact, notes) {
         try {
             const response = await APIUtils.post('/api/batches', {
                 seller_name: name,
                 seller_contact: contact,
-                offer_percentage: percentage,
                 notes: notes
             });
             
@@ -625,135 +544,6 @@ class AddEditDeleteManager {
         }
     }
 
-    generateBillOfSale(printData) {
-        const printWindow = window.open('', '_blank');
-        const today = new Date().toLocaleDateString();
-        
-        let itemsHtml = '';
-        printData.items.forEach((item, index) => {
-            itemsHtml += `
-                <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${index + 1}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(item.artist)} - ${this.escapeHtml(item.title)}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(item.offer_price || 0).toFixed(2)}</td>
-                </tr>
-            `;
-        });
-
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Bill of Sale - Batch #${printData.batch_id}</title>
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-                    .header { text-align: center; margin-bottom: 30px; }
-                    .header h1 { margin-bottom: 5px; color: #333; }
-                    .header h2 { margin-top: 0; color: #666; font-weight: normal; }
-                    .seller-info { margin-bottom: 30px; padding: 15px; background: #f5f5f5; border-radius: 5px; }
-                    .seller-info p { margin: 5px 0; }
-                    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-                    th { background: #333; color: white; padding: 10px; text-align: left; }
-                    td { padding: 10px; border-bottom: 1px solid #ddd; }
-                    .totals { text-align: right; margin-bottom: 40px; }
-                    .totals p { font-size: 16px; margin: 5px 0; }
-                    .totals .total-offer { font-size: 20px; font-weight: bold; color: #28a745; }
-                    .ownership-declaration { 
-                        margin: 40px 0; 
-                        padding: 20px; 
-                        background: #f0f7ff; 
-                        border-left: 4px solid #007bff;
-                        border-radius: 4px;
-                    }
-                    .ownership-declaration h3 { margin-top: 0; color: #007bff; }
-                    .ownership-declaration p { margin: 10px 0; }
-                    .signature-section { margin-top: 50px; }
-                    .signature-line { display: flex; justify-content: space-between; margin-top: 30px; }
-                    .signature-item { width: 45%; }
-                    .signature-item .line { border-bottom: 1px solid #000; margin-top: 5px; width: 100%; }
-                    .footer { margin-top: 30px; font-size: 12px; color: #666; text-align: center; }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h1>PIGSTYLE MUSIC</h1>
-                    <h2>BILL OF SALE AND OWNERSHIP DECLARATION</h2>
-                    <p>Batch #${printData.batch_id} | Date: ${today}</p>
-                </div>
-                
-                <div class="seller-info">
-                    <h3>Seller Information:</h3>
-                    <p><strong>Name:</strong> ${this.escapeHtml(printData.seller_name || '')}</p>
-                    <p><strong>Contact:</strong> ${this.escapeHtml(printData.seller_contact || '')}</p>
-                    <p><strong>Offer Percentage:</strong> ${printData.offer_percentage || 0}% of store price</p>
-                    <p><strong>Batch Date:</strong> ${new Date(printData.start_date).toLocaleDateString()}</p>
-                </div>
-                
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Item Description</th>
-                            <th>Offer Price</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${itemsHtml}
-                    </tbody>
-                </table>
-                
-                <div class="totals">
-                    <p class="total-offer"><strong>TOTAL OFFER AMOUNT:</strong> $${printData.total_offer_amount.toFixed(2)}</p>
-                </div>
-                
-                <div class="ownership-declaration">
-                    <h3>OWNERSHIP DECLARATION</h3>
-                    <p>I, <strong>${this.escapeHtml(printData.seller_name || '')}</strong>, hereby declare and warrant that:</p>
-                    <p>1. I am the lawful owner of the records listed above and have full legal authority to sell them.</p>
-                    <p>2. All items are free and clear of any liens, claims, or encumbrances.</p>
-                    <p>3. To the best of my knowledge, these items are authentic and not counterfeit or stolen property.</p>
-                    <p>4. I have the right to transfer full ownership of these items to PigStyle Music.</p>
-                    <p>5. I agree to indemnify and hold PigStyle Music harmless from any claims arising from the sale of these items.</p>
-                </div>
-                
-                <div class="signature-section">
-                    <p>I agree to sell the above items to PigStyle Music for the total amount of <strong>$${printData.total_offer_amount.toFixed(2)}</strong> and declare that all information provided is true and accurate.</p>
-                    
-                    <div class="signature-line">
-                        <div class="signature-item">
-                            <p>Seller Signature:</p>
-                            <div class="line"></div>
-                        </div>
-                        <div class="signature-item">
-                            <p>Date:</p>
-                            <div class="line"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="signature-line">
-                        <div class="signature-item">
-                            <p>PigStyle Representative:</p>
-                            <div class="line"></div>
-                        </div>
-                        <div class="signature-item">
-                            <p>Date:</p>
-                            <div class="line"></div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="footer">
-                    <p>This document serves as a bill of sale and legal declaration of ownership for the items listed above. The seller agrees to transfer ownership of these items to PigStyle Music in exchange for the total offer amount.</p>
-                </div>
-            </body>
-            </html>
-        `);
-        
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-    }
-
     escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');
@@ -777,11 +567,6 @@ class AddEditDeleteManager {
             const response = await APIUtils.get('/records/count');
             const recordsCount = response.count || 0;
             document.getElementById('total-records').textContent = recordsCount;
-
-            const commissionResponse = await APIUtils.get('/api/commission-rate');
-            this.commissionRate = commissionResponse.commission_rate / 100;
-            document.getElementById('commission-rate').textContent = 
-                `${commissionResponse.commission_rate}%`;
 
             const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
             const capacity = parseInt(configResponse.config_value);
@@ -816,8 +601,6 @@ class AddEditDeleteManager {
         console.log('LOAD_GENRES: Starting to load genres from /genres endpoint');
         try {
             const response = await APIUtils.get('/genres');
-            console.log('LOAD_GENRES: Raw API response:', response);
-            
             if (response && response.genres) {
                 this.genres = response.genres;
                 console.log('LOAD_GENRES: Genres loaded successfully:', this.genres);
@@ -835,8 +618,6 @@ class AddEditDeleteManager {
         console.log('LOAD_CONDITIONS: Loading conditions from /api/conditions');
         try {
             const response = await APIUtils.get('/api/conditions');
-            console.log('LOAD_CONDITIONS: Raw API response:', response);
-            
             if (response && response.conditions) {
                 this.conditions = response.conditions;
                 console.log('LOAD_CONDITIONS: Conditions loaded successfully:', this.conditions);
@@ -846,17 +627,7 @@ class AddEditDeleteManager {
             }
         } catch (error) {
             console.error('Error loading conditions:', error);
-            this.conditions = [
-                { id: 1, condition_name: 'Mint (M)', display_name: 'Mint (M)', abbreviation: 'M', quality_index: 0 },
-                { id: 2, condition_name: 'Near Mint (NM or M-)', display_name: 'Near Mint (NM or M-)', abbreviation: 'NM', quality_index: 1 },
-                { id: 3, condition_name: 'Very Good Plus (VG+)', display_name: 'Very Good Plus (VG+)', abbreviation: 'VG+', quality_index: 2 },
-                { id: 4, condition_name: 'Very Good (VG)', display_name: 'Very Good (VG)', abbreviation: 'VG', quality_index: 3 },
-                { id: 5, condition_name: 'Good Plus (G+)', display_name: 'Good Plus (G+)', abbreviation: 'G+', quality_index: 4 },
-                { id: 6, condition_name: 'Good (G)', display_name: 'Good (G)', abbreviation: 'G', quality_index: 5 },
-                { id: 7, condition_name: 'Fair (F)', display_name: 'Fair (F)', abbreviation: 'F', quality_index: 6 },
-                { id: 8, condition_name: 'Poor (P)', display_name: 'Poor (P)', abbreviation: 'P', quality_index: 7 }
-            ];
-            console.log('LOAD_CONDITIONS: Using fallback conditions:', this.conditions);
+            this.conditions = [];
         }
     }
 
@@ -864,8 +635,6 @@ class AddEditDeleteManager {
         console.log('LOAD_CONSIGNORS: Starting to load consignors from /users endpoint');
         try {
             const response = await APIUtils.get('/users');
-            console.log('LOAD_CONSIGNORS: Raw API response:', response);
-            
             if (response && response.users) {
                 this.consignors = response.users
                     .filter(user => user.role === 'consignor')
@@ -888,18 +657,12 @@ class AddEditDeleteManager {
                 this.selectedConsignorId = parseInt(savedConsignor);
             }
             
-            const savedCommission = localStorage.getItem('add_record_commission_rate');
-            if (savedCommission) {
-                this.selectedCommissionRate = parseFloat(savedCommission);
-            }
-            
             const savedAutoEstimate = localStorage.getItem('add_record_auto_estimate');
             if (savedAutoEstimate !== null) {
                 this.autoEstimatePrice = savedAutoEstimate === 'true';
             }
             
             console.log('LOAD_SETTINGS: Loaded consignor ID:', this.selectedConsignorId);
-            console.log('LOAD_SETTINGS: Loaded commission rate:', this.selectedCommissionRate);
             console.log('LOAD_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
         } catch (error) {
             console.error('Error loading saved settings:', error);
@@ -914,11 +677,9 @@ class AddEditDeleteManager {
                 localStorage.removeItem('add_record_consignor_id');
             }
             
-            localStorage.setItem('add_record_commission_rate', this.selectedCommissionRate.toString());
             localStorage.setItem('add_record_auto_estimate', this.autoEstimatePrice.toString());
             
             console.log('SAVE_SETTINGS: Saved consignor ID:', this.selectedConsignorId);
-            console.log('SAVE_SETTINGS: Saved commission rate:', this.selectedCommissionRate);
             console.log('SAVE_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
         } catch (error) {
             console.error('Error saving settings:', error);
@@ -981,23 +742,6 @@ class AddEditDeleteManager {
                         ${consignorOptions}
                     </select>
                 </div>
-                <div style="flex: 1; min-width: 150px;">
-                    <label for="global-commission-input" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
-                        <i class="fas fa-percentage"></i> Default Consignment Rate (%)
-                    </label>
-                    <div style="display: flex; gap: 5px;">
-                        <input type="number" 
-                               id="global-commission-input" 
-                               value="${this.selectedCommissionRate}" 
-                               step="10" 
-                               min="0" 
-                               max="100"
-                               style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
-                        <button class="btn btn-small" id="apply-commission-btn" style="background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
-                            <i class="fas fa-check"></i> Set
-                        </button>
-                    </div>
-                </div>
                 <div style="flex: 1; min-width: 200px;">
                     <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-calculator"></i> Price Estimation
@@ -1046,18 +790,6 @@ class AddEditDeleteManager {
             showMessage(`Default consignor updated`, 'success');
         });
         
-        document.getElementById('apply-commission-btn').addEventListener('click', () => {
-            const input = document.getElementById('global-commission-input');
-            const value = parseFloat(input.value);
-            if (!isNaN(value) && value >= 0 && value <= 100) {
-                this.selectedCommissionRate = value;
-                this.saveSettings();
-                showMessage(`Default commission rate set to ${value}%`, 'success');
-            } else {
-                showMessage('Please enter a valid percentage (0-100)', 'error');
-            }
-        });
-        
         document.getElementById('auto-estimate-checkbox').addEventListener('change', (e) => {
             this.autoEstimatePrice = e.target.checked;
             this.saveSettings();
@@ -1066,15 +798,13 @@ class AddEditDeleteManager {
         
         document.getElementById('clear-defaults-btn').addEventListener('click', () => {
             this.selectedConsignorId = null;
-            this.selectedCommissionRate = 20.0;
             this.autoEstimatePrice = true;
             this.saveSettings();
             
             document.getElementById('global-consignor-select').value = '';
-            document.getElementById('global-commission-input').value = '20.0';
             document.getElementById('auto-estimate-checkbox').checked = true;
             
-            showMessage('Default settings cleared (commission reset to 20%, auto-estimate enabled)', 'success');
+            showMessage('Default settings cleared', 'success');
         });
     }
 
@@ -1150,41 +880,25 @@ class AddEditDeleteManager {
             </div>
         `;
 
-        console.log('PERFORM_SEARCH: Starting search for:', searchTerm);
-        console.log('PERFORM_SEARCH: Search type:', this.currentSearchType);
-        console.log('PERFORM_SEARCH: Search field:', this.currentSearchField);
-        console.log('PERFORM_SEARCH: Current genres:', this.genres);
-        console.log('PERFORM_SEARCH: Current conditions:', this.conditions);
-        console.log('PERFORM_SEARCH: Current consignors:', this.consignors);
-
         if (this.currentSearchType === 'add') {
             this.currentResults = await this.searchDiscogs(searchTerm);
         } else {
             this.currentResults = await this.searchDatabase(searchTerm);
         }
 
-        console.log('PERFORM_SEARCH: Found', this.currentResults.length, 'results');
         this.displayResults();
     }
 
     async searchDiscogs(searchTerm) {
         try {
             const response = await APIUtils.get('/api/discogs/search', { q: searchTerm });
-            
             if (response.status === 'success' && response.results) {
-                // Log the exact artist strings from Discogs for debugging
-                response.results.forEach(record => {
-                    console.log(`Discogs artist string: "${record.artist}" (length: ${record.artist.length})`);
-                });
-                
-                // Return results without predictions - they will be loaded when conditions are selected
                 return response.results;
             }
         } catch (error) {
             console.error('Error searching Discogs:', error);
         }
-        
-        return []; // Return empty array on error, no mock data
+        return [];
     }
 
     async searchDatabase(searchTerm) {
@@ -1232,11 +946,6 @@ class AddEditDeleteManager {
         const resultsCount = this.currentResults.length;
         const hasActiveBatch = this.activeBatch !== null;
         
-        const findGenreIndex = (genreId) => {
-            if (!this.genres || !genreId) return -1;
-            return this.genres.findIndex(g => g.id == genreId);
-        };
-        
         const conditionOptions = this.conditions.map(condition => {
             return `<option value="${condition.id}">${condition.display_name || condition.condition_name}</option>`;
         }).join('');
@@ -1249,8 +958,6 @@ class AddEditDeleteManager {
             const selected = consignor.id === this.selectedConsignorId ? 'selected' : '';
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
         }).join('');
-        
-        const user = JSON.parse(localStorage.getItem('user')) || {};
         
         return `
             <h3>Search Results (${resultsCount})</h3>
@@ -1360,22 +1067,6 @@ class AddEditDeleteManager {
                                         Default consignor pre-selected
                                     </div>
                                 </div>
-                                
-                                <div>
-                                    <label class="form-label">
-                                        <i class="fas fa-percentage"></i> Consignment Rate (%)
-                                    </label>
-                                    <input type="number" 
-                                           class="form-control commission-input" 
-                                           value="${this.selectedCommissionRate}" 
-                                           step="10" 
-                                           min="0" 
-                                           max="100"
-                                           placeholder="Commission %">
-                                    <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Store's cut (step: 10%)
-                                    </div>
-                                </div>
                             </div>
                             
                             <div class="barcode-info" style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 4px;">
@@ -1406,7 +1097,6 @@ class AddEditDeleteManager {
     renderDatabaseResults() {
         const user = JSON.parse(localStorage.getItem('user')) || {};
         const userRole = user.role || 'admin';
-        const userId = user.id;
         const resultsCount = this.currentResults.length;
         
         const filteredResults = this.currentResults;
@@ -1484,7 +1174,6 @@ class AddEditDeleteManager {
                                     <span><strong>Barcode:</strong> <span class="barcode-value">${record.barcode || 'None'}</span></span>
                                     <span><strong>Catalog #:</strong> ${record.catalog_number || 'None'}</span>
                                     <span><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</span>
-                                    <span><strong>Commission:</strong> ${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}%</span>
                                     <span><strong>Sleeve:</strong> ${sleeveDisplay}</span>
                                     <span><strong>Disc:</strong> ${discDisplay}</span>
                                     <span><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></span>
@@ -1550,21 +1239,6 @@ class AddEditDeleteManager {
                                     </select>
                                 </div>
                                 
-                                <div>
-                                    <label class="form-label">Commission (%)</label>
-                                    <input type="number" 
-                                           class="form-control edit-commission-input" 
-                                           data-record-id="${record.id}"
-                                           value="${((record.commission_rate || this.commissionRate) * 100).toFixed(1)}" 
-                                           step="10" 
-                                           min="0" 
-                                           max="100"
-                                           placeholder="Commission %">
-                                    <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Store's cut (step: 10%)
-                                    </div>
-                                </div>
-                                
                                 ${userRole === 'admin' ? `
                                 <div>
                                     <label class="form-label">Status</label>
@@ -1601,7 +1275,6 @@ class AddEditDeleteManager {
         
         if (!genreSelect) return;
         
-        // Show loading state
         predictionContainer.innerHTML = `
             <div class="genre-prediction" style="padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; border-radius: 4px;">
                 <i class="fas fa-spinner fa-spin" style="color: #007bff;"></i>
@@ -1612,7 +1285,6 @@ class AddEditDeleteManager {
         const prediction = await this.genrePredictor.predictGenre(artist);
         
         if (prediction) {
-            // Find and select the genre in the dropdown
             const options = genreSelect.options;
             for (let i = 0; i < options.length; i++) {
                 if (options[i].value == prediction.local_genre_id) {
@@ -1640,9 +1312,6 @@ class AddEditDeleteManager {
     }
 
     async estimatePriceForRecord(record, sleeveConditionId, discConditionId) {
-        console.log('ESTIMATE_PRICE: Estimating price for', record.artist, '-', record.title, 
-                    'Sleeve Condition ID:', sleeveConditionId, 'Disc Condition ID:', discConditionId);
-        
         let conditionForEstimate = '';
         if (sleeveConditionId && discConditionId) {
             const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
@@ -1680,9 +1349,6 @@ class AddEditDeleteManager {
                 discogs_id: record.discogs_id || '',
                 discogs_format: record.format || ''
             });
-            
-            console.log('ESTIMATE_PRICE: API response received');
-            
             return response;
         } catch (error) {
             console.error('Error estimating price:', error);
@@ -1704,8 +1370,6 @@ class AddEditDeleteManager {
         
         if (discSelect && !discSelect.value) {
             discSelect.value = sleeveConditionId;
-            console.log(`AUTO-SET: Disc condition set to match sleeve (ID: ${sleeveConditionId})`);
-            
             const changeEvent = new Event('change', { bubbles: true });
             discSelect.dispatchEvent(changeEvent);
         }
@@ -1720,21 +1384,13 @@ class AddEditDeleteManager {
             record = this.currentResults[index];
         }
         
-        if (!record) {
-            console.error('HANDLE_SLEEVE_CONDITION_CHANGE: Record not found');
-            return;
-        }
+        if (!record) return;
         
-        // Load genre when condition is selected (always, regardless of auto-estimate checkbox)
         const artist = card.getAttribute('data-artist') || record.artist;
         await this.loadGenreForRecord(card, artist);
         
-        // Only estimate price if auto-estimate is enabled
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
-            console.log('Auto-estimating price (enabled)');
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
-        } else {
-            console.log('Price estimation skipped (auto-estimate disabled)');
         }
     }
 
@@ -1747,9 +1403,7 @@ class AddEditDeleteManager {
         const sleeveSelect = card.querySelector(isEditMode ? '.edit-sleeve-condition-select' : '.sleeve-condition-select');
         const sleeveConditionId = sleeveSelect ? sleeveSelect.value : null;
         
-        if (!discConditionId) {
-            return;
-        }
+        if (!discConditionId) return;
         
         let record;
         if (isEditMode) {
@@ -1759,27 +1413,17 @@ class AddEditDeleteManager {
             record = this.currentResults[index];
         }
         
-        if (!record) {
-            console.error('HANDLE_DISC_CONDITION_CHANGE: Record not found');
-            return;
-        }
+        if (!record) return;
         
-        // Load genre when condition is selected (always, regardless of auto-estimate checkbox)
         const artist = card.getAttribute('data-artist') || record.artist;
         await this.loadGenreForRecord(card, artist);
         
-        // Only estimate price if auto-estimate is enabled
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
-            console.log('Auto-estimating price (enabled)');
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
-        } else {
-            console.log('Price estimation skipped (auto-estimate disabled)');
         }
     }
 
     async handleManualEstimate(recordId, isEditMode = false) {
-        console.log('Manual estimate requested for record:', recordId);
-        
         const card = document.querySelector(`[data-record-id="${recordId}"]`);
         if (!card) return;
         
@@ -1802,10 +1446,7 @@ class AddEditDeleteManager {
             record = this.currentResults[index];
         }
         
-        if (!record) {
-            console.error('Record not found for manual estimate');
-            return;
-        }
+        if (!record) return;
         
         await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
     }
@@ -1818,13 +1459,9 @@ class AddEditDeleteManager {
             priceInput = card.querySelector('.price-input');
         }
         
-        if (!priceInput) {
-            console.error('PRICE_ESTIMATE: Price input not found');
-            return;
-        }
+        if (!priceInput) return;
         
         const hasExistingValue = priceInput.value && priceInput.value.trim() !== '' && !isNaN(parseFloat(priceInput.value));
-        
         const originalValue = priceInput.value;
         priceInput.disabled = true;
         
@@ -1880,7 +1517,6 @@ class AddEditDeleteManager {
             
             if (estimatedPrice) {
                 const finalPrice = estimatedPrice;
-                
                 priceInput.value = parseFloat(finalPrice).toFixed(2);
                 priceInput.classList.add('price-estimated');
                 
@@ -1917,9 +1553,7 @@ class AddEditDeleteManager {
                 }
                 
                 priceInput.parentElement.appendChild(hint);
-                
                 this.showExpandableCalculationDetails(record, sleeveConditionId, discConditionId, estimate, recordId, finalPrice);
-                
             } else {
                 if (!hasExistingValue) {
                     priceInput.value = '';
@@ -1936,11 +1570,7 @@ class AddEditDeleteManager {
 
     showExpandableCalculationDetails(record, sleeveConditionId, discConditionId, estimate, recordId, finalPrice) {
         const calculationContainer = document.getElementById(`calculation-${recordId}`);
-        
-        if (!calculationContainer) {
-            console.error('Calculation container not found for ID:', `calculation-${recordId}`);
-            return;
-        }
+        if (!calculationContainer) return;
         
         const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
         const discCond = this.conditions.find(c => c.id == discConditionId);
@@ -1993,34 +1623,13 @@ class AddEditDeleteManager {
                     <strong>🛒 eBay Listings Summary</strong>
                     <div class="ebay-summary-table-container">
                         <table class="ebay-summary-table">
-                            <tr>
-                                <th>Search Query</th>
-                                <td>${searchQuery}</td>
-                            </tr>
-                             <tr>
-                                <th>Total Listings</th>
-                                <td>${estimate.ebay_summary.total_listings || 0}</td>
-                             </tr>
-                             <tr>
-                                <th>Condition Listings</th>
-                                <td>${estimate.ebay_summary.condition_listings || 0}</td>
-                             </tr>
-                             <tr>
-                                <th>Condition Median</th>
-                                <td>$${(estimate.ebay_summary.condition_median || 0).toFixed(2)}</td>
-                             </tr>
-                             <tr>
-                                <th>Generic Median</th>
-                                <td>$${(estimate.ebay_summary.generic_median || 0).toFixed(2)}</td>
-                             </tr>
-                             <tr>
-                                <th>Price Range</th>
-                                <td>$${(estimate.ebay_summary.price_range?.[0] || 0).toFixed(2)} - $${(estimate.ebay_summary.price_range?.[1] || 0).toFixed(2)}</td>
-                             </tr>
-                             <tr>
-                                <th>Average Price</th>
-                                <td>$${(estimate.ebay_summary.average_price || 0).toFixed(2)}</td>
-                             </tr>
+                            <tr><th>Search Query</th><td>${searchQuery}</th></tr>
+                            <tr><th>Total Listings</th><td>${estimate.ebay_summary.total_listings || 0}</th></tr>
+                            <tr><th>Condition Listings</th><td>${estimate.ebay_summary.condition_listings || 0}</th></tr>
+                            <tr><th>Condition Median</th><td>$${(estimate.ebay_summary.condition_median || 0).toFixed(2)}</th></tr>
+                            <tr><th>Generic Median</th><td>$${(estimate.ebay_summary.generic_median || 0).toFixed(2)}</th></tr>
+                            <tr><th>Price Range</th><td>$${(estimate.ebay_summary.price_range?.[0] || 0).toFixed(2)} - $${(estimate.ebay_summary.price_range?.[1] || 0).toFixed(2)}</th></tr>
+                            <tr><th>Average Price</th><td>$${(estimate.ebay_summary.average_price || 0).toFixed(2)}</th></tr>
                         </table>
                     </div>
                 </div>
@@ -2032,53 +1641,20 @@ class AddEditDeleteManager {
                 <div class="ebay-listings" style="margin-top: 15px;">
                     <div class="table-header">
                         <h4>📊 eBay Listings Details</h4>
-                        <span class="table-count">
-                            ${estimate.ebay_listings.length} listings
-                        </span>
+                        <span class="table-count">${estimate.ebay_listings.length} listings</span>
                     </div>
                     <div class="table-scroll-container">
                         <table class="ebay-listings-table">
-                            <thead>
-                                 <tr>
-                                    <th>Price</th>
-                                    <th>Shipping</th>
-                                    <th>Total</th>
-                                    <th>Condition</th>
-                                    <th>Title</th>
-                                    <th>Link</th>
-                                 </tr>
-                            </thead>
+                            <thead><tr><th>Price</th><th>Shipping</th><th>Total</th><th>Condition</th><th>Title</th><th>Link</th></tr></thead>
                             <tbody>
                                 ${estimate.ebay_listings.map(listing => `
                                     <tr class="${listing.matches_condition ? 'matches-condition' : ''}">
-                                        <td>
-                                            <div class="ebay-price">$${listing.price.toFixed(2)}</div>
-                                        </td>
-                                        <td>
-                                            <div class="ebay-shipping">
-                                                ${listing.shipping != null ? `$${listing.shipping.toFixed(2)}` : 'n/a'}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="ebay-total">
-                                                ${typeof listing.total === 'number' ? `$${listing.total.toFixed(2)}` : 'n/a'}
-                                            </div>
-                                            ${listing.matches_condition ? '<span class="condition-match-badge">✓ Match</span>' : ''}
-                                        </td>
-                                        <td>
-                                            <div class="ebay-condition">${listing.condition || 'N/A'}</div>
-                                        </td>
-                                        <td>
-                                            <div class="ebay-title" title="${listing.full_title || listing.title}">
-                                                ${listing.title}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <a href="${listing.url}" target="_blank" rel="noopener noreferrer" 
-                                            class="ebay-link">
-                                                <i class="fas fa-external-link-alt"></i> View
-                                            </a>
-                                        </td>
+                                        <td><div class="ebay-price">$${listing.price.toFixed(2)}</div></td>
+                                        <td><div class="ebay-shipping">${listing.shipping != null ? `$${listing.shipping.toFixed(2)}` : 'n/a'}</div></td>
+                                        <td><div class="ebay-total">${typeof listing.total === 'number' ? `$${listing.total.toFixed(2)}` : 'n/a'}</div>${listing.matches_condition ? '<span class="condition-match-badge">✓ Match</span>' : ''}</td>
+                                        <td><div class="ebay-condition">${listing.condition || 'N/A'}</div></td>
+                                        <td><div class="ebay-title" title="${listing.full_title || listing.title}">${listing.title}</div></td>
+                                        <td><a href="${listing.url}" target="_blank" class="ebay-link"><i class="fas fa-external-link-alt"></i> View</a></td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -2090,17 +1666,12 @@ class AddEditDeleteManager {
         
         if (calculationHTML) {
             calculationContainer.innerHTML = `
-                <div class="calculation-toggle" onclick="this.classList.toggle('expanded'); 
-                    this.nextElementSibling.classList.toggle('expanded');">
+                <div class="calculation-toggle" onclick="this.classList.toggle('expanded'); this.nextElementSibling.classList.toggle('expanded');">
                     <i class="fas fa-chevron-down"></i>
                     <span>Show price calculation details</span>
-                    <span class="price-source-badge ${priceSourceClass}">
-                        ${priceSourceClass === 'calculated' ? 'CALCULATED' : 'ESTIMATED'}
-                    </span>
+                    <span class="price-source-badge ${priceSourceClass}">${priceSourceClass === 'calculated' ? 'CALCULATED' : 'ESTIMATED'}</span>
                 </div>
-                <div class="calculation-details">
-                    ${calculationHTML}
-                </div>
+                <div class="calculation-details">${calculationHTML}</div>
             `;
         } else {
             calculationContainer.innerHTML = '';
@@ -2146,7 +1717,6 @@ class AddEditDeleteManager {
                 const card = e.target.closest('.record-card');
                 const index = card.getAttribute('data-index');
                 const record = this.currentResults[index];
-                
                 await this.addRecordFromDiscogs(card, record);
             });
         });
@@ -2170,21 +1740,18 @@ class AddEditDeleteManager {
         this.addConditionChangeListeners();
     }
 
-    // UPDATED: Add record with format-specific barcode
     async addRecordFromDiscogs(card, discogsRecord) {
         const genreSelect = card.querySelector('.genre-select');
         const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
         const discConditionSelect = card.querySelector('.disc-condition-select');
         const priceInput = card.querySelector('.price-input');
         const consignorSelect = card.querySelector('.consignor-select');
-        const commissionInput = card.querySelector('.commission-input');
         
         const genreId = genreSelect.value;
         const sleeveConditionId = sleeveConditionSelect.value;
         const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
         const consignorId = consignorSelect ? consignorSelect.value : this.selectedConsignorId;
-        const commissionRate = commissionInput ? parseFloat(commissionInput.value) / 100 : this.selectedCommissionRate / 100;
         
         const errors = [];
         if (!genreId) errors.push('Please select a genre');
@@ -2197,11 +1764,9 @@ class AddEditDeleteManager {
             return;
         }
         
-        const user = JSON.parse(localStorage.getItem('user')) || {};
         const genre = this.genres.find(g => g.id == genreId);
         const genreName = genre ? genre.genre_name : '';
         
-        // Detect format from Discogs result and generate barcode
         const formatFromDiscogs = discogsRecord.format || '';
         const pigstyleBarcode = this.barcodeGenerator.generateBarcode(formatFromDiscogs);
         
@@ -2209,20 +1774,6 @@ class AddEditDeleteManager {
             showMessage('Error: Generated barcode is not valid numeric format', 'error');
             return;
         }
-        
-        console.log('=== ADDING RECORD ===');
-        console.log('Generated PigStyle barcode (numeric):', pigstyleBarcode);
-        console.log('Format detected:', formatFromDiscogs || 'vinyl (default)');
-        console.log('Barcode validation:', this.barcodeGenerator.validateBarcode(pigstyleBarcode));
-        console.log('Input price:', price);
-        console.log('Artist:', discogsRecord.artist);
-        console.log('Title:', discogsRecord.title);
-        console.log('Genre ID:', genreId);
-        console.log('Sleeve Condition ID:', sleeveConditionId);
-        console.log('Disc Condition ID:', discConditionId);
-        console.log('Final Price:', price);
-        console.log('Consignor ID (from dropdown):', consignorId);
-        console.log('Commission Rate (from dropdown):', commissionRate);
         
         const recordData = {
             artist: discogsRecord.artist,
@@ -2238,11 +1789,8 @@ class AddEditDeleteManager {
             store_price: price,
             youtube_url: '',
             consignor_id: consignorId ? parseInt(consignorId) : null,
-            commission_rate: commissionRate,
             status_id: 1,
         };
-        
-        console.log('Sending to /records endpoint:', recordData);
         
         try {
             const response = await APIUtils.post('/records', recordData);
@@ -2255,14 +1803,12 @@ class AddEditDeleteManager {
                 
                 showMessage(`Record added successfully! Barcode: ${pigstyleBarcode}. Price: $${price.toFixed(2)}${batchMessage}`, 'success');
                 
-                // Save artist to artist_genre table if it doesn't exist
                 if (discogsRecord.artist && genreId) {
                     await this.genrePredictor.saveArtistGenre(discogsRecord.artist, genreId, genreName);
                 }
                 
                 await this.loadStats();
                 
-                // Refresh active batch stats if there is one
                 if (this.activeBatch) {
                     await this.checkActiveBatch();
                     this.renderBatchSection();
@@ -2270,9 +1816,7 @@ class AddEditDeleteManager {
                 
                 this.clearResults();
                 document.getElementById('searchInput').value = '';
-                
                 document.getElementById('searchInput').focus();
-                
             } else {
                 showMessage(`Error: ${response.error || 'Failed to add record'}`, 'error');
             }
@@ -2292,24 +1836,20 @@ class AddEditDeleteManager {
         const priceInput = card.querySelector('.edit-price-input');
         const statusSelect = card.querySelector('.edit-status-select');
         const consignorSelect = card.querySelector('.edit-consignor-select');
-        const commissionInput = card.querySelector('.edit-commission-input');
         
         const updates = {};
         let genreChanged = false;
         let newGenreId = null;
         let newGenreName = null;
         
-        // Get the current record to compare genre changes
         const currentRecord = this.currentResults.find(r => r.id == recordId);
         
         if (genreSelect && genreSelect.value) {
             newGenreId = parseInt(genreSelect.value);
             updates.genre_id = newGenreId;
             
-            // Check if genre has changed from original
             if (currentRecord && currentRecord.genre_id != newGenreId) {
                 genreChanged = true;
-                // Get the genre name for the new genre ID
                 const genre = this.genres.find(g => g.id == newGenreId);
                 newGenreName = genre ? genre.genre_name : '';
             }
@@ -2340,13 +1880,6 @@ class AddEditDeleteManager {
             updates.consignor_id = null;
         }
         
-        if (commissionInput && commissionInput.value) {
-            const commissionRate = parseFloat(commissionInput.value) / 100;
-            if (!isNaN(commissionRate) && commissionRate >= 0 && commissionRate <= 1) {
-                updates.commission_rate = commissionRate;
-            }
-        }
-        
         if (statusSelect && statusSelect.value) {
             const statusMap = {
                 'new': 1,
@@ -2362,39 +1895,24 @@ class AddEditDeleteManager {
             return;
         }
         
-        console.log('SAVE_CHANGES: Updating record', recordId, 'with:', updates);
-        
         try {
             const response = await APIUtils.put(`/records/${recordId}`, updates);
             
             if (response.status === 'success') {
                 let updatedPrice = updates.store_price;
-                
-                if (response.record && response.record.store_price) {
-                    updatedPrice = response.record.store_price;
-                } else if (response.store_price) {
-                    updatedPrice = response.store_price;
-                } else if (response.data && response.data.store_price) {
-                    updatedPrice = response.data.store_price;
-                }
+                if (response.record && response.record.store_price) updatedPrice = response.record.store_price;
+                else if (response.store_price) updatedPrice = response.store_price;
+                else if (response.data && response.data.store_price) updatedPrice = response.data.store_price;
                 
                 showMessage(`Record updated successfully! Price: $${(updatedPrice || 0).toFixed(2)}`, 'success');
                 
-                // If genre was changed and we have an artist, update the artist_genre table
                 if (genreChanged && currentRecord && currentRecord.artist && newGenreId) {
-                    console.log(`Genre changed for artist "${currentRecord.artist}" from ${currentRecord.genre_id} to ${newGenreId}`);
                     const updateResult = await this.genrePredictor.updateArtistGenre(currentRecord.artist, newGenreId, newGenreName);
-                    if (updateResult) {
-                        showMessage(`Artist genre association updated for "${currentRecord.artist}"`, 'success');
-                    } else {
-                        console.warn(`Could not update artist genre for "${currentRecord.artist}"`);
-                    }
+                    if (updateResult) showMessage(`Artist genre association updated for "${currentRecord.artist}"`, 'success');
                 }
                 
                 const currentSearch = document.getElementById('searchInput').value;
-                if (currentSearch) {
-                    await this.performSearch(currentSearch);
-                }
+                if (currentSearch) await this.performSearch(currentSearch);
                 await this.loadStats();
             } else {
                 showMessage(`Error: ${response.error || response.message || 'Failed to update record'}`, 'error');
@@ -2411,11 +1929,8 @@ class AddEditDeleteManager {
             
             if (response.status === 'success') {
                 showMessage('Record deleted successfully!', 'success');
-                
                 this.currentResults = this.currentResults.filter(r => r.id != recordId);
-                
                 this.displayResults();
-                
                 await this.loadStats();
             } else {
                 showMessage(`Error: ${response.error || 'Failed to delete record'}`, 'error');
