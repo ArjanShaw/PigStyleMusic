@@ -6377,13 +6377,16 @@ def create_batch():
     try:
         data = request.get_json()
         
-        required_fields = ['seller_name', 'seller_contact', 'offer_percentage']
+        required_fields = ['seller_name', 'seller_contact']
         for field in required_fields:
             if field not in data:
                 return jsonify({
                     'status': 'error',
                     'error': f'{field} required'
                 }), 400
+        
+        # Get offer_percentage from request or use default (0)
+        offer_percentage = data.get('offer_percentage', 0)
         
         conn = get_db()
         cursor = conn.cursor()
@@ -6401,7 +6404,7 @@ def create_batch():
         ''', (
             data['seller_name'],
             data['seller_contact'],
-            float(data['offer_percentage']),
+            float(offer_percentage),
             data.get('notes', ''),
             session.get('user_id')
         ))
