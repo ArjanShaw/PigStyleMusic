@@ -123,13 +123,17 @@ class GenrePredictor {
 class BarcodeGenerator {
     constructor() {
         this.counters = {
-            vinyl: 3290,
+            vinyl_33: 3290,    // 33⅓ RPM LPs (12-inch)
+            vinyl_45: 5000,    // 45 RPM Singles/EPs (7-inch)
+            vinyl_78: 6000,    // 78 RPM Shellac records
             cd: 3290,
             cassette: 3290
         };
         
         this.prefixes = {
-            vinyl: '22',
+            vinyl_33: '22',    // 33⅓ RPM - 22 prefix
+            vinyl_45: '55',    // 45 RPM - 55 prefix
+            vinyl_78: '66',    // 78 RPM - 66 prefix
             cd: '33',
             cassette: '44'
         };
@@ -159,26 +163,53 @@ class BarcodeGenerator {
     }
     
     detectFormat(formatString) {
-        if (!formatString) return 'vinyl';
+        if (!formatString) return 'vinyl_33';
+        
         const formatLower = formatString.toLowerCase();
-        if (formatLower.includes('cd') || formatLower === 'compact disc') {
+        
+        // Check for 78 RPM first (most specific)
+        if (formatLower.includes('78') || 
+            formatLower.includes('shellac')) {
+            return 'vinyl_78';
+        }
+        // Check for 45 RPM single
+        else if (formatLower.includes('45') || 
+                 formatLower.includes('single') || 
+                 formatLower.includes('7"') ||
+                 (formatLower.includes('7-inch') && !formatLower.includes('33'))) {
+            return 'vinyl_45';
+        }
+        // Check for 33⅓ RPM / LP / 12-inch
+        else if (formatLower.includes('33') || 
+                 formatLower.includes('lp') || 
+                 formatLower.includes('12"') ||
+                 (formatLower.includes('vinyl') && !formatLower.includes('45') && !formatLower.includes('78'))) {
+            return 'vinyl_33';
+        }
+        else if (formatLower.includes('cd') || formatLower === 'compact disc') {
             return 'cd';
-        } else if (formatLower.includes('cassette') || formatLower.includes('tape')) {
+        }
+        else if (formatLower.includes('cassette') || formatLower.includes('tape')) {
             return 'cassette';
-        } else {
-            return 'vinyl';
+        }
+        else {
+            return 'vinyl_33'; // Default to 33⅓ RPM
         }
     }
     
-    generateBarcode(format = 'vinyl') {
+    generateBarcode(format = 'vinyl_33') {
         const normalizedFormat = this.detectFormat(format);
         const prefix = this.prefixes[normalizedFormat];
         const currentCounter = this.counters[normalizedFormat];
         const sequence = currentCounter.toString().padStart(4, '0');
         const barcode = `${prefix}000000${sequence}`;
+        
         console.log(`BARCODE_GENERATED: Format=${normalizedFormat}, Barcode=${barcode}, Sequence=${currentCounter}`);
+        
+        // Increment the counter for this format
         this.counters[normalizedFormat]++;
         this.saveCounters();
+        
         return barcode;
     }
     
@@ -189,16 +220,40 @@ class BarcodeGenerator {
         return /^\d+$/.test(barcode);
     }
     
-    getCurrentCounter(format = 'vinyl') {
+    getCurrentCounter(format = 'vinyl_33') {
         const normalizedFormat = this.detectFormat(format);
         return this.counters[normalizedFormat];
     }
     
-    resetCounter(format = 'vinyl', startFrom = 3290) {
+    resetCounter(format = 'vinyl_33', startFrom = 3290) {
         const normalizedFormat = this.detectFormat(format);
         this.counters[normalizedFormat] = startFrom;
         this.saveCounters();
         console.log(`BARCODE: ${normalizedFormat} counter reset to:`, startFrom);
+    }
+    
+    // Helper method to get format from barcode prefix
+    getFormatFromBarcode(barcode) {
+        if (!barcode || typeof barcode !== 'string') {
+            return 'Unknown';
+        }
+        
+        const prefix = barcode.substring(0, 2);
+        
+        switch(prefix) {
+            case '22':
+                return '33⅓ RPM Vinyl';
+            case '55':
+                return '45 RPM Vinyl';
+            case '66':
+                return '78 RPM Vinyl';
+            case '33':
+                return 'CD';
+            case '44':
+                return 'Cassette';
+            default:
+                return 'Vinyl';
+        }
     }
 }
 
