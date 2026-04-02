@@ -13,6 +13,20 @@ class BatchManager {
         this.searchTerm = '';
         this.editingPercentage = null; // Track which batch is being edited
         
+        // Bind all methods to ensure 'this' works correctly in event handlers
+        this.editPercentage = this.editPercentage.bind(this);
+        this.cancelPercentageEdit = this.cancelPercentageEdit.bind(this);
+        this.savePercentage = this.savePercentage.bind(this);
+        this.viewBatch = this.viewBatch.bind(this);
+        this.printBatch = this.printBatch.bind(this);
+        this.completeBatch = this.completeBatch.bind(this);
+        this.cancelBatch = this.cancelBatch.bind(this);
+        this.goToPage = this.goToPage.bind(this);
+        this.changePageSize = this.changePageSize.bind(this);
+        
+        // Attach to window immediately so onclick handlers work
+        window.batchManager = this;
+        
         this.init();
     }
 
@@ -53,10 +67,16 @@ class BatchManager {
             });
         }
         
-        // Close percentage editor when clicking outside
+        // Close percentage editor when clicking outside - use a timeout to avoid immediate trigger
         document.addEventListener('click', (e) => {
-            if (this.editingPercentage && !e.target.closest('.percentage-edit')) {
-                this.cancelPercentageEdit();
+            // Only cancel if we're in editing mode and click is outside
+            // Use setTimeout to ensure the editor is rendered before checking
+            if (this.editingPercentage) {
+                // Check if the click target is inside the percentage edit area
+                const isClickInside = e.target.closest('.percentage-edit');
+                if (!isClickInside) {
+                    this.cancelPercentageEdit();
+                }
             }
         });
     }
@@ -135,7 +155,7 @@ class BatchManager {
         if (!tbody) return;
         
         if (this.filteredBatches.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:40px;">No batches found</td></tr>`;
+            tbody.innerHTML = `<td><td colspan="11" style="text-align:center; padding:40px;">No batches found</td></tr>`;
             this.updatePaginationControls();
             return;
         }
@@ -167,7 +187,7 @@ class BatchManager {
                     <td>${this.escapeHtml(batch.seller_contact || '')}</td>
                     <td>
                         ${isEditing ? 
-                            `<div class="percentage-edit">
+                            `<div class="percentage-edit" style="display: inline-block;">
                                 <input type="number" 
                                        id="edit-percentage-${batch.id}" 
                                        value="${offerPercentage}" 
@@ -182,7 +202,7 @@ class BatchManager {
                                     <i class="fas fa-times"></i>
                                 </button>
                             </div>` : 
-                            `<span onclick="window.batchManager.editPercentage(${batch.id})" style="cursor: pointer; padding: 4px 8px; display: inline-block; border-radius: 4px;" title="Click to edit">
+                            `<span onclick="event.stopPropagation(); window.batchManager.editPercentage(${batch.id})" style="cursor: pointer; padding: 4px 8px; display: inline-block; border-radius: 4px;" title="Click to edit">
                                 ${offerPercentage}% <i class="fas fa-pencil-alt" style="font-size: 10px; margin-left: 4px; color: #666;"></i>
                             </span>`
                         }
@@ -222,18 +242,35 @@ class BatchManager {
     }
 
     editPercentage(batchId) {
-        this.editingPercentage = batchId;
-        this.renderTable();
+        console.log('✏️ Edit percentage called for batch:', batchId);
+        // Prevent any pending click events from interfering
+        setTimeout(() => {
+            this.editingPercentage = batchId;
+            this.renderTable();
+            // Focus the input after render
+            setTimeout(() => {
+                const input = document.getElementById(`edit-percentage-${batchId}`);
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }, 50);
+        }, 10);
     }
 
     cancelPercentageEdit() {
+        console.log('❌ Cancel percentage edit');
         this.editingPercentage = null;
         this.renderTable();
     }
 
     async savePercentage(batchId) {
+        console.log('💾 Save percentage called for batch:', batchId);
         const input = document.getElementById(`edit-percentage-${batchId}`);
-        if (!input) return;
+        if (!input) {
+            console.error('Input not found for batch:', batchId);
+            return;
+        }
         
         const newPercentage = parseFloat(input.value);
         if (isNaN(newPercentage) || newPercentage < 0 || newPercentage > 100) {
@@ -247,9 +284,10 @@ class BatchManager {
             });
             
             if (response.status === 'success') {
-                showMessage('Batch percentage updated successfully!', 'success');
+                showMessage(`Batch percentage updated to ${newPercentage}%!`, 'success');
                 this.editingPercentage = null;
                 await this.loadBatches(); // Reload to get updated data
+                await this.loadStats(); // Also reload stats
             } else {
                 showMessage('Error updating batch: ' + (response.error || 'Unknown error'), 'error');
             }
@@ -271,13 +309,25 @@ class BatchManager {
         const start = (this.currentPage - 1) * this.pageSize + 1;
         const end = Math.min(start + this.pageSize - 1, totalFiltered);
         
-        document.getElementById('batches-current-page').value = this.currentPage;
-        document.getElementById('batches-total-pages').textContent = this.totalPages;
+        const currentPageInput = document.getElementById('batches-current-page');
+        if (currentPageInput) {
+            currentPageInput.value = this.currentPage;
+        }
         
-        document.getElementById('batches-first-btn').disabled = this.currentPage <= 1;
-        document.getElementById('batches-prev-btn').disabled = this.currentPage <= 1;
-        document.getElementById('batches-next-btn').disabled = this.currentPage >= this.totalPages;
-        document.getElementById('batches-last-btn').disabled = this.currentPage >= this.totalPages;
+        const totalPagesSpan = document.getElementById('batches-total-pages');
+        if (totalPagesSpan) {
+            totalPagesSpan.textContent = this.totalPages;
+        }
+        
+        const firstBtn = document.getElementById('batches-first-btn');
+        const prevBtn = document.getElementById('batches-prev-btn');
+        const nextBtn = document.getElementById('batches-next-btn');
+        const lastBtn = document.getElementById('batches-last-btn');
+        
+        if (firstBtn) firstBtn.disabled = this.currentPage <= 1;
+        if (prevBtn) prevBtn.disabled = this.currentPage <= 1;
+        if (nextBtn) nextBtn.disabled = this.currentPage >= this.totalPages;
+        if (lastBtn) lastBtn.disabled = this.currentPage >= this.totalPages;
     }
 
     showLoading(show) {
@@ -303,7 +353,6 @@ class BatchManager {
     }
 
     showBatchDetails(batch) {
-        // Create modal for batch details
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.style.display = 'flex';
@@ -311,7 +360,6 @@ class BatchManager {
         const startDate = batch.start_datetime ? new Date(batch.start_datetime).toLocaleString() : 'N/A';
         const endDate = batch.end_datetime ? new Date(batch.end_datetime).toLocaleString() : 'Not completed';
         
-        // Calculate offer amounts
         const totalStoreValue = batch.total_store_value || 0;
         const offerPercentage = batch.offer_percentage || 0;
         const totalOfferAmount = (totalStoreValue * offerPercentage / 100) || 0;
@@ -430,12 +478,10 @@ class BatchManager {
         const printWindow = window.open('', '_blank');
         const today = new Date().toLocaleDateString();
         
-        // Calculate totals
         const totalStoreValue = printData.total_store_value || 0;
         const offerPercentage = printData.offer_percentage || 0;
         const totalOfferAmount = printData.total_offer_amount || (totalStoreValue * offerPercentage / 100);
         
-        // Generate items HTML for the detailed pages
         let itemsHtml = '';
         printData.items.forEach((item, index) => {
             const offerPrice = item.offer_price || (item.store_price * offerPercentage / 100) || 0;
@@ -602,7 +648,6 @@ class BatchManager {
                 </style>
             </head>
             <body>
-                <!-- PAGE 1: Summary and Declaration -->
                 <div class="page">
                     <div class="header">
                         <h1>PIGSTYLE MUSIC</h1>
@@ -665,7 +710,6 @@ class BatchManager {
                     <div class="page-number">Page 1</div>
                 </div>
                 
-                <!-- PAGE 2: Detailed Item List -->
                 <div class="page">
                     <div class="header">
                         <h2>Detailed Item List - Batch #${printData.batch_id}</h2>
@@ -734,16 +778,6 @@ class BatchManager {
 
     async cancelBatch(batchId) {
         if (!confirm('WARNING: Cancelling this batch will delete ALL records that were added during this batch. This action CANNOT be undone. Are you sure?')) {
-            return;
-        }
-        
-        if (!confirm('FINAL WARNING: This will permanently delete records from the database. Type "DELETE" in the prompt to confirm.')) {
-            return;
-        }
-        
-        const confirmation = prompt('Type "DELETE" to confirm permanent deletion of all records in this batch:');
-        if (confirmation !== 'DELETE') {
-            showMessage('Cancellation aborted - incorrect confirmation', 'warning');
             return;
         }
         

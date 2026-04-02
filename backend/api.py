@@ -6429,6 +6429,61 @@ def create_batch():
             'error': str(e)
         }), 500
 
+@app.route('/api/batches/<int:batch_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_batch(batch_id):
+    """Update a batch (e.g., offer_percentage)"""
+    try:
+        data = request.get_json()
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if batch exists
+        cursor.execute('SELECT id, status FROM batches WHERE id = ?', (batch_id,))
+        batch = cursor.fetchone()
+        
+        if not batch:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Batch not found'
+            }), 404
+        
+        # Update offer_percentage
+        if 'offer_percentage' in data:
+            cursor.execute('''
+                UPDATE batches 
+                SET offer_percentage = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (float(data['offer_percentage']), batch_id))
+            
+            conn.commit()
+            conn.close()
+            
+            app.logger.info(f"Batch {batch_id} offer_percentage updated to {data['offer_percentage']}%")
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Batch updated successfully',
+                'batch_id': batch_id,
+                'offer_percentage': data['offer_percentage']
+            }), 200
+        else:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'No valid fields to update'
+            }), 400
+        
+    except Exception as e:
+        app.logger.error(f"Error updating batch: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 @app.route('/api/batches/<int:batch_id>/complete', methods=['POST'])
 @login_required
