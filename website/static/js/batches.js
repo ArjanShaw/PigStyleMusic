@@ -12,6 +12,8 @@ class BatchManager {
         this.statusFilter = 'all';
         this.searchTerm = '';
         this.editingPercentage = null; // Track which batch is being edited
+        this.editingStorePrice = null; // Track which record's store price is being edited
+        this.currentBatchDetails = null; // Store current batch details for inline updates
         
         // Bind all methods to ensure 'this' works correctly in event handlers
         this.editPercentage = this.editPercentage.bind(this);
@@ -23,6 +25,10 @@ class BatchManager {
         this.cancelBatch = this.cancelBatch.bind(this);
         this.goToPage = this.goToPage.bind(this);
         this.changePageSize = this.changePageSize.bind(this);
+        this.editStorePrice = this.editStorePrice.bind(this);
+        this.cancelStorePriceEdit = this.cancelStorePriceEdit.bind(this);
+        this.saveStorePrice = this.saveStorePrice.bind(this);
+        this.editPercentageFromModal = this.editPercentageFromModal.bind(this);
         
         // Attach to window immediately so onclick handlers work
         window.batchManager = this;
@@ -67,12 +73,9 @@ class BatchManager {
             });
         }
         
-        // Close percentage editor when clicking outside - use a timeout to avoid immediate trigger
+        // Close percentage editor when clicking outside
         document.addEventListener('click', (e) => {
-            // Only cancel if we're in editing mode and click is outside
-            // Use setTimeout to ensure the editor is rendered before checking
             if (this.editingPercentage) {
-                // Check if the click target is inside the percentage edit area
                 const isClickInside = e.target.closest('.percentage-edit');
                 if (!isClickInside) {
                     this.cancelPercentageEdit();
@@ -128,12 +131,10 @@ class BatchManager {
 
     filterBatches() {
         this.filteredBatches = this.batches.filter(batch => {
-            // Status filter
             if (this.statusFilter !== 'all' && batch.status !== this.statusFilter) {
                 return false;
             }
             
-            // Search filter
             if (this.searchTerm) {
                 const searchLower = this.searchTerm.toLowerCase();
                 return (batch.seller_name && batch.seller_name.toLowerCase().includes(searchLower)) ||
@@ -155,7 +156,7 @@ class BatchManager {
         if (!tbody) return;
         
         if (this.filteredBatches.length === 0) {
-            tbody.innerHTML = `<td><td colspan="11" style="text-align:center; padding:40px;">No batches found</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:40px;">No batches found</td></tr>`;
             this.updatePaginationControls();
             return;
         }
@@ -172,12 +173,10 @@ class BatchManager {
             const statusClass = `batch-${batch.status}`;
             const statusDisplay = batch.status ? batch.status.charAt(0).toUpperCase() + batch.status.slice(1) : 'Unknown';
             
-            // Calculate offer amounts
             const totalStoreValue = batch.total_store_value || 0;
             const offerPercentage = batch.offer_percentage || 0;
             const totalOfferAmount = (totalStoreValue * offerPercentage / 100) || 0;
             
-            // Check if this batch is being edited
             const isEditing = this.editingPercentage === batch.id;
             
             html += `
@@ -206,7 +205,7 @@ class BatchManager {
                                 ${offerPercentage}% <i class="fas fa-pencil-alt" style="font-size: 10px; margin-left: 4px; color: #666;"></i>
                             </span>`
                         }
-                    </td>
+                     </td>
                     <td>${batch.record_count || 0}</td>
                     <td>$${(totalStoreValue).toFixed(2)}</td>
                     <td>$${totalOfferAmount.toFixed(2)}</td>
@@ -232,8 +231,8 @@ class BatchManager {
                                 </button>
                             ` : ''}
                         </div>
-                    </td>
-                </tr>
+                     </td>
+                 </tr>
             `;
         });
         
@@ -243,11 +242,9 @@ class BatchManager {
 
     editPercentage(batchId) {
         console.log('✏️ Edit percentage called for batch:', batchId);
-        // Prevent any pending click events from interfering
         setTimeout(() => {
             this.editingPercentage = batchId;
             this.renderTable();
-            // Focus the input after render
             setTimeout(() => {
                 const input = document.getElementById(`edit-percentage-${batchId}`);
                 if (input) {
@@ -286,8 +283,150 @@ class BatchManager {
             if (response.status === 'success') {
                 showMessage(`Batch percentage updated to ${newPercentage}%!`, 'success');
                 this.editingPercentage = null;
-                await this.loadBatches(); // Reload to get updated data
-                await this.loadStats(); // Also reload stats
+                await this.loadBatches();
+                await this.loadStats();
+            } else {
+                showMessage('Error updating batch: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error updating batch:', error);
+            showMessage('Error updating batch: ' + error.message, 'error');
+        }
+    }
+
+    // ========== NEW: Edit store price from batch details modal ==========
+    editStorePrice(recordId, currentPrice) {
+        console.log('✏️ Edit store price called for record:', recordId);
+        this.editingStorePrice = recordId;
+        
+        const priceCell = document.getElementById(`store-price-${recordId}`);
+        if (priceCell) {
+            priceCell.innerHTML = `
+                <div class="store-price-edit" style="display: inline-block;">
+                    <input type="number" 
+                           id="edit-store-price-${recordId}" 
+                           value="${currentPrice.toFixed(2)}" 
+                           min="0" 
+                           step="0.01" 
+                           style="width: 80px; padding: 4px; border: 1px solid #007bff; border-radius: 4px;">
+                    <button class="btn btn-small btn-success" onclick="window.batchManager.saveStorePrice(${recordId})" style="padding: 2px 6px; margin-left: 4px;">
+                        <i class="fas fa-check"></i>
+                    </button>
+                    <button class="btn btn-small btn-secondary" onclick="window.batchManager.cancelStorePriceEdit(${recordId})" style="padding: 2px 6px;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                const input = document.getElementById(`edit-store-price-${recordId}`);
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }, 50);
+        }
+    }
+
+    cancelStorePriceEdit(recordId) {
+        console.log('❌ Cancel store price edit for record:', recordId);
+        this.editingStorePrice = null;
+        if (this.currentBatchDetails) {
+            this.showBatchDetails(this.currentBatchDetails);
+        }
+    }
+
+    async saveStorePrice(recordId) {
+        console.log('💾 Save store price called for record:', recordId);
+        const input = document.getElementById(`edit-store-price-${recordId}`);
+        if (!input) {
+            console.error('Input not found for record:', recordId);
+            return;
+        }
+        
+        const newPrice = parseFloat(input.value);
+        if (isNaN(newPrice) || newPrice < 0) {
+            showMessage('Please enter a valid price', 'error');
+            return;
+        }
+        
+        try {
+            // Using the existing update_record endpoint
+            const response = await APIUtils.put(`/records/${recordId}`, {
+                store_price: newPrice
+            });
+            
+            if (response.status === 'success') {
+                showMessage(`Store price updated to $${newPrice.toFixed(2)}!`, 'success');
+                this.editingStorePrice = null;
+                
+                // Refresh batch details to show updated totals
+                if (this.currentBatchDetails) {
+                    const batchResponse = await APIUtils.get(`/api/batches/${this.currentBatchDetails.id}`);
+                    if (batchResponse.status === 'success' && batchResponse.batch) {
+                        this.currentBatchDetails = batchResponse.batch;
+                        this.showBatchDetails(this.currentBatchDetails);
+                    }
+                }
+                
+                await this.loadBatches();
+                await this.loadStats();
+            } else {
+                showMessage('Error updating record: ' + (response.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error updating record:', error);
+            showMessage('Error updating record: ' + error.message, 'error');
+        }
+    }
+
+    // ========== NEW: Edit percentage directly from modal ==========
+    async editPercentageFromModal(batchId) {
+        const currentPercentage = this.currentBatchDetails?.offer_percentage || 0;
+        const newPercentage = prompt('Enter new offer percentage (0-100):', currentPercentage);
+        
+        if (newPercentage === null) return;
+        
+        const percentage = parseFloat(newPercentage);
+        if (isNaN(percentage) || percentage < 0 || percentage > 100) {
+            showMessage('Please enter a valid percentage (0-100)', 'error');
+            return;
+        }
+        
+        try {
+            const response = await APIUtils.put(`/api/batches/${batchId}`, {
+                offer_percentage: percentage
+            });
+            
+            if (response.status === 'success') {
+                showMessage(`Batch percentage updated to ${percentage}%!`, 'success');
+                
+                const percentageSpan = document.getElementById('batch-offer-percentage');
+                if (percentageSpan) {
+                    percentageSpan.textContent = percentage;
+                }
+                
+                // Update all offer prices in the table
+                if (this.currentBatchDetails && this.currentBatchDetails.records) {
+                    this.currentBatchDetails.offer_percentage = percentage;
+                    this.currentBatchDetails.records.forEach(record => {
+                        const offerPrice = (record.store_price * percentage / 100) || 0;
+                        const offerCell = document.getElementById(`offer-price-${record.id}`);
+                        if (offerCell) {
+                            offerCell.textContent = `$${offerPrice.toFixed(2)}`;
+                        }
+                    });
+                    
+                    const newTotalStoreValue = this.currentBatchDetails.total_store_value || 0;
+                    const newTotalOfferAmount = (newTotalStoreValue * percentage / 100) || 0;
+                    const totalStoreSpan = document.getElementById('total-store-value');
+                    const totalOfferSpan = document.getElementById('total-offer-value');
+                    if (totalStoreSpan) totalStoreSpan.textContent = `$${newTotalStoreValue.toFixed(2)}`;
+                    if (totalOfferSpan) totalOfferSpan.textContent = `$${newTotalOfferAmount.toFixed(2)}`;
+                }
+                
+                await this.loadBatches();
+                await this.loadStats();
             } else {
                 showMessage('Error updating batch: ' + (response.error || 'Unknown error'), 'error');
             }
@@ -342,6 +481,7 @@ class BatchManager {
             const response = await APIUtils.get(`/api/batches/${batchId}`);
             
             if (response.status === 'success' && response.batch) {
+                this.currentBatchDetails = response.batch;
                 this.showBatchDetails(response.batch);
             } else {
                 showMessage('Error loading batch details: ' + (response.error || 'Unknown error'), 'error');
@@ -368,14 +508,36 @@ class BatchManager {
         if (batch.records && batch.records.length > 0) {
             batch.records.forEach((record, index) => {
                 const offerPrice = (record.store_price * offerPercentage / 100) || 0;
+                const isEditing = this.editingStorePrice === record.id;
+                
                 recordsHtml += `
-                    <tr>
+                    <tr id="record-row-${record.id}">
                         <td>${index + 1}</td>
                         <td>${this.escapeHtml(record.artist)}</td>
                         <td>${this.escapeHtml(record.title)}</td>
                         <td>${record.catalog_number || '—'}</td>
-                        <td>$${(record.store_price || 0).toFixed(2)}</td>
-                        <td>$${offerPrice.toFixed(2)}</td>
+                        <td id="store-price-${record.id}">
+                            ${isEditing ? 
+                                `<div class="store-price-edit" style="display: inline-block;">
+                                    <input type="number" 
+                                           id="edit-store-price-${record.id}" 
+                                           value="${(record.store_price || 0).toFixed(2)}" 
+                                           min="0" 
+                                           step="0.01" 
+                                           style="width: 80px; padding: 4px; border: 1px solid #007bff; border-radius: 4px;">
+                                    <button class="btn btn-small btn-success" onclick="window.batchManager.saveStorePrice(${record.id})" style="padding: 2px 6px; margin-left: 4px;">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                    <button class="btn btn-small btn-secondary" onclick="window.batchManager.cancelStorePriceEdit(${record.id})" style="padding: 2px 6px;">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>` : 
+                                `<span style="cursor: pointer;" onclick="window.batchManager.editStorePrice(${record.id}, ${record.store_price || 0})" title="Click to edit price">
+                                    $${(record.store_price || 0).toFixed(2)} <i class="fas fa-pencil-alt" style="font-size: 10px; margin-left: 4px; color: #666;"></i>
+                                </span>`
+                            }
+                        </td>
+                        <td id="offer-price-${record.id}">$${offerPrice.toFixed(2)}</td>
                     </tr>
                 `;
             });
@@ -387,7 +549,7 @@ class BatchManager {
             <div class="modal-content" style="max-width: 900px;">
                 <div class="modal-header">
                     <h3 class="modal-title"><i class="fas fa-layer-group"></i> Batch #${batch.id} Details</h3>
-                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove(); window.batchManager.editingStorePrice = null;">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
@@ -398,7 +560,10 @@ class BatchManager {
                             <strong>Contact:</strong> ${this.escapeHtml(batch.seller_contact || '')}
                         </div>
                         <div>
-                            <strong>Offer %:</strong> ${offerPercentage}%
+                            <strong>Offer %:</strong> <span id="batch-offer-percentage">${offerPercentage}</span>%
+                            <button class="btn btn-small btn-secondary" onclick="window.batchManager.editPercentageFromModal(${batch.id})" style="margin-left: 8px; padding: 2px 6px;">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
                         </div>
                         <div>
                             <strong>Start Date:</strong> ${startDate}
@@ -425,15 +590,15 @@ class BatchManager {
                                     <th>Offer Price</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="batch-records-tbody">
                                 ${recordsHtml}
                             </tbody>
                             ${batch.records && batch.records.length > 0 ? `
                                 <tfoot style="font-weight: bold; background: #f8f9fa;">
                                     <tr>
                                         <td colspan="4" style="text-align: right;">Totals:</td>
-                                        <td>$${totalStoreValue.toFixed(2)}</td>
-                                        <td>$${totalOfferAmount.toFixed(2)}</td>
+                                        <td id="total-store-value">$${totalStoreValue.toFixed(2)}</td>
+                                        <td id="total-offer-value">$${totalOfferAmount.toFixed(2)}</td>
                                     </tr>
                                 </tfoot>
                             ` : ''}
@@ -448,7 +613,7 @@ class BatchManager {
                     ` : ''}
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+                    <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove(); window.batchManager.editingStorePrice = null;">Close</button>
                     <button class="btn btn-success" onclick="window.batchManager.printBatch(${batch.id}); this.closest('.modal-overlay').remove()">
                         <i class="fas fa-print"></i> Print Bill of Sale
                     </button>
@@ -492,7 +657,7 @@ class BatchManager {
                     <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(item.title)}</td>
                     <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.catalog_number || '—'}</td>
                     <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${offerPrice.toFixed(2)}</td>
-                </tr>
+                 </tr>
             `;
         });
 
@@ -502,149 +667,32 @@ class BatchManager {
             <head>
                 <title>Bill of Sale - Batch #${printData.batch_id}</title>
                 <style>
-                    body { 
-                        font-family: Arial, sans-serif; 
-                        margin: 0; 
-                        padding: 20px;
-                        line-height: 1.6; 
-                    }
-                    .page {
-                        page-break-after: always;
-                        min-height: 100vh;
-                        padding: 20px;
-                        box-sizing: border-box;
-                    }
-                    .page:last-child {
-                        page-break-after: auto;
-                    }
-                    .header { 
-                        text-align: center; 
-                        margin-bottom: 30px; 
-                    }
-                    .header h1 { 
-                        margin-bottom: 5px; 
-                        color: #333; 
-                        font-size: 24px;
-                    }
-                    .header h2 { 
-                        margin-top: 0; 
-                        color: #666; 
-                        font-weight: normal; 
-                        font-size: 18px;
-                    }
-                    .seller-info { 
-                        margin-bottom: 30px; 
-                        padding: 15px; 
-                        background: #f5f5f5; 
-                        border-radius: 5px; 
-                    }
-                    .seller-info p { 
-                        margin: 5px 0; 
-                    }
-                    table { 
-                        width: 100%; 
-                        border-collapse: collapse; 
-                        margin-bottom: 30px; 
-                        font-size: 12px;
-                    }
-                    th { 
-                        background: #333; 
-                        color: white; 
-                        padding: 10px; 
-                        text-align: left; 
-                        font-size: 12px;
-                    }
-                    td { 
-                        padding: 8px; 
-                        border-bottom: 1px solid #ddd; 
-                    }
-                    .totals { 
-                        text-align: right; 
-                        margin: 30px 0;
-                        padding: 15px;
-                        background: #f8f9fa;
-                        border-radius: 5px;
-                    }
-                    .totals p { 
-                        font-size: 16px; 
-                        margin: 5px 0; 
-                    }
-                    .totals .total-offer { 
-                        font-size: 24px; 
-                        font-weight: bold; 
-                        color: #28a745; 
-                    }
-                    .totals .total-store {
-                        font-size: 16px;
-                        color: #666;
-                    }
-                    .ownership-declaration { 
-                        margin: 40px 0; 
-                        padding: 20px; 
-                        background: #f0f7ff; 
-                        border-left: 4px solid #007bff;
-                        border-radius: 4px;
-                    }
-                    .ownership-declaration h3 { 
-                        margin-top: 0; 
-                        color: #007bff; 
-                    }
-                    .ownership-declaration p { 
-                        margin: 10px 0; 
-                    }
-                    .signature-section { 
-                        margin-top: 50px; 
-                    }
-                    .signature-line { 
-                        display: flex; 
-                        justify-content: space-between; 
-                        margin-top: 30px; 
-                    }
-                    .signature-item { 
-                        width: 45%; 
-                    }
-                    .signature-item .line { 
-                        border-bottom: 1px solid #000; 
-                        margin-top: 5px; 
-                        width: 100%; 
-                        height: 20px;
-                    }
-                    .footer { 
-                        margin-top: 30px; 
-                        font-size: 10px; 
-                        color: #666; 
-                        text-align: center; 
-                        border-top: 1px solid #ddd;
-                        padding-top: 10px;
-                    }
-                    .page-number {
-                        text-align: center;
-                        font-size: 10px;
-                        color: #999;
-                        margin-top: 20px;
-                    }
-                    .summary-box {
-                        background: #f8f9fa;
-                        border: 2px solid #28a745;
-                        border-radius: 8px;
-                        padding: 20px;
-                        margin: 30px 0;
-                        text-align: center;
-                    }
-                    .summary-box .amount {
-                        font-size: 36px;
-                        font-weight: bold;
-                        color: #28a745;
-                    }
-                    .items-header {
-                        margin: 20px 0 10px 0;
-                        padding-bottom: 5px;
-                        border-bottom: 2px solid #333;
-                    }
-                    @media print {
-                        body { margin: 0; padding: 0; }
-                        .page { page-break-after: always; }
-                    }
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
+                    .page { page-break-after: always; min-height: 100vh; padding: 20px; box-sizing: border-box; }
+                    .page:last-child { page-break-after: auto; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { margin-bottom: 5px; color: #333; font-size: 24px; }
+                    .header h2 { margin-top: 0; color: #666; font-weight: normal; font-size: 18px; }
+                    .seller-info { margin-bottom: 30px; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+                    .seller-info p { margin: 5px 0; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 12px; }
+                    th { background: #333; color: white; padding: 10px; text-align: left; font-size: 12px; }
+                    td { padding: 8px; border-bottom: 1px solid #ddd; }
+                    .totals { text-align: right; margin: 30px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+                    .totals p { font-size: 16px; margin: 5px 0; }
+                    .totals .total-offer { font-size: 24px; font-weight: bold; color: #28a745; }
+                    .ownership-declaration { margin: 40px 0; padding: 20px; background: #f0f7ff; border-left: 4px solid #007bff; border-radius: 4px; }
+                    .ownership-declaration h3 { margin-top: 0; color: #007bff; }
+                    .signature-section { margin-top: 50px; }
+                    .signature-line { display: flex; justify-content: space-between; margin-top: 30px; }
+                    .signature-item { width: 45%; }
+                    .signature-item .line { border-bottom: 1px solid #000; margin-top: 5px; width: 100%; height: 20px; }
+                    .footer { margin-top: 30px; font-size: 10px; color: #666; text-align: center; border-top: 1px solid #ddd; padding-top: 10px; }
+                    .page-number { text-align: center; font-size: 10px; color: #999; margin-top: 20px; }
+                    .summary-box { background: #f8f9fa; border: 2px solid #28a745; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center; }
+                    .summary-box .amount { font-size: 36px; font-weight: bold; color: #28a745; }
+                    .items-header { margin: 20px 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #333; }
+                    @media print { body { margin: 0; padding: 0; } .page { page-break-after: always; } }
                 </style>
             </head>
             <body>
