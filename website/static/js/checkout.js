@@ -16,6 +16,10 @@ let selectedTerminalId = null;
 let activeCheckoutId = null;
 let square_payment_sessions = {}; // Track payment sessions
 
+// Gift Card Variables
+let currentGiftCard = null;
+let currentCartTotal = 0;
+
 // ESC/POS commands for VCP-8370
 const ESC = '\x1B';
 const GS = '\x1D';
@@ -2240,6 +2244,334 @@ async function formatReceiptForPrinter(transaction) {
 }
 
 // ============================================================================
+// Gift Card Payment Functions
+// ============================================================================
+
+window.showGiftCardModal = function() {
+    if (checkoutCart.length === 0) {
+        showCheckoutStatus('Cart is empty', 'error');
+        return;
+    }
+    
+    const totalEl = document.getElementById('cart-total');
+    currentCartTotal = parseFloat(totalEl?.textContent.replace('$', '') || '0');
+    
+    const totalDueEl = document.getElementById('giftcard-total-due');
+    if (totalDueEl) totalDueEl.textContent = `$${currentCartTotal.toFixed(2)}`;
+    
+    const codeInput = document.getElementById('giftcard-code');
+    if (codeInput) codeInput.value = '';
+    
+    const infoDiv = document.getElementById('giftcard-info');
+    if (infoDiv) infoDiv.style.display = 'none';
+    
+    const applySection = document.getElementById('giftcard-apply-section');
+    if (applySection) applySection.style.display = 'none';
+    
+    const resultDiv = document.getElementById('giftcard-result');
+    if (resultDiv) resultDiv.style.display = 'none';
+    
+    currentGiftCard = null;
+    
+    const modal = document.getElementById('giftcard-modal');
+    if (modal) modal.style.display = 'flex';
+    
+    if (codeInput) setTimeout(() => codeInput.focus(), 100);
+};
+
+window.closeGiftCardModal = function() {
+    const modal = document.getElementById('giftcard-modal');
+    if (modal) modal.style.display = 'none';
+    currentGiftCard = null;
+};
+
+window.checkGiftCardForPayment = async function() {
+    const codeInput = document.getElementById('giftcard-code');
+    const code = codeInput?.value.trim() || '';
+    const resultDiv = document.getElementById('giftcard-result');
+    const infoDiv = document.getElementById('giftcard-info');
+    const applySection = document.getElementById('giftcard-apply-section');
+    
+    if (!code) {
+        if (resultDiv) {
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<span style="color: #ffc107;">Please enter a gift card code</span>';
+        }
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<span><i class="fas fa-spinner fa-spin"></i> Checking...</span>';
+    }
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/gift-cards/${encodeURIComponent(code)}`, {
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.card) {
+            currentGiftCard = data.card;
+            
+            const idDisplay = document.getElementById('giftcard-id-display');
+            const balanceDisplay = document.getElementById('giftcard-balance-display');
+            if (idDisplay) idDisplay.textContent = currentGiftCard.id;
+            if (balanceDisplay) balanceDisplay.textContent = `$${currentGiftCard.balance.toFixed(2)}`;
+            
+            if (infoDiv) infoDiv.style.display = 'block';
+            
+            if (currentGiftCard.balance >= currentCartTotal) {
+                if (applySection) applySection.style.display = 'block';
+                const amountInput = document.getElementById('giftcard-amount');
+                if (amountInput) amountInput.value = currentCartTotal.toFixed(2);
+                if (resultDiv) resultDiv.innerHTML = '<span style="color: #28a745;">✓ Card has sufficient balance</span>';
+            } else if (currentGiftCard.balance > 0) {
+                if (applySection) applySection.style.display = 'block';
+                const amountInput = document.getElementById('giftcard-amount');
+                if (amountInput) amountInput.value = currentGiftCard.balance.toFixed(2);
+                if (resultDiv) resultDiv.innerHTML = `<span style="color: #ffc107;">⚠️ Partial balance: $${currentGiftCard.balance.toFixed(2)}. Remaining balance will need another payment method.</span>`;
+            } else {
+                if (applySection) applySection.style.display = 'none';
+                if (resultDiv) resultDiv.innerHTML = '<span style="color: #dc3545;">This gift card has $0 balance</span>';
+            }
+        } else {
+            if (resultDiv) resultDiv.innerHTML = '<span style="color: #dc3545;">Gift card not found</span>';
+            if (infoDiv) infoDiv.style.display = 'none';
+            if (applySection) applySection.style.display = 'none';
+            currentGiftCard = null;
+        }
+    } catch (error) {
+        console.error('Error checking gift card:', error);
+        if (resultDiv) resultDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message}</span>`;
+    }
+};
+
+window.setGiftCardAmount = function(type) {
+    const amountInput = document.getElementById('giftcard-amount');
+    if (!amountInput || !currentGiftCard) return;
+    
+    if (type === 'full') {
+        amountInput.value = Math.min(currentCartTotal, currentGiftCard.balance).toFixed(2);
+    } else if (type === 'half') {
+        const halfAmount = Math.min(currentCartTotal, currentGiftCard.balance) / 2;
+        amountInput.value = halfAmount.toFixed(2);
+    }
+};
+
+window.applyGiftCardToCart = async function() {
+    if (!currentGiftCard) {
+        showCheckoutStatus('No gift card selected', 'error');
+        return;
+    }
+    
+    const amountInput = document.getElementById('giftcard-amount');
+    const amount = parseFloat(amountInput?.value || '0');
+    const resultDiv = document.getElementById('giftcard-result');
+    
+    if (isNaN(amount) || amount <= 0) {
+        if (resultDiv) {
+            resultDiv.innerHTML = '<span style="color: #ffc107;">Please enter a valid amount</span>';
+        }
+        return;
+    }
+    
+    if (amount > currentGiftCard.balance) {
+        if (resultDiv) {
+            resultDiv.innerHTML = '<span style="color: #dc3545;">Amount exceeds gift card balance</span>';
+        }
+        return;
+    }
+    
+    if (amount > currentCartTotal) {
+        if (resultDiv) {
+            resultDiv.innerHTML = '<span style="color: #ffc107;">Amount exceeds cart total. Using full cart amount instead.</span>';
+        }
+        const adjustedAmount = currentCartTotal;
+        
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/gift-cards/${currentGiftCard.id}/redeem`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ amount: adjustedAmount })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                closeGiftCardModal();
+                showCheckoutStatus(`Gift card applied: $${adjustedAmount.toFixed(2)}. Cart total is now $0.00`, 'success');
+                await completeCheckoutWithGiftCard(adjustedAmount);
+            } else {
+                showCheckoutStatus(`Error: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            showCheckoutStatus(`Error: ${error.message}`, 'error');
+        }
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/gift-cards/${currentGiftCard.id}/redeem`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ amount: amount })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const remaining = currentCartTotal - amount;
+            closeGiftCardModal();
+            
+            if (remaining <= 0.01) {
+                showCheckoutStatus(`Gift card applied: $${amount.toFixed(2)}. Cart total is now $0.00`, 'success');
+                await completeCheckoutWithGiftCard(amount);
+            } else {
+                showCheckoutStatus(`Gift card applied: $${amount.toFixed(2)}. Remaining balance: $${remaining.toFixed(2)}. Please select another payment method.`, 'success');
+                updateCartTotalAfterGiftCard(remaining);
+            }
+        } else {
+            showCheckoutStatus(`Error: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error applying gift card:', error);
+        showCheckoutStatus(`Error: ${error.message}`, 'error');
+    }
+};
+
+async function completeCheckoutWithGiftCard(amountPaid) {
+    showCheckoutLoading(true);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const soldItems = [];
+    const consignorPayments = {};
+    
+    try {
+        for (const item of checkoutCart) {
+            if (item.type === 'accessory') {
+                try {
+                    const getResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
+                        credentials: 'include'
+                    });
+                    const getData = await getResponse.json();
+                    const accessory = getData.accessory;
+                    const newCount = accessory.count - 1;
+                    
+                    await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ count: newCount })
+                    });
+                    
+                    successCount++;
+                    soldItems.push({ ...item, description: accessory.description, store_price: accessory.store_price });
+                } catch (error) {
+                    errorCount++;
+                    throw error;
+                }
+            } else if (item.type === 'custom') {
+                successCount++;
+                soldItems.push(item);
+            } else {
+                try {
+                    await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ status_id: 3 })
+                    });
+                    
+                    successCount++;
+                    soldItems.push(item);
+                    
+                    if (item.consignor_id && item.consignor_id !== 1) {
+                        const commissionRate = parseFloat(item.commission_rate);
+                        const consignorShare = item.store_price * (1 - (commissionRate / 100));
+                        consignorPayments[item.consignor_id] = (consignorPayments[item.consignor_id] || 0) + consignorShare;
+                    }
+                } catch (error) {
+                    errorCount++;
+                    throw error;
+                }
+            }
+        }
+        
+        if (successCount > 0) {
+            let cashierName = 'Admin';
+            try {
+                const userData = localStorage.getItem('user');
+                if (userData) {
+                    const user = JSON.parse(userData);
+                    cashierName = user.username || 'Admin';
+                }
+            } catch (e) {}
+            
+            const subtotal = checkoutCart.reduce((sum, item) => sum + (parseFloat(item.store_price) || 0), 0);
+            const taxRate = await validateTaxRate();
+            const discount = currentDiscount.value || 0;
+            const discountedSubtotal = subtotal - discount;
+            const tax = discountedSubtotal * taxRate;
+            const total = discountedSubtotal + tax;
+            
+            const transaction = {
+                id: `GIFT-${Date.now()}`,
+                date: new Date().toISOString(),
+                items: soldItems,
+                subtotal: discountedSubtotal,
+                discount: discount,
+                discountType: currentDiscount.type,
+                discountAmount: currentDiscount.amount,
+                tax: tax,
+                taxRate: taxRate * 100,
+                total: total,
+                giftCardPaid: amountPaid,
+                paymentMethod: 'Gift Card',
+                cashier: cashierName,
+                storeName: await getConfigValue('STORE_NAME'),
+                storeAddress: await getConfigValue('STORE_ADDRESS'),
+                storePhone: await getConfigValue('STORE_PHONE'),
+                footer: await getConfigValue('RECEIPT_FOOTER'),
+                consignorPayments: consignorPayments
+            };
+            
+            if (typeof window.saveReceipt === 'function') {
+                await window.saveReceipt(transaction);
+            }
+            
+            const receiptText = await formatReceiptForPrinter(transaction);
+            await window.printToThermalPrinter(receiptText);
+            
+            checkoutCart = [];
+            currentDiscount = { amount: 0, type: 'percentage', value: 0 };
+            const discountAmount = document.getElementById('discount-amount');
+            const discountType = document.getElementById('discount-type');
+            if (discountAmount) discountAmount.value = '';
+            if (discountType) discountType.value = 'percentage';
+            updateCartDisplay();
+            searchRecordsAndAccessories();
+            
+            showCheckoutStatus(`Successfully sold ${successCount} items with Gift Card`, 'success');
+        }
+    } catch (error) {
+        showCheckoutStatus(`Payment failed: ${error.message}`, 'error');
+    } finally {
+        showCheckoutLoading(false);
+    }
+}
+
+function updateCartTotalAfterGiftCard(remainingAmount) {
+    const totalEl = document.getElementById('cart-total');
+    if (totalEl) totalEl.textContent = `$${remainingAmount.toFixed(2)}`;
+    currentCartTotal = remainingAmount;
+}
+
+// ============================================================================
 // Event Listeners
 // ============================================================================
 
@@ -2268,4 +2600,4 @@ document.addEventListener('keypress', function(e) {
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
-console.log('✅ checkout.js loaded with VCP-8370 printer support, manual completion button, and strict validation');
+console.log('✅ checkout.js loaded with VCP-8370 printer support, manual completion button, and gift card support');
