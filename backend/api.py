@@ -7215,6 +7215,117 @@ def get_feedback_stats():
             'error': str(e)
         }), 500
 
+# ==================== GIFT CARDS ENDPOINTS ====================
+
+@app.route('/api/gift-cards', methods=['POST'])
+def create_gift_card():
+    """Create a new gift card"""
+    try:
+        data = request.json
+        amount = float(data.get('amount', 0))
+        
+        if amount <= 0:
+            return jsonify({'success': False, 'error': 'Amount must be greater than 0'}), 400
+        
+        # Generate simple code: GC_ + 6 random alphanumeric chars (excluding similar looking chars)
+        import random
+        import string
+        chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        code = 'GC_' + ''.join(random.choices(chars, k=6))
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO gift_cards (id, balance) VALUES (?, ?)', (code, amount))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'card': {
+                'id': code,
+                'balance': amount,
+                'created_at': datetime.now().isoformat()
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error creating gift card: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/gift-cards/<card_id>', methods=['GET'])
+def get_gift_card(card_id):
+    """Get gift card balance"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, balance, created_at FROM gift_cards WHERE id = ?', (card_id,))
+        card = cursor.fetchone()
+        conn.close()
+        
+        if not card:
+            return jsonify({'success': False, 'error': 'Gift card not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'card': {
+                'id': card['id'],
+                'balance': card['balance'],
+                'created_at': card['created_at']
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting gift card: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/gift-cards/<card_id>/redeem', methods=['POST'])
+def redeem_gift_card(card_id):
+    """Redeem amount from gift card"""
+    try:
+        data = request.json
+        amount = float(data.get('amount', 0))
+        
+        if amount <= 0:
+            return jsonify({'success': False, 'error': 'Amount must be greater than 0'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT balance FROM gift_cards WHERE id = ?', (card_id,))
+        card = cursor.fetchone()
+        
+        if not card:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Gift card not found'}), 404
+        
+        if card['balance'] < amount:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Insufficient balance'}), 400
+        
+        new_balance = card['balance'] - amount
+        cursor.execute('UPDATE gift_cards SET balance = ? WHERE id = ?', (new_balance, card_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'new_balance': new_balance,
+            'redeemed_amount': amount
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error redeeming gift card: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== GIFT CARDS ENDPOINTS ====================
+
+
+ 
+ 
+
 # ==================== MAIN ====================
 
 if __name__ == '__main__':
