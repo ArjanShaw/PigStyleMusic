@@ -1890,6 +1890,19 @@
             flex-wrap: wrap;
             margin-top: 10px;
         }
+
+        /* Sticky Notes Styles */
+        .sticky-note-preview {
+            background: #ffeb3b;
+            padding: 15px;
+            border-radius: 0 10px 10px 0;
+            font-family: 'Comic Sans MS', cursive;
+            font-weight: bold;
+            max-width: 250px;
+            box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+            font-size: 14px;
+            word-wrap: break-word;
+        }
     </style>
 </head>
 <body>
@@ -1950,6 +1963,9 @@
             </div>
             <div class="tab" data-tab="square-payments">
                 <i class="fas fa-credit-card"></i> Square Payments
+            </div>
+            <div class="tab" data-tab="sticky-notes">
+                <i class="fas fa-sticky-note"></i> Sticky Notes
             </div>
         </div>
         
@@ -2023,180 +2039,180 @@
                 </div>
             </div>
         </div>
+        
         <!-- Check Out Tab -->
-<div id="check-out-tab" class="tab-content">
-    <h2><i class="fas fa-shopping-cart"></i> Check Out</h2>
-    
-    <div class="terminal-management">
-        <div class="terminal-header">
-            <h3><i class="fas fa-square"></i> Square Terminal Status</h3>
-            <button class="btn btn-secondary" onclick="refreshTerminals()">
-                <i class="fas fa-sync-alt"></i> Refresh Terminals
-            </button>
-        </div>
-        <div id="terminal-list" class="terminal-list">
-            <div style="text-align: center; padding: 20px; color: #666;">
-                <i class="fas fa-square" style="font-size: 24px; margin-bottom: 10px; color: #ccc;"></i>
-                <p>Click refresh to load available terminals</p>
+        <div id="check-out-tab" class="tab-content">
+            <h2><i class="fas fa-shopping-cart"></i> Check Out</h2>
+            
+            <div class="terminal-management">
+                <div class="terminal-header">
+                    <h3><i class="fas fa-square"></i> Square Terminal Status</h3>
+                    <button class="btn btn-secondary" onclick="refreshTerminals()">
+                        <i class="fas fa-sync-alt"></i> Refresh Terminals
+                    </button>
+                </div>
+                <div id="terminal-list" class="terminal-list">
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        <i class="fas fa-square" style="font-size: 24px; margin-bottom: 10px; color: #ccc;"></i>
+                        <p>Click refresh to load available terminals</p>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-    
-    <!-- Custom Item Section -->
-    <div class="custom-item-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
-        <h3 style="margin-bottom: 15px;"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
-        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
-            <div style="flex: 2; min-width: 200px;">
-                <label for="custom-note" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Description/Note</label>
-                <input type="text" 
-                       id="custom-note" 
-                       class="search-input" 
-                       placeholder="e.g., Gift card, Service, Donation..."
-                       style="width: 100%; background: rgba(255,255,255,0.9);">
-            </div>
-            <div style="flex: 1; min-width: 150px;">
-                <label for="custom-price" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Price ($)</label>
-                <input type="number" 
-                       id="custom-price" 
-                       class="search-input" 
-                       placeholder="0.00" 
-                       min="0" 
-                       step="0.01"
-                       style="width: 100%; background: rgba(255,255,255,0.9);">
-            </div>
-            <div style="flex: 0 0 auto;">
-                <button class="btn btn-success" onclick="addCustomItemToCart()" style="height: 42px; padding: 0 25px; background: #ffd700; color: #333; border: none;">
-                    <i class="fas fa-cart-plus"></i> Add to Cart
-                </button>
-            </div>
-        </div>
-        <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
-            <i class="fas fa-info-circle"></i> Add custom items like gift cards, services, or miscellaneous merchandise
-        </p>
-    </div>
-    
-    <div class="search-container">
-        <div class="search-box">
-            <input type="text" id="search-query" class="search-input" 
-                   placeholder="Search by barcode, title, artist, catalog number, or accessory description..." 
-                   onkeypress="if(event.key === 'Enter') searchRecordsAndAccessories()">
-            <button class="btn btn-primary" onclick="searchRecordsAndAccessories()">
-                <i class="fas fa-search"></i> Search
-            </button>
-        </div>
-        
-        <div class="search-filters">
-            <label class="search-filter-checkbox">
-                <input type="checkbox" id="filter-active" checked> 
-                <i class="fas fa-check-circle" style="color: #28a745;"></i> Active Only
-            </label>
-            <label class="search-filter-checkbox">
-                <input type="checkbox" id="filter-barcode"> 
-                <i class="fas fa-barcode"></i> Search Barcode Only
-            </label>
-            <span style="color: #666; margin-left: auto; display: flex; align-items: center;">
-                <i class="fas fa-info-circle"></i> 
-                <span style="margin-left: 5px;">Found <span id="search-result-count">0</span> results</span>
-            </span>
-        </div>
-    </div>
-    
-    <div id="checkout-status-message" class="status-message"></div>
-    
-    <div id="search-results-container">
-        <div class="results-count" id="results-count-header">
-            Showing <span id="displayed-results">0</span> items
-        </div>
-        <div id="search-results" class="search-results">
-            <div style="text-align: center; padding: 40px; color: #666;">
-                <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
-                <p>Enter a search term to find records or accessories</p>
-            </div>
-        </div>
-    </div>
-    
-    <div id="shopping-cart-section" class="cart-section" style="display: none;">
-        <div class="cart-header">
-            <h3><i class="fas fa-shopping-cart"></i> Shopping Cart</h3>
-            <span id="cart-item-count" class="badge" style="background: #3498db; color: white; padding: 5px 10px; border-radius: 20px;">0 items</span>
-        </div>
-        
-        <div id="cart-items" class="cart-items"></div>
-        
-        <!-- Discount Field -->
-        <div class="discount-section" style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 4px;">
-            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                <div style="flex: 1;">
-                    <label for="discount-amount" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">
-                        <i class="fas fa-tag"></i> Discount
-                    </label>
-                    <div style="display: flex; gap: 10px;">
+            
+            <!-- Custom Item Section -->
+            <div class="custom-item-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                <h3 style="margin-bottom: 15px;"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                    <div style="flex: 2; min-width: 200px;">
+                        <label for="custom-note" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Description/Note</label>
+                        <input type="text" 
+                               id="custom-note" 
+                               class="search-input" 
+                               placeholder="e.g., Gift card, Service, Donation..."
+                               style="width: 100%; background: rgba(255,255,255,0.9);">
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label for="custom-price" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Price ($)</label>
                         <input type="number" 
-                               id="discount-amount" 
-                               class="discount-input" 
+                               id="custom-price" 
+                               class="search-input" 
                                placeholder="0.00" 
                                min="0" 
                                step="0.01"
-                               style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
-                               oninput="updateCartWithDiscount()">
-                        <select id="discount-type" 
-                                class="discount-type-select"
-                                style="width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
-                                onchange="updateCartWithDiscount()">
-                            <option value="fixed">$ Fixed</option>
-                            <option value="percentage" selected>% Off</option>
-                        </select>
+                               style="width: 100%; background: rgba(255,255,255,0.9);">
+                    </div>
+                    <div style="flex: 0 0 auto;">
+                        <button class="btn btn-success" onclick="addCustomItemToCart()" style="height: 42px; padding: 0 25px; background: #ffd700; color: #333; border: none;">
+                            <i class="fas fa-cart-plus"></i> Add to Cart
+                        </button>
                     </div>
                 </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 12px; color: #666;">Discount Applied</div>
-                    <div id="discount-display" style="font-weight: bold; color: #27ae60;">$0.00</div>
+                <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
+                    <i class="fas fa-info-circle"></i> Add custom items like gift cards, services, or miscellaneous merchandise
+                </p>
+            </div>
+            
+            <div class="search-container">
+                <div class="search-box">
+                    <input type="text" id="search-query" class="search-input" 
+                           placeholder="Search by barcode, title, artist, catalog number, or accessory description..." 
+                           onkeypress="if(event.key === 'Enter') searchRecordsAndAccessories()">
+                    <button class="btn btn-primary" onclick="searchRecordsAndAccessories()">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                </div>
+                
+                <div class="search-filters">
+                    <label class="search-filter-checkbox">
+                        <input type="checkbox" id="filter-active" checked> 
+                        <i class="fas fa-check-circle" style="color: #28a745;"></i> Active Only
+                    </label>
+                    <label class="search-filter-checkbox">
+                        <input type="checkbox" id="filter-barcode"> 
+                        <i class="fas fa-barcode"></i> Search Barcode Only
+                    </label>
+                    <span style="color: #666; margin-left: auto; display: flex; align-items: center;">
+                        <i class="fas fa-info-circle"></i> 
+                        <span style="margin-left: 5px;">Found <span id="search-result-count">0</span> results</span>
+                    </span>
                 </div>
             </div>
-            <div id="discount-error" style="color: #dc3545; font-size: 12px; margin-top: 5px; display: none;"></div>
+            
+            <div id="checkout-status-message" class="status-message"></div>
+            
+            <div id="search-results-container">
+                <div class="results-count" id="results-count-header">
+                    Showing <span id="displayed-results">0</span> items
+                </div>
+                <div id="search-results" class="search-results">
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
+                        <p>Enter a search term to find records or accessories</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="shopping-cart-section" class="cart-section" style="display: none;">
+                <div class="cart-header">
+                    <h3><i class="fas fa-shopping-cart"></i> Shopping Cart</h3>
+                    <span id="cart-item-count" class="badge" style="background: #3498db; color: white; padding: 5px 10px; border-radius: 20px;">0 items</span>
+                </div>
+                
+                <div id="cart-items" class="cart-items"></div>
+                
+                <!-- Discount Field -->
+                <div class="discount-section" style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <div style="flex: 1;">
+                            <label for="discount-amount" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">
+                                <i class="fas fa-tag"></i> Discount
+                            </label>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="number" 
+                                       id="discount-amount" 
+                                       class="discount-input" 
+                                       placeholder="0.00" 
+                                       min="0" 
+                                       step="0.01"
+                                       style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
+                                       oninput="updateCartWithDiscount()">
+                                <select id="discount-type" 
+                                        class="discount-type-select"
+                                        style="width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                        onchange="updateCartWithDiscount()">
+                                    <option value="fixed">$ Fixed</option>
+                                    <option value="percentage" selected>% Off</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 12px; color: #666;">Discount Applied</div>
+                            <div id="discount-display" style="font-weight: bold; color: #27ae60;">$0.00</div>
+                        </div>
+                    </div>
+                    <div id="discount-error" style="color: #dc3545; font-size: 12px; margin-top: 5px; display: none;"></div>
+                </div>
+                
+                <div class="cart-summary">
+                    <div class="summary-row">
+                        <span>Subtotal:</span>
+                        <span id="cart-subtotal">$0.00</span>
+                    </div>
+                    <div class="summary-row" id="discount-row" style="display: none;">
+                        <span>Discount:</span>
+                        <span id="cart-discount" style="color: #27ae60;">-$0.00</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Tax (<span id="tax-rate-display">0</span>%):</span>
+                        <span id="cart-tax">$0.00</span>
+                    </div>
+                    <div class="summary-row total">
+                        <span>Total:</span>
+                        <span id="cart-total">$0.00</span>
+                    </div>
+                </div>
+                
+                <div class="cart-actions">
+                    <button class="btn btn-secondary" onclick="clearCart()">
+                        <i class="fas fa-times"></i> Clear Cart
+                    </button>
+                    <button class="btn btn-cash" onclick="showTenderModal()" id="checkout-cash-btn">
+                        <i class="fas fa-money-bill-wave"></i> Cash
+                    </button>
+                    <button class="btn btn-giftcard" onclick="showGiftCardModal()" id="checkout-giftcard-btn" style="background: #ff6b6b; color: white;">
+                        <i class="fas fa-gift"></i> Gift Card
+                    </button>
+                    <button class="btn btn-square" onclick="processSquarePayment()" id="checkout-square-btn">
+                        <i class="fas fa-square"></i> Square
+                    </button>
+                </div>
+            </div>
+            
+            <div class="loading" id="checkout-loading">
+                <div class="loading-spinner"></div>
+                <p>Searching...</p>
+            </div>
         </div>
-        
-        <div class="cart-summary">
-            <div class="summary-row">
-                <span>Subtotal:</span>
-                <span id="cart-subtotal">$0.00</span>
-            </div>
-            <div class="summary-row" id="discount-row" style="display: none;">
-                <span>Discount:</span>
-                <span id="cart-discount" style="color: #27ae60;">-$0.00</span>
-            </div>
-            <div class="summary-row">
-                <span>Tax (<span id="tax-rate-display">0</span>%):</span>
-                <span id="cart-tax">$0.00</span>
-            </div>
-            <div class="summary-row total">
-                <span>Total:</span>
-                <span id="cart-total">$0.00</span>
-            </div>
-        </div>
-        
-        <div class="cart-actions">
-            <button class="btn btn-secondary" onclick="clearCart()">
-                <i class="fas fa-times"></i> Clear Cart
-            </button>
-            <button class="btn btn-cash" onclick="showTenderModal()" id="checkout-cash-btn">
-                <i class="fas fa-money-bill-wave"></i> Cash
-            </button>
-            <button class="btn btn-giftcard" onclick="showGiftCardModal()" id="checkout-giftcard-btn" style="background: #ff6b6b; color: white;">
-                <i class="fas fa-gift"></i> Gift Card
-            </button>
-            <button class="btn btn-square" onclick="processSquarePayment()" id="checkout-square-btn">
-                <i class="fas fa-square"></i> Square
-            </button>
-        </div>
-    </div>
-    
-    <div class="loading" id="checkout-loading">
-        <div class="loading-spinner"></div>
-        <p>Searching...</p>
-    </div>
-</div>
-        
         
         <!-- Receipts Tab -->
         <div id="receipts-tab" class="tab-content">
@@ -3632,6 +3648,114 @@
             <!-- Error Message -->
             <div id="square-payments-error" class="status-message status-error" style="display: none;"></div>
         </div>
+
+        <!-- Sticky Notes Tab -->
+        <div id="sticky-notes-tab" class="tab-content">
+            <h2><i class="fas fa-sticky-note"></i> Sticky Notes Management</h2>
+            
+            <div style="margin-bottom: 20px;">
+                <button class="btn btn-primary" onclick="showAddStickyNoteModal()">
+                    <i class="fas fa-plus"></i> Add New Sticky Note
+                </button>
+                <button class="btn btn-secondary" onclick="loadStickyNotes()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            
+            <div class="records-table-container">
+                <table class="records-table" id="sticky-notes-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Note Text</th>
+                            <th>Position</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Updated</th>
+                            <th>Actions</th>
+                        </thead>
+                        <tbody id="sticky-notes-body">
+                            <td colspan="7" style="text-align:center; padding:40px;">
+                                <i class="fas fa-sticky-note" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
+                                Loading sticky notes...
+                            </td>
+                        </tbody>
+                 </table>
+            </div>
+            
+            <div class="loading" id="sticky-notes-loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Sticky Note Modal -->
+    <div id="sticky-note-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="sticky-modal-title">
+                    <i class="fas fa-sticky-note"></i> Add Sticky Note
+                </h3>
+                <button class="modal-close" onclick="closeStickyNoteModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sticky-note-id">
+                
+                <div style="margin-bottom: 20px;">
+                    <label for="sticky-note-text" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                        <i class="fas fa-font"></i> Note Text:
+                    </label>
+                    <textarea id="sticky-note-text" 
+                              class="search-input" 
+                              rows="4" 
+                              placeholder="Enter your message here..."
+                              style="width: 100%; resize: vertical; font-size: 14px;"></textarea>
+                    <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                        <i class="fas fa-info-circle"></i> Maximum 200 characters. Use clear, concise messaging.
+                    </p>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label for="sticky-note-position" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                        <i class="fas fa-sort-numeric-down"></i> Display Order:
+                    </label>
+                    <input type="number" 
+                           id="sticky-note-position" 
+                           class="search-input" 
+                           min="1" 
+                           max="999" 
+                           style="width: 100px;"
+                           placeholder="1">
+                    <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                        <i class="fas fa-info-circle"></i> Lower numbers appear first (top-left). Leave blank for end of list.
+                    </p>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="sticky-note-active" checked>
+                        <span><i class="fas fa-eye"></i> Active (visible on website)</span>
+                    </label>
+                    <p style="font-size: 12px; color: #666; margin-top: 5px; margin-left: 25px;">
+                        Inactive notes will not appear on the front page but remain in the database.
+                    </p>
+                </div>
+                
+                <div id="sticky-note-preview" style="background: #fff9e6; padding: 20px; border-radius: 8px; margin-top: 20px; border: 1px solid #ffeb3b;">
+                    <h4 style="margin-bottom: 10px;"><i class="fas fa-eye"></i> Preview:</h4>
+                    <div class="sticky-note-preview">
+                        <span id="preview-text">Your note will appear here</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeStickyNoteModal()">Cancel</button>
+                <button class="btn btn-success" onclick="saveStickyNote()" id="save-sticky-note-btn">
+                    <i class="fas fa-save"></i> Save
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Modals -->
@@ -4358,6 +4482,277 @@
             </div>
         </div>
     </div>
+
+    <!-- Sticky Notes JavaScript -->
+    <script>
+    // ==================== STICKY NOTES MANAGEMENT ====================
+
+    let currentStickyNotes = [];
+
+    async function loadStickyNotes() {
+        const tbody = document.getElementById('sticky-notes-body');
+        const loading = document.getElementById('sticky-notes-loading');
+        
+        if (loading) loading.style.display = 'block';
+        
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/admin/sticky-notes`, {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error('Please log in as admin to manage sticky notes');
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                currentStickyNotes = data.notes || [];
+                renderStickyNotesTable(currentStickyNotes);
+            } else {
+                throw new Error(data.error || 'Failed to load sticky notes');
+            }
+            
+        } catch (error) {
+            console.error('Error loading sticky notes:', error);
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align:center; padding:40px; color: #dc3545;">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px; display: block;"></i>
+                            Error loading sticky notes: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        } finally {
+            if (loading) loading.style.display = 'none';
+        }
+    }
+
+    function renderStickyNotesTable(notes) {
+        const tbody = document.getElementById('sticky-notes-body');
+        
+        if (!tbody) return;
+        
+        if (!notes || notes.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align:center; padding:40px;">
+                        <i class="fas fa-sticky-note" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>
+                        No sticky notes found. Click "Add New Sticky Note" to get started.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        notes.sort((a, b) => (a.position || 999) - (b.position || 999));
+        
+        tbody.innerHTML = notes.map(note => `
+            <tr style="${!note.is_active ? 'opacity: 0.6;' : ''}">
+                <td>${note.id}</td>
+                <td style="max-width: 300px;">
+                    <div style="background: #ffeb3b; display: inline-block; padding: 8px 15px; border-radius: 0 8px 8px 0; font-family: 'Comic Sans MS', cursive; font-size: 14px; max-width: 100%; overflow: hidden; text-overflow: ellipsis;">
+                        ${escapeHtml(note.note_text)}
+                    </div>
+                </td>
+                <td>${note.position || '—'}</td>
+                <td>
+                    <span class="status-badge ${note.is_active ? 'active' : 'removed'}">
+                        ${note.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                </td>
+                <td>${formatDate(note.created_at)}</td>
+                <td>${formatDate(note.updated_at)}</td>
+                <td>
+                    <div class="table-actions">
+                        <button class="table-action-btn" onclick="editStickyNote(${note.id})" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="table-action-btn delete-btn" onclick="deleteStickyNote(${note.id})" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function showAddStickyNoteModal() {
+        document.getElementById('sticky-modal-title').innerHTML = '<i class="fas fa-sticky-note"></i> Add Sticky Note';
+        document.getElementById('sticky-note-id').value = '';
+        document.getElementById('sticky-note-text').value = '';
+        document.getElementById('sticky-note-position').value = '';
+        document.getElementById('sticky-note-active').checked = true;
+        document.getElementById('preview-text').textContent = 'Your note will appear here';
+        document.getElementById('sticky-note-modal').style.display = 'flex';
+    }
+
+    function editStickyNote(id) {
+        const note = currentStickyNotes.find(n => n.id === id);
+        if (!note) return;
+        
+        document.getElementById('sticky-modal-title').innerHTML = '<i class="fas fa-sticky-note"></i> Edit Sticky Note';
+        document.getElementById('sticky-note-id').value = note.id;
+        document.getElementById('sticky-note-text').value = note.note_text;
+        document.getElementById('sticky-note-position').value = note.position || '';
+        document.getElementById('sticky-note-active').checked = note.is_active === 1;
+        updatePreview();
+        document.getElementById('sticky-note-modal').style.display = 'flex';
+    }
+
+    function closeStickyNoteModal() {
+        document.getElementById('sticky-note-modal').style.display = 'none';
+    }
+
+    function updatePreview() {
+        const text = document.getElementById('sticky-note-text').value;
+        const previewSpan = document.getElementById('preview-text');
+        if (previewSpan) {
+            previewSpan.textContent = text.trim() || 'Your note will appear here';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const textArea = document.getElementById('sticky-note-text');
+        if (textArea) {
+            textArea.addEventListener('input', updatePreview);
+        }
+    });
+
+    async function saveStickyNote() {
+        const id = document.getElementById('sticky-note-id').value;
+        const noteText = document.getElementById('sticky-note-text').value.trim();
+        const position = document.getElementById('sticky-note-position').value;
+        const isActive = document.getElementById('sticky-note-active').checked;
+        
+        if (!noteText) {
+            showStatus('Please enter note text', 'error');
+            return;
+        }
+        
+        if (noteText.length > 200) {
+            showStatus('Note text must be 200 characters or less', 'error');
+            return;
+        }
+        
+        const data = {
+            note_text: noteText,
+            is_active: isActive
+        };
+        
+        if (position && position !== '') {
+            data.position = parseInt(position);
+        }
+        
+        const url = id 
+            ? `${AppConfig.baseUrl}/api/admin/sticky-notes/${id}`
+            : `${AppConfig.baseUrl}/api/admin/sticky-notes`;
+        
+        const method = id ? 'PUT' : 'POST';
+        
+        try {
+            const response = await fetch(url, {
+                method: method,
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                showStatus(id ? 'Sticky note updated' : 'Sticky note created', 'success');
+                closeStickyNoteModal();
+                loadStickyNotes();
+            } else {
+                throw new Error(result.error || 'Failed to save');
+            }
+            
+        } catch (error) {
+            console.error('Error saving sticky note:', error);
+            showStatus(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async function deleteStickyNote(id) {
+        if (!confirm('Are you sure you want to delete this sticky note? This action cannot be undone.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/admin/sticky-notes/${id}`, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                showStatus('Sticky note deleted', 'success');
+                loadStickyNotes();
+            } else {
+                throw new Error(result.error || 'Failed to delete');
+            }
+            
+        } catch (error) {
+            console.error('Error deleting sticky note:', error);
+            showStatus(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '—';
+        try {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch {
+            return dateStr;
+        }
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Load sticky notes when tab is shown
+    document.addEventListener('DOMContentLoaded', function() {
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabId = this.getAttribute('data-tab');
+                if (tabId === 'sticky-notes') {
+                    setTimeout(loadStickyNotes, 100);
+                }
+            });
+        });
+    });
+    </script>
 
 </body>
 </html>

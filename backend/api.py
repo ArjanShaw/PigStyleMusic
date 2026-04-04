@@ -7323,7 +7323,263 @@ def redeem_gift_card(card_id):
 # ==================== GIFT CARDS ENDPOINTS ====================
 
 
- 
+ # ==================== STICKY NOTES MANAGEMENT ENDPOINTS ====================
+
+@app.route('/api/admin/sticky-notes', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def admin_get_sticky_notes():
+    """Get all sticky notes (including inactive) for admin management"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT id, note_text, position, is_active, created_at, updated_at
+            FROM sticky_notes 
+            ORDER BY position ASC, created_at DESC
+        ''')
+        
+        notes = cursor.fetchall()
+        
+        return jsonify({
+            'status': 'success',
+            'notes': [dict(note) for note in notes]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting admin sticky notes: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/sticky-notes', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_sticky_note():
+    """Create a new sticky note"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'note_text' not in data:
+            return jsonify({
+                'status': 'error',
+                'error': 'note_text is required'
+            }), 400
+        
+        note_text = data['note_text'].strip()
+        if not note_text:
+            return jsonify({
+                'status': 'error',
+                'error': 'Note text cannot be empty'
+            }), 400
+        
+        position = data.get('position', 999)  # Default to end
+        is_active = data.get('is_active', True)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # If position is specified, shift other notes
+        if position != 999:
+            cursor.execute('''
+                UPDATE sticky_notes 
+                SET position = position + 1 
+                WHERE position >= ? AND is_active = 1
+            ''', (position,))
+        
+        cursor.execute('''
+            INSERT INTO sticky_notes (note_text, position, is_active)
+            VALUES (?, ?, ?)
+        ''', (note_text, position, 1 if is_active else 0))
+        
+        note_id = cursor.lastrowid
+        conn.commit()
+        
+        # Get the created note
+        cursor.execute('''
+            SELECT id, note_text, position, is_active, created_at, updated_at
+            FROM sticky_notes WHERE id = ?
+        ''', (note_id,))
+        
+        new_note = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Sticky note created successfully',
+            'note': dict(new_note)
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error creating sticky note: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/admin/sticky-notes/<int:note_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_sticky_note(note_id):
+    """Update a sticky note"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'status': 'error',
+                'error': 'No data provided'
+            }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if note exists
+        cursor.execute('SELECT id FROM sticky_notes WHERE id = ?', (note_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Sticky note not found'
+            }), 404
+        
+        update_fields = []
+        update_values = []
+        
+        if 'note_text' in data:
+            update_fields.append('note_text = ?')
+            update_values.append(data['note_text'].strip())
+        
+        if 'position' in data:
+            update_fields.append('position = ?')
+            update_values.append(data['position'])
+        
+        if 'is_active' in data:
+            update_fields.append('is_active = ?')
+            update_values.append(1 if data['is_active'] else 0)
+        
+        if not update_fields:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'No valid fields to update'
+            }), 400
+        
+        update_fields.append('updated_at = CURRENT_TIMESTAMP')
+        update_values.append(note_id)
+        
+        cursor.execute(f'''
+            UPDATE sticky_notes 
+            SET {', '.join(update_fields)}
+            WHERE id = ?
+        ''', update_values)
+        
+        conn.commit()
+        
+        # Get updated note
+        cursor.execute('''
+            SELECT id, note_text, position, is_active, created_at, updated_at
+            FROM sticky_notes WHERE id = ?
+        ''', (note_id,))
+        
+        updated_note = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Sticky note updated successfully',
+            'note': dict(updated_note)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error updating sticky note: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/admin/sticky-notes/<int:note_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_sticky_note(note_id):
+    """Delete a sticky note (hard delete)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if note exists
+        cursor.execute('SELECT id FROM sticky_notes WHERE id = ?', (note_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'Sticky note not found'
+            }), 404
+        
+        cursor.execute('DELETE FROM sticky_notes WHERE id = ?', (note_id,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Sticky note deleted successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting sticky note: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/admin/sticky-notes/reorder', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def reorder_sticky_notes():
+    """Reorder sticky notes by updating their positions"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'notes' not in data:
+            return jsonify({
+                'status': 'error',
+                'error': 'notes array required'
+            }), 400
+        
+        notes = data['notes']  # Array of {id, position}
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        for note in notes:
+            cursor.execute('''
+                UPDATE sticky_notes 
+                SET position = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (note['position'], note['id']))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Reordered {len(notes)} sticky notes'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error reordering sticky notes: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
  
 
 # ==================== MAIN ====================
