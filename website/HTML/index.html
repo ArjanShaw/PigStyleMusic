@@ -201,6 +201,14 @@
                 }
             });
 
+            // Function to update commission display
+            function updateCommissionDisplay(rate) {
+                const sellLineItem = document.getElementById('sell-records-line');
+                if (sellLineItem) {
+                    sellLineItem.innerHTML = `Paying cash for vinyl records`;
+                }
+            }
+
             // Fetch and display commission rate
             async function fetchCommissionRate() {
                 try {
@@ -229,41 +237,16 @@
                     const data = await response.json();
                     
                     if (data && data.commission_rate_percent) {
-                        const sellLineItem = document.getElementById('sell-records-line');
-                        if (sellLineItem) {
-                            sellLineItem.innerHTML = `Sell your records for cash or on <a href="consignment.html">consignment</a> - Current rate: <strong>${data.commission_rate_percent}</strong>`;
-                        }
+                        updateCommissionDisplay(data.commission_rate_percent);
                     } else {
                         throw new Error('Invalid response format: missing commission_rate_percent');
                     }
                     
                 } catch (error) {
                     console.error('Error fetching commission rate:', error);
-                    
                     const sellLineItem = document.getElementById('sell-records-line');
                     if (sellLineItem) {
-                        sellLineItem.innerHTML = `Sell your records for cash or on <a href="consignment.html">consignment</a> - Rate info currently unavailable`;
-                    }
-                    
-                    try {
-                        const isLocalhost = window.location.hostname === 'localhost' || 
-                                        window.location.hostname === '127.0.0.1';
-                        const fallbackUrl = isLocalhost 
-                            ? 'http://localhost:5000/api/commission-rate'
-                            : `https://${window.location.hostname}/api/commission-rate`;
-                        
-                        const fallbackResponse = await fetch(fallbackUrl);
-                        if (fallbackResponse.ok) {
-                            const fallbackData = await fallbackResponse.json();
-                            if (fallbackData.commission_rate_percent) {
-                                const sellLineItem = document.getElementById('sell-records-line');
-                                if (sellLineItem) {
-                                    sellLineItem.innerHTML = `Sell your records for cash or on <a href="consignment.html">consignment</a> - Current rate: <strong>${fallbackData.commission_rate_percent}</strong>`;
-                                }
-                            }
-                        }
-                    } catch (fallbackError) {
-                        console.error('Fallback also failed:', fallbackError);
+                        sellLineItem.innerHTML = `Sell your records for cash - Rate info currently unavailable`;
                     }
                 }
             }
@@ -377,17 +360,11 @@
                     </div>
                 </li>
                 <li>
-                    Now supporting online shopping with secure checkout through Square! <a href="/shop">Browse here</a>
-                </li>
-                <li>
-                    Find your next favorite album on my <a href="streaming.html">vinyl streaming station</a>
-                </li>
-                <li>
                     Now offering <a href="https://app.squareup.com/gift/MLV1G6XV2N93F/order" target="_blank" style="color: #ff6b6b; font-weight: bold;"> gift cards!</a>
                 </li>
                 <li id="sell-records-line">
-                    Sell your records for cash 
-                                </li>
+                    Sell your records for cash
+                </li>
             </ul>
         </div>
 
