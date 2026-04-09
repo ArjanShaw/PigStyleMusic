@@ -722,32 +722,7 @@ window.searchRecordsAndAccessories = async function() {
             throw new Error(recordsData.error || 'Records search failed');
         }
         
-        const accessoriesUrl = `${AppConfig.baseUrl}/accessories`;
-        const accessoriesResponse = await fetch(accessoriesUrl, { credentials: 'include' });
-        
-        if (!accessoriesResponse.ok) {
-            throw new Error(`Accessories fetch failed: ${accessoriesResponse.status}`);
-        }
-        const accessoriesData = await accessoriesResponse.json();
-        
-        if (accessoriesData.status !== 'success') {
-            throw new Error(accessoriesData.error || 'Accessories fetch failed');
-        }
-        
         let records = recordsData.records || [];
-        let accessories = [];
-        
-        const allAcc = accessoriesData.accessories || [];
-        const queryLower = query.toLowerCase();
-        accessories = allAcc.filter(acc => {
-            if (acc.bar_code && acc.bar_code.toLowerCase().includes(queryLower)) {
-                return true;
-            }
-            if (acc.description && acc.description.toLowerCase().includes(queryLower)) {
-                return true;
-            }
-            return false;
-        });
         
         if (activeOnly) {
             records = records.filter(r => r.status_id === 2);
@@ -755,32 +730,14 @@ window.searchRecordsAndAccessories = async function() {
         
         if (barcodeOnly) {
             records = records.filter(r => r.barcode && r.barcode.toLowerCase().includes(query.toLowerCase()));
-            accessories = accessories.filter(acc => acc.bar_code && acc.bar_code.toLowerCase().includes(query.toLowerCase()));
         }
         
-        const transformedAccessories = accessories.map(acc => ({
-            id: `acc_${acc.id}`,
-            original_id: acc.id,
-            type: 'accessory',
-            artist: null,
-            title: null,
-            description: acc.description,
-            store_price: acc.store_price,
-            catalog_number: null,
-            genre_name: 'Accessory',
-            barcode: acc.bar_code,
-            consignor_id: null,
-            status_id: 2,
-            count: acc.count,
-            created_at: acc.created_at
-        }));
-        
-        currentSearchResults = [...records, ...transformedAccessories];
+        currentSearchResults = [...records];
         currentSearchResults.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         
         renderSearchResults(currentSearchResults);
         
-        showCheckoutStatus(`Found ${records.length} records and ${accessories.length} accessories`, 'success');
+        showCheckoutStatus(`Found ${records.length} records`, 'success');
         
         // AUTO-ADD: If single barcode result and exactly 1 result
         const isNumericQuery = /^\d+$/.test(query);
@@ -788,22 +745,10 @@ window.searchRecordsAndAccessories = async function() {
             const singleItem = currentSearchResults[0];
             
             // Check if item is already in cart
-            const alreadyInCart = checkoutCart.some(cartItem => {
-                if (singleItem.type === 'accessory') {
-                    return cartItem.type === 'accessory' && cartItem.original_id === singleItem.original_id;
-                }
-                return cartItem.id === singleItem.id;
-            });
+            const alreadyInCart = checkoutCart.some(cartItem => cartItem.id === singleItem.id);
             
             if (!alreadyInCart) {
-                if (singleItem.type === 'accessory') {
-                    if (singleItem.count > 0) {
-                        addAccessoryToCart(singleItem.original_id, singleItem.description, singleItem.store_price);
-                        showCheckoutStatus(`Auto-added: ${singleItem.description}`, 'success');
-                    } else {
-                        showCheckoutStatus(`Item "${singleItem.description}" is out of stock`, 'warning');
-                    }
-                } else if (singleItem.status_id === 2) {
+                if (singleItem.status_id === 2) {
                     addToCart(singleItem);
                     showCheckoutStatus(`Auto-added: ${singleItem.artist} - ${singleItem.title}`, 'success');
                 } else if (singleItem.status_id === 3) {
@@ -846,75 +791,37 @@ function renderSearchResults(results) {
     
     let html = '';
     results.forEach(item => {
-        const inCart = checkoutCart.some(cartItem => {
-            if (item.type === 'accessory') {
-                return cartItem.type === 'accessory' && cartItem.original_id === item.original_id;
-            } else {
-                return cartItem.id === item.id;
-            }
-        });
+        const inCart = checkoutCart.some(cartItem => cartItem.id === item.id);
         
-        if (item.type === 'accessory') {
-            const stockDisplay = item.count < 0 ? 
-                `<span class="stock-negative">(Stock: ${item.count})</span>` : 
-                `<span class="stock-positive">(Stock: ${item.count})</span>`;
-            
-            html += `
-                <div class="search-result-item" style="border-left: 4px solid #9b59b6;">
-                    <div class="result-details">
-                        <div class="result-artist">
-                            <span class="accessory-badge">ACCESSORY</span>
-                            ${escapeHtml(item.description) || 'Unknown Accessory'}
-                            <span class="stock-indicator ${item.count < 0 ? 'stock-negative' : 'stock-positive'}">${stockDisplay}</span>
-                        </div>
-                        <div class="result-meta">
-                            <span class="result-barcode"><i class="fas fa-barcode"></i> ${escapeHtml(item.barcode)}</span>
-                        </div>
+        html += `
+            <div class="search-result-item">
+                <div class="result-details">
+                    <div class="result-artist">${escapeHtml(item.artist) || 'Unknown Artist'}</div>
+                    <div class="result-title">${escapeHtml(item.title) || 'Unknown Title'}</div>
+                    <div class="result-meta">
+                        <span class="result-catalog">${escapeHtml(item.catalog_number) || 'No catalog'}</span>
+                        ${item.barcode ? `<span class="result-barcode"><i class="fas fa-barcode"></i> ${escapeHtml(item.barcode)}</span>` : ''}
+                        <span>Status: ${getStatusText(item.status_id)}</span>
                     </div>
-                    <div class="result-price">$${(item.store_price || 0).toFixed(2)}</div>
-                    <div class="result-actions">
-                        ${inCart ? 
-                            `<button class="btn btn-secondary btn-sm" onclick="removeAccessoryFromCart(${item.original_id})">
+                </div>
+                <div class="result-price">$${(item.store_price || 0).toFixed(2)}</div>
+                <div class="result-actions">
+                    ${item.status_id === 3 ? 
+                        '<span class="sold-badge"><i class="fas fa-check-circle"></i> Sold</span>' : 
+                        item.status_id === 2 ?
+                        (inCart ? 
+                            `<button class="btn btn-secondary btn-sm" onclick="removeFromCart(${item.id})">
                                 <i class="fas fa-minus"></i> Remove
                             </button>` :
-                            `<button class="btn btn-cart btn-sm" onclick="addAccessoryToCart(${item.original_id}, '${escapeHtml(item.description)}', ${item.store_price})">
+                            `<button class="btn btn-cart btn-sm" onclick="addToCartFromData(${item.id})">
                                 <i class="fas fa-cart-plus"></i> Add to Cart
                             </button>`
-                        }
-                    </div>
+                        ) :
+                        '<span class="inactive-badge">Not Active</span>'
+                    }
                 </div>
-            `;
-        } else {
-            html += `
-                <div class="search-result-item">
-                    <div class="result-details">
-                        <div class="result-artist">${escapeHtml(item.artist) || 'Unknown Artist'}</div>
-                        <div class="result-title">${escapeHtml(item.title) || 'Unknown Title'}</div>
-                        <div class="result-meta">
-                            <span class="result-catalog">${escapeHtml(item.catalog_number) || 'No catalog'}</span>
-                            ${item.barcode ? `<span class="result-barcode"><i class="fas fa-barcode"></i> ${escapeHtml(item.barcode)}</span>` : ''}
-                            <span>Status: ${getStatusText(item.status_id)}</span>
-                        </div>
-                    </div>
-                    <div class="result-price">$${(item.store_price || 0).toFixed(2)}</div>
-                    <div class="result-actions">
-                        ${item.status_id === 3 ? 
-                            '<span class="sold-badge"><i class="fas fa-check-circle"></i> Sold</span>' : 
-                            item.status_id === 2 ?
-                            (inCart ? 
-                                `<button class="btn btn-secondary btn-sm" onclick="removeFromCart(${item.id})">
-                                    <i class="fas fa-minus"></i> Remove
-                                </button>` :
-                                `<button class="btn btn-cart btn-sm" onclick="addToCartFromData(${item.id})">
-                                    <i class="fas fa-cart-plus"></i> Add to Cart
-                                </button>`
-                            ) :
-                            '<span class="inactive-badge">Not Active</span>'
-                        }
-                    </div>
-                </div>
-            `;
-        }
+            </div>
+        `;
     });
     
     container.innerHTML = html;
@@ -925,40 +832,9 @@ function renderSearchResults(results) {
 // Cart Functions
 // ============================================================================
 
-window.addAccessoryToCart = function(id, description, price) {
-    if (checkoutCart.some(item => item.type === 'accessory' && item.original_id === id)) {
-        showCheckoutStatus('Item already in cart', 'info');
-        return;
-    }
-    
-    const cartItem = {
-        id: `acc_${id}`,
-        original_id: id,
-        type: 'accessory',
-        description: description,
-        store_price: price,
-        barcode: ''
-    };
-    
-    checkoutCart.push(cartItem);
-    updateCartDisplay();
-    searchRecordsAndAccessories();
-    showCheckoutStatus(`Added "${description}" to cart`, 'success');
-};
-
-window.removeAccessoryFromCart = function(originalId) {
-    const index = checkoutCart.findIndex(item => item.type === 'accessory' && item.original_id === originalId);
-    if (index !== -1) {
-        const removed = checkoutCart.splice(index, 1)[0];
-        updateCartDisplay();
-        searchRecordsAndAccessories();
-        showCheckoutStatus(`Removed "${removed.description}" from cart`, 'info');
-    }
-};
-
 window.addToCartFromData = function(recordId) {
     const record = currentSearchResults.find(r => r.id === recordId);
-    if (record && record.type !== 'accessory') {
+    if (record) {
         addToCart(record);
     }
 };
@@ -1130,23 +1006,7 @@ async function updateCartDisplay() {
     
     let cartHtml = '';
     checkoutCart.forEach(item => {
-        if (item.type === 'accessory') {
-            cartHtml += `
-                <div class="cart-item" style="border-left: 4px solid #9b59b6;">
-                    <div class="cart-item-details">
-                        <div class="cart-item-artist">
-                            <span class="accessory-badge">ACC</span>
-                            ${escapeHtml(item.description) || 'Unknown Accessory'}
-                        </div>
-                        <div class="cart-item-meta">${escapeHtml(item.barcode) || 'No barcode'}</div>
-                    </div>
-                    <div class="cart-item-price">$${(item.store_price || 0).toFixed(2)}</div>
-                    <div class="cart-item-remove" onclick="removeAccessoryFromCart(${item.original_id})">
-                        <i class="fas fa-times"></i>
-                    </div>
-                </div>
-            `;
-        } else if (item.type === 'custom') {
+        if (item.type === 'custom') {
             let bernBadge = '';
             if (item.bern_it) {
                 bernBadge = `<div class="cart-item-meta" style="font-size: 11px; color: #e67e22;"><i class="fas fa-fire"></i> 🔥 BERN IT - Donation</div>`;
@@ -1386,11 +1246,9 @@ window.initiateCartTerminalCheckout = async function() {
     const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
     const amountCents = Math.round(total * 100);
     const recordIds = pendingCartCheckout.items.map(item => 
-        item.type === 'accessory' ? `acc_${item.original_id}` : 
         item.type === 'custom' ? `custom_${item.id}` : item.id
     );
     const recordTitles = pendingCartCheckout.items.map(item => 
-        item.type === 'accessory' ? item.description : 
         item.type === 'custom' ? item.note : item.title
     );
     
@@ -1661,56 +1519,7 @@ async function processSquarePaymentSuccess() {
     }
     
     for (const item of pendingCartCheckout.items) {
-        if (item.type === 'accessory') {
-            try {
-                const getResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
-                    credentials: 'include'
-                });
-                if (!getResponse.ok) {
-                    throw new Error(`Failed to get accessory: ${getResponse.status}`);
-                }
-                const getData = await getResponse.json();
-                
-                if (getData.status !== 'success') {
-                    throw new Error(getData.error || 'Failed to get accessory');
-                }
-                
-                const accessory = getData.accessory;
-                const newCount = accessory.count - 1;
-                
-                const updateResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                        count: newCount
-                    })
-                });
-                
-                if (!updateResponse.ok) {
-                    throw new Error(`Failed to update accessory: ${updateResponse.status}`);
-                }
-                
-                const updateData = await updateResponse.json();
-                if (updateData.status !== 'success') {
-                    throw new Error(updateData.error || 'Failed to update accessory');
-                }
-                
-                successCount++;
-                soldItems.push({
-                    ...item,
-                    description: accessory.description,
-                    store_price: accessory.store_price
-                });
-                
-            } catch (error) {
-                console.error(`Error updating accessory ${item.original_id}:`, error);
-                errorCount++;
-                throw error;
-            }
-        } else if (item.type === 'custom') {
+        if (item.type === 'custom') {
             successCount++;
             soldItems.push({
                 ...item,
@@ -2049,56 +1858,7 @@ window.processCashPayment = async function() {
     
     try {
         for (const item of checkoutCart) {
-            if (item.type === 'accessory') {
-                try {
-                    const getResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
-                        credentials: 'include'
-                    });
-                    if (!getResponse.ok) {
-                        throw new Error(`Failed to get accessory: ${getResponse.status}`);
-                    }
-                    const getData = await getResponse.json();
-                    
-                    if (getData.status !== 'success') {
-                        throw new Error(getData.error || 'Failed to get accessory');
-                    }
-                    
-                    const accessory = getData.accessory;
-                    const newCount = accessory.count - 1;
-                    
-                    const updateResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            count: newCount
-                        })
-                    });
-                    
-                    if (!updateResponse.ok) {
-                        throw new Error(`Failed to update accessory: ${updateResponse.status}`);
-                    }
-                    
-                    const updateData = await updateResponse.json();
-                    if (updateData.status !== 'success') {
-                        throw new Error(updateData.error || 'Failed to update accessory');
-                    }
-                    
-                    successCount++;
-                    soldItems.push({
-                        ...item,
-                        description: accessory.description,
-                        store_price: accessory.store_price
-                    });
-                    
-                } catch (error) {
-                    console.error(`Error updating accessory ${item.original_id}:`, error);
-                    errorCount++;
-                    throw error;
-                }
-            } else if (item.type === 'custom') {
+            if (item.type === 'custom') {
                 successCount++;
                 soldItems.push({
                     ...item,
@@ -2329,9 +2089,7 @@ async function formatReceiptForPrinter(transaction) {
     
     transaction.items.forEach(item => {
         let description = '';
-        if (item.type === 'accessory') {
-            description = item.description || 'Accessory';
-        } else if (item.type === 'custom') {
+        if (item.type === 'custom') {
             description = item.note || 'Custom Item';
             if (item.bern_it) {
                 description = '🔥 ' + description + ' (BERN IT)';
@@ -2615,29 +2373,7 @@ async function completeCheckoutWithGiftCard(amountPaid) {
     
     try {
         for (const item of checkoutCart) {
-            if (item.type === 'accessory') {
-                try {
-                    const getResponse = await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
-                        credentials: 'include'
-                    });
-                    const getData = await getResponse.json();
-                    const accessory = getData.accessory;
-                    const newCount = accessory.count - 1;
-                    
-                    await fetch(`${AppConfig.baseUrl}/accessories/${item.original_id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ count: newCount })
-                    });
-                    
-                    successCount++;
-                    soldItems.push({ ...item, description: accessory.description, store_price: accessory.store_price });
-                } catch (error) {
-                    errorCount++;
-                    throw error;
-                }
-            } else if (item.type === 'custom') {
+            if (item.type === 'custom') {
                 successCount++;
                 soldItems.push(item);
                 
@@ -2756,7 +2492,7 @@ document.addEventListener('tabChanged', function(e) {
             searchResults.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: #666;">
                     <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
-                    <p>Enter a search term to find records or accessories</p>
+                    <p>Enter a search term to find records</p>
                 </div>
             `;
         }
