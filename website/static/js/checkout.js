@@ -492,6 +492,7 @@ function centerText(text, width) {
 
 window.refreshTerminals = async function() {
     const terminalList = document.getElementById('terminal-list');
+    const terminalSection = document.querySelector('.terminal-management');
     if (!terminalList) return;
     
     terminalList.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="loading-spinner" style="width: 30px; height: 30px;"></div><p>Loading terminals...</p></div>';
@@ -516,6 +517,15 @@ window.refreshTerminals = async function() {
         if (data.status === 'success') {
             availableTerminals = data.terminals || [];
             renderTerminalList(availableTerminals);
+            
+            // Hide terminal section if exactly 1 terminal exists
+            if (terminalSection) {
+                if (availableTerminals.length === 1) {
+                    terminalSection.style.display = 'none';
+                } else {
+                    terminalSection.style.display = 'block';
+                }
+            }
         } else {
             terminalList.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">
                 <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 10px;"></i>
@@ -597,6 +607,7 @@ window.selectTerminal = function(terminalId) {
 window.addCustomItemToCart = function() {
     const note = document.getElementById('custom-note')?.value.trim();
     const price = parseFloat(document.getElementById('custom-price')?.value);
+    const bernIt = document.getElementById('custom-bern-it')?.checked || false;
     
     if (!note) {
         showCheckoutStatus('Please enter a description for the custom item', 'error');
@@ -617,16 +628,24 @@ window.addCustomItemToCart = function() {
         description: note,
         store_price: price,
         custom_note: note,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        bern_it: bernIt
     };
     
     checkoutCart.push(customItem);
     
+    // Clear form
     document.getElementById('custom-note').value = '';
     document.getElementById('custom-price').value = '';
+    document.getElementById('custom-bern-it').checked = false;
     
     updateCartDisplay();
-    showCheckoutStatus(`Added custom item: "${note.substring(0, 30)}${note.length > 30 ? '...' : ''}" - $${price.toFixed(2)}`, 'success');
+    
+    let message = `Added custom item: "${note.substring(0, 30)}${note.length > 30 ? '...' : ''}" - $${price.toFixed(2)}`;
+    if (bernIt) {
+        message += ` (🔥 BERN IT - donation)`;
+    }
+    showCheckoutStatus(message, 'success');
 };
 
 window.removeCustomItemFromCart = function(itemId) {
@@ -637,6 +656,41 @@ window.removeCustomItemFromCart = function(itemId) {
         showCheckoutStatus(`Removed custom item: "${removed.note}"`, 'info');
     }
 };
+
+// Function to update BERN fund config value
+async function updateBernFund(amount) {
+    try {
+        // Get current BERN_FUND value
+        const currentResponse = await fetch(`${AppConfig.baseUrl}/config/BERN_FUND`, {
+            credentials: 'include'
+        });
+        let currentAmount = 0;
+        
+        if (currentResponse.ok) {
+            const data = await currentResponse.json();
+            if (data.config_value) {
+                currentAmount = parseFloat(data.config_value) || 0;
+            }
+        }
+        
+        const newAmount = currentAmount + amount;
+        
+        // Update the config value
+        await fetch(`${AppConfig.baseUrl}/config/BERN_FUND`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ config_value: newAmount.toString() })
+        });
+        
+        console.log(`🔥 BERN fund updated: $${currentAmount.toFixed(2)} → $${newAmount.toFixed(2)}`);
+        
+    } catch (error) {
+        console.error('Error updating BERN fund:', error);
+    }
+}
 
 // ============================================================================
 // Search Functions
@@ -727,6 +781,41 @@ window.searchRecordsAndAccessories = async function() {
         renderSearchResults(currentSearchResults);
         
         showCheckoutStatus(`Found ${records.length} records and ${accessories.length} accessories`, 'success');
+        
+        // AUTO-ADD: If single barcode result and exactly 1 result
+        const isNumericQuery = /^\d+$/.test(query);
+        if (isNumericQuery && currentSearchResults.length === 1) {
+            const singleItem = currentSearchResults[0];
+            
+            // Check if item is already in cart
+            const alreadyInCart = checkoutCart.some(cartItem => {
+                if (singleItem.type === 'accessory') {
+                    return cartItem.type === 'accessory' && cartItem.original_id === singleItem.original_id;
+                }
+                return cartItem.id === singleItem.id;
+            });
+            
+            if (!alreadyInCart) {
+                if (singleItem.type === 'accessory') {
+                    if (singleItem.count > 0) {
+                        addAccessoryToCart(singleItem.original_id, singleItem.description, singleItem.store_price);
+                        showCheckoutStatus(`Auto-added: ${singleItem.description}`, 'success');
+                    } else {
+                        showCheckoutStatus(`Item "${singleItem.description}" is out of stock`, 'warning');
+                    }
+                } else if (singleItem.status_id === 2) {
+                    addToCart(singleItem);
+                    showCheckoutStatus(`Auto-added: ${singleItem.artist} - ${singleItem.title}`, 'success');
+                } else if (singleItem.status_id === 3) {
+                    showCheckoutStatus(`Item is already sold`, 'warning');
+                } else {
+                    showCheckoutStatus(`Item is not active`, 'warning');
+                }
+            } else {
+                showCheckoutStatus(`Item already in cart`, 'info');
+            }
+        }
+        
     } catch (error) {
         console.error('Error searching:', error);
         showCheckoutStatus(`Error searching items: ${error.message}`, 'error');
@@ -1034,7 +1123,10 @@ async function updateCartDisplay() {
     if (cartTax) cartTax.textContent = `$${tax.toFixed(2)}`;
     if (cartTotal) cartTotal.textContent = `$${total.toFixed(2)}`;
     
-    if (squareBtn) squareBtn.disabled = availableTerminals.length === 0;
+    // Disable Square button if not exactly 1 terminal
+    if (squareBtn) {
+        squareBtn.disabled = availableTerminals.length !== 1;
+    }
     
     let cartHtml = '';
     checkoutCart.forEach(item => {
@@ -1055,6 +1147,10 @@ async function updateCartDisplay() {
                 </div>
             `;
         } else if (item.type === 'custom') {
+            let bernBadge = '';
+            if (item.bern_it) {
+                bernBadge = `<div class="cart-item-meta" style="font-size: 11px; color: #e67e22;"><i class="fas fa-fire"></i> 🔥 BERN IT - Donation</div>`;
+            }
             cartHtml += `
                 <div class="cart-item" style="border-left: 4px solid #ffd700; background: linear-gradient(135deg, #fff9e6 0%, #fff 100%);">
                     <div class="cart-item-details">
@@ -1065,6 +1161,7 @@ async function updateCartDisplay() {
                         <div class="cart-item-meta">
                             <i class="fas fa-pencil-alt"></i> Manual entry
                         </div>
+                        ${bernBadge}
                     </div>
                     <div class="cart-item-price">$${(item.store_price || 0).toFixed(2)}</div>
                     <div class="cart-item-remove" onclick="removeCustomItemFromCart('${item.id}')">
@@ -1108,6 +1205,32 @@ window.processSquarePayment = function() {
         return;
     }
     
+    // If exactly 1 terminal, use it directly without modal
+    if (availableTerminals.length === 1) {
+        const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+        if (onlineTerminals.length === 0) {
+            showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
+            return;
+        }
+        
+        // Set the single terminal ID
+        let singleTerminalId = availableTerminals[0].id;
+        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
+            singleTerminalId = singleTerminalId.replace('device:', '');
+        }
+        selectedTerminalId = singleTerminalId;
+        
+        pendingCartCheckout = {
+            items: [...checkoutCart],
+            type: 'cart',
+            discount: { ...currentDiscount }
+        };
+        
+        initiateCartTerminalCheckout();
+        return;
+    }
+    
+    // More than 1 terminal - show selection modal
     const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
     if (onlineTerminals.length === 0) {
         showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
@@ -1225,7 +1348,7 @@ function startPollingCheckoutStatus(checkoutId) {
                         
                         setTimeout(async () => {
                             await processSquarePaymentSuccess();
-                            closeTerminalCheckoutModal();
+                            closeTerminalCheckoutModal(); // Auto-close on completion
                         }, 1000);
                     }
                 }
@@ -1428,7 +1551,7 @@ window.forceCompleteSquarePayment = async function() {
         square_payment_sessions[activeCheckoutId].status = 'COMPLETED';
         
         await processSquarePaymentSuccess();
-        closeTerminalCheckoutModal();
+        closeTerminalCheckoutModal(); // Auto-close on completion
         showCheckoutStatus('Sale completed successfully!', 'success');
         
     } catch (error) {
@@ -1493,6 +1616,7 @@ async function processSquarePaymentSuccess() {
     const soldItems = [];
     const consignorPayments = {};
     let squarePaymentId = null;
+    let bernTotal = 0;
     
     if (activeCheckoutId) {
         console.log('Checking for payment ID for checkout:', activeCheckoutId);
@@ -1593,6 +1717,11 @@ async function processSquarePaymentSuccess() {
                 description: item.note || 'Custom Item',
                 store_price: item.store_price
             });
+            
+            // Handle BERN IT donation
+            if (item.bern_it) {
+                bernTotal += item.store_price;
+            }
         } else {
             try {
                 
@@ -1637,6 +1766,12 @@ async function processSquarePaymentSuccess() {
                 throw error;
             }
         }
+    }
+    
+    // Update BERN fund if any donations
+    if (bernTotal > 0) {
+        await updateBernFund(bernTotal);
+        showCheckoutStatus(`🔥 Added $${bernTotal.toFixed(2)} to BERN fund!`, 'success');
     }
     
     if (Object.keys(consignorPayments).length > 0) {
@@ -1689,7 +1824,8 @@ async function processSquarePaymentSuccess() {
             storeAddress: await getConfigValue('STORE_ADDRESS'),
             storePhone: await getConfigValue('STORE_PHONE'),
             footer: await getConfigValue('RECEIPT_FOOTER'),
-            consignorPayments: consignorPayments
+            consignorPayments: consignorPayments,
+            bernDonation: bernTotal
         };
         
         if (typeof window.saveReceipt === 'function') {
@@ -1909,6 +2045,7 @@ window.processCashPayment = async function() {
     let errorCount = 0;
     const soldItems = [];
     const consignorPayments = {};
+    let bernTotal = 0;
     
     try {
         for (const item of checkoutCart) {
@@ -1968,6 +2105,11 @@ window.processCashPayment = async function() {
                     description: item.note || 'Custom Item',
                     store_price: item.store_price
                 });
+                
+                // Handle BERN IT donation
+                if (item.bern_it) {
+                    bernTotal += item.store_price;
+                }
             } else {
                 try {
                     // Validate commission rate for consignor items
@@ -2016,6 +2158,12 @@ window.processCashPayment = async function() {
             }
         }
         
+        // Update BERN fund if any donations
+        if (bernTotal > 0) {
+            await updateBernFund(bernTotal);
+            showCheckoutStatus(`🔥 Added $${bernTotal.toFixed(2)} to BERN fund!`, 'success');
+        }
+        
         if (Object.keys(consignorPayments).length > 0) {
             let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
             for (const [consignorId, amount] of Object.entries(consignorPayments)) {
@@ -2058,7 +2206,8 @@ window.processCashPayment = async function() {
                 catalog_number: item.catalog_number || null,
                 barcode: item.barcode || null,
                 consignor_id: item.consignor_id || null,
-                original_id: item.original_id || null
+                original_id: item.original_id || null,
+                bern_it: item.bern_it || false
             }));
             
             const transaction = {
@@ -2080,7 +2229,8 @@ window.processCashPayment = async function() {
                 storeAddress: await getConfigValue('STORE_ADDRESS'),
                 storePhone: await getConfigValue('STORE_PHONE'),
                 footer: await getConfigValue('RECEIPT_FOOTER'),
-                consignorPayments: consignorPayments || {}
+                consignorPayments: consignorPayments || {},
+                bernDonation: bernTotal
             };
             
             console.log('Saving receipt to database:', transaction.id);
@@ -2183,6 +2333,9 @@ async function formatReceiptForPrinter(transaction) {
             description = item.description || 'Accessory';
         } else if (item.type === 'custom') {
             description = item.note || 'Custom Item';
+            if (item.bern_it) {
+                description = '🔥 ' + description + ' (BERN IT)';
+            }
         } else {
             description = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
         }
@@ -2222,6 +2375,14 @@ async function formatReceiptForPrinter(transaction) {
     receipt += `TOTAL:${' '.repeat(charsPerLine - 6 - totalStr.length)}${totalStr}\n`;
     receipt += ''.padEnd(charsPerLine, '=') + '\n';
     receipt += '\n';
+    
+    if (transaction.bernDonation && transaction.bernDonation > 0) {
+        receipt += ''.padEnd(charsPerLine, '-') + '\n';
+        receipt += centerText('🔥 BERN IT DONATION 🔥', charsPerLine) + '\n';
+        receipt += centerText(`$${transaction.bernDonation.toFixed(2)} added to BERN fund`, charsPerLine) + '\n';
+        receipt += ''.padEnd(charsPerLine, '-') + '\n';
+        receipt += '\n';
+    }
     
     if (transaction.paymentMethod === 'Cash' && transaction.change > 0) {
         const tenderedStr = `$${(transaction.tendered || 0).toFixed(2)}`;
@@ -2450,6 +2611,7 @@ async function completeCheckoutWithGiftCard(amountPaid) {
     let errorCount = 0;
     const soldItems = [];
     const consignorPayments = {};
+    let bernTotal = 0;
     
     try {
         for (const item of checkoutCart) {
@@ -2478,6 +2640,11 @@ async function completeCheckoutWithGiftCard(amountPaid) {
             } else if (item.type === 'custom') {
                 successCount++;
                 soldItems.push(item);
+                
+                // Handle BERN IT donation
+                if (item.bern_it) {
+                    bernTotal += item.store_price;
+                }
             } else {
                 try {
                     await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
@@ -2500,6 +2667,12 @@ async function completeCheckoutWithGiftCard(amountPaid) {
                     throw error;
                 }
             }
+        }
+        
+        // Update BERN fund if any donations
+        if (bernTotal > 0) {
+            await updateBernFund(bernTotal);
+            showCheckoutStatus(`🔥 Added $${bernTotal.toFixed(2)} to BERN fund!`, 'success');
         }
         
         if (successCount > 0) {
@@ -2537,7 +2710,8 @@ async function completeCheckoutWithGiftCard(amountPaid) {
                 storeAddress: await getConfigValue('STORE_ADDRESS'),
                 storePhone: await getConfigValue('STORE_PHONE'),
                 footer: await getConfigValue('RECEIPT_FOOTER'),
-                consignorPayments: consignorPayments
+                consignorPayments: consignorPayments,
+                bernDonation: bernTotal
             };
             
             if (typeof window.saveReceipt === 'function') {
@@ -2600,4 +2774,4 @@ document.addEventListener('keypress', function(e) {
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
-console.log('✅ checkout.js loaded with VCP-8370 printer support, manual completion button, and gift card support');
+console.log('✅ checkout.js loaded with VCP-8370 printer support, auto-add barcode, BERN IT checkbox, and auto-close modal');
