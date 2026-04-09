@@ -1210,8 +1210,7 @@ class AddEditDeleteManager {
                 const sleeveDisplay = sleeveCondition ? sleeveCondition.display_name || sleeveCondition.condition_name : 'Not set';
                 const discDisplay = discCondition ? discCondition.display_name || discCondition.condition_name : 'Not set';
                 
-                const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleString() : 'Never';
-                
+                 
                 return `
                     <div class="record-card" data-record-id="${record.id}" data-index="${index}">
                         <div class="record-header">
@@ -1232,7 +1231,6 @@ class AddEditDeleteManager {
                                     <span><strong>Sleeve:</strong> ${sleeveDisplay}</span>
                                     <span><strong>Disc:</strong> ${discDisplay}</span>
                                     <span><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></span>
-                                    <span><strong>Last Seen:</strong> ${lastSeen}</span>
                                     ${record.consignor_name ? `<span><strong>Consignor:</strong> ${record.consignor_name}</span>` : ''}
                                 </div>
                             </div>
