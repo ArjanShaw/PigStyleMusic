@@ -999,6 +999,7 @@
         .role-badge.admin { background: #dc3545; color: white; }
         .role-badge.consignor { background: #28a745; color: white; }
         .role-badge.youtube_linker { background: #ffc107; color: #333; }
+        .role-badge.seller { background: #17a2b8; color: white; }
 
         /* Flag Color Styles */
         .flag-badge {
@@ -1010,8 +1011,6 @@
             text-transform: capitalize;
         }
 
-         
-        
         .status-badge.found {
             background: #d4edda;
             color: #155724;
@@ -1735,21 +1734,6 @@
             word-break: break-all;
         }
 
-        /* Discogs Tab Styles */
-        .record-selected {
-            background-color: #fff3cd !important;
-            border-left: 4px solid #ffc107 !important;
-        }
-
-        .record-listed {
-            opacity: 0.7;
-        }
-
-        .bulk-actions-bar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
         /* Square Payments Tab Styles */
         .square-payments-container {
             margin-top: 20px;
@@ -1903,6 +1887,78 @@
             font-size: 14px;
             word-wrap: break-word;
         }
+
+        /* Inventory Tab Styles */
+        .inventory-scanner-section {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            color: white;
+        }
+
+        .inventory-scanner-input {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .inventory-scanner-input input {
+            font-size: 18px;
+            padding: 12px 15px;
+        }
+
+        .location-prefix-input {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 12px 15px;
+            border-radius: 8px;
+            width: 100%;
+            font-size: 16px;
+        }
+
+        .location-prefix-input::placeholder {
+            color: rgba(255,255,255,0.7);
+        }
+
+        .counter-display {
+            background: rgba(255,255,255,0.2);
+            padding: 10px 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .scan-result {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.15);
+            font-size: 14px;
+        }
+
+        /* Discogs Tab Simplified Styles */
+        .discogs-sync-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            color: white;
+        }
+
+        .sync-status {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -1931,14 +1987,18 @@
             <div class="tab" data-tab="check-out">
                 <i class="fas fa-shopping-cart"></i> Check Out
             </div>
+            <div class="tab" data-tab="inventory">
+                <i class="fas fa-boxes"></i> Inventory
+            </div>
+            <div class="tab" data-tab="discogs">
+                <i class="fab fa-discogs"></i> Discogs
+            </div>
             <div class="tab" data-tab="receipts">
                 <i class="fas fa-receipt"></i> Receipts
             </div>
             <div class="tab" data-tab="users">
                 <i class="fas fa-users"></i> Users
             </div>
-             
-            
             <div class="tab" data-tab="batches">
                 <i class="fas fa-layer-group"></i> Batches
             </div>
@@ -1953,9 +2013,6 @@
             </div>
             <div class="tab" data-tab="db-query">
                 <i class="fas fa-database"></i> DB Query
-            </div>
-            <div class="tab" data-tab="discogs">
-                <i class="fab fa-discogs"></i> Discogs
             </div>
             <div class="tab" data-tab="square-payments">
                 <i class="fas fa-credit-card"></i> Square Payments
@@ -2056,50 +2113,48 @@
             </div>
             
             <!-- Custom Item Section -->
-<div class="custom-item-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
-    <h3 style="margin-bottom: 15px;"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
-    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
-        <div style="flex: 2; min-width: 200px;">
-            <label for="custom-note" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Description/Note</label>
-            <input type="text" 
-                   id="custom-note" 
-                   class="search-input" 
-                   placeholder="e.g., Gift card, Service, Donation..."
-                   style="width: 100%; background: rgba(255,255,255,0.9);">
-        </div>
-        <div style="flex: 1; min-width: 150px;">
-            <label for="custom-price" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Price ($)</label>
-            <input type="number" 
-                   id="custom-price" 
-                   class="search-input" 
-                   placeholder="0.00" 
-                   min="0" 
-                   step="0.01"
-                   style="width: 100%; background: rgba(255,255,255,0.9);">
-        </div>
-        <div style="flex: 0 0 auto;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 20px;">
-                <input type="checkbox" id="custom-bern-it" style="width: 18px; height: 18px; cursor: pointer;">
-                <span style="font-size: 0.9rem;"><i class="fas fa-fire"></i> 🔥 BERN IT</span>
-            </label>
-        </div>
-        <div style="flex: 0 0 auto;">
-            <button class="btn btn-success" onclick="addCustomItemToCart()" style="height: 42px; padding: 0 25px; background: #ffd700; color: #333; border: none;">
-                <i class="fas fa-cart-plus"></i> Add to Cart
-            </button>
-        </div>
-    </div>
-    <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
-        <i class="fas fa-info-circle"></i> Add custom items like gift cards, services, or miscellaneous merchandise. Check "BERN IT" to add the amount to the BERN fund.
-    </p>
-</div>
-
-
-
+            <div class="custom-item-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                <h3 style="margin-bottom: 15px;"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                    <div style="flex: 2; min-width: 200px;">
+                        <label for="custom-note" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Description/Note</label>
+                        <input type="text" 
+                               id="custom-note" 
+                               class="search-input" 
+                               placeholder="e.g., Gift card, Service, Donation..."
+                               style="width: 100%; background: rgba(255,255,255,0.9);">
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label for="custom-price" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Price ($)</label>
+                        <input type="number" 
+                               id="custom-price" 
+                               class="search-input" 
+                               placeholder="0.00" 
+                               min="0" 
+                               step="0.01"
+                               style="width: 100%; background: rgba(255,255,255,0.9);">
+                    </div>
+                    <div style="flex: 0 0 auto;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 20px;">
+                            <input type="checkbox" id="custom-bern-it" style="width: 18px; height: 18px; cursor: pointer;">
+                            <span style="font-size: 0.9rem;"><i class="fas fa-fire"></i> 🔥 BERN IT</span>
+                        </label>
+                    </div>
+                    <div style="flex: 0 0 auto;">
+                        <button class="btn btn-success" onclick="addCustomItemToCart()" style="height: 42px; padding: 0 25px; background: #ffd700; color: #333; border: none;">
+                            <i class="fas fa-cart-plus"></i> Add to Cart
+                        </button>
+                    </div>
+                </div>
+                <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
+                    <i class="fas fa-info-circle"></i> Add custom items like gift cards, services, or miscellaneous merchandise. Check "BERN IT" to add the amount to the BERN fund.
+                </p>
+            </div>
+            
             <div class="search-container">
                 <div class="search-box">
                     <input type="text" id="search-query" class="search-input" 
-                           placeholder="Search by barcode, title, artist, catalog number, or accessory description..." 
+                           placeholder="Search by barcode, title, artist, or catalog number..." 
                            onkeypress="if(event.key === 'Enter') searchRecordsAndAccessories()">
                     <button class="btn btn-primary" onclick="searchRecordsAndAccessories()">
                         <i class="fas fa-search"></i> Search
@@ -2131,7 +2186,7 @@
                 <div id="search-results" class="search-results">
                     <div style="text-align: center; padding: 40px; color: #666;">
                         <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
-                        <p>Enter a search term to find records or accessories</p>
+                        <p>Enter a search term to find records</p>
                     </div>
                 </div>
             </div>
@@ -2218,6 +2273,106 @@
             </div>
         </div>
         
+        <!-- Inventory Tab -->
+        <div id="inventory-tab" class="tab-content">
+            <h2><i class="fas fa-boxes"></i> Inventory Management</h2>
+            
+            <div class="inventory-scanner-section">
+                <h3><i class="fas fa-qrcode"></i> Scan Records to Set Location</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 20px; align-items: flex-end;">
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-size: 0.9rem;">Location Prefix</label>
+                        <input type="text" 
+                               id="location-prefix" 
+                               class="location-prefix-input" 
+                               placeholder="e.g., bin 1, shelf A, rack 3"
+                               value="bin 1">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-size: 0.9rem;">Next Counter</label>
+                        <div class="counter-display" id="counter-display">1</div>
+                    </div>
+                    <div>
+                        <button class="btn btn-light" onclick="resetCounter()" style="background: white; color: #28a745;">
+                            <i class="fas fa-sync-alt"></i> Reset Counter
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="inventory-scanner-input" style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-size: 0.9rem;">Barcode Scanner</label>
+                    <input type="text" 
+                           id="inventory-barcode-input" 
+                           class="search-input" 
+                           placeholder="Scan barcode here..."
+                           style="width: 100%; font-size: 18px; padding: 12px 15px; color: #333;">
+                    <div id="scan-result" class="scan-result" style="display: none;"></div>
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                    <h4><i class="fas fa-info-circle"></i> How it works:</h4>
+                    <ul style="margin: 10px 0 0 20px; font-size: 0.85rem;">
+                        <li>Enter a location prefix (e.g., "bin 1", "shelf A")</li>
+                        <li>Scan barcodes - each scan updates the record's location and last_seen date</li>
+                        <li>Counter automatically increments for each scan in the current location</li>
+                        <li>Format: <code>"{prefix}/{counter}"</code> (e.g., "bin 1/12")</li>
+                        <li>Switch prefixes - counter resets to 1 for the new prefix</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+         
+
+       <!-- Discogs Tab -->
+<div id="discogs-tab" class="tab-content">
+    <h2><i class="fab fa-discogs"></i> Discogs Management</h2>
+    
+    <!-- Controls -->
+    <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="filter-group">
+            <label for="discogs-cutoff-date"><i class="fas fa-calendar-alt"></i> Cutoff Date:</label>
+            <input type="date" id="discogs-cutoff-date" class="filter-select">
+        </div>
+        <button class="btn btn-primary" onclick="refreshData()">
+            <i class="fas fa-sync-alt"></i> Refresh Data
+        </button>
+        <div class="filter-group" style="margin-left: auto;">
+            <label for="discogs-category"><i class="fas fa-filter"></i> Category:</label>
+            <select id="discogs-category" class="filter-select" onchange="filterByCategory()" disabled>
+                <option value="">-- Select a category --</option>
+                <option value="discogs_orphans">🗑 Discogs Orphans</option>
+                <option value="local_orphans">⚠ Local Orphans</option>
+                <option value="not_listed">📋 Not Listed (Eligible)</option>
+            </select>
+        </div>
+    </div>
+    
+    <!-- Stats Display -->
+    <div id="inventory-stats" class="stats-row" style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;"></div>
+    
+    <!-- Status Message -->
+    <div id="discogs-status-message" class="status-message" style="display: none;"></div>
+    
+    <!-- Resolve Button -->
+    <div style="margin-bottom: 20px;">
+        <button id="resolve-button" class="btn btn-warning" onclick="resolveCategory()" disabled style="opacity: 0.5;">
+            Resolve
+        </button>
+    </div>
+    
+    <!-- Table -->
+    <div class="records-table-container">
+        <table class="records-table">
+            <thead>
+                <tr><th>Type</th><th>Record ID</th><th>Listing ID</th><th>Artist</th><th>Title</th><th>Last Seen</th><th>Location</th><th>Price</th><th>Discogs Status</th><th>Discogs Link</th><th>Reason</th></tr>
+            </thead>
+            <tbody id="combined-inventory-body">
+                <tr><td colspan="11" style="text-align: center; padding: 40px;">Loading...<\/td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
         <!-- Receipts Tab -->
         <div id="receipts-tab" class="tab-content">
             <h2><i class="fas fa-receipt"></i> Receipt History</h2>
@@ -2397,8 +2552,7 @@
                 <p>Processing...</p>
             </div>
         </div>
-         
-
+        
         <!-- Batches Tab -->
         <div id="batches-tab" class="tab-content">
             <h2><i class="fas fa-layer-group"></i> Batch Management</h2>
@@ -3085,246 +3239,6 @@
             </div>
         </div>
 
-        <!-- Discogs Tab -->
-        <div id="discogs-tab" class="tab-content">
-            <h2><i class="fab fa-discogs"></i> Discogs Inventory Management</h2>
-            
-            <!-- Stats Cards -->
-            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;">
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Local Records</h3>
-                    <p class="stat-number" id="discogs-total-active" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Listed on Discogs</h3>
-                    <p class="stat-number" id="discogs-listed-count" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Open Orders</h3>
-                    <p class="stat-number" id="open-orders-count" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Sales Total</h3>
-                    <p class="stat-number" id="sales-total" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">$0.00</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Selected for Listing</h3>
-                    <p class="stat-number" id="discogs-selected-count" style="font-size: 28px; font-weight: bold; color: #dc3545; margin: 0;">0</p>
-                </div>
-            </div>
-            
-            <!-- Barcode Scanner Component -->
-            <div class="barcode-scanner-component" style="margin-bottom: 20px; padding: 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 8px; color: white;">
-                <h3 style="margin-bottom: 15px;"><i class="fas fa-qrcode"></i> Barcode Scanner - Add to Batch</h3>
-                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
-                    <div style="flex: 2; min-width: 300px;">
-                        <label for="batch-barcode-input" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Scan or Type Barcode:</label>
-                        <input type="text" 
-                               id="batch-barcode-input" 
-                               class="search-input" 
-                               placeholder="Scan barcode - automatically checks matching records..."
-                               style="width: 100%; background: white; color: #333; font-size: 18px; padding: 12px 15px;">
-                    </div>
-                    <div style="flex: 0 0 auto;">
-                        <div id="scanner-status" style="font-size: 14px; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 20px;">
-                            <i class="fas fa-info-circle"></i> Ready to scan
-                        </div>
-                    </div>
-                </div>
-                <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
-                    <i class="fas fa-info-circle"></i> Scan barcode to automatically check matching records. Table shows only checked records.
-                </p>
-            </div>
-            
-            <!-- Filter Section -->
-            <div class="filters-section" style="margin-bottom: 20px;">
-                <h3><i class="fas fa-filter"></i> Filter Inventory</h3>
-                
-                <div class="filters-row" style="display: flex; gap: 30px; align-items: flex-end; flex-wrap: wrap;">
-                    <div class="filter-group" style="min-width: 200px;">
-                        <label for="listing-status-filter"><i class="fab fa-discogs"></i> Discogs Status:</label>
-                        <select id="listing-status-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="all">All Items</option>
-                            <option value="listed">Listed on Discogs</option>
-                            <option value="unlisted">Not Listed</option>
-                        </select>
-                    </div>
-                    
-                    <div class="filter-group" style="min-width: 200px;">
-                        <label for="local-status-filter"><i class="fas fa-database"></i> Local Status:</label>
-                        <select id="local-status-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="all">All Statuses</option>
-                            <option value="new">New</option>
-                            <option value="active">Active</option>
-                            <option value="sold">Sold</option>
-                        </select>
-                    </div>
-                    
-                    <div class="filter-group" style="min-width: 200px;">
-                        <label for="discogs-status-filter"><i class="fas fa-chart-line"></i> Discogs Sale Status:</label>
-                        <select id="discogs-status-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="all">All Records</option>
-                            <option value="active">Active on Discogs</option>
-                            <option value="sold">Sold on Discogs</option>
-                        </select>
-                    </div>
-                    
-                    <div class="filter-group" style="min-width: 200px;">
-                        <label for="consignor-filter"><i class="fas fa-user"></i> Consignor:</label>
-                        <select id="consignor-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="all">All Consignors</option>
-                        </select>
-                    </div>
-                    
-                    <div class="filter-group" style="flex: 1; min-width: 200px;">
-                        <label for="show-selected-filter"><i class="fas fa-check-square"></i> Show Mode:</label>
-                        <select id="show-selected-filter" class="filter-select" onchange="filterDiscogsInventory()">
-                            <option value="selected">Show Selected Only</option>
-                            <option value="all">Show All Records</option>
-                        </select>
-                    </div>
-                    
-                    <div class="filter-group" style="flex: 2; min-width: 300px;">
-                        <label for="discogs-search"><i class="fas fa-search"></i> Search:</label>
-                        <input type="text" 
-                            id="discogs-search" 
-                            class="search-input" 
-                            placeholder="Search by artist, title, catalog #, or barcode..."
-                            onkeyup="filterDiscogsInventory()">
-                    </div>
-                    
-                    <div class="filter-group">
-                        <button class="btn btn-primary" onclick="syncDiscogsStatus()" style="background: #17a2b8;">
-                            <i class="fas fa-sync-alt"></i> Sync
-                        </button>
-                        <button class="btn btn-secondary" onclick="resetDiscogsFilters()">
-                            <i class="fas fa-undo"></i> Reset Filters
-                        </button>
-                        <button class="btn btn-warning" onclick="printDiscogsOrders()" style="background: #ffc107; color: #333;">
-                            <i class="fas fa-print"></i> Print Open Orders
-                        </button>
-                    </div>
-                </div>
-                
-                <div id="discogs-active-filters" style="margin-top: 15px; font-size: 13px; color: #666;">
-                    <span><i class="fas fa-info-circle"></i> Showing <span id="discogs-filtered-count">0</span> of <span id="discogs-total-filtered">0</span> local records</span>
-                </div>
-            </div>
-            
-            <!-- Bulk Actions Bar -->
-            <div class="bulk-actions-bar" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; color: white;">
-                <div>
-                    <span style="font-weight: 600; margin-right: 15px;"><i class="fas fa-check-square"></i> Bulk Actions:</span>
-                    <button class="btn btn-secondary btn-small" onclick="selectAllDiscogsRecords()">
-                        <i class="fas fa-check-double"></i> Select All
-                    </button>
-                    <button class="btn btn-secondary btn-small" onclick="deselectAllDiscogsRecords()">
-                        <i class="fas fa-times"></i> Deselect All
-                    </button>
-                </div>
-                <div>
-                    <button class="btn btn-success" onclick="submitToDiscogs()" id="submit-to-discogs-btn" disabled>
-                        <i class="fab fa-discogs"></i> Submit Selected to Discogs (<span id="selected-count">0</span>)
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Inventory Table -->
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">
-                <i class="fas fa-database"></i> Inventory (<span id="local-record-count">0</span> records)
-            </h3>
-            <div class="records-table-container">
-                <table class="records-table" id="discogs-inventory-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 40px;"><input type="checkbox" id="discogs-select-all" onchange="toggleAllDiscogsRecords()"></th>
-                            <th>ID</th>
-                            <th>Artist</th>
-                            <th>Title</th>
-                            <th>Label</th>
-                            <th>Catalog #</th>
-                            <th>Price</th>
-                            <th>Sleeve Condition</th>
-                            <th>Disc Condition</th>
-                            <th>Consignor</th>
-                            <th>Local Status</th>
-                            <th>Discogs Status</th>
-                            <th>Discogs Listing ID</th>
-                            <th>Location</th>
-                            <th>Actions</th>
-                        </thead>
-                    <tbody id="discogs-inventory-body">
-                        <tr><td colspan="15" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Loading inventory...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <!-- Pagination for inventory -->
-            <div class="pagination" style="margin-top: 20px; margin-bottom: 30px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <button class="page-btn" onclick="goToDiscogsPage(1)" id="discogs-first-btn" disabled>
-                    <i class="fas fa-angle-double-left"></i>
-                </button>
-                <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage - 1)" id="discogs-prev-btn" disabled>
-                    <i class="fas fa-angle-left"></i>
-                </button>
-                
-                <span class="pagination-info">
-                    Page <input type="number" class="page-input" id="discogs-current-page" min="1" value="1" 
-                        onchange="goToDiscogsPage(parseInt(this.value))" style="width: 50px; text-align: center;"> 
-                    of <span id="discogs-total-pages">1</span>
-                </span>
-                
-                <button class="page-btn" onclick="goToDiscogsPage(discogsCurrentPage + 1)" id="discogs-next-btn" disabled>
-                    <i class="fas fa-angle-right"></i>
-                </button>
-                <button class="page-btn" onclick="goToDiscogsPage(discogsTotalPages)" id="discogs-last-btn" disabled>
-                    <i class="fas fa-angle-double-right"></i>
-                </button>
-                
-                <div class="records-per-page" style="margin-left: auto;">
-                    <span>Show:</span>
-                    <select id="discogs-page-size" onchange="changeDiscogsPageSize(parseInt(this.value))">
-                        <option value="20">20</option>
-                        <option value="50" selected>50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-            </div>
-            
-            <!-- Discogs Orphaned Listings Table -->
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">
-                <i class="fab fa-discogs"></i> Discogs Orphaned Listings (<span id="discogs-orphaned-count">0</span>)
-            </h3>
-            <div class="records-table-container">
-                <table class="records-table" id="discogs-orphaned-table">
-                    <thead>
-                        <tr>
-                            <th>Listing ID</th>
-                            <th>Release ID</th>
-                            <th>Artist</th>
-                            <th>Title</th>
-                            <th>Price</th>
-                            <th>Condition</th>
-                            <th>Sleeve Condition</th>
-                            <th>Status</th>
-                            <th>URL</th>
-                        </thead>
-                    <tbody id="discogs-orphaned-body">
-                        <tr><td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i><p>Loading Discogs listings...</p></td></tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <!-- Loading Indicator -->
-            <div class="loading" id="discogs-loading" style="display: none;">
-                <div class="loading-spinner"></div>
-                <p>Loading...</p>
-            </div>
-            
-            <!-- Status Message -->
-            <div id="discogs-status-message" class="status-message" style="margin-top: 20px; display: none;"></div>
-        </div>
-
         <!-- Square Payments Tab -->
         <div id="square-payments-tab" class="tab-content">
             <h2><i class="fas fa-credit-card"></i> Square Payments</h2>
@@ -3689,8 +3603,67 @@
             </div>
         </div>
     </div>
- 
- 
+
+    <div id="accessory-edit-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-edit"></i> Edit Accessory</h3>
+                <button class="modal-close" onclick="closeAccessoryEditModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="accessory-form-grid">
+                    <div style="grid-column: 1/-1;">
+                        <label for="edit-accessory-description">Description *</label>
+                        <input type="text" id="edit-accessory-description" class="filter-select" style="width: 100%;">
+                    </div>
+                    <div>
+                        <label for="edit-accessory-price">Store Price *</label>
+                        <input type="number" id="edit-accessory-price" step="0.01" min="0" class="filter-select">
+                    </div>
+                    <div>
+                        <label for="edit-accessory-count">Count</label>
+                        <input type="number" id="edit-accessory-count" min="0" class="filter-select">
+                    </div>
+                </div>
+                <div class="barcode-preview" id="edit-barcode-preview"></div>
+                <div class="info-message" style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                    <i class="fas fa-info-circle"></i> Barcode is automatically generated and can't be edited directly. Click "Regenerate Barcode" to create a new one.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="regenerateAccessoryBarcode()" id="regenerate-barcode-btn">
+                    <i class="fas fa-sync-alt"></i> Regenerate Barcode
+                </button>
+                <button class="btn btn-secondary" onclick="closeAccessoryEditModal()">Cancel</button>
+                <button class="btn btn-success" onclick="updateAccessory()">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="accessory-delete-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i> Confirm Delete</h3>
+                <button class="modal-close" onclick="closeAccessoryDeleteModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this accessory?</p>
+                <p><strong id="delete-accessory-description"></strong></p>
+                <p class="info-message" style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px;">
+                    <i class="fas fa-exclamation-circle"></i> This action cannot be undone.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAccessoryDeleteModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDeleteAccessory()">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Refund Modal -->
     <div id="refund-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 600px;">
@@ -3840,11 +3813,10 @@
     <script src="/static/js/checkout.js"></script>
     <script src="/static/js/receipts.js"></script>
     <script src="/static/js/users.js"></script>
-    <script src="/static/js/artists.js"></script>
-    <script src="/static/js/accessories.js"></script>
     <script src="/static/js/batches.js"></script>
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/db-query.js"></script>
+    <script src="/static/js/inventory.js"></script>
     <script src="/static/js/discogs.js"></script>
     <script src="/static/js/square-payments.js"></script>
     <script src="/static/js/gift-cards.js"></script>
@@ -4191,7 +4163,7 @@
     });
     </script>
 
-    <!-- Discogs Location Modal -->
+    <!-- Discogs Location Modal (kept for compatibility but not used in simplified version) -->
     <div id="discogs-location-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
