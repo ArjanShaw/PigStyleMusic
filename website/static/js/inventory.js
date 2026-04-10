@@ -151,8 +151,11 @@ async function processScan(barcode) {
         // Generate location string
         const currentCounter = getCurrentCounter();
         const locationString = `${currentLocationPrefix}/${currentCounter}`;
+        const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         
-        // Update the record
+        console.log(`📝 Updating record #${exactMatch.id}: location="${locationString}", last_seen="${todayDate}"`);
+        
+        // Update the record - send both fields
         const updateResponse = await fetch(`${AppConfig.baseUrl}/records/${exactMatch.id}`, {
             method: 'PUT',
             credentials: 'include',
@@ -161,12 +164,17 @@ async function processScan(barcode) {
             },
             body: JSON.stringify({
                 location: locationString,
-                last_seen: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+                last_seen: todayDate
             })
         });
         
         if (!updateResponse.ok) {
-            throw new Error(`Update failed: ${updateResponse.status}`);
+            let errorMessage = `Update failed: ${updateResponse.status}`;
+            try {
+                const errorData = await updateResponse.json();
+                if (errorData.error) errorMessage = errorData.error;
+            } catch(e) {}
+            throw new Error(errorMessage);
         }
         
         const updateData = await updateResponse.json();
@@ -182,7 +190,7 @@ async function processScan(barcode) {
         const artist = exactMatch.artist || 'Unknown';
         const title = exactMatch.title || 'Unknown';
         showScanResult(
-            `✅ Record #${exactMatch.id}: "${artist} - ${title}"\n   → Location: ${locationString}\n   → Last seen: ${new Date().toISOString().split('T')[0]}`,
+            `✅ Record #${exactMatch.id}: "${artist} - ${title}"\n   → Location: ${locationString}\n   → Last seen: ${todayDate}`,
             'success'
         );
         
@@ -207,7 +215,10 @@ function showScanResult(message, type = 'info') {
     scanResultDiv.style.display = 'block';
     scanResultDiv.innerHTML = message.replace(/\n/g, '<br>');
     
-    // Set color based on type
+    // Force text color to black for readability
+    scanResultDiv.style.color = '#000000';
+    
+    // Set background color based on type
     const colors = {
         success: 'rgba(40, 167, 69, 0.2)',
         error: 'rgba(220, 53, 69, 0.2)',
@@ -217,7 +228,7 @@ function showScanResult(message, type = 'info') {
     scanResultDiv.style.backgroundColor = colors[type] || colors.info;
     scanResultDiv.style.borderLeft = `4px solid ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : '#17a2b8'}`;
     
-    // Auto-hide after 5 seconds for non-error messages
+    // Auto-hide after 8 seconds for non-error messages
     if (type !== 'error') {
         setTimeout(() => {
             if (scanResultDiv && scanResultDiv.style.display === 'block') {
