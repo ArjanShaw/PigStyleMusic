@@ -7571,5 +7571,39 @@ def get_combined_inventory():
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/discogs/stats', methods=['GET'])
+def get_discogs_stats():
+    """Get true counts from database without filtering"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Total records
+        cursor.execute('SELECT COUNT(*) as count FROM records')
+        total_records = cursor.fetchone()['count']
+        
+        # Active records (status_id = 2)
+        cursor.execute('SELECT COUNT(*) as count FROM records WHERE status_id = 2')
+        active_records = cursor.fetchone()['count']
+        
+        # Records with discogs_listing_id (ever listed)
+        cursor.execute('SELECT COUNT(*) as count FROM records WHERE discogs_listing_id IS NOT NULL')
+        on_discogs = cursor.fetchone()['count']
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'total_records': total_records,
+                'active_records': active_records,
+                'on_discogs': on_discogs
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

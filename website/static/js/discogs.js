@@ -1,6 +1,6 @@
 // ============================================================================
 // discogs.js - Load once on tab open, cache, then filter locally
-// Includes progress modal for resolve operations
+// Includes progress modal for resolve operations and stats table
 // ============================================================================
 
 let cachedInventory = [];
@@ -17,7 +17,6 @@ let categorySelect = null;
 let resolveButton = null;
 let statusMessage = null;
 let cutoffDateInput = null;
-let statsDisplay = null;
 
 // Modal elements
 let progressModal = null;
@@ -131,6 +130,66 @@ function appendToModalLog(message, type = 'info') {
 }
 
 // ============================================================================
+// Update Stats Table - Fetch true counts from database
+// ============================================================================
+
+async function updateStatsTable() {
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/discogs/stats`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to fetch stats');
+        }
+        
+        const totalRecords = data.stats.total_records;
+        const activeRecords = data.stats.active_records;
+        const onDiscogs = data.stats.on_discogs;
+        
+        // These come from the cached inventory
+        const discogsOrphans = cachedInventory.filter(item => item.type === 'discogs_orphan').length;
+        const localOrphans = cachedInventory.filter(item => item.type === 'local_orphan').length;
+        const notListed = cachedInventory.filter(item => item.type === 'not_listed').length;
+        
+        // Update stats table cells
+        const statTotal = document.getElementById('stat-total');
+        const statActive = document.getElementById('stat-active');
+        const statOnDiscogs = document.getElementById('stat-on-discogs');
+        const statDiscogsOrphans = document.getElementById('stat-discogs-orphans');
+        const statLocalOrphans = document.getElementById('stat-local-orphans');
+        const statNotListed = document.getElementById('stat-not-listed');
+        
+        if (statTotal) statTotal.textContent = totalRecords;
+        if (statActive) statActive.textContent = activeRecords;
+        if (statOnDiscogs) statOnDiscogs.textContent = onDiscogs;
+        if (statDiscogsOrphans) statDiscogsOrphans.textContent = discogsOrphans;
+        if (statLocalOrphans) statLocalOrphans.textContent = localOrphans;
+        if (statNotListed) statNotListed.textContent = notListed;
+        
+        console.log(`📊 Stats updated: Total=${totalRecords}, Active=${activeRecords}, OnDiscogs=${onDiscogs}, DiscogsOrphans=${discogsOrphans}, LocalOrphans=${localOrphans}, NotListed=${notListed}`);
+        
+    } catch (error) {
+        console.error('Error fetching stats:', error);
+        // Set fallback values
+        const statTotal = document.getElementById('stat-total');
+        const statActive = document.getElementById('stat-active');
+        const statOnDiscogs = document.getElementById('stat-on-discogs');
+        
+        if (statTotal) statTotal.textContent = cachedInventory.length;
+        if (statActive) statActive.textContent = '?';
+        if (statOnDiscogs) statOnDiscogs.textContent = '?';
+    }
+}
+
+// ============================================================================
 // Initialization - Load data ONCE when tab opens
 // ============================================================================
 
@@ -142,7 +201,6 @@ function initDiscogsTab() {
     resolveButton = document.getElementById('resolve-button');
     statusMessage = document.getElementById('discogs-status-message');
     cutoffDateInput = document.getElementById('discogs-cutoff-date');
-    statsDisplay = document.getElementById('inventory-stats');
     
     if (!tableBody || !categorySelect) {
         console.error('Discogs tab elements not found');
@@ -203,24 +261,22 @@ async function loadInitialData() {
         cachedInventory = data.results || [];
         isCacheValid = true;
         
-        console.log(`📦 Cached ${cachedInventory.length} total records`);
+        console.log(`📦 Cached ${cachedInventory.length} total records from combined inventory`);
         
-        // Update stats display
-        if (statsDisplay && data.stats) {
-            statsDisplay.innerHTML = `
-                <span class="stat-badge" style="background: #007bff;">Total: ${data.stats.total}</span>
-                <span class="stat-badge" style="background: #dc3545;">Discogs Orphans: ${data.stats.discogs_orphans}</span>
-                <span class="stat-badge" style="background: #ffc107; color: #333;">Local Orphans: ${data.stats.local_orphans}</span>
-                <span class="stat-badge" style="background: #28a745;">Not Listed: ${data.stats.not_listed}</span>
-            `;
-        }
+        // Update stats table using separate stats endpoint
+        await updateStatsTable();
         
         // Enable the dropdown
         categorySelect.disabled = false;
         
         // Show status
         if (statusMessage) {
-            statusMessage.innerHTML = `✅ Data loaded. ${cachedInventory.length} total records. Select a category to view.`;
+            const totalRecords = cachedInventory.length;
+            const discogsOrphans = cachedInventory.filter(item => item.type === 'discogs_orphan').length;
+            const localOrphans = cachedInventory.filter(item => item.type === 'local_orphan').length;
+            const notListed = cachedInventory.filter(item => item.type === 'not_listed').length;
+            
+            statusMessage.innerHTML = `✅ Data loaded. Combined inventory: ${totalRecords} items | Discogs Orphans: ${discogsOrphans} | Local Orphans: ${localOrphans} | Not Listed: ${notListed}`;
             statusMessage.className = 'status-message status-success';
             statusMessage.style.display = 'block';
             setTimeout(() => { statusMessage.style.display = 'none'; }, 5000);
@@ -379,7 +435,6 @@ async function resolveDiscogsOrphans() {
     
     let deleted = 0;
     let failed = 0;
-    let skipped = 0;
     
     for (let i = 0; i < total; i++) {
         if (cancelResolve) {
@@ -437,7 +492,6 @@ async function resolveDiscogsOrphans() {
     appendToModalLog(`📊 RESULTS:`, 'info');
     appendToModalLog(`   ✅ Deleted: ${deleted}`, 'success');
     appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
-    if (skipped > 0) appendToModalLog(`   ⏭️ Skipped: ${skipped}`, 'warning');
     
     if (deleted > 0) {
         appendToModalLog(`🔄 Refreshing data...`, 'info');
@@ -635,13 +689,6 @@ window.resolveCategory = async function() {
         if (!confirm(`📋 List ${filteredInventory.length} record(s) on Discogs?\n\n⚠️ Rate limited to 1 per second.`)) return;
         await resolveNotListed();
     }
-    
-    // Close modal after completion (user can close manually or it will close on refresh)
-    setTimeout(() => {
-        if (progressModal && progressModal.style.display === 'flex') {
-            // Don't auto-close, let user close manually to see results
-        }
-    }, 2000);
 };
 
 function escapeHtml(text) {
@@ -671,4 +718,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - with progress modal for resolve operations');
+console.log('✅ discogs.js loaded - with separate stats endpoint and progress modal');

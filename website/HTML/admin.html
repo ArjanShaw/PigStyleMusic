@@ -2322,12 +2322,11 @@
             </div>
         </div>
          
-
-       <!-- Discogs Tab -->
+<!-- Discogs Tab -->
 <div id="discogs-tab" class="tab-content">
     <h2><i class="fab fa-discogs"></i> Discogs Management</h2>
     
-    <!-- Controls -->
+    <!-- Cutoff Date and Controls -->
     <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
         <div class="filter-group">
             <label for="discogs-cutoff-date"><i class="fas fa-calendar-alt"></i> Cutoff Date:</label>
@@ -2347,8 +2346,31 @@
         </div>
     </div>
     
-    <!-- Stats Display -->
-    <div id="inventory-stats" class="stats-row" style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;"></div>
+    <!-- Stats Table - Replaces the old stats row -->
+    <div class="stats-table-container" style="margin-bottom: 20px;">
+        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: #f8f9fa; border-radius: 8px; overflow: hidden;">
+            <thead>
+                <tr>
+                    <th style="padding: 12px; text-align: center; background: #007bff; color: white;">Total Records</th>
+                    <th style="padding: 12px; text-align: center; background: #28a745; color: white;">Active Records</th>
+                    <th style="padding: 12px; text-align: center; background: #17a2b8; color: white;">On Discogs</th>
+                    <th style="padding: 12px; text-align: center; background: #dc3545; color: white;">Discogs Orphans</th>
+                    <th style="padding: 12px; text-align: center; background: #ffc107; color: #333;">Local Orphans</th>
+                    <th style="padding: 12px; text-align: center; background: #6c757d; color: white;">Not Listed</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr id="stats-row">
+                    <td id="stat-total" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                    <td id="stat-active" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                    <td id="stat-on-discogs" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                    <td id="stat-discogs-orphans" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                    <td id="stat-local-orphans" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                    <td id="stat-not-listed" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
     
     <!-- Status Message -->
     <div id="discogs-status-message" class="status-message" style="display: none;"></div>
@@ -2364,15 +2386,27 @@
     <div class="records-table-container">
         <table class="records-table">
             <thead>
-                <tr><th>Type</th><th>Record ID</th><th>Listing ID</th><th>Artist</th><th>Title</th><th>Last Seen</th><th>Location</th><th>Price</th><th>Discogs Status</th><th>Discogs Link</th><th>Reason</th></tr>
+                <tr>
+                    <th>Type</th>
+                    <th>Record ID</th>
+                    <th>Listing ID</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                    <th>Last Seen</th>
+                    <th>Location</th>
+                    <th>Price</th>
+                    <th>Discogs Status</th>
+                    <th>Discogs Link</th>
+                    <th>Reason</th>
+                </tr>
             </thead>
             <tbody id="combined-inventory-body">
-                <tr><td colspan="11" style="text-align: center; padding: 40px;">Loading...<\/td></tr>
+                <tr><td colspan="11" style="text-align: center; padding: 40px;">Loading Discogs data... Please wait.<\/td></tr>
             </tbody>
         </table>
     </div>
 </div>
-
+      
         <!-- Receipts Tab -->
         <div id="receipts-tab" class="tab-content">
             <h2><i class="fas fa-receipt"></i> Receipt History</h2>
