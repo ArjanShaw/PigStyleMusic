@@ -35,6 +35,23 @@ const TabManager = {
             }
         },
         
+        'inventory': () => {
+            console.log('🔵 TabManager: Initializing Inventory tab');
+            if (typeof initInventoryTab === 'function') {
+                console.log('🔄 TabManager: Calling initInventoryTab()');
+                initInventoryTab();
+            } else {
+                console.error('❌ TabManager: initInventoryTab function not found - check if inventory.js is loaded');
+                // Try to load it from window if needed
+                if (typeof window.initInventoryTab === 'function') {
+                    console.log('🔄 TabManager: Found window.initInventoryTab, calling it');
+                    window.initInventoryTab();
+                } else {
+                    console.error('❌ TabManager: initInventoryTab not available anywhere');
+                }
+            }
+        },
+        
         'receipts': () => {
             console.log('🔵 TabManager: Initializing Receipts tab');
             

@@ -4070,7 +4070,7 @@ def get_record(record_id):
  
 @app.route('/records/<int:record_id>', methods=['PUT'])
 def update_record(record_id):
-    """Update a record with support for separate sleeve and disc conditions"""
+    """Update a record - allows ANY field update"""
     data = request.get_json()
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
@@ -4078,60 +4078,23 @@ def update_record(record_id):
     conn = get_db()
     cursor = conn.cursor()
 
+    # Check if record exists
     cursor.execute('SELECT id FROM records WHERE id = ?', (record_id,))
     if not cursor.fetchone():
         conn.close()
         return jsonify({'status': 'error', 'error': 'Record not found'}), 404
 
+    # Build update query dynamically from all provided fields
     update_fields = []
     update_values = []
-
-    field_mapping = {
-        'artist': 'artist',
-        'title': 'title',
-        'barcode': 'barcode',
-        'genre_id': 'genre_id',
-        'image_url': 'image_url',
-        'catalog_number': 'catalog_number',
-        'condition_sleeve_id': 'condition_sleeve_id',
-        'condition_disc_id': 'condition_disc_id',
-        'store_price': 'store_price',
-        'youtube_url': 'youtube_url',
-        'consignor_id': 'consignor_id',
-        'commission_rate': 'commission_rate',
-        'up_votes': 'up_votes',
-        'down_votes': 'down_votes',
-        'kill_votes': 'kill_votes',
-        'status_id': 'status_id',
-        'date_sold': 'date_sold',
-        'date_paid': 'date_paid',
-        'discogs_listing_id': 'discogs_listing_id',
-        'discogs_listed_date': 'discogs_listed_date'
-    }
-
-    # Handle backward compatibility - if 'condition' is provided but not condition_sleeve_id
-    if 'condition' in data and 'condition_sleeve_id' not in data:
-        cursor.execute('SELECT id FROM d_condition WHERE condition_name = ?', (data['condition'],))
-        result = cursor.fetchone()
-        if result:
-            condition_id = result['id']
-            update_fields.append('condition_sleeve_id = ?')
-            update_values.append(condition_id)
-            # Optionally set disc condition too if not provided
-            if 'condition_disc_id' not in data:
-                update_fields.append('condition_disc_id = ?')
-                update_values.append(condition_id)
-
+    
     for key, value in data.items():
-        if key in field_mapping and key not in ['condition']:  # Skip 'condition' as we handled it
-            update_fields.append(f"{field_mapping[key]} = ?")
-            update_values.append(value)
+        update_fields.append(f"{key} = ?")
+        update_values.append(value)
 
     if not update_fields:
         conn.close()
-        return jsonify({'status': 'error', 'error': 'No valid fields to update'}), 400
-
-     
+        return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
 
     update_values.append(record_id)
     update_query = f"UPDATE records SET {', '.join(update_fields)} WHERE id = ?"
@@ -4142,6 +4105,7 @@ def update_record(record_id):
 
     return jsonify({'status': 'success', 'message': 'Record updated'})
 
+ 
 @app.route('/records/<int:record_id>', methods=['DELETE'])
 def delete_record(record_id):
     conn = get_db()

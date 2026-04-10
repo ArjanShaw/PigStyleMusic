@@ -120,7 +120,7 @@ async function processScan(barcode) {
         const searchResponse = await fetch(`${AppConfig.baseUrl}/records/search?q=${encodeURIComponent(barcode)}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
-                'Content-Type':application/json'
+                'Content-Type': 'application/json'
             }
         });
         
@@ -228,23 +228,29 @@ function showScanResult(message, type = 'info') {
 }
 
 // ============================================================================
-// Tab Activation Handler
+// Tab Activation Handler (fallback for when TabManager doesn't call init)
 // ============================================================================
 
 // Initialize when inventory tab is shown
 document.addEventListener('tabChanged', function(e) {
     if (e.detail && e.detail.tabName === 'inventory') {
+        console.log('📢 inventory.js received tabChanged event for inventory');
+        // Small delay to ensure DOM is ready
         setTimeout(initInventoryTab, 100);
     }
 });
 
-// Also initialize on page load if inventory tab is active
+// Also initialize on page load if inventory tab is active by default
 document.addEventListener('DOMContentLoaded', function() {
     // Check if inventory tab is active by default
     const inventoryTab = document.querySelector('.tab[data-tab="inventory"]');
     if (inventoryTab && inventoryTab.classList.contains('active')) {
+        console.log('📄 inventory.js: Inventory tab active on page load, initializing...');
         setTimeout(initInventoryTab, 200);
     }
 });
+
+// Also expose init function globally as a backup
+window.initInventoryTab = initInventoryTab;
 
 console.log('✅ inventory.js loaded');
