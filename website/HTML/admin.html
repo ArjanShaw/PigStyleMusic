@@ -2320,33 +2320,50 @@
                     </ul>
                 </div>
             </div>
-        </div>
-         
+        </div> 
+      
 <!-- Discogs Tab -->
 <div id="discogs-tab" class="tab-content">
     <h2><i class="fab fa-discogs"></i> Discogs Management</h2>
+    
+    <!-- Config Fields Row -->
+    <div class="config-row" style="margin-bottom: 20px; display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+        <div class="config-field">
+            <label for="discogs-markup"><i class="fas fa-percent"></i> Markup % (initial):</label>
+            <input type="number" id="discogs-markup" class="config-input" step="1" min="0" max="200" value="20" style="width: 100px; padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+        </div>
+        <div class="config-field">
+            <label for="discogs-step"><i class="fas fa-step-down"></i> Weekly reduction %:</label>
+            <input type="number" id="discogs-step" class="config-input" step="1" min="0" max="100" value="5" style="width: 100px; padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+        </div>
+        <button class="btn btn-sm btn-primary" onclick="saveDiscogsConfig()">
+            <i class="fas fa-save"></i> Save Config
+        </button>
+        <span id="config-status" style="font-size: 12px; color: #666;"></span>
+    </div>
     
     <!-- Cutoff Date and Controls -->
     <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
         <div class="filter-group">
             <label for="discogs-cutoff-date"><i class="fas fa-calendar-alt"></i> Cutoff Date:</label>
-            <input type="date" id="discogs-cutoff-date" class="filter-select">
+            <input type="date" id="discogs-cutoff-date" class="filter-select" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd;">
         </div>
         <button class="btn btn-primary" onclick="refreshData()">
             <i class="fas fa-sync-alt"></i> Refresh Data
         </button>
         <div class="filter-group" style="margin-left: auto;">
             <label for="discogs-category"><i class="fas fa-filter"></i> Category:</label>
-            <select id="discogs-category" class="filter-select" onchange="filterByCategory()" disabled>
+            <select id="discogs-category" class="filter-select" onchange="filterByCategory()" disabled style="min-width: 200px; padding: 8px 12px;">
                 <option value="">-- Select a category --</option>
                 <option value="discogs_orphans">🗑 Discogs Orphans</option>
                 <option value="local_orphans">⚠ Local Orphans</option>
                 <option value="not_listed">📋 Not Listed (Eligible)</option>
+                <option value="due_reduction">💰 Due for Reduction</option>
             </select>
         </div>
     </div>
     
-    <!-- Stats Table - Replaces the old stats row -->
+    <!-- Stats Table -->
     <div class="stats-table-container" style="margin-bottom: 20px;">
         <table class="stats-table" style="width: 100%; border-collapse: collapse; background: #f8f9fa; border-radius: 8px; overflow: hidden;">
             <thead>
@@ -2357,6 +2374,7 @@
                     <th style="padding: 12px; text-align: center; background: #dc3545; color: white;">Discogs Orphans</th>
                     <th style="padding: 12px; text-align: center; background: #ffc107; color: #333;">Local Orphans</th>
                     <th style="padding: 12px; text-align: center; background: #6c757d; color: white;">Not Listed</th>
+                    <th style="padding: 12px; text-align: center; background: #fd7e14; color: white;">Due Reduction</th>
                 </tr>
             </thead>
             <tbody>
@@ -2367,6 +2385,7 @@
                     <td id="stat-discogs-orphans" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
                     <td id="stat-local-orphans" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
                     <td id="stat-not-listed" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                    <td id="stat-due-reduction" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
                 </tr>
             </tbody>
         </table>
@@ -2382,7 +2401,7 @@
         </button>
     </div>
     
-    <!-- Table -->
+    <!-- Combined Inventory Table -->
     <div class="records-table-container">
         <table class="records-table">
             <thead>
@@ -2394,19 +2413,35 @@
                     <th>Title</th>
                     <th>Last Seen</th>
                     <th>Location</th>
-                    <th>Price</th>
-                    <th>Discogs Status</th>
+                    <th>Current Price</th>
+                    <th>Expected Price</th>
+                    <th>Weeks on Discogs</th>
                     <th>Discogs Link</th>
                     <th>Reason</th>
                 </tr>
             </thead>
             <tbody id="combined-inventory-body">
-                <tr><td colspan="11" style="text-align: center; padding: 40px;">Loading Discogs data... Please wait.<\/td></tr>
+                <tr><td colspan="12" style="text-align: center; padding: 40px;">Select a cutoff date and click "Refresh Data" to load inventory</td></tr>
             </tbody>
         </table>
     </div>
+    
+    <!-- Info Box -->
+    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
+        <h4><i class="fas fa-info-circle"></i> How it works:</h4>
+        <ul style="margin: 10px 0 0 20px;">
+            <li><strong>Markup %:</strong> Initial price increase when listing on Discogs (e.g., 20% = list at 20% above store price)</li>
+            <li><strong>Weekly reduction %:</strong> Price decrease per week (e.g., 5% = price drops 5% each week)</li>
+            <li><strong>Due for Reduction:</strong> Shows listings where current price > calculated price based on age</li>
+            <li><strong>Resolve (on Due Reduction):</strong> Applies price reductions to Discogs</li>
+            <li><strong>Discogs Orphans:</strong> Delete from Discogs</li>
+            <li><strong>Local Orphans:</strong> Clear discogs_listing_id</li>
+            <li><strong>Not Listed:</strong> Create new Discogs listings</li>
+        </ul>
+        <p style="margin-top: 10px;"><strong>Formula:</strong> Current price = store_price × (1 + (markup% - weeks × weekly_reduction%) / 100) | Never below store_price</p>
+    </div>
 </div>
-      
+
         <!-- Receipts Tab -->
         <div id="receipts-tab" class="tab-content">
             <h2><i class="fas fa-receipt"></i> Receipt History</h2>

@@ -130,6 +130,86 @@ function appendToModalLog(message, type = 'info') {
 }
 
 // ============================================================================
+// Config Management
+// ============================================================================
+
+async function loadDiscogsConfig() {
+    try {
+        const markupInput = document.getElementById('discogs-markup');
+        const stepInput = document.getElementById('discogs-step');
+        
+        if (!markupInput) return;
+        
+        const markupResp = await fetch(`${AppConfig.baseUrl}/config/DISCOGS_MARKUP_PERCENT`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (markupResp.ok) {
+            const data = await markupResp.json();
+            if (data.config_value) markupInput.value = data.config_value;
+        }
+        
+        const stepResp = await fetch(`${AppConfig.baseUrl}/config/DISCOGS_PRICE_STEP`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (stepResp.ok) {
+            const data = await stepResp.json();
+            if (data.config_value) stepInput.value = data.config_value;
+        }
+    } catch (error) {
+        console.error('Error loading Discogs config:', error);
+    }
+}
+
+window.saveDiscogsConfig = async function() {
+    const markupInput = document.getElementById('discogs-markup');
+    const stepInput = document.getElementById('discogs-step');
+    const configStatus = document.getElementById('config-status');
+    
+    if (!markupInput || !stepInput) return;
+    
+    const markup = markupInput.value;
+    const step = stepInput.value;
+    
+    configStatus.innerHTML = 'Saving...';
+    configStatus.style.color = '#ffc107';
+    
+    try {
+        const markupResp = await fetch(`${AppConfig.baseUrl}/config/DISCOGS_MARKUP_PERCENT`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ config_value: markup })
+        });
+        
+        const stepResp = await fetch(`${AppConfig.baseUrl}/config/DISCOGS_PRICE_STEP`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ config_value: step })
+        });
+        
+        if (markupResp.ok && stepResp.ok) {
+            configStatus.innerHTML = '✅ Saved!';
+            configStatus.style.color = '#28a745';
+            setTimeout(() => { configStatus.innerHTML = ''; }, 3000);
+            await refreshData();
+        } else {
+            throw new Error('Save failed');
+        }
+    } catch (error) {
+        configStatus.innerHTML = '❌ Save failed';
+        configStatus.style.color = '#dc3545';
+        setTimeout(() => { configStatus.innerHTML = ''; }, 3000);
+    }
+};
+
+// ============================================================================
 // Update Stats Table - Fetch true counts from database
 // ============================================================================
 
@@ -154,18 +234,18 @@ async function updateStatsTable() {
         const activeRecords = data.stats.active_records;
         const onDiscogs = data.stats.on_discogs;
         
-        // These come from the cached inventory
         const discogsOrphans = cachedInventory.filter(item => item.type === 'discogs_orphan').length;
         const localOrphans = cachedInventory.filter(item => item.type === 'local_orphan').length;
         const notListed = cachedInventory.filter(item => item.type === 'not_listed').length;
+        const dueReduction = cachedInventory.filter(item => item.type === 'both' && item.needs_reduction === true).length;
         
-        // Update stats table cells
         const statTotal = document.getElementById('stat-total');
         const statActive = document.getElementById('stat-active');
         const statOnDiscogs = document.getElementById('stat-on-discogs');
         const statDiscogsOrphans = document.getElementById('stat-discogs-orphans');
         const statLocalOrphans = document.getElementById('stat-local-orphans');
         const statNotListed = document.getElementById('stat-not-listed');
+        const statDueReduction = document.getElementById('stat-due-reduction');
         
         if (statTotal) statTotal.textContent = totalRecords;
         if (statActive) statActive.textContent = activeRecords;
@@ -173,19 +253,14 @@ async function updateStatsTable() {
         if (statDiscogsOrphans) statDiscogsOrphans.textContent = discogsOrphans;
         if (statLocalOrphans) statLocalOrphans.textContent = localOrphans;
         if (statNotListed) statNotListed.textContent = notListed;
+        if (statDueReduction) statDueReduction.textContent = dueReduction;
         
-        console.log(`📊 Stats updated: Total=${totalRecords}, Active=${activeRecords}, OnDiscogs=${onDiscogs}, DiscogsOrphans=${discogsOrphans}, LocalOrphans=${localOrphans}, NotListed=${notListed}`);
+        console.log(`📊 Stats: Total=${totalRecords}, Active=${activeRecords}, OnDiscogs=${onDiscogs}, DiscogsOrphans=${discogsOrphans}, LocalOrphans=${localOrphans}, NotListed=${notListed}, DueReduction=${dueReduction}`);
         
     } catch (error) {
         console.error('Error fetching stats:', error);
-        // Set fallback values
         const statTotal = document.getElementById('stat-total');
-        const statActive = document.getElementById('stat-active');
-        const statOnDiscogs = document.getElementById('stat-on-discogs');
-        
         if (statTotal) statTotal.textContent = cachedInventory.length;
-        if (statActive) statActive.textContent = '?';
-        if (statOnDiscogs) statOnDiscogs.textContent = '?';
     }
 }
 
@@ -207,19 +282,17 @@ function initDiscogsTab() {
         return;
     }
     
-    // Set default cutoff date to 30 days ago
     if (cutoffDateInput && !cutoffDateInput.value) {
         const defaultDate = new Date();
         defaultDate.setDate(defaultDate.getDate() - 30);
         cutoffDateInput.value = defaultDate.toISOString().split('T')[0];
     }
     
-    // Set initial state
     resolveButton.disabled = true;
     resolveButton.style.opacity = '0.5';
-    tableBody.innerHTML = '<td colspan="11" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading data from Discogs and local database...<\/td>';
+    tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading data from Discogs and local database...<\/td>';
     
-    // Load data ONCE
+    loadDiscogsConfig();
     loadInitialData();
     
     console.log('✅ Discogs Tab initialized');
@@ -235,7 +308,7 @@ async function loadInitialData() {
     
     const cutoffDate = cutoffDateInput?.value;
     if (!cutoffDate) {
-        tableBody.innerHTML = '<td colspan="11" style="text-align: center; padding: 40px;">Please select a cutoff date<\/td>';
+        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;">Please select a cutoff date<\/td>';
         isLoading = false;
         return;
     }
@@ -257,19 +330,15 @@ async function loadInitialData() {
             throw new Error(data.error || 'Failed to load inventory');
         }
         
-        // Cache ALL data
         cachedInventory = data.results || [];
         isCacheValid = true;
         
         console.log(`📦 Cached ${cachedInventory.length} total records from combined inventory`);
         
-        // Update stats table using separate stats endpoint
         await updateStatsTable();
         
-        // Enable the dropdown
         categorySelect.disabled = false;
         
-        // Show status
         if (statusMessage) {
             const totalRecords = cachedInventory.length;
             const discogsOrphans = cachedInventory.filter(item => item.type === 'discogs_orphan').length;
@@ -282,11 +351,11 @@ async function loadInitialData() {
             setTimeout(() => { statusMessage.style.display = 'none'; }, 5000);
         }
         
-        tableBody.innerHTML = '<td colspan="11" style="text-align: center; padding: 40px;">Select a category above to view records<\/td>';
+        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;">Select a category above to view records<\/td>';
         
     } catch (error) {
         console.error('Error loading data:', error);
-        tableBody.innerHTML = `<td colspan="11" style="text-align: center; padding: 40px; color: #dc3545;">
+        tableBody.innerHTML = `<td colspan="12" style="text-align: center; padding: 40px; color: #dc3545;">
             <i class="fas fa-exclamation-triangle"></i> Error: ${error.message}
             <br><br>
             <button class="btn btn-primary" onclick="refreshData()">Retry</button>
@@ -308,27 +377,26 @@ window.filterByCategory = function() {
     
     currentCategory = categorySelect?.value;
     if (!currentCategory) {
-        tableBody.innerHTML = '<td colspan="11" style="text-align: center; padding: 40px;">Select a category above<\/td>';
+        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;">Select a category above<\/td>';
         resolveButton.disabled = true;
         resolveButton.style.opacity = '0.5';
         return;
     }
     
-    // Filter the cached data locally - FAST, no network call
     if (currentCategory === 'discogs_orphans') {
         filteredInventory = cachedInventory.filter(item => item.type === 'discogs_orphan');
     } else if (currentCategory === 'local_orphans') {
         filteredInventory = cachedInventory.filter(item => item.type === 'local_orphan');
     } else if (currentCategory === 'not_listed') {
         filteredInventory = cachedInventory.filter(item => item.type === 'not_listed');
+    } else if (currentCategory === 'due_reduction') {
+        filteredInventory = cachedInventory.filter(item => item.type === 'both' && item.needs_reduction === true);
     } else {
         filteredInventory = [];
     }
     
-    // Render the filtered table
     renderTable();
     
-    // Enable resolve button if there are items
     if (filteredInventory.length > 0) {
         resolveButton.disabled = false;
         resolveButton.style.opacity = '1';
@@ -336,19 +404,20 @@ window.filterByCategory = function() {
         let buttonText = '';
         if (currentCategory === 'discogs_orphans') buttonText = '🗑 Delete All Discogs Orphans';
         else if (currentCategory === 'local_orphans') buttonText = '⚠ Clear All Local Orphans';
-        else buttonText = '📋 List All on Discogs';
+        else if (currentCategory === 'not_listed') buttonText = '📋 List All on Discogs';
+        else if (currentCategory === 'due_reduction') buttonText = '💰 Apply Price Reductions';
         resolveButton.innerHTML = buttonText;
     } else {
         resolveButton.disabled = true;
         resolveButton.style.opacity = '0.5';
     }
     
-    // Update status
     if (statusMessage) {
         let categoryName = '';
         if (currentCategory === 'discogs_orphans') categoryName = 'Discogs Orphans';
         else if (currentCategory === 'local_orphans') categoryName = 'Local Orphans';
-        else categoryName = 'Listing Candidates';
+        else if (currentCategory === 'not_listed') categoryName = 'Listing Candidates';
+        else if (currentCategory === 'due_reduction') categoryName = 'Due for Reduction';
         statusMessage.innerHTML = `📋 Showing ${filteredInventory.length} ${categoryName}`;
         statusMessage.className = 'status-message status-info';
         statusMessage.style.display = 'block';
@@ -357,7 +426,7 @@ window.filterByCategory = function() {
 };
 
 // ============================================================================
-// Render table from filteredInventory (local data)
+// Render table from filteredInventory
 // ============================================================================
 
 function renderTable() {
@@ -368,8 +437,9 @@ function renderTable() {
         if (currentCategory === 'discogs_orphans') message = 'No Discogs orphans found.';
         else if (currentCategory === 'local_orphans') message = 'No local orphans found.';
         else if (currentCategory === 'not_listed') message = 'No listing candidates found. Try adjusting the cutoff date and click "Refresh Data".';
+        else if (currentCategory === 'due_reduction') message = 'No listings due for price reduction.';
         else message = 'Select a category above';
-        tableBody.innerHTML = `<td colspan="11" style="text-align: center; padding: 40px;">${message}<\/td>`;
+        tableBody.innerHTML = `<td colspan="12" style="text-align: center; padding: 40px;">${message}<\/td>`;
         return;
     }
     
@@ -384,10 +454,20 @@ function renderTable() {
         } else if (currentCategory === 'local_orphans') {
             typeBadge = '<span class="status-badge" style="background: #ffc107; color: #333;">⚠ Local Orphan</span>';
             reasonDisplay = item.reason ? `<span style="color: #856404; font-size: 12px;">⚠️ ${escapeHtml(item.reason)}</span>` : '—';
-        } else {
+        } else if (currentCategory === 'not_listed') {
             typeBadge = '<span class="status-badge" style="background: #28a745; color: white;">📋 Listing Candidate</span>';
             reasonDisplay = '<span style="color: #28a745; font-size: 12px;">✓ Eligible for Discogs</span>';
+        } else if (currentCategory === 'due_reduction') {
+            typeBadge = '<span class="status-badge" style="background: #fd7e14; color: white;">💰 Due for Reduction</span>';
+            reasonDisplay = `<span style="color: #fd7e14; font-size: 12px;">Current: $${item.price?.toFixed(2)} → Expected: $${item.expected_price?.toFixed(2)} (${item.weeks_on_discogs} weeks)</span>`;
         }
+        
+        let lastSeenDisplay = item.last_seen || '—';
+        let locationDisplay = item.location ? `<span class="location-badge">${escapeHtml(item.location)}</span>` : '<span style="color: #dc3545;">—</span>';
+        let priceDisplay = item.price ? `$${item.price.toFixed(2)}` : '—';
+        let expectedPriceDisplay = item.expected_price ? `$${item.expected_price.toFixed(2)}` : '—';
+        let weeksDisplay = item.weeks_on_discogs !== undefined ? item.weeks_on_discogs : '—';
+        let discogsLink = item.url ? `<a href="${item.url}" target="_blank" class="discogs-link"><i class="fab fa-discogs"></i> View</a>` : '—';
         
         html += `
             <tr>
@@ -396,11 +476,12 @@ function renderTable() {
                 <td>${item.listing_id || '—'}<\/td>
                 <td><strong>${escapeHtml(item.artist)}<\/strong><\/td>
                 <td>${escapeHtml(item.title)}<\/td>
-                <td>${item.last_seen || '—'}<\/td>
-                <td>${item.location ? escapeHtml(item.location) : '<span style="color: #dc3545;">—</span>'}<\/td>
-                <td>${item.price ? `$${item.price.toFixed(2)}` : '—'}<\/td>
-                <td>${item.discogs_status ? escapeHtml(item.discogs_status) : '—'}<\/td>
-                <td>${item.url ? `<a href="${item.url}" target="_blank" class="discogs-link"><i class="fab fa-discogs"></i> View</a>` : '—'}<\/td>
+                <td>${lastSeenDisplay}<\/td>
+                <td>${locationDisplay}<\/td>
+                <td>${priceDisplay}<\/td>
+                <td>${expectedPriceDisplay}<\/td>
+                <td>${weeksDisplay}<\/td>
+                <td>${discogsLink}<\/td>
                 <td>${reasonDisplay}<\/td>
             </tr>
         `;
@@ -416,12 +497,12 @@ function renderTable() {
 window.refreshData = function() {
     cachedInventory = [];
     isCacheValid = false;
-    tableBody.innerHTML = '<td colspan="11" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Reloading data...<\/td>';
+    tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Reloading data...<\/td>';
     loadInitialData();
 };
 
 // ============================================================================
-// RESOLVE: Delete Discogs Orphans (with progress modal)
+// RESOLVE: Delete Discogs Orphans
 // ============================================================================
 
 async function resolveDiscogsOrphans() {
@@ -501,7 +582,7 @@ async function resolveDiscogsOrphans() {
 }
 
 // ============================================================================
-// RESOLVE: Clear Local Orphans (with progress modal)
+// RESOLVE: Clear Local Orphans
 // ============================================================================
 
 async function resolveLocalOrphans() {
@@ -568,7 +649,7 @@ async function resolveLocalOrphans() {
 }
 
 // ============================================================================
-// RESOLVE: List Not Listed (with progress modal)
+// RESOLVE: List Not Listed
 // ============================================================================
 
 async function resolveNotListed() {
@@ -670,6 +751,112 @@ async function resolveNotListed() {
 }
 
 // ============================================================================
+// RESOLVE: Apply Price Reductions (for Due Reduction category)
+// ============================================================================
+
+async function resolvePriceReductions() {
+    const items = filteredInventory;
+    const total = items.length;
+    
+    if (total === 0) {
+        showStatus('No items due for reduction', 'warning');
+        return;
+    }
+    
+    const markup = document.getElementById('discogs-markup')?.value || 20;
+    const step = document.getElementById('discogs-step')?.value || 5;
+    
+    if (!confirm(`💰 Apply price reductions to ${total} listing(s)?\n\nMarkup: ${markup}%\nWeekly reduction: ${step}%\n\nThis will update Discogs with new prices.\n\nRate limited to 1 request per second.`)) {
+        return;
+    }
+    
+    openProgressModal(`Applying Price Reductions to ${total} Listings`);
+    appendToModalLog(`🚀 Starting price reductions...`, 'info');
+    appendToModalLog(`📊 Markup: ${markup}% | Weekly reduction: ${step}%`, 'info');
+    appendToModalLog(`⏱️ Rate limited to 1 request per second`, 'warning');
+    appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+    
+    let updated = 0;
+    let failed = 0;
+    
+    for (let i = 0; i < total; i++) {
+        if (cancelResolve) {
+            appendToModalLog(`⏹️ Operation cancelled by user.`, 'warning');
+            break;
+        }
+        
+        const item = items[i];
+        updateModalProgress(i + 1, total);
+        appendToModalLog(`[${i+1}/${total}] Processing: ${item.artist} - ${item.title}`, 'info');
+        appendToModalLog(`   Current: $${item.price?.toFixed(2) || '?'} | Expected: $${item.expected_price?.toFixed(2) || '?'} | Weeks: ${item.weeks_on_discogs || 0}`, 'info');
+        
+        try {
+            const updateData = {
+                price: item.expected_price,
+                condition: item.condition || 'Very Good Plus (VG+)',
+                sleeve_condition: item.sleeve_condition || 'Very Good Plus (VG+)',
+                status: "For Sale"
+            };
+            
+            const response = await fetch(`${AppConfig.baseUrl}/api/discogs/update-listing-price/${item.listing_id}`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(updateData)
+            });
+            
+            if (response.ok) {
+                updated++;
+                appendToModalLog(`   ✅ Updated: $${item.price?.toFixed(2)} → $${item.expected_price?.toFixed(2)}`, 'success');
+            } else if (response.status === 429) {
+                appendToModalLog(`   ⏳ Rate limited, waiting 5 seconds...`, 'warning');
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                const retryResponse = await fetch(`${AppConfig.baseUrl}/api/discogs/update-listing-price/${item.listing_id}`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(updateData)
+                });
+                
+                if (retryResponse.ok) {
+                    updated++;
+                    appendToModalLog(`   ✅ Updated (retry): $${item.price?.toFixed(2)} → $${item.expected_price?.toFixed(2)}`, 'success');
+                } else {
+                    failed++;
+                    appendToModalLog(`   ❌ FAILED (retry): ${item.artist} - ${item.title}`, 'error');
+                }
+            } else {
+                failed++;
+                appendToModalLog(`   ❌ FAILED: ${item.artist} - ${item.title} - HTTP ${response.status}`, 'error');
+            }
+        } catch (error) {
+            failed++;
+            appendToModalLog(`   ❌ FAILED: ${item.artist} - ${item.title} - ${error.message}`, 'error');
+        }
+        
+        if (i < total - 1 && !cancelResolve) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+    
+    appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+    appendToModalLog(`📊 RESULTS:`, 'info');
+    appendToModalLog(`   ✅ Updated: ${updated}`, 'success');
+    appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
+    
+    if (updated > 0) {
+        appendToModalLog(`🔄 Refreshing data...`, 'info');
+        await refreshData();
+        appendToModalLog(`✅ Data refreshed`, 'success');
+    }
+}
+
+// ============================================================================
 // Main Resolve dispatcher
 // ============================================================================
 
@@ -688,6 +875,8 @@ window.resolveCategory = async function() {
     } else if (currentCategory === 'not_listed') {
         if (!confirm(`📋 List ${filteredInventory.length} record(s) on Discogs?\n\n⚠️ Rate limited to 1 per second.`)) return;
         await resolveNotListed();
+    } else if (currentCategory === 'due_reduction') {
+        await resolvePriceReductions();
     }
 };
 
@@ -696,6 +885,17 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function showStatus(message, type = 'info') {
+    if (!statusMessage) return;
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    statusMessage.innerHTML = `${icons[type] || 'ℹ️'} ${escapeHtml(message)}`;
+    statusMessage.className = `status-message status-${type}`;
+    statusMessage.style.display = 'block';
+    setTimeout(() => {
+        if (statusMessage) statusMessage.style.display = 'none';
+    }, 8000);
 }
 
 window.closeProgressModal = closeProgressModal;
@@ -718,4 +918,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - with separate stats endpoint and progress modal');
+console.log('✅ discogs.js loaded - with stats table, progress modal, and price reductions');

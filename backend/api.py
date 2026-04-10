@@ -468,9 +468,7 @@ def get_my_discogs_listings():
 
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
-    """
-    Create a single listing on Discogs with detailed error reporting
-    """
+    """Create a single listing on Discogs with markup pricing"""
     try:
         data = request.json
         record = data.get('record', {})
@@ -478,148 +476,225 @@ def create_discogs_listing_single():
         if not record:
             return jsonify({'error': 'No record provided'}), 400
         
-        app.logger.info(f"Processing single record {record.get('id')}: {record.get('artist')} - {record.get('title')}")
-        
-        # Get token from environment variable
         TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
-        
         if not TOKEN:
-            return jsonify({
-                'success': False,
-                'error': 'Discogs token not configured'
-            }), 500
+            return jsonify({'success': False, 'error': 'Discogs token not configured'}), 500
+        
+        # Get markup percentage from config
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('DISCOGS_MARKUP_PERCENT',))
+        row = cursor.fetchone()
+        markup_percent = float(row['config_value']) if row else 20
+        conn.close()
+        
+        # Calculate Discogs price with markup
+        store_price = float(record.get('price', 0))
+        discogs_price = round(store_price * (1 + markup_percent / 100), 2)
         
         headers = {
             'Authorization': f'Discogs token={TOKEN}',
             'User-Agent': 'PigStyleMusic/1.0'
         }
         
-        # Search for the release on Discogs
+        # Search for release
         search_url = "https://api.discogs.com/database/search"
         search_query = f"{record.get('artist')} {record.get('title')}"
-        
         if record.get('catalog_number'):
             search_query += f" {record.get('catalog_number')}"
         
-        search_params = {
-            'q': search_query,
-            'type': 'release',
-            'per_page': 1
-        }
-        
-        search_response = requests.get(search_url, headers=headers, params=search_params)
-        
-        if search_response.status_code == 429:
-            return jsonify({
-                'success': False,
-                'error': 'Rate limited. Please wait a moment and try again.'
-            }), 429
+        search_response = requests.get(search_url, headers=headers, params={'q': search_query, 'type': 'release', 'per_page': 1})
         
         if search_response.status_code != 200:
-            return jsonify({
-                'success': False,
-                'error': f"Search failed: {search_response.status_code}"
-            }), search_response.status_code
+            return jsonify({'success': False, 'error': f'Search failed: {search_response.status_code}'}), search_response.status_code
         
         search_data = search_response.json()
         releases = search_data.get('results', [])
         
         if not releases:
-            return jsonify({
-                'success': False,
-                'error': 'No matching release found on Discogs'
-            })
+            return jsonify({'success': False, 'error': 'No matching release found on Discogs'})
         
         release_id = releases[0].get('id')
         
-        # Create the listing
+        # Create listing with calculated price
         listing_url = "https://api.discogs.com/marketplace/listings"
-        
-        # Add location to comments if provided
         comments = f"[PIGSTYLE ID: {record['id']}] {record.get('notes', '')}"
         if record.get('location'):
             comments += f" | Location: {record.get('location')}"
+        comments += f" | Store: ${store_price:.2f} | Listed: ${discogs_price:.2f} ({markup_percent}% markup)"
         
         listing_data = {
             "release_id": release_id,
             "condition": record.get('media_condition', 'Very Good Plus (VG+)'),
             "sleeve_condition": record.get('sleeve_condition', record.get('media_condition', 'Very Good Plus (VG+)')),
-            "price": float(record.get('price', 0)),
+            "price": discogs_price,
             "status": "For Sale",
             "comments": comments
         }
         
-        listing_response = requests.post(
-            listing_url,
-            headers=headers,
-            json=listing_data
-        )
-        
-        if listing_response.status_code == 429:
-            return jsonify({
-                'success': False,
-                'error': 'Rate limited. Please wait a moment and try again.'
-            }), 429
+        listing_response = requests.post(listing_url, headers=headers, json=listing_data)
         
         if listing_response.status_code in [200, 201]:
             listing_result = listing_response.json()
             listing_id = listing_result.get('listing_id')
             
-            # Update local record with Discogs listing ID and location
             conn = get_db()
             cursor = conn.cursor()
-            
-            # Update the record with Discogs listing ID and location if provided
-            update_query = '''
+            cursor.execute('''
                 UPDATE records 
-                SET discogs_listing_id = ?,
-                    discogs_listed_date = CURRENT_TIMESTAMP
-            '''
-            params = [listing_id, record['id']]
-            
-            # Add location to update if provided
-            if record.get('location'):
-                update_query = '''
-                    UPDATE records 
-                    SET discogs_listing_id = ?,
-                        discogs_listed_date = CURRENT_TIMESTAMP,
-                        location = ?
-                    WHERE id = ?
-                '''
-                params = [listing_id, record.get('location'), record['id']]
-            else:
-                update_query = '''
-                    UPDATE records 
-                    SET discogs_listing_id = ?,
-                        discogs_listed_date = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                '''
-                params = [listing_id, record['id']]
-            
-            cursor.execute(update_query, params)
-            
+                SET discogs_listing_id = ?, discogs_listed_date = CURRENT_DATE
+                WHERE id = ?
+            ''', (listing_id, record['id']))
             conn.commit()
             conn.close()
             
             return jsonify({
                 'success': True,
                 'listing_id': listing_id,
-                'release_id': release_id,
-                'url': f"https://www.discogs.com/sell/item/{listing_id}",
+                'price': discogs_price,
+                'markup_percent': markup_percent,
                 'record_id': record['id']
             })
         else:
-            return jsonify({
-                'success': False,
-                'error': f"Discogs API returned {listing_response.status_code}: {listing_response.text[:200]}"
-            })
+            return jsonify({'success': False, 'error': f'Discogs API error: {listing_response.text[:200]}'})
         
     except Exception as e:
-        app.logger.error(f"Error creating single listing: {str(e)}")
+        app.logger.error(f"Error creating listing: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+
+@app.route('/api/discogs/sync-prices', methods=['POST'])
+def sync_discogs_prices():
+    """Apply weekly price reductions to Discogs listings based on age"""
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({'success': False, 'error': 'Discogs token not configured'}), 500
+        
+        # Get config values
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('DISCOGS_MARKUP_PERCENT',))
+        markup_row = cursor.fetchone()
+        markup_percent = float(markup_row['config_value']) if markup_row else 20
+        
+        cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('DISCOGS_PRICE_STEP',))
+        step_row = cursor.fetchone()
+        step_percent = float(step_row['config_value']) if step_row else 5
+        conn.close()
+        
+        headers = {
+            'Authorization': f'Discogs token={TOKEN}',
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
+        
+        # Fetch all Discogs listings
+        all_listings = []
+        page = 1
+        
+        while True:
+            response = requests.get(
+                'https://api.discogs.com/users/pigstyle/inventory',
+                headers=headers,
+                params={'page': page, 'per_page': 100}
+            )
+            
+            if response.status_code != 200:
+                return jsonify({'success': False, 'error': f'Discogs API error: {response.status_code}'}), response.status_code
+            
+            data = response.json()
+            listings = data.get('listings', [])
+            
+            if not listings:
+                break
+            
+            for listing in listings:
+                release = listing.get('release', {})
+                all_listings.append({
+                    'listing_id': str(listing.get('id')),
+                    'price': float(listing.get('price', {}).get('value', 0)),
+                    'listed_date': listing.get('listed', ''),
+                    'artist': release.get('artist', 'Unknown'),
+                    'title': release.get('title', 'Unknown'),
+                    'condition': listing.get('condition', 'Very Good Plus (VG+)'),
+                    'sleeve_condition': listing.get('sleeve_condition', 'Very Good Plus (VG+)')
+                })
+            
+            pagination = data.get('pagination', {})
+            if page >= pagination.get('pages', 1):
+                break
+            page += 1
+        
+        from datetime import datetime
+        
+        updated = 0
+        failed = 0
+        results = []
+        
+        for listing in all_listings:
+            # Find local record
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, store_price, discogs_listed_date FROM records WHERE discogs_listing_id = ?', (listing['listing_id'],))
+            record = cursor.fetchone()
+            conn.close()
+            
+            if not record:
+                continue
+            
+            # Calculate weeks on Discogs
+            if listing['listed_date']:
+                listed_date = datetime.strptime(listing['listed_date'].split('T')[0], '%Y-%m-%d')
+                today = datetime.now()
+                weeks = max(0, (today - listed_date).days // 7)
+            else:
+                weeks = 0
+            
+            # Calculate expected price
+            reduction = weeks * step_percent
+            effective_markup = max(0, markup_percent - reduction)
+            expected_price = record['store_price'] * (1 + effective_markup / 100)
+            expected_price = max(record['store_price'], round(expected_price, 2))
+            
+            # Update if price changed (allow 1 cent rounding)
+            if abs(listing['price'] - expected_price) > 0.01:
+                update_data = {
+                    "price": expected_price,
+                    "condition": listing['condition'],
+                    "sleeve_condition": listing['sleeve_condition'],
+                    "status": "For Sale"
+                }
+                
+                update_response = requests.post(
+                    f'https://api.discogs.com/marketplace/listings/{listing["listing_id"]}',
+                    headers=headers,
+                    json=update_data
+                )
+                
+                if update_response.status_code in [200, 201]:
+                    updated += 1
+                    results.append(f"✅ ${listing['price']:.2f} → ${expected_price:.2f}: {listing['artist']} - {listing['title']}")
+                else:
+                    failed += 1
+                    results.append(f"❌ Failed: {listing['artist']} - {listing['title']}")
+            
+            # Rate limiting delay
+            import time
+            time.sleep(1)
+        
         return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+            'success': True,
+            'message': f'Updated {updated} listings, Failed: {failed}',
+            'updated': updated,
+            'failed': failed,
+            'results': results
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in sync_prices: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500   
+
+
 
 @app.route('/api/discogs/create-listings', methods=['POST'])
 def create_discogs_listings():
