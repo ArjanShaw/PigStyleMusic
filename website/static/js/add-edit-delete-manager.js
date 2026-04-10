@@ -1210,7 +1210,11 @@ class AddEditDeleteManager {
                 const sleeveDisplay = sleeveCondition ? sleeveCondition.display_name || sleeveCondition.condition_name : 'Not set';
                 const discDisplay = discCondition ? discCondition.display_name || discCondition.condition_name : 'Not set';
                 
-                 
+                // Format location display
+                const locationDisplay = record.location && record.location.trim() !== '' 
+                    ? record.location 
+                    : '<span style="color: #999;">Not set</span>';
+                
                 return `
                     <div class="record-card" data-record-id="${record.id}" data-index="${index}">
                         <div class="record-header">
@@ -1230,6 +1234,7 @@ class AddEditDeleteManager {
                                     <span><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</span>
                                     <span><strong>Sleeve:</strong> ${sleeveDisplay}</span>
                                     <span><strong>Disc:</strong> ${discDisplay}</span>
+                                    <span><strong>Location:</strong> ${locationDisplay}</span>
                                     <span><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></span>
                                     ${record.consignor_name ? `<span><strong>Consignor:</strong> ${record.consignor_name}</span>` : ''}
                                 </div>
@@ -1264,6 +1269,18 @@ class AddEditDeleteManager {
                                     </select>
                                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                                         Independent from sleeve
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">Location</label>
+                                    <input type="text" 
+                                           class="form-control edit-location-input" 
+                                           data-record-id="${record.id}"
+                                           value="${this.escapeHtml(record.location || '')}" 
+                                           placeholder="e.g., bin 1/12, shelf A/3">
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Physical location in store
                                     </div>
                                 </div>
                                 
@@ -1886,6 +1903,7 @@ class AddEditDeleteManager {
         const genreSelect = card.querySelector('.edit-genre-select');
         const sleeveConditionSelect = card.querySelector('.edit-sleeve-condition-select');
         const discConditionSelect = card.querySelector('.edit-disc-condition-select');
+        const locationInput = card.querySelector('.edit-location-input');
         const priceInput = card.querySelector('.edit-price-input');
         const statusSelect = card.querySelector('.edit-status-select');
         const consignorSelect = card.querySelector('.edit-consignor-select');
@@ -1914,6 +1932,11 @@ class AddEditDeleteManager {
         
         if (discConditionSelect && discConditionSelect.value) {
             updates.condition_disc_id = parseInt(discConditionSelect.value);
+        }
+        
+        if (locationInput) {
+            const locationValue = locationInput.value.trim();
+            updates.location = locationValue || null;
         }
         
         if (priceInput) {
@@ -1957,7 +1980,12 @@ class AddEditDeleteManager {
                 else if (response.store_price) updatedPrice = response.store_price;
                 else if (response.data && response.data.store_price) updatedPrice = response.data.store_price;
                 
-                showMessage(`Record updated successfully! Price: $${(updatedPrice || 0).toFixed(2)}`, 'success');
+                let locationMessage = '';
+                if (updates.location !== undefined) {
+                    locationMessage = updates.location ? ` Location: ${updates.location}.` : ' Location cleared.';
+                }
+                
+                showMessage(`Record updated successfully! Price: $${(updatedPrice || 0).toFixed(2)}.${locationMessage}`, 'success');
                 
                 if (genreChanged && currentRecord && currentRecord.artist && newGenreId) {
                     const updateResult = await this.genrePredictor.updateArtistGenre(currentRecord.artist, newGenreId, newGenreName);
