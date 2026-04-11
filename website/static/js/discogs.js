@@ -17,6 +17,8 @@ let categorySelect = null;
 let resolveButton = null;
 let statusMessage = null;
 let cutoffDateInput = null;
+let searchInput = null;
+let searchButton = null;
 
 // Modal elements
 let progressModal = null;
@@ -273,6 +275,8 @@ function initDiscogsTab() {
     resolveButton = document.getElementById('resolve-button');
     statusMessage = document.getElementById('discogs-status-message');
     cutoffDateInput = document.getElementById('discogs-cutoff-date');
+    searchInput = document.getElementById('discogs-search-input');
+    searchButton = document.getElementById('discogs-search-button');
     
     if (!tableBody || !categorySelect) {
         console.error('Discogs tab elements not found');
@@ -283,6 +287,15 @@ function initDiscogsTab() {
         const defaultDate = new Date();
         defaultDate.setDate(defaultDate.getDate() - 30);
         cutoffDateInput.value = defaultDate.toISOString().split('T')[0];
+    }
+    
+    if (searchButton) {
+        searchButton.onclick = () => filterByCategory();
+    }
+    if (searchInput) {
+        searchInput.onkeyup = (e) => {
+            if (e.key === 'Enter') filterByCategory();
+        };
     }
     
     resolveButton.disabled = true;
@@ -363,7 +376,7 @@ async function loadInitialData() {
 }
 
 // ============================================================================
-// Filter data locally when dropdown changes - NO BACKEND CALL
+// Filter data locally when dropdown changes - WITH SEARCH
 // ============================================================================
 
 window.filterByCategory = function() {
@@ -380,20 +393,36 @@ window.filterByCategory = function() {
         return;
     }
     
+    // First filter by category
+    let categoryFiltered = [];
     if (currentCategory === 'discogs_orphans') {
-        filteredInventory = cachedInventory.filter(item => item.type === 'discogs_orphan');
+        categoryFiltered = cachedInventory.filter(item => item.type === 'discogs_orphan');
     } else if (currentCategory === 'local_orphans') {
-        filteredInventory = cachedInventory.filter(item => item.type === 'local_orphan');
+        categoryFiltered = cachedInventory.filter(item => item.type === 'local_orphan');
     } else if (currentCategory === 'not_listed') {
-        filteredInventory = cachedInventory.filter(item => item.type === 'not_listed');
+        categoryFiltered = cachedInventory.filter(item => item.type === 'not_listed');
     } else if (currentCategory === 'due_reduction') {
-        filteredInventory = cachedInventory.filter(item => item.type === 'both' && item.needs_reduction === true);
+        categoryFiltered = cachedInventory.filter(item => item.type === 'both' && item.needs_reduction === true);
     } else {
-        filteredInventory = [];
+        categoryFiltered = [];
+    }
+    
+    // Then apply search filter if search term exists
+    const searchTerm = searchInput?.value?.trim().toLowerCase() || '';
+    if (searchTerm) {
+        filteredInventory = categoryFiltered.filter(item => {
+            return (item.artist && item.artist.toLowerCase().includes(searchTerm)) ||
+                   (item.title && item.title.toLowerCase().includes(searchTerm)) ||
+                   (item.catalog_number && item.catalog_number.toLowerCase().includes(searchTerm)) ||
+                   (item.barcode && item.barcode.includes(searchTerm));
+        });
+    } else {
+        filteredInventory = categoryFiltered;
     }
     
     renderTable();
     
+    // Update resolve button state
     if (filteredInventory.length > 0) {
         resolveButton.disabled = false;
         resolveButton.style.opacity = '1';
@@ -415,15 +444,28 @@ window.filterByCategory = function() {
         else if (currentCategory === 'local_orphans') categoryName = 'Local Orphans';
         else if (currentCategory === 'not_listed') categoryName = 'Listing Candidates';
         else if (currentCategory === 'due_reduction') categoryName = 'Due for Reduction';
-        statusMessage.innerHTML = `📋 Showing ${filteredInventory.length} ${categoryName}`;
+        
+        const searchInfo = searchTerm ? ` (matching "${searchTerm}")` : '';
+        statusMessage.innerHTML = `📋 Showing ${filteredInventory.length} ${categoryName}${searchInfo}`;
         statusMessage.className = 'status-message status-info';
         statusMessage.style.display = 'block';
-        setTimeout(() => { statusMessage.style.display = 'none'; }, 2000);
+        setTimeout(() => { statusMessage.style.display = 'none'; }, 3000);
     }
 };
 
 // ============================================================================
-// Render table from filteredInventory
+// Clear search filter
+// ============================================================================
+
+window.clearDiscogsSearch = function() {
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    filterByCategory();
+};
+
+// ============================================================================
+// Render table from filteredInventory with Post button
 // ============================================================================
 
 function renderTable() {
@@ -436,7 +478,7 @@ function renderTable() {
         else if (currentCategory === 'not_listed') message = 'No listing candidates found. Try adjusting the cutoff date and click "Refresh Data".';
         else if (currentCategory === 'due_reduction') message = 'No listings due for price reduction.';
         else message = 'Select a category above';
-        tableBody.innerHTML = `<td colspan="12" style="text-align: center; padding: 40px;">${message}<\/td>`;
+        tableBody.innerHTML = `<td colspan="13" style="text-align: center; padding: 40px;">${message}<\/td>`;
         return;
     }
     
@@ -444,6 +486,7 @@ function renderTable() {
     for (const item of filteredInventory) {
         let typeBadge = '';
         let reasonDisplay = '';
+        let actionButton = '';
         
         if (currentCategory === 'discogs_orphans') {
             typeBadge = '<span class="status-badge" style="background: #dc3545; color: white;">🗑 Discogs Orphan</span>';
@@ -454,6 +497,10 @@ function renderTable() {
         } else if (currentCategory === 'not_listed') {
             typeBadge = '<span class="status-badge" style="background: #28a745; color: white;">📋 Listing Candidate</span>';
             reasonDisplay = '<span style="color: #28a745; font-size: 12px;">✓ Eligible for Discogs</span>';
+            // Add Post button for not_listed items
+            actionButton = `<button class="btn btn-sm btn-success" onclick="postSingleRecordToDiscogs(${item.record_id}, '${escapeHtml(item.artist).replace(/'/g, "\\'")}', '${escapeHtml(item.title).replace(/'/g, "\\'")}', ${item.price || 0}, '${escapeHtml(item.media_condition || '').replace(/'/g, "\\'")}', '${escapeHtml(item.sleeve_condition || '').replace(/'/g, "\\'")}', '${escapeHtml(item.catalog_number || '').replace(/'/g, "\\'")}', '${escapeHtml(item.location || '').replace(/'/g, "\\'")}', '${escapeHtml(item.notes || '').replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px;">
+                                <i class="fab fa-discogs"></i> Post
+                            </button>`;
         } else if (currentCategory === 'due_reduction') {
             typeBadge = '<span class="status-badge" style="background: #fd7e14; color: white;">💰 Due for Reduction</span>';
             reasonDisplay = `<span style="color: #fd7e14; font-size: 12px;">Current: $${item.price?.toFixed(2)} → Expected: $${item.expected_price?.toFixed(2)} (${item.weeks_on_discogs} weeks)</span>`;
@@ -484,11 +531,133 @@ function renderTable() {
                 <td>${weeksDisplay}<\/td>
                 <td>${discogsLink}<\/td>
                 <td>${reasonDisplay}<\/td>
+                <td style="text-align: center;">${actionButton}<\/td>
             </tr>
         `;
     }
     
     tableBody.innerHTML = html;
+}
+
+// ============================================================================
+// Post Single Record to Discogs
+// ============================================================================
+
+let lastPostedUrl = null;
+
+window.postSingleRecordToDiscogs = async function(recordId, artist, title, price, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
+    if (!recordId) {
+        showStatus('Invalid record ID', 'error');
+        return;
+    }
+    
+    // Validate conditions
+    if (!mediaCondition || !mediaCondition.trim()) {
+        showStatus('Media condition is required', 'error');
+        return;
+    }
+    
+    if (!sleeveCondition || !sleeveCondition.trim()) {
+        showStatus('Sleeve condition is required', 'error');
+        return;
+    }
+    
+    if (!price || price <= 0) {
+        showStatus('Valid price is required', 'error');
+        return;
+    }
+    
+    if (!confirm(`📋 Post "${artist} - ${title}" to Discogs?\n\nPrice: $${price}\nMedia: ${mediaCondition}\nSleeve: ${sleeveCondition}\n\nThis will create a new Discogs listing.`)) {
+        return;
+    }
+    
+    // Show progress in modal
+    openProgressModal(`Posting to Discogs: ${artist} - ${title}`);
+    appendToModalLog(`🚀 Starting to post "${artist} - ${title}" to Discogs...`, 'info');
+    appendToModalLog(`💰 Price: $${price}`, 'info');
+    appendToModalLog(`📀 Media Condition: ${mediaCondition}`, 'info');
+    appendToModalLog(`📀 Sleeve Condition: ${sleeveCondition}`, 'info');
+    if (location) appendToModalLog(`📍 Location: ${location}`, 'info');
+    appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+    
+    const listingData = {
+        record: {
+            id: recordId,
+            artist: artist,
+            title: title,
+            catalog_number: catalogNumber || '',
+            media_condition: mediaCondition,
+            sleeve_condition: sleeveCondition,
+            price: price,
+            notes: notes || '',
+            location: location || ''
+        }
+    };
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/discogs/create-listing-single`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(listingData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            lastPostedUrl = result.listing_url;
+            appendToModalLog(`✅ SUCCESS! Record posted to Discogs!`, 'success');
+            appendToModalLog(`🔗 Discogs URL: ${result.listing_url}`, 'success');
+            appendToModalLog(`🆔 Listing ID: ${result.listing_id}`, 'info');
+            appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'success');
+            
+            // Show success message with clickable link
+            showStatusWithLink(`✅ Successfully posted "${artist} - ${title}" to Discogs!`, result.listing_url, 'success');
+            
+            // Refresh data after posting
+            appendToModalLog(`🔄 Refreshing data...`, 'info');
+            await refreshData();
+            appendToModalLog(`✅ Data refreshed`, 'success');
+            
+            // Keep modal open to show the URL
+            setTimeout(() => {
+                if (!cancelResolve) {
+                    // Don't auto-close - let user see the URL
+                    appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+                    appendToModalLog(`💡 You can close this window now.`, 'info');
+                }
+            }, 1000);
+            
+        } else {
+            throw new Error(result.error || 'Failed to create listing');
+        }
+        
+    } catch (error) {
+        appendToModalLog(`❌ FAILED: ${error.message}`, 'error');
+        showStatus(`Error: ${error.message}`, 'error');
+    }
+};
+
+// ============================================================================
+// Show status message with clickable link
+// ============================================================================
+
+function showStatusWithLink(message, url, type = 'success') {
+    if (!statusMessage) return;
+    
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    const linkHtml = url ? `<br><a href="${url}" target="_blank" style="color: #007bff; text-decoration: underline;"><i class="fab fa-discogs"></i> View on Discogs: ${url}</a>` : '';
+    
+    statusMessage.innerHTML = `${icons[type] || 'ℹ️'} ${escapeHtml(message)}${linkHtml}`;
+    statusMessage.className = `status-message status-${type}`;
+    statusMessage.style.display = 'block';
+    
+    // Keep visible longer for URLs
+    setTimeout(() => {
+        if (statusMessage) statusMessage.style.display = 'none';
+    }, 15000);
 }
 
 // ============================================================================
@@ -498,7 +667,7 @@ function renderTable() {
 window.refreshData = function() {
     cachedInventory = [];
     isCacheValid = false;
-    tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Reloading data...<\/td>';
+    tableBody.innerHTML = '<td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Reloading data...<\/td>';
     loadInitialData();
 };
 
@@ -714,6 +883,9 @@ async function resolveNotListed() {
             if (result.success) {
                 listed++;
                 appendToModalLog(`✅ LISTED: ${item.artist} - ${item.title} (ID: ${result.listing_id})`, 'success');
+                if (result.listing_url) {
+                    appendToModalLog(`   🔗 ${result.listing_url}`, 'info');
+                }
             } else if (response.status === 429) {
                 appendToModalLog(`⏳ Rate limited, waiting 5 seconds...`, 'warning');
                 await new Promise(resolve => setTimeout(resolve, 5000));
@@ -929,4 +1101,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - with stats table, progress modal, and price reductions');
+console.log('✅ discogs.js loaded - with search, single post, and Discogs URL display');

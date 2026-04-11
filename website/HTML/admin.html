@@ -2322,7 +2322,7 @@
             </div>
         </div> 
       
-<!-- Discogs Tab -->
+        <!-- Discogs Tab -->
 <div id="discogs-tab" class="tab-content">
     <h2><i class="fab fa-discogs"></i> Discogs Management</h2>
     
@@ -2363,6 +2363,34 @@
         </div>
     </div>
     
+    <!-- Search Bar for Not Listed items -->
+    <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #28a745; padding: 15px;">
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+                <label for="discogs-search-input" style="display: block; margin-bottom: 5px; font-weight: 600; color: #28a745;">
+                    <i class="fas fa-search"></i> Search Not Listed Records
+                </label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" 
+                           id="discogs-search-input" 
+                           class="search-input" 
+                           placeholder="Search by artist, title, or catalog number..."
+                           style="flex: 1;">
+                    <button class="btn btn-success" id="discogs-search-button" onclick="filterByCategory()">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearDiscogsSearch()">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+            </div>
+            <div class="search-hint" style="font-size: 12px; color: #666;">
+                <i class="fas fa-info-circle"></i> 
+                Search within "Not Listed" category. Click <strong>Post</strong> next to any record to list it on Discogs.
+            </div>
+        </div>
+    </div>
+    
     <!-- Stats Table -->
     <div class="stats-table-container" style="margin-bottom: 20px;">
         <table class="stats-table" style="width: 100%; border-collapse: collapse; background: #f8f9fa; border-radius: 8px; overflow: hidden;">
@@ -2374,8 +2402,7 @@
                     <th style="padding: 12px; text-align: center; background: #ffc107; color: #333;">Local Orphans</th>
                     <th style="padding: 12px; text-align: center; background: #6c757d; color: white;">Not Listed</th>
                     <th style="padding: 12px; text-align: center; background: #fd7e14; color: white;">Due Reduction</th>
-                </tr>
-            </thead>
+                </thead>
             <tbody>
                 <tr id="stats-row">
                     <td id="stat-total" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
@@ -2409,17 +2436,20 @@
                     <th>Listing ID</th>
                     <th>Artist</th>
                     <th>Title</th>
+                    <th>Media</th>
+                    <th>Sleeve</th>
                     <th>Last Seen</th>
                     <th>Location</th>
                     <th>Current Price</th>
                     <th>Expected Price</th>
-                    <th>Weeks on Discogs</th>
+                    <th>Weeks</th>
                     <th>Discogs Link</th>
                     <th>Reason</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody id="combined-inventory-body">
-                <tr><td colspan="12" style="text-align: center; padding: 40px;">Select a cutoff date and click "Refresh Data" to load inventory</td></tr>
+                <tr><td colspan="15" style="text-align: center; padding: 40px;">Select a cutoff date and click "Refresh Data" to load inventory</td></tr>
             </tbody>
         </table>
     </div>
@@ -2434,9 +2464,10 @@
             <li><strong>Resolve (on Due Reduction):</strong> Applies price reductions to Discogs</li>
             <li><strong>Discogs Orphans:</strong> Delete from Discogs</li>
             <li><strong>Local Orphans:</strong> Clear discogs_listing_id</li>
-            <li><strong>Not Listed:</strong> Create new Discogs listings</li>
+            <li><strong>Not Listed:</strong> Use the search bar to find records, then click <strong>Post</strong> to list individually on Discogs</li>
         </ul>
         <p style="margin-top: 10px;"><strong>Formula:</strong> Current price = store_price × (1 + (markup% - weeks × weekly_reduction%) / 100) | Never below store_price</p>
+        <p style="margin-top: 10px;"><strong>💡 Tip:</strong> After posting a record, the Discogs URL will appear in the status message and modal log. Click it to verify your listing!</p>
     </div>
 </div>
 
