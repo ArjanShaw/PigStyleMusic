@@ -439,8 +439,8 @@ window.filterByCategory = function() {
     
     renderTable();
     
-    // Update resolve button state
-    if (filteredInventory.length > 0 && currentCategory !== 'not_listed') {
+    // Update resolve button state - ENABLED FOR ALL CATEGORIES including not_listed
+    if (filteredInventory.length > 0) {
         resolveButton.disabled = false;
         resolveButton.style.opacity = '1';
         
@@ -453,6 +453,7 @@ window.filterByCategory = function() {
     } else {
         resolveButton.disabled = true;
         resolveButton.style.opacity = '0.5';
+        resolveButton.innerHTML = 'Resolve';
     }
     
     if (statusMessage) {
@@ -673,14 +674,24 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
         const result = await response.json();
         
         if (result.success) {
-            lastPostedUrl = result.listing_url;
+            // Construct Discogs URL from listing ID if not provided
+            let discogsUrl = result.listing_url;
+            if (!discogsUrl && result.listing_id) {
+                discogsUrl = `https://www.discogs.com/sell/item/${result.listing_id}`;
+                appendToModalLog(`ℹ️ URL constructed from listing ID`, 'info');
+            }
+            
+            lastPostedUrl = discogsUrl;
             appendToModalLog(`✅ SUCCESS! Record posted to Discogs!`, 'success');
-            appendToModalLog(`🔗 Discogs URL: ${result.listing_url}`, 'success');
+            appendToModalLog(`🔗 Discogs URL: ${discogsUrl}`, 'success');
             appendToModalLog(`🆔 Listing ID: ${result.listing_id}`, 'info');
+            if (result.matched_title) {
+                appendToModalLog(`📀 Matched Release: ${result.matched_artist} - ${result.matched_title}`, 'info');
+            }
             appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'success');
             
             // Show success message with clickable link
-            showStatusWithLink(`✅ Successfully posted "${artist} - ${title}" to Discogs!`, result.listing_url, 'success');
+            showStatusWithLink(`✅ Successfully posted "${artist} - ${title}" to Discogs!`, discogsUrl, 'success');
             
             // Refresh data after posting
             appendToModalLog(`🔄 Refreshing data...`, 'info');
@@ -882,7 +893,7 @@ async function resolveLocalOrphans() {
 }
 
 // ============================================================================
-// RESOLVE: List Not Listed - Simplified progress log
+// RESOLVE: List Not Listed - Bulk listing
 // ============================================================================
 
 async function resolveNotListed() {
@@ -906,16 +917,20 @@ async function resolveNotListed() {
         const item = items[i];
         updateModalProgress(i + 1, total);
         
-        // Validate conditions before sending (silent validation)
+        // Validate conditions before sending
         if (!item.media_condition || !item.media_condition.trim()) {
             failed++;
+            appendToModalLog(`❌ SKIPPED: ${item.artist} - ${item.title} (missing media condition)`, 'error');
             continue;
         }
         
         if (!item.sleeve_condition || !item.sleeve_condition.trim()) {
             failed++;
+            appendToModalLog(`❌ SKIPPED: ${item.artist} - ${item.title} (missing sleeve condition)`, 'error');
             continue;
         }
+        
+        appendToModalLog(`[${i+1}/${total}] Processing: ${item.artist} - ${item.title}`, 'info');
         
         const listingData = {
             record: {
@@ -945,9 +960,13 @@ async function resolveNotListed() {
             
             if (result.success) {
                 listed++;
+                let discogsUrl = result.listing_url;
+                if (!discogsUrl && result.listing_id) {
+                    discogsUrl = `https://www.discogs.com/sell/item/${result.listing_id}`;
+                }
                 appendToModalLog(`✅ LISTED: ${item.artist} - ${item.title} (ID: ${result.listing_id})`, 'success');
-                if (result.listing_url) {
-                    appendToModalLog(`   🔗 ${result.listing_url}`, 'info');
+                if (discogsUrl) {
+                    appendToModalLog(`   🔗 ${discogsUrl}`, 'info');
                 }
             } else if (response.status === 429) {
                 appendToModalLog(`⏳ Rate limited, waiting 5 seconds...`, 'warning');
@@ -965,7 +984,14 @@ async function resolveNotListed() {
                 const retryResult = await retryResponse.json();
                 if (retryResult.success) {
                     listed++;
+                    let discogsUrl = retryResult.listing_url;
+                    if (!discogsUrl && retryResult.listing_id) {
+                        discogsUrl = `https://www.discogs.com/sell/item/${retryResult.listing_id}`;
+                    }
                     appendToModalLog(`✅ LISTED (retry): ${item.artist} - ${item.title} (ID: ${retryResult.listing_id})`, 'success');
+                    if (discogsUrl) {
+                        appendToModalLog(`   🔗 ${discogsUrl}`, 'info');
+                    }
                 } else {
                     failed++;
                     appendToModalLog(`❌ FAILED (retry): ${item.artist} - ${item.title} - ${retryResult.error}`, 'error');
@@ -1164,4 +1190,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - with search, single post, and Discogs URL display');
+console.log('✅ discogs.js loaded - with search, single post, bulk post, and Discogs URL display');
