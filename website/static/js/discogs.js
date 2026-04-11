@@ -463,7 +463,7 @@ window.clearDiscogsSearch = function() {
     }
     filterByCategory();
 };
-
+ 
 // ============================================================================
 // Render table from filteredInventory with Post button
 // ============================================================================
@@ -478,7 +478,7 @@ function renderTable() {
         else if (currentCategory === 'not_listed') message = 'No listing candidates found. Try adjusting the cutoff date and click "Refresh Data".';
         else if (currentCategory === 'due_reduction') message = 'No listings due for price reduction.';
         else message = 'Select a category above';
-        tableBody.innerHTML = `<td colspan="13" style="text-align: center; padding: 40px;">${message}<\/td>`;
+        tableBody.innerHTML = `<td colspan="14" style="text-align: center; padding: 40px;">${message}<\/td>`;
         return;
     }
     
@@ -486,24 +486,39 @@ function renderTable() {
     for (const item of filteredInventory) {
         let typeBadge = '';
         let reasonDisplay = '';
-        let actionButton = '';
+        let actionButton = '';  // Initialize actionButton
         
         if (currentCategory === 'discogs_orphans') {
             typeBadge = '<span class="status-badge" style="background: #dc3545; color: white;">🗑 Discogs Orphan</span>';
             reasonDisplay = item.reason ? `<span style="color: #dc3545; font-size: 12px;">⚠️ ${escapeHtml(item.reason)}</span>` : '—';
+            actionButton = '—'; // No action for orphans
         } else if (currentCategory === 'local_orphans') {
             typeBadge = '<span class="status-badge" style="background: #ffc107; color: #333;">⚠ Local Orphan</span>';
             reasonDisplay = item.reason ? `<span style="color: #856404; font-size: 12px;">⚠️ ${escapeHtml(item.reason)}</span>` : '—';
+            actionButton = '—'; // No action for local orphans
         } else if (currentCategory === 'not_listed') {
             typeBadge = '<span class="status-badge" style="background: #28a745; color: white;">📋 Listing Candidate</span>';
             reasonDisplay = '<span style="color: #28a745; font-size: 12px;">✓ Eligible for Discogs</span>';
+            
+            // Escape strings for JavaScript
+            const escapedArtist = escapeHtml(item.artist || '').replace(/'/g, "\\'");
+            const escapedTitle = escapeHtml(item.title || '').replace(/'/g, "\\'");
+            const escapedMediaCondition = escapeHtml(item.media_condition || '').replace(/'/g, "\\'");
+            const escapedSleeveCondition = escapeHtml(item.sleeve_condition || '').replace(/'/g, "\\'");
+            const escapedCatalogNumber = escapeHtml(item.catalog_number || '').replace(/'/g, "\\'");
+            const escapedLocation = escapeHtml(item.location || '').replace(/'/g, "\\'");
+            const escapedNotes = escapeHtml(item.notes || '').replace(/'/g, "\\'");
+            
             // Add Post button for not_listed items
-            actionButton = `<button class="btn btn-sm btn-success" onclick="postSingleRecordToDiscogs(${item.record_id}, '${escapeHtml(item.artist).replace(/'/g, "\\'")}', '${escapeHtml(item.title).replace(/'/g, "\\'")}', ${item.price || 0}, '${escapeHtml(item.media_condition || '').replace(/'/g, "\\'")}', '${escapeHtml(item.sleeve_condition || '').replace(/'/g, "\\'")}', '${escapeHtml(item.catalog_number || '').replace(/'/g, "\\'")}', '${escapeHtml(item.location || '').replace(/'/g, "\\'")}', '${escapeHtml(item.notes || '').replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px;">
-                                <i class="fab fa-discogs"></i> Post
+            actionButton = `<button class="btn btn-sm btn-success" 
+                                    onclick="postSingleRecordToDiscogs(${item.record_id}, '${escapedArtist}', '${escapedTitle}', ${item.price || 0}, '${escapedMediaCondition}', '${escapedSleeveCondition}', '${escapedCatalogNumber}', '${escapedLocation}', '${escapedNotes}')" 
+                                    style="padding: 4px 8px; font-size: 11px; white-space: nowrap;">
+                                <i class="fab fa-discogs"></i> Post to Discogs
                             </button>`;
         } else if (currentCategory === 'due_reduction') {
             typeBadge = '<span class="status-badge" style="background: #fd7e14; color: white;">💰 Due for Reduction</span>';
             reasonDisplay = `<span style="color: #fd7e14; font-size: 12px;">Current: $${item.price?.toFixed(2)} → Expected: $${item.expected_price?.toFixed(2)} (${item.weeks_on_discogs} weeks)</span>`;
+            actionButton = '—'; // No action button for reductions (use Resolve button instead)
         }
         
         let lastSeenDisplay = item.last_seen || '—';
@@ -538,6 +553,7 @@ function renderTable() {
     
     tableBody.innerHTML = html;
 }
+
 
 // ============================================================================
 // Post Single Record to Discogs
