@@ -464,7 +464,8 @@ def get_my_discogs_listings():
         app.logger.error(f"Error fetching Discogs listings: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
- 
+
+
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """Create a single listing on Discogs with markup pricing"""
@@ -504,16 +505,29 @@ def create_discogs_listing_single():
         }
         
         # ============================================================
-        # STEP 1: Search for release using quoted catalog number
+        # STEP 1: Search for release using artist, title, and catalog number
         # ============================================================
         search_url = "https://api.discogs.com/database/search"
         
         target_catalog = record.get('catalog_number', '')
+        target_artist = record.get('artist', '')
+        target_title = record.get('title', '')
+        
         if not target_catalog:
             return jsonify({'success': False, 'error': 'catalog_number is required for search'}), 400
         
-        # Use quoted search for exact phrase matching
-        search_query = f'"{target_catalog}"'
+        # Build search query with artist, title, and catalog number
+        search_query_parts = []
+        if target_artist:
+            search_query_parts.append(target_artist)
+        if target_title:
+            search_query_parts.append(target_title)
+        if target_catalog:
+            search_query_parts.append(target_catalog)
+        
+        search_query = ' '.join(search_query_parts)
+        
+        app.logger.info(f"Searching Discogs with query: {search_query}")
         
         search_params = {
             'q': search_query,
@@ -521,49 +535,76 @@ def create_discogs_listing_single():
             'per_page': 50
         }
         
-        app.logger.info(f"Searching Discogs with query: {search_query}")
-        
         search_response = requests.get(search_url, headers=headers, params=search_params)
         
         if search_response.status_code != 200:
+            app.logger.error(f"Search failed: {search_response.status_code}")
             return jsonify({'success': False, 'error': f'Search failed: {search_response.status_code}'}), search_response.status_code
         
         search_data = search_response.json()
         all_releases = search_data.get('results', [])
         
         # ============================================================
-        # STEP 2: CLIENT-SIDE FILTERING - Only keep exact catalog number matches
+        # STEP 2: Filter results - MUST match catalog number AND artist/title
         # ============================================================
         exact_matches = []
         
-        # Normalize target catalog number (remove spaces, hyphens, case)
-        target_normalized = target_catalog.replace(' ', '').replace('-', '').strip().lower()
+        # Normalize target strings for comparison
+        target_normalized_catno = target_catalog.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
+        target_artist_lower = target_artist.strip().lower()
+        target_title_lower = target_title.strip().lower()
+        
+        app.logger.info(f"Looking for catalog: '{target_catalog}' (normalized: '{target_normalized_catno}')")
+        app.logger.info(f"Looking for artist: '{target_artist}'")
+        app.logger.info(f"Looking for title: '{target_title}'")
         
         for release in all_releases:
             release_catno = release.get('catno', '')
-            if not release_catno:
-                continue
+            release_title = release.get('title', '')
+            release_artist = release.get('artist', '')
             
-            # Normalize release catalog number for comparison
-            release_normalized = release_catno.replace(' ', '').replace('-', '').strip().lower()
+            # Normalize release catalog number
+            release_normalized_catno = release_catno.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
             
-            # Check for exact match after normalization
-            if release_normalized == target_normalized:
+            # Check catalog number match (normalized)
+            catalog_matches = release_normalized_catno == target_normalized_catno
+            
+            # Check artist match (artist field OR title contains artist)
+            artist_matches = False
+            if target_artist_lower:
+                artist_matches = (target_artist_lower in release_artist.lower() or 
+                                 target_artist_lower in release_title.lower())
+            
+            # Check title match
+            title_matches = False
+            if target_title_lower:
+                title_matches = target_title_lower in release_title.lower()
+            
+            # For a match: catalog must match, AND (artist matches OR title matches)
+            if catalog_matches and (artist_matches or title_matches):
                 exact_matches.append(release)
-                app.logger.info(f"✅ Exact match found: '{release_catno}' -> Release ID: {release.get('id')}")
+                app.logger.info(f"✅ Match found: '{release_catno}' - {release_artist} - {release_title} (Release ID: {release.get('id')})")
         
         app.logger.info(f"Search returned {len(all_releases)} total results")
-        app.logger.info(f"Found {len(exact_matches)} exact matches for catalog number '{target_catalog}'")
+        app.logger.info(f"Found {len(exact_matches)} exact matches for catalog number '{target_catalog}' with artist/title match")
         
         if not exact_matches:
             # Log found catalog numbers for debugging
-            found_catalogs = list(set([r.get('catno', 'N/A') for r in all_releases[:20]]))
-            app.logger.warning(f"No exact match for '{target_catalog}'. Found: {found_catalogs}")
+            found_releases = []
+            for r in all_releases[:20]:
+                found_releases.append({
+                    'catno': r.get('catno', 'N/A'),
+                    'artist': r.get('artist', 'N/A'),
+                    'title': r.get('title', 'N/A')[:50]
+                })
+            
+            app.logger.warning(f"No exact match for '{target_catalog}' - '{target_artist} - {target_title}'")
+            app.logger.warning(f"Found releases: {found_releases}")
             
             return jsonify({
                 'success': False, 
-                'error': f'No exact match found for catalog number "{target_catalog}".',
-                'found_catalog_numbers': found_catalogs,
+                'error': f'No exact match found for "{target_artist} - {target_title}" with catalog number "{target_catalog}".',
+                'found_releases': found_releases,
                 'total_results': len(all_releases)
             }), 400
         
@@ -573,15 +614,18 @@ def create_discogs_listing_single():
         selected_release = exact_matches[0]
         release_id = selected_release.get('id')
         matched_catno = selected_release.get('catno')
+        matched_title = selected_release.get('title')
+        matched_artist = selected_release.get('artist')
         
         app.logger.info(f"Selected release ID {release_id} with catalog number '{matched_catno}'")
+        app.logger.info(f"Matched title: '{matched_title}', artist: '{matched_artist}'")
         
         # ============================================================
         # STEP 4: Create listing with the exact release ID
         # ============================================================
-        listing_url = "https://api.discogs.com/marketplace/listings"
+        listing_url_endpoint = "https://api.discogs.com/marketplace/listings"
         
-        # Build comments
+        # Build comments with record ID and location
         comments = f"[PIGSTYLE ID: {record['id']}]"
         if record.get('location'):
             comments += f" | Location: {record.get('location')}"
@@ -597,11 +641,16 @@ def create_discogs_listing_single():
             "comments": comments
         }
         
-        listing_response = requests.post(listing_url, headers=headers, json=listing_data)
+        app.logger.info(f"Creating listing for release {release_id} at price ${discogs_price}")
+        
+        listing_response = requests.post(listing_url_endpoint, headers=headers, json=listing_data)
         
         if listing_response.status_code in [200, 201]:
             listing_result = listing_response.json()
             listing_id = listing_result.get('listing_id')
+            
+            # Construct Discogs URL
+            discogs_url = f"https://www.discogs.com/sell/item/{listing_id}"
             
             # Update local database
             conn = get_db()
@@ -614,16 +663,21 @@ def create_discogs_listing_single():
             conn.commit()
             conn.close()
             
+            app.logger.info(f"Successfully created listing {listing_id} for record {record['id']}")
+            
             return jsonify({
                 'success': True,
                 'listing_id': listing_id,
+                'listing_url': discogs_url,
                 'release_id': release_id,
                 'matched_catalog_number': matched_catno,
+                'matched_title': matched_title,
+                'matched_artist': matched_artist,
                 'price': discogs_price,
                 'record_id': record['id']
             })
         else:
-            error_text = listing_response.text[:200]
+            error_text = listing_response.text[:500]
             app.logger.error(f"Discogs API error: {listing_response.status_code} - {error_text}")
             return jsonify({
                 'success': False, 
@@ -634,6 +688,7 @@ def create_discogs_listing_single():
         app.logger.error(f"Error creating listing: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/discogs/combined-inventory', methods=['GET'])
 def get_combined_inventory():
