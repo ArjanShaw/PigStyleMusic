@@ -464,7 +464,7 @@ def get_my_discogs_listings():
         app.logger.error(f"Error fetching Discogs listings: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
-
+ 
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """Create a single listing on Discogs with markup pricing"""
@@ -503,29 +503,85 @@ def create_discogs_listing_single():
             'User-Agent': 'PigStyleMusic/1.0'
         }
         
-        # Search for release
+        # ============================================================
+        # STEP 1: Search for release using quoted catalog number
+        # ============================================================
         search_url = "https://api.discogs.com/database/search"
-        search_query = f"{record.get('artist')} {record.get('title')}"
-        if record.get('catalog_number'):
-            search_query += f" {record.get('catalog_number')}"
         
-        search_response = requests.get(search_url, headers=headers, params={'q': search_query, 'type': 'release', 'per_page': 1})
+        target_catalog = record.get('catalog_number', '')
+        if not target_catalog:
+            return jsonify({'success': False, 'error': 'catalog_number is required for search'}), 400
+        
+        # Use quoted search for exact phrase matching
+        search_query = f'"{target_catalog}"'
+        
+        search_params = {
+            'q': search_query,
+            'type': 'release',
+            'per_page': 50
+        }
+        
+        app.logger.info(f"Searching Discogs with query: {search_query}")
+        
+        search_response = requests.get(search_url, headers=headers, params=search_params)
         
         if search_response.status_code != 200:
             return jsonify({'success': False, 'error': f'Search failed: {search_response.status_code}'}), search_response.status_code
         
         search_data = search_response.json()
-        releases = search_data.get('results', [])
+        all_releases = search_data.get('results', [])
         
-        if not releases:
-            return jsonify({'success': False, 'error': 'No matching release found on Discogs'})
+        # ============================================================
+        # STEP 2: CLIENT-SIDE FILTERING - Only keep exact catalog number matches
+        # ============================================================
+        exact_matches = []
         
-        release_id = releases[0].get('id')
+        # Normalize target catalog number (remove spaces, hyphens, case)
+        target_normalized = target_catalog.replace(' ', '').replace('-', '').strip().lower()
         
-        # Create listing with calculated price
+        for release in all_releases:
+            release_catno = release.get('catno', '')
+            if not release_catno:
+                continue
+            
+            # Normalize release catalog number for comparison
+            release_normalized = release_catno.replace(' ', '').replace('-', '').strip().lower()
+            
+            # Check for exact match after normalization
+            if release_normalized == target_normalized:
+                exact_matches.append(release)
+                app.logger.info(f"✅ Exact match found: '{release_catno}' -> Release ID: {release.get('id')}")
+        
+        app.logger.info(f"Search returned {len(all_releases)} total results")
+        app.logger.info(f"Found {len(exact_matches)} exact matches for catalog number '{target_catalog}'")
+        
+        if not exact_matches:
+            # Log found catalog numbers for debugging
+            found_catalogs = list(set([r.get('catno', 'N/A') for r in all_releases[:20]]))
+            app.logger.warning(f"No exact match for '{target_catalog}'. Found: {found_catalogs}")
+            
+            return jsonify({
+                'success': False, 
+                'error': f'No exact match found for catalog number "{target_catalog}".',
+                'found_catalog_numbers': found_catalogs,
+                'total_results': len(all_releases)
+            }), 400
+        
+        # ============================================================
+        # STEP 3: Use the first exact match
+        # ============================================================
+        selected_release = exact_matches[0]
+        release_id = selected_release.get('id')
+        matched_catno = selected_release.get('catno')
+        
+        app.logger.info(f"Selected release ID {release_id} with catalog number '{matched_catno}'")
+        
+        # ============================================================
+        # STEP 4: Create listing with the exact release ID
+        # ============================================================
         listing_url = "https://api.discogs.com/marketplace/listings"
         
-        # Build comments - NO pricing or markup info, only internal reference and location
+        # Build comments
         comments = f"[PIGSTYLE ID: {record['id']}]"
         if record.get('location'):
             comments += f" | Location: {record.get('location')}"
@@ -547,7 +603,7 @@ def create_discogs_listing_single():
             listing_result = listing_response.json()
             listing_id = listing_result.get('listing_id')
             
-            # Update local database with Discogs listing info
+            # Update local database
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute('''
@@ -561,16 +617,23 @@ def create_discogs_listing_single():
             return jsonify({
                 'success': True,
                 'listing_id': listing_id,
+                'release_id': release_id,
+                'matched_catalog_number': matched_catno,
                 'price': discogs_price,
                 'record_id': record['id']
             })
         else:
-            return jsonify({'success': False, 'error': f'Discogs API error: {listing_response.text[:200]}'})
+            error_text = listing_response.text[:200]
+            app.logger.error(f"Discogs API error: {listing_response.status_code} - {error_text}")
+            return jsonify({
+                'success': False, 
+                'error': f'Discogs API error: {error_text}'
+            }), listing_response.status_code
         
     except Exception as e:
         app.logger.error(f"Error creating listing: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/discogs/combined-inventory', methods=['GET'])
 def get_combined_inventory():
