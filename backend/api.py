@@ -571,6 +571,7 @@ def create_discogs_listing_single():
         app.logger.error(f"Error creating listing: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @app.route('/api/discogs/combined-inventory', methods=['GET'])
 def get_combined_inventory():
     """One API call to Discogs + one DB query = combined inventory with orphan detection"""
@@ -650,34 +651,39 @@ def get_combined_inventory():
                 dc.condition_name as disc_condition_name,
                 dc.display_name as disc_display_name
             FROM records r
-            LEFT JOIN conditions sc ON r.condition_sleeve_id = sc.id
-            LEFT JOIN conditions dc ON r.condition_disc_id = dc.id
+            LEFT JOIN d_condition sc ON r.condition_sleeve_id = sc.id
+            LEFT JOIN d_condition dc ON r.condition_disc_id = dc.id
         ''')
         local_records = cursor.fetchall()
         conn.close()
         
+        # Convert sqlite3.Row to dict for easier access
+        local_records_dict = []
+        for record in local_records:
+            local_records_dict.append({
+                'id': record['id'],
+                'artist': record['artist'],
+                'title': record['title'],
+                'last_seen': record['last_seen'],
+                'location': record['location'],
+                'discogs_listing_id': record['discogs_listing_id'],
+                'store_price': record['store_price'],
+                'status_id': record['status_id'],
+                'condition_sleeve_id': record['condition_sleeve_id'],
+                'condition_disc_id': record['condition_disc_id'],
+                'catalog_number': record['catalog_number'] if record['catalog_number'] else '',
+                'discogs_listed_date': record['discogs_listed_date'],
+                'sleeve_condition_name': record['sleeve_condition_name'],
+                'disc_condition_name': record['disc_condition_name'],
+                'sleeve_display_name': record['sleeve_display_name'],
+                'disc_display_name': record['disc_display_name']
+            })
+        
         # === STEP 3: Build local record map by discogs_listing_id ===
         local_map = {}  # discogs_listing_id -> local record
-        for record in local_records:
+        for record in local_records_dict:
             if record['discogs_listing_id']:
-                local_map[str(record['discogs_listing_id'])] = {
-                    'id': record['id'],
-                    'artist': record['artist'],
-                    'title': record['title'],
-                    'last_seen': record['last_seen'],
-                    'location': record['location'],
-                    'discogs_listing_id': record['discogs_listing_id'],
-                    'store_price': record['store_price'],
-                    'status_id': record['status_id'],
-                    'condition_sleeve_id': record['condition_sleeve_id'],
-                    'condition_disc_id': record['condition_disc_id'],
-                    'sleeve_condition_name': record['sleeve_condition_name'],
-                    'disc_condition_name': record['disc_condition_name'],
-                    'sleeve_display_name': record['sleeve_display_name'],
-                    'disc_display_name': record['disc_display_name'],
-                    'catalog_number': record.get('catalog_number', ''),
-                    'discogs_listed_date': record.get('discogs_listed_date')
-                }
+                local_map[str(record['discogs_listing_id'])] = record
         
         # === STEP 4: Helper function - does record meet ALL Discogs criteria? ===
         def meets_criteria(record):
@@ -829,7 +835,7 @@ def get_combined_inventory():
                 processed_listing_ids.add(listing_id)
         
         # Check local records that have discogs_listing_id but no matching Discogs listing
-        for record in local_records:
+        for record in local_records_dict:
             if record['id'] in processed_record_ids:
                 continue
             
@@ -858,7 +864,7 @@ def get_combined_inventory():
                     processed_record_ids.add(record['id'])
         
         # Add eligible records that are not on Discogs at all
-        for record in local_records:
+        for record in local_records_dict:
             if record['id'] in processed_record_ids:
                 continue
             
