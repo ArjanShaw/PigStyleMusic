@@ -234,7 +234,7 @@ class DiscogsHandler:
         params = {
             'q': query,
             'type': 'release',
-            'per_page': 25,  # Reduced from 50 for faster response
+            'per_page': 25,  # Keep as is
             'currency': 'USD'
         }
         
@@ -259,16 +259,17 @@ class DiscogsHandler:
         search_data = response.json()
         
         formatted_results = []
-        seen_masters = set()
+        # REMOVE the master_id deduplication
+        # seen_masters = set()  # ← DELETE THIS LINE
         
         for result in search_data.get('results', []):
             master_id = result.get('master_id')
             
-            if master_id and master_id in seen_masters:
-                continue
-                
-            if master_id:
-                seen_masters.add(master_id)
+            # REMOVE this entire block
+            # if master_id and master_id in seen_masters:
+            #     continue
+            # if master_id:
+            #     seen_masters.add(master_id)
             
             artist = self._extract_artist_from_result(result)
             title = self._extract_title_from_result(result)
@@ -304,6 +305,7 @@ class DiscogsHandler:
             formatted_results.append(formatted_result)
         
         return formatted_results
+
 
     def _extract_genre_from_result(self, result):
         if not isinstance(result, dict):
