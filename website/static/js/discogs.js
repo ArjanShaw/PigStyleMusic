@@ -232,7 +232,6 @@ async function updateStatsTable() {
         
         const totalRecords = data.stats.total_records;
         const activeRecords = data.stats.active_records;
-        const onDiscogs = data.stats.on_discogs;
         
         const discogsOrphans = cachedInventory.filter(item => item.type === 'discogs_orphan').length;
         const localOrphans = cachedInventory.filter(item => item.type === 'local_orphan').length;
@@ -241,7 +240,6 @@ async function updateStatsTable() {
         
         const statTotal = document.getElementById('stat-total');
         const statActive = document.getElementById('stat-active');
-        const statOnDiscogs = document.getElementById('stat-on-discogs');
         const statDiscogsOrphans = document.getElementById('stat-discogs-orphans');
         const statLocalOrphans = document.getElementById('stat-local-orphans');
         const statNotListed = document.getElementById('stat-not-listed');
@@ -249,13 +247,12 @@ async function updateStatsTable() {
         
         if (statTotal) statTotal.textContent = totalRecords;
         if (statActive) statActive.textContent = activeRecords;
-        if (statOnDiscogs) statOnDiscogs.textContent = onDiscogs;
         if (statDiscogsOrphans) statDiscogsOrphans.textContent = discogsOrphans;
         if (statLocalOrphans) statLocalOrphans.textContent = localOrphans;
         if (statNotListed) statNotListed.textContent = notListed;
         if (statDueReduction) statDueReduction.textContent = dueReduction;
         
-        console.log(`📊 Stats: Total=${totalRecords}, Active=${activeRecords}, OnDiscogs=${onDiscogs}, DiscogsOrphans=${discogsOrphans}, LocalOrphans=${localOrphans}, NotListed=${notListed}, DueReduction=${dueReduction}`);
+        console.log(`📊 Stats: Total=${totalRecords}, Active=${activeRecords}, DiscogsOrphans=${discogsOrphans}, LocalOrphans=${localOrphans}, NotListed=${notListed}, DueReduction=${dueReduction}`);
         
     } catch (error) {
         console.error('Error fetching stats:', error);
@@ -653,7 +650,7 @@ async function resolveLocalOrphans() {
 }
 
 // ============================================================================
-// RESOLVE: List Not Listed - NOW USING ACTUAL CONDITIONS FROM DATABASE
+// RESOLVE: List Not Listed - Simplified progress log
 // ============================================================================
 
 async function resolveNotListed() {
@@ -676,19 +673,14 @@ async function resolveNotListed() {
         
         const item = items[i];
         updateModalProgress(i + 1, total);
-        appendToModalLog(`[${i+1}/${total}] Listing: ${item.artist} - ${item.title}`, 'info');
-        appendToModalLog(`   Media Condition: ${item.media_condition || 'NOT SET'}`, item.media_condition ? 'info' : 'error');
-        appendToModalLog(`   Sleeve Condition: ${item.sleeve_condition || 'NOT SET'}`, item.sleeve_condition ? 'info' : 'error');
         
-        // Validate conditions before sending
+        // Validate conditions before sending (silent validation)
         if (!item.media_condition || !item.media_condition.trim()) {
-            appendToModalLog(`   ❌ SKIPPED: Missing media_condition for ${item.artist} - ${item.title}`, 'error');
             failed++;
             continue;
         }
         
         if (!item.sleeve_condition || !item.sleeve_condition.trim()) {
-            appendToModalLog(`   ❌ SKIPPED: Missing sleeve_condition for ${item.artist} - ${item.title}`, 'error');
             failed++;
             continue;
         }
@@ -721,9 +713,9 @@ async function resolveNotListed() {
             
             if (result.success) {
                 listed++;
-                appendToModalLog(`   ✅ LISTED: ${item.artist} - ${item.title} (ID: ${result.listing_id})`, 'success');
+                appendToModalLog(`✅ LISTED: ${item.artist} - ${item.title} (ID: ${result.listing_id})`, 'success');
             } else if (response.status === 429) {
-                appendToModalLog(`   ⏳ Rate limited, waiting 5 seconds...`, 'warning');
+                appendToModalLog(`⏳ Rate limited, waiting 5 seconds...`, 'warning');
                 await new Promise(resolve => setTimeout(resolve, 5000));
                 
                 const retryResponse = await fetch(`${AppConfig.baseUrl}/api/discogs/create-listing-single`, {
@@ -738,18 +730,18 @@ async function resolveNotListed() {
                 const retryResult = await retryResponse.json();
                 if (retryResult.success) {
                     listed++;
-                    appendToModalLog(`   ✅ LISTED (retry): ${item.artist} - ${item.title} (ID: ${retryResult.listing_id})`, 'success');
+                    appendToModalLog(`✅ LISTED (retry): ${item.artist} - ${item.title} (ID: ${retryResult.listing_id})`, 'success');
                 } else {
                     failed++;
-                    appendToModalLog(`   ❌ FAILED (retry): ${item.artist} - ${item.title} - ${retryResult.error}`, 'error');
+                    appendToModalLog(`❌ FAILED (retry): ${item.artist} - ${item.title} - ${retryResult.error}`, 'error');
                 }
             } else {
                 failed++;
-                appendToModalLog(`   ❌ FAILED: ${item.artist} - ${item.title} - ${result.error || `HTTP ${response.status}`}`, 'error');
+                appendToModalLog(`❌ FAILED: ${item.artist} - ${item.title} - ${result.error || `HTTP ${response.status}`}`, 'error');
             }
         } catch (error) {
             failed++;
-            appendToModalLog(`   ❌ FAILED: ${item.artist} - ${item.title} - ${error.message}`, 'error');
+            appendToModalLog(`❌ FAILED: ${item.artist} - ${item.title} - ${error.message}`, 'error');
         }
         
         if (i < total - 1 && !cancelResolve) {
