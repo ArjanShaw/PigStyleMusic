@@ -3440,4 +3440,25 @@ select.form-control option {
  
 }
 
+/* Post button styling */
+.post-to-discogs-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.post-to-discogs-btn:hover {
+    background: #218838;
+    transform: scale(1.02);
+}
+
+.post-to-discogs-btn i {
+    margin-right: 4px;
+}
 

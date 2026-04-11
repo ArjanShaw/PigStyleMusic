@@ -289,18 +289,25 @@ function initDiscogsTab() {
         cutoffDateInput.value = defaultDate.toISOString().split('T')[0];
     }
     
+    // Setup search event listeners
     if (searchButton) {
-        searchButton.onclick = () => filterByCategory();
+        searchButton.onclick = () => {
+            console.log('Search button clicked');
+            filterByCategory();
+        };
     }
     if (searchInput) {
         searchInput.onkeyup = (e) => {
-            if (e.key === 'Enter') filterByCategory();
+            if (e.key === 'Enter') {
+                console.log('Enter key pressed in search');
+                filterByCategory();
+            }
         };
     }
     
     resolveButton.disabled = true;
     resolveButton.style.opacity = '0.5';
-    tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading data from Discogs and local database...<\/td>';
+    tableBody.innerHTML = '<td colspan="15" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading data from Discogs and local database...<\/td>';
     
     loadDiscogsConfig();
     loadInitialData();
@@ -318,7 +325,7 @@ async function loadInitialData() {
     
     const cutoffDate = cutoffDateInput?.value;
     if (!cutoffDate) {
-        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;">Please select a cutoff date<\/td>';
+        tableBody.innerHTML = '<td colspan="15" style="text-align: center; padding: 40px;">Please select a cutoff date<\/td>';
         isLoading = false;
         return;
     }
@@ -344,6 +351,7 @@ async function loadInitialData() {
         isCacheValid = true;
         
         console.log(`📦 Cached ${cachedInventory.length} total records from combined inventory`);
+        console.log(`📋 Not listed count: ${cachedInventory.filter(item => item.type === 'not_listed').length}`);
         
         await updateStatsTable();
         
@@ -361,11 +369,11 @@ async function loadInitialData() {
             setTimeout(() => { statusMessage.style.display = 'none'; }, 5000);
         }
         
-        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;">Select a category above to view records<\/td>';
+        tableBody.innerHTML = '<td colspan="15" style="text-align: center; padding: 40px;">Select a category above to view records<\/td>';
         
     } catch (error) {
         console.error('Error loading data:', error);
-        tableBody.innerHTML = `<td colspan="12" style="text-align: center; padding: 40px; color: #dc3545;">
+        tableBody.innerHTML = `<td colspan="15" style="text-align: center; padding: 40px; color: #dc3545;">
             <i class="fas fa-exclamation-triangle"></i> Error: ${error.message}
             <br><br>
             <button class="btn btn-primary" onclick="refreshData()">Retry</button>
@@ -380,14 +388,18 @@ async function loadInitialData() {
 // ============================================================================
 
 window.filterByCategory = function() {
+    console.log('filterByCategory called');
+    
     if (!isCacheValid || cachedInventory.length === 0) {
         console.warn('No cached data available');
         return;
     }
     
     currentCategory = categorySelect?.value;
+    console.log('Current category:', currentCategory);
+    
     if (!currentCategory) {
-        tableBody.innerHTML = '<td colspan="12" style="text-align: center; padding: 40px;">Select a category above<\/td>';
+        tableBody.innerHTML = '<td colspan="15" style="text-align: center; padding: 40px;">Select a category above<\/td>';
         resolveButton.disabled = true;
         resolveButton.style.opacity = '0.5';
         return;
@@ -401,6 +413,7 @@ window.filterByCategory = function() {
         categoryFiltered = cachedInventory.filter(item => item.type === 'local_orphan');
     } else if (currentCategory === 'not_listed') {
         categoryFiltered = cachedInventory.filter(item => item.type === 'not_listed');
+        console.log(`Found ${categoryFiltered.length} not_listed items`);
     } else if (currentCategory === 'due_reduction') {
         categoryFiltered = cachedInventory.filter(item => item.type === 'both' && item.needs_reduction === true);
     } else {
@@ -409,13 +422,17 @@ window.filterByCategory = function() {
     
     // Then apply search filter if search term exists
     const searchTerm = searchInput?.value?.trim().toLowerCase() || '';
+    console.log('Search term:', searchTerm);
+    
     if (searchTerm) {
         filteredInventory = categoryFiltered.filter(item => {
-            return (item.artist && item.artist.toLowerCase().includes(searchTerm)) ||
-                   (item.title && item.title.toLowerCase().includes(searchTerm)) ||
-                   (item.catalog_number && item.catalog_number.toLowerCase().includes(searchTerm)) ||
-                   (item.barcode && item.barcode.includes(searchTerm));
+            const matchesArtist = item.artist && item.artist.toLowerCase().includes(searchTerm);
+            const matchesTitle = item.title && item.title.toLowerCase().includes(searchTerm);
+            const matchesCatalog = item.catalog_number && item.catalog_number.toLowerCase().includes(searchTerm);
+            const matchesBarcode = item.barcode && item.barcode.toLowerCase().includes(searchTerm);
+            return matchesArtist || matchesTitle || matchesCatalog || matchesBarcode;
         });
+        console.log(`Search filtered: ${filteredInventory.length} matches`);
     } else {
         filteredInventory = categoryFiltered;
     }
@@ -423,7 +440,7 @@ window.filterByCategory = function() {
     renderTable();
     
     // Update resolve button state
-    if (filteredInventory.length > 0) {
+    if (filteredInventory.length > 0 && currentCategory !== 'not_listed') {
         resolveButton.disabled = false;
         resolveButton.style.opacity = '1';
         
@@ -458,18 +475,25 @@ window.filterByCategory = function() {
 // ============================================================================
 
 window.clearDiscogsSearch = function() {
+    console.log('clearDiscogsSearch called');
     if (searchInput) {
         searchInput.value = '';
     }
     filterByCategory();
 };
- 
+
 // ============================================================================
 // Render table from filteredInventory with Post button
 // ============================================================================
 
 function renderTable() {
-    if (!tableBody) return;
+    if (!tableBody) {
+        console.error('tableBody not found');
+        return;
+    }
+    
+    console.log('renderTable called, filteredInventory length:', filteredInventory.length);
+    console.log('Current category:', currentCategory);
     
     if (filteredInventory.length === 0) {
         let message = '';
@@ -478,7 +502,7 @@ function renderTable() {
         else if (currentCategory === 'not_listed') message = 'No listing candidates found. Try adjusting the cutoff date and click "Refresh Data".';
         else if (currentCategory === 'due_reduction') message = 'No listings due for price reduction.';
         else message = 'Select a category above';
-        tableBody.innerHTML = `<td colspan="14" style="text-align: center; padding: 40px;">${message}<\/td>`;
+        tableBody.innerHTML = `<td colspan="15" style="text-align: center; padding: 40px;">${message}<\/td>`;
         return;
     }
     
@@ -486,16 +510,16 @@ function renderTable() {
     for (const item of filteredInventory) {
         let typeBadge = '';
         let reasonDisplay = '';
-        let actionButton = '';  // Initialize actionButton
+        let actionButton = '';
         
         if (currentCategory === 'discogs_orphans') {
             typeBadge = '<span class="status-badge" style="background: #dc3545; color: white;">🗑 Discogs Orphan</span>';
             reasonDisplay = item.reason ? `<span style="color: #dc3545; font-size: 12px;">⚠️ ${escapeHtml(item.reason)}</span>` : '—';
-            actionButton = '—'; // No action for orphans
+            actionButton = '—';
         } else if (currentCategory === 'local_orphans') {
             typeBadge = '<span class="status-badge" style="background: #ffc107; color: #333;">⚠ Local Orphan</span>';
             reasonDisplay = item.reason ? `<span style="color: #856404; font-size: 12px;">⚠️ ${escapeHtml(item.reason)}</span>` : '—';
-            actionButton = '—'; // No action for local orphans
+            actionButton = '—';
         } else if (currentCategory === 'not_listed') {
             typeBadge = '<span class="status-badge" style="background: #28a745; color: white;">📋 Listing Candidate</span>';
             reasonDisplay = '<span style="color: #28a745; font-size: 12px;">✓ Eligible for Discogs</span>';
@@ -510,15 +534,22 @@ function renderTable() {
             const escapedNotes = escapeHtml(item.notes || '').replace(/'/g, "\\'");
             
             // Add Post button for not_listed items
-            actionButton = `<button class="btn btn-sm btn-success" 
-                                    onclick="postSingleRecordToDiscogs(${item.record_id}, '${escapedArtist}', '${escapedTitle}', ${item.price || 0}, '${escapedMediaCondition}', '${escapedSleeveCondition}', '${escapedCatalogNumber}', '${escapedLocation}', '${escapedNotes}')" 
-                                    style="padding: 4px 8px; font-size: 11px; white-space: nowrap;">
+            actionButton = `<button class="post-to-discogs-btn" 
+                                    data-record-id="${item.record_id}"
+                                    data-artist="${escapedArtist}"
+                                    data-title="${escapedTitle}"
+                                    data-price="${item.price || 0}"
+                                    data-media-condition="${escapedMediaCondition}"
+                                    data-sleeve-condition="${escapedSleeveCondition}"
+                                    data-catalog="${escapedCatalogNumber}"
+                                    data-location="${escapedLocation}"
+                                    data-notes="${escapedNotes}">
                                 <i class="fab fa-discogs"></i> Post to Discogs
                             </button>`;
         } else if (currentCategory === 'due_reduction') {
             typeBadge = '<span class="status-badge" style="background: #fd7e14; color: white;">💰 Due for Reduction</span>';
             reasonDisplay = `<span style="color: #fd7e14; font-size: 12px;">Current: $${item.price?.toFixed(2)} → Expected: $${item.expected_price?.toFixed(2)} (${item.weeks_on_discogs} weeks)</span>`;
-            actionButton = '—'; // No action button for reductions (use Resolve button instead)
+            actionButton = '—';
         }
         
         let lastSeenDisplay = item.last_seen || '—';
@@ -552,8 +583,25 @@ function renderTable() {
     }
     
     tableBody.innerHTML = html;
+    
+    // Attach event listeners to all post buttons
+    document.querySelectorAll('.post-to-discogs-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const recordId = parseInt(this.dataset.recordId);
+            const artist = this.dataset.artist;
+            const title = this.dataset.title;
+            const price = parseFloat(this.dataset.price);
+            const mediaCondition = this.dataset.mediaCondition;
+            const sleeveCondition = this.dataset.sleeveCondition;
+            const catalogNumber = this.dataset.catalog;
+            const location = this.dataset.location;
+            const notes = this.dataset.notes;
+            
+            postSingleRecordToDiscogs(recordId, artist, title, price, mediaCondition, sleeveCondition, catalogNumber, location, notes);
+        });
+    });
 }
-
 
 // ============================================================================
 // Post Single Record to Discogs
@@ -562,6 +610,8 @@ function renderTable() {
 let lastPostedUrl = null;
 
 window.postSingleRecordToDiscogs = async function(recordId, artist, title, price, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
+    console.log('postSingleRecordToDiscogs called', { recordId, artist, title, price });
+    
     if (!recordId) {
         showStatus('Invalid record ID', 'error');
         return;
@@ -637,14 +687,11 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
             await refreshData();
             appendToModalLog(`✅ Data refreshed`, 'success');
             
-            // Keep modal open to show the URL
-            setTimeout(() => {
-                if (!cancelResolve) {
-                    // Don't auto-close - let user see the URL
-                    appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
-                    appendToModalLog(`💡 You can close this window now.`, 'info');
-                }
-            }, 1000);
+            // Reselect the not_listed category to show updated list
+            if (categorySelect) {
+                categorySelect.value = 'not_listed';
+                filterByCategory();
+            }
             
         } else {
             throw new Error(result.error || 'Failed to create listing');
@@ -683,7 +730,7 @@ function showStatusWithLink(message, url, type = 'success') {
 window.refreshData = function() {
     cachedInventory = [];
     isCacheValid = false;
-    tableBody.innerHTML = '<td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Reloading data...<\/td>';
+    tableBody.innerHTML = '<td colspan="15" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Reloading data...<\/td>';
     loadInitialData();
 };
 
