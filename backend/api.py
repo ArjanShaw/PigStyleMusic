@@ -465,7 +465,7 @@ def get_my_discogs_listings():
         app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
-
+ 
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """Create a single listing on Discogs with markup pricing"""
@@ -475,6 +475,13 @@ def create_discogs_listing_single():
         
         if not record:
             return jsonify({'error': 'No record provided'}), 400
+        
+        # Validate required fields
+        if not record.get('media_condition') or record['media_condition'].strip() == '':
+            return jsonify({'success': False, 'error': 'media_condition is required'}), 400
+        
+        if not record.get('sleeve_condition') or record['sleeve_condition'].strip() == '':
+            return jsonify({'success': False, 'error': 'sleeve_condition is required'}), 400
         
         TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
         if not TOKEN:
@@ -518,15 +525,18 @@ def create_discogs_listing_single():
         
         # Create listing with calculated price
         listing_url = "https://api.discogs.com/marketplace/listings"
-        comments = f"[PIGSTYLE ID: {record['id']}] {record.get('notes', '')}"
+        
+        # Build comments - NO pricing or markup info, only internal reference and location
+        comments = f"[PIGSTYLE ID: {record['id']}]"
         if record.get('location'):
             comments += f" | Location: {record.get('location')}"
-        comments += f" | Store: ${store_price:.2f} | Listed: ${discogs_price:.2f} ({markup_percent}% markup)"
+        if record.get('notes'):
+            comments += f" | {record.get('notes')}"
         
         listing_data = {
             "release_id": release_id,
-            "condition": record.get('media_condition', 'Very Good Plus (VG+)'),
-            "sleeve_condition": record.get('sleeve_condition', record.get('media_condition', 'Very Good Plus (VG+)')),
+            "condition": record.get('media_condition'),
+            "sleeve_condition": record.get('sleeve_condition'),
             "price": discogs_price,
             "status": "For Sale",
             "comments": comments
@@ -538,6 +548,7 @@ def create_discogs_listing_single():
             listing_result = listing_response.json()
             listing_id = listing_result.get('listing_id')
             
+            # Update local database with Discogs listing info
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute('''
@@ -552,7 +563,6 @@ def create_discogs_listing_single():
                 'success': True,
                 'listing_id': listing_id,
                 'price': discogs_price,
-                'markup_percent': markup_percent,
                 'record_id': record['id']
             })
         else:
@@ -561,7 +571,6 @@ def create_discogs_listing_single():
     except Exception as e:
         app.logger.error(f"Error creating listing: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-    
 
 @app.route('/api/discogs/sync-prices', methods=['POST'])
 def sync_discogs_prices():
@@ -7373,7 +7382,6 @@ def reorder_sticky_notes():
             'error': str(e)
         }), 500
  
-
 @app.route('/api/discogs/combined-inventory', methods=['GET'])
 def get_combined_inventory():
     """One API call to Discogs + one DB query = combined inventory with orphan detection"""
@@ -7431,11 +7439,12 @@ def get_combined_inventory():
                 break
             page += 1
         
-        # === STEP 2: Fetch ALL local records ===
+        # === STEP 2: Fetch ALL local records WITH CONDITIONS ===
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, artist, title, last_seen, location, discogs_listing_id, store_price, status_id
+            SELECT id, artist, title, last_seen, location, discogs_listing_id, store_price, status_id,
+                   media_condition, sleeve_condition, catalog_number
             FROM records
         ''')
         local_records = cursor.fetchall()
@@ -7453,18 +7462,36 @@ def get_combined_inventory():
                     'location': record['location'],
                     'discogs_listing_id': record['discogs_listing_id'],
                     'store_price': record['store_price'],
-                    'status_id': record['status_id']
+                    'status_id': record['status_id'],
+                    'media_condition': record.get('media_condition'),
+                    'sleeve_condition': record.get('sleeve_condition'),
+                    'catalog_number': record.get('catalog_number', '')
                 }
         
-        # === STEP 4: Helper function - does record meet Discogs criteria? ===
+        # === STEP 4: Helper function - does record meet ALL Discogs criteria? ===
         def meets_criteria(record):
             """Returns True only if ALL criteria are met"""
+            # Status check
             if record['status_id'] != 2:
                 return False
+            
+            # Location check
             if not record['location'] or record['location'].strip() == '':
                 return False
+            
+            # Last seen check
             if not record['last_seen']:
                 return False
+            
+            # NEW: Media condition check
+            if not record.get('media_condition') or record['media_condition'].strip() == '':
+                return False
+            
+            # NEW: Sleeve condition check
+            if not record.get('sleeve_condition') or record['sleeve_condition'].strip() == '':
+                return False
+            
+            # Date check
             try:
                 from datetime import datetime
                 last_seen_date = datetime.strptime(record['last_seen'], '%Y-%m-%d')
@@ -7478,17 +7505,55 @@ def get_combined_inventory():
         for listing in all_discogs_listings:
             discogs_map[listing['listing_id']] = listing
         
-        # === STEP 6: Build combined results ===
+        # === STEP 6: Get config for price reduction calculations ===
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('DISCOGS_MARKUP_PERCENT',))
+        row = cursor.fetchone()
+        markup_percent = float(row['config_value']) if row else 20
+        
+        cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('DISCOGS_PRICE_STEP',))
+        row = cursor.fetchone()
+        weekly_step_percent = float(row['config_value']) if row else 5
+        conn.close()
+        
+        # === STEP 7: Build combined results ===
         combined_results = []
         processed_listing_ids = set()
         processed_record_ids = set()
+        
+        from datetime import datetime, date
         
         # Check each Discogs listing against local records
         for listing_id, discogs_item in discogs_map.items():
             local_match = local_map.get(listing_id)
             
             if local_match and meets_criteria(local_match):
-                # Perfect match - keep
+                # Perfect match - calculate if price reduction is needed
+                store_price = float(local_match['store_price'])
+                expected_price = round(store_price * (1 + markup_percent / 100), 2)
+                
+                # Calculate weeks on Discogs
+                weeks_on_discogs = 0
+                if local_match.get('discogs_listed_date'):
+                    try:
+                        listed_date = datetime.strptime(local_match['discogs_listed_date'], '%Y-%m-%d').date()
+                        today = date.today()
+                        days_diff = (today - listed_date).days
+                        weeks_on_discogs = max(0, days_diff // 7)
+                    except:
+                        weeks_on_discogs = 0
+                
+                # Apply weekly reductions
+                for week in range(weeks_on_discogs):
+                    expected_price = round(expected_price * (1 - weekly_step_percent / 100), 2)
+                
+                # Ensure never below store price
+                expected_price = max(expected_price, store_price)
+                
+                current_price = discogs_item['price']
+                needs_reduction = current_price > expected_price + 0.01  # Allow 1 cent rounding difference
+                
                 combined_results.append({
                     'type': 'both',
                     'record_id': local_match['id'],
@@ -7497,7 +7562,13 @@ def get_combined_inventory():
                     'title': local_match['title'],
                     'last_seen': local_match['last_seen'],
                     'location': local_match['location'],
-                    'price': discogs_item['price'],
+                    'price': current_price,
+                    'expected_price': expected_price if needs_reduction else current_price,
+                    'weeks_on_discogs': weeks_on_discogs,
+                    'needs_reduction': needs_reduction,
+                    'media_condition': local_match.get('media_condition'),
+                    'sleeve_condition': local_match.get('sleeve_condition'),
+                    'catalog_number': local_match.get('catalog_number', ''),
                     'discogs_status': discogs_item['status'],
                     'local_status_id': local_match['status_id'],
                     'url': discogs_item['url'],
@@ -7516,6 +7587,10 @@ def get_combined_inventory():
                     reason = 'Local record missing location'
                 elif not local_match['last_seen']:
                     reason = 'Local record missing last_seen'
+                elif not local_match.get('media_condition') or local_match['media_condition'].strip() == '':
+                    reason = 'Local record missing media_condition'
+                elif not local_match.get('sleeve_condition') or local_match['sleeve_condition'].strip() == '':
+                    reason = 'Local record missing sleeve_condition'
                 else:
                     reason = f'Local last_seen ({local_match["last_seen"]}) <= {cutoff_date}'
                 
@@ -7528,6 +7603,9 @@ def get_combined_inventory():
                     'last_seen': local_match['last_seen'] if local_match else None,
                     'location': local_match['location'] if local_match else None,
                     'price': discogs_item['price'],
+                    'media_condition': local_match.get('media_condition') if local_match else None,
+                    'sleeve_condition': local_match.get('sleeve_condition') if local_match else None,
+                    'catalog_number': local_match.get('catalog_number', '') if local_match else '',
                     'discogs_status': discogs_item['status'],
                     'local_status_id': local_match['status_id'] if local_match else None,
                     'url': discogs_item['url'],
@@ -7554,6 +7632,9 @@ def get_combined_inventory():
                         'last_seen': record['last_seen'],
                         'location': record['location'],
                         'price': record['store_price'],
+                        'media_condition': record.get('media_condition'),
+                        'sleeve_condition': record.get('sleeve_condition'),
+                        'catalog_number': record.get('catalog_number', ''),
                         'discogs_status': None,
                         'local_status_id': record['status_id'],
                         'url': None,
@@ -7577,6 +7658,9 @@ def get_combined_inventory():
                     'last_seen': record['last_seen'],
                     'location': record['location'],
                     'price': record['store_price'],
+                    'media_condition': record.get('media_condition'),
+                    'sleeve_condition': record.get('sleeve_condition'),
+                    'catalog_number': record.get('catalog_number', ''),
                     'discogs_status': None,
                     'local_status_id': record['status_id'],
                     'url': None,
@@ -7590,6 +7674,7 @@ def get_combined_inventory():
         discogs_orphan_count = len([r for r in combined_results if r['type'] == 'discogs_orphan'])
         local_orphan_count = len([r for r in combined_results if r['type'] == 'local_orphan'])
         not_listed_count = len([r for r in combined_results if r['type'] == 'not_listed'])
+        due_reduction_count = len([r for r in combined_results if r.get('needs_reduction') == True])
         
         return jsonify({
             'success': True,
@@ -7601,7 +7686,8 @@ def get_combined_inventory():
                 'both': both_count,
                 'discogs_orphans': discogs_orphan_count,
                 'local_orphans': local_orphan_count,
-                'not_listed': not_listed_count
+                'not_listed': not_listed_count,
+                'due_reduction': due_reduction_count
             }
         })
         
@@ -7609,6 +7695,8 @@ def get_combined_inventory():
         app.logger.error(f"Error in get_combined_inventory: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
 
 @app.route('/api/discogs/stats', methods=['GET'])
 def get_discogs_stats():

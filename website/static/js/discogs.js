@@ -468,6 +468,8 @@ function renderTable() {
         let expectedPriceDisplay = item.expected_price ? `$${item.expected_price.toFixed(2)}` : '—';
         let weeksDisplay = item.weeks_on_discogs !== undefined ? item.weeks_on_discogs : '—';
         let discogsLink = item.url ? `<a href="${item.url}" target="_blank" class="discogs-link"><i class="fab fa-discogs"></i> View</a>` : '—';
+        let mediaConditionDisplay = item.media_condition || '—';
+        let sleeveConditionDisplay = item.sleeve_condition || '—';
         
         html += `
             <tr>
@@ -476,6 +478,8 @@ function renderTable() {
                 <td>${item.listing_id || '—'}<\/td>
                 <td><strong>${escapeHtml(item.artist)}<\/strong><\/td>
                 <td>${escapeHtml(item.title)}<\/td>
+                <td>${mediaConditionDisplay}<\/td>
+                <td>${sleeveConditionDisplay}<\/td>
                 <td>${lastSeenDisplay}<\/td>
                 <td>${locationDisplay}<\/td>
                 <td>${priceDisplay}<\/td>
@@ -649,7 +653,7 @@ async function resolveLocalOrphans() {
 }
 
 // ============================================================================
-// RESOLVE: List Not Listed
+// RESOLVE: List Not Listed - NOW USING ACTUAL CONDITIONS FROM DATABASE
 // ============================================================================
 
 async function resolveNotListed() {
@@ -673,17 +677,32 @@ async function resolveNotListed() {
         const item = items[i];
         updateModalProgress(i + 1, total);
         appendToModalLog(`[${i+1}/${total}] Listing: ${item.artist} - ${item.title}`, 'info');
+        appendToModalLog(`   Media Condition: ${item.media_condition || 'NOT SET'}`, item.media_condition ? 'info' : 'error');
+        appendToModalLog(`   Sleeve Condition: ${item.sleeve_condition || 'NOT SET'}`, item.sleeve_condition ? 'info' : 'error');
+        
+        // Validate conditions before sending
+        if (!item.media_condition || !item.media_condition.trim()) {
+            appendToModalLog(`   ❌ SKIPPED: Missing media_condition for ${item.artist} - ${item.title}`, 'error');
+            failed++;
+            continue;
+        }
+        
+        if (!item.sleeve_condition || !item.sleeve_condition.trim()) {
+            appendToModalLog(`   ❌ SKIPPED: Missing sleeve_condition for ${item.artist} - ${item.title}`, 'error');
+            failed++;
+            continue;
+        }
         
         const listingData = {
             record: {
                 id: item.record_id,
                 artist: item.artist,
                 title: item.title,
-                catalog_number: '',
-                media_condition: 'Very Good Plus (VG+)',
-                sleeve_condition: 'Very Good Plus (VG+)',
+                catalog_number: item.catalog_number || '',
+                media_condition: item.media_condition,
+                sleeve_condition: item.sleeve_condition,
                 price: item.price,
-                notes: '',
+                notes: item.notes || '',
                 location: item.location
             }
         };
@@ -793,7 +812,7 @@ async function resolvePriceReductions() {
         try {
             const updateData = {
                 price: item.expected_price,
-                condition: item.condition || 'Very Good Plus (VG+)',
+                condition: item.media_condition || 'Very Good Plus (VG+)',
                 sleeve_condition: item.sleeve_condition || 'Very Good Plus (VG+)',
                 status: "For Sale"
             };
