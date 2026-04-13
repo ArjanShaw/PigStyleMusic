@@ -689,7 +689,6 @@ def create_discogs_listing_single():
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/discogs/combined-inventory', methods=['GET'])
 def get_combined_inventory():
     """One API call to Discogs + one DB query = combined inventory with orphan detection"""
@@ -886,8 +885,8 @@ def get_combined_inventory():
                 for week in range(weeks_on_discogs):
                     expected_price = round(expected_price * (1 - weekly_step_percent / 100), 2)
                 
-                # Ensure never below store price
-                expected_price = max(expected_price, store_price)
+                # REMOVED: expected_price = max(expected_price, store_price)
+                # Prices can now drop below store price
                 
                 current_price = discogs_item['price']
                 needs_reduction = current_price > expected_price + 0.01  # Allow 1 cent rounding difference
@@ -1034,6 +1033,7 @@ def get_combined_inventory():
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
+ 
 @app.route('/api/discogs/sync-prices', methods=['POST'])
 def sync_discogs_prices():
     """Apply weekly price reductions to Discogs listings based on age"""
@@ -1125,7 +1125,8 @@ def sync_discogs_prices():
             reduction = weeks * step_percent
             effective_markup = max(0, markup_percent - reduction)
             expected_price = record['store_price'] * (1 + effective_markup / 100)
-            expected_price = max(record['store_price'], round(expected_price, 2))
+            # REMOVED: expected_price = max(record['store_price'], round(expected_price, 2))
+            expected_price = round(expected_price, 2)  # Just round, no floor
             
             # Update if price changed (allow 1 cent rounding)
             if abs(listing['price'] - expected_price) > 0.01:
@@ -1163,9 +1164,7 @@ def sync_discogs_prices():
         
     except Exception as e:
         app.logger.error(f"Error in sync_prices: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500   
-
-
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/discogs/create-listings', methods=['POST'])
 def create_discogs_listings():
