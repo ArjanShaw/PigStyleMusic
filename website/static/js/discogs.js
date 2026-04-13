@@ -579,7 +579,7 @@ function renderTable() {
                 <td>${discogsLink}<\/td>
                 <td>${reasonDisplay}<\/td>
                 <td style="text-align: center;">${actionButton}<\/td>
-            </tr>
+            <\/tr>
         `;
     }
     
