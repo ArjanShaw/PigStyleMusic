@@ -22,7 +22,7 @@ page = 1
 
 while True:
     response = requests.get(
-        f'https://api.discogs.com/users/arjanshaw/inventory',
+        f'https://api.discogs.com/users/pigstyle/inventory',
         headers=headers,
         params={'page': page, 'per_page': 100}
     )
