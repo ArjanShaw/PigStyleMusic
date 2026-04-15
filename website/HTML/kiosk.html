@@ -46,76 +46,12 @@
             background: rgba(0, 0, 0, 0.7);
         }
         
-        /* SPLASH VIEW */
-        .splash-view {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            cursor: pointer;
-        }
-        
-        .splash-view.hide {
-            display: none;
-        }
-        
-        .touch-button {
-            text-align: center;
-            animation: pulse 2s infinite;
-        }
-        
-        .touch-button-circle {
-            width: 200px;
-            height: 200px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 30px;
-            backdrop-filter: blur(10px);
-            border: 3px solid white;
-        }
-        
-        .touch-button-circle i {
-            font-size: 80px;
-            color: white;
-        }
-        
-        .touch-button h1 {
-            font-size: 48px;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        }
-        
-        .touch-button p {
-            font-size: 20px;
-            opacity: 0.9;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-        }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-        
-        /* RESULTS VIEW */
+        /* RESULTS VIEW - Always visible, no splash screen */
         .results-view {
-            display: none;
             padding: 20px;
             padding-top: 80px;
             padding-bottom: 30px;
             min-height: 100vh;
-        }
-        
-        .results-view.active {
-            display: block;
         }
         
         /* Search Header */
@@ -128,37 +64,11 @@
             padding: 15px 20px;
             z-index: 100;
             box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        }
-        
-        .back-button {
-            background: #333;
-            border: none;
-            color: white;
-            font-size: 24px;
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s;
-        }
-        
-        .back-button:hover {
-            background: #555;
-        }
-        
-        .back-button:active {
-            background: #777;
         }
         
         .search-input-wrapper {
-            flex: 1;
             position: relative;
+            width: 100%;
         }
         
         .search-input-wrapper i {
@@ -205,10 +115,6 @@
             border-radius: 12px;
             overflow: hidden;
             cursor: pointer;
-        }
-        
-        .record-card:hover {
-            transform: scale(1.02);
         }
         
         .record-card:active {
@@ -307,26 +213,6 @@
             color: #999;
         }
         
-        .idle-warning {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.8);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 12px;
-            color: #ff9800;
-            z-index: 200;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        
-        .idle-warning.show {
-            opacity: 1;
-        }
-        
         .loading-spinner {
             text-align: center;
             padding: 60px 20px;
@@ -346,15 +232,6 @@
             .results-grid {
                 grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             }
-            
-            .touch-button-circle {
-                width: 250px;
-                height: 250px;
-            }
-            
-            .touch-button-circle i {
-                font-size: 100px;
-            }
         }
     </style>
 </head>
@@ -366,23 +243,9 @@
         <div class="background-overlay"></div>
     </div>
 
-    <!-- SPLASH VIEW -->
-    <div class="splash-view" id="splashView">
-        <div class="touch-button" id="touchButton">
-            <div class="touch-button-circle">
-                <i class="fas fa-record-vinyl"></i>
-            </div>
-            <h1>🔍 TOUCH OR CLICK TO SEARCH</h1>
-            <p>Find any record in the store</p>
-        </div>
-    </div>
-
-    <!-- RESULTS VIEW -->
-    <div class="results-view" id="resultsView">
+    <!-- RESULTS VIEW - Always visible -->
+    <div class="results-view">
         <div class="search-header">
-            <button class="back-button" id="backButton">
-                <i class="fas fa-arrow-left"></i>
-            </button>
             <div class="search-input-wrapper">
                 <i class="fas fa-search"></i>
                 <input type="text" class="search-input" id="searchInput" placeholder="Artist or album name..." autocomplete="off">
@@ -397,87 +260,30 @@
         </div>
     </div>
 
-    <div class="idle-warning" id="idleWarning">
-        <i class="fas fa-hourglass-half"></i> Returning to search screen in 5 seconds...
-    </div>
-
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/config-value-manager.js"></script>
     
     <script>
-        // DEBUG: Catch all errors
-        window.onerror = function(msg, url, line, col, error) {
-            console.log('ERROR:', msg, 'at', url, 'line', line);
-            alert('Error: ' + msg + ' (line ' + line + ')\nCheck console for details.');
-            return false;
-        };
-        
-        console.log('Kiosk page loaded - current path:', window.location.pathname);
-        
         // Global state
         let allRecords = [];
         let filteredRecords = [];
-        let idleTimer = null;
-        let warningTimer = null;
-        let idleTimeoutSeconds = 300;  // Changed from 30 to 300 seconds (5 minutes) for mobile
-        let warningSeconds = 5;
-        let isLoading = false;
         
         // DOM Elements
-        const splashView = document.getElementById('splashView');
-        const resultsView = document.getElementById('resultsView');
-        const touchButton = document.getElementById('touchButton');
-        const backButton = document.getElementById('backButton');
         const searchInput = document.getElementById('searchInput');
         const resultsContainer = document.getElementById('resultsContainer');
-        const idleWarning = document.getElementById('idleWarning');
-        
-        // SAFE: Return to splash view - NO NAVIGATION, only view toggle
-        function returnToSplash() {
-            console.log('returnToSplash called - current path:', window.location.pathname);
-            
-            // SAFETY: Never redirect away from kiosk page
-            if (window.location.pathname !== '/kiosk') {
-                console.log('WARNING: Not on kiosk page, but refusing to redirect');
-                // Do nothing - don't change URL
-                return;
-            }
-            
-            // Clear timers
-            if (idleTimer) clearTimeout(idleTimer);
-            if (warningTimer) clearTimeout(warningTimer);
-            
-            // Hide warning
-            idleWarning.classList.remove('show');
-            
-            // ONLY switch views - NO URL NAVIGATION
-            resultsView.classList.remove('active');
-            splashView.classList.remove('hide');
-            
-            // Clear search
-            searchInput.value = '';
-            
-            console.log('Returned to splash view successfully');
-        }
         
         // Load records from API
         async function loadRecords() {
-            if (isLoading) return;
-            isLoading = true;
-            
-            console.log('Loading records from API...');
-            
             try {
                 showLoading();
+                console.log('Loading records from API...');
                 const response = await fetch(`${AppConfig.baseUrl}/catalog/records`);
-                console.log('API response status:', response.status);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 
                 const data = await response.json();
-                console.log('API response data status:', data.status);
                 
                 if (data.status === 'success') {
                     allRecords = data.records;
@@ -496,8 +302,6 @@
                         <button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: #667eea; border: none; border-radius: 8px; color: white; font-size: 16px; cursor: pointer;">Retry</button>
                     </div>
                 `;
-            } finally {
-                isLoading = false;
             }
         }
         
@@ -574,90 +378,13 @@
             displayRecords(filteredRecords);
         }
         
-        // Reset idle timer
-        function resetIdleTimer() {
-            if (idleTimer) clearTimeout(idleTimer);
-            if (warningTimer) clearTimeout(warningTimer);
-            
-            idleWarning.classList.remove('show');
-            
-            if (resultsView.classList.contains('active')) {
-                idleTimer = setTimeout(showIdleWarning, (idleTimeoutSeconds - warningSeconds) * 1000);
-            }
-        }
-        
-        // Show warning before returning to splash
-        function showIdleWarning() {
-            idleWarning.classList.add('show');
-            warningTimer = setTimeout(returnToSplash, warningSeconds * 1000);
-        }
-        
-        // Switch to results view and load data
-        async function switchToResults() {
-            console.log('switchToResults called');
-            
-            // SAFETY: Never redirect away from kiosk page
-            if (window.location.pathname !== '/kiosk') {
-                console.log('WARNING: Not on kiosk page, but continuing anyway');
-            }
-            
-            splashView.classList.add('hide');
-            resultsView.classList.add('active');
-            
-            // Load records if not already loaded
-            if (allRecords.length === 0) {
-                await loadRecords();
-            }
-            
-            setTimeout(() => {
-                searchInput.focus();
-            }, 300);
-            
-            resetIdleTimer();
-        }
-        
-        // Event listeners
-        touchButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            console.log('Touch button clicked');
-            switchToResults();
-        });
-        
-        touchButton.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            console.log('Touch button touched');
-            switchToResults();
-        });
-        
-        backButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            console.log('Back button clicked');
-            returnToSplash();
-        });
-        
-        backButton.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            console.log('Back button touched');
-            returnToSplash();
-        });
-        
+        // Search with debounce
         let searchTimeout;
         searchInput.addEventListener('input', (e) => {
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
                 filterRecords(e.target.value);
-                resetIdleTimer();
             }, 300);
-        });
-        
-        // Reset idle timer on user interaction in results view
-        const resetEvents = ['click', 'touchstart', 'keydown', 'scroll'];
-        resetEvents.forEach(event => {
-            document.addEventListener(event, () => {
-                if (resultsView.classList.contains('active')) {
-                    resetIdleTimer();
-                }
-            });
         });
         
         function escapeHtml(text) {
@@ -667,14 +394,8 @@
             return div.innerHTML;
         }
         
-        // Page loaded - don't load anything automatically, wait for user interaction
-        console.log('Kiosk ready - waiting for user interaction on path:', window.location.pathname);
-        
-        // Safety check: If we're somehow not on /kiosk, don't redirect - just log
-        if (window.location.pathname !== '/kiosk') {
-            console.error('Page loaded at wrong path:', window.location.pathname);
-            console.log('This may cause issues, but we will not redirect automatically');
-        }
+        // Load records when page loads
+        loadRecords();
     </script>
 </body>
 </html>
