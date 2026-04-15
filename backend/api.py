@@ -1033,10 +1033,10 @@ def get_combined_inventory():
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
- 
+
 @app.route('/api/discogs/sync-prices', methods=['POST'])
 def sync_discogs_prices():
-    """Apply weekly price reductions to Discogs listings based on age"""
+    """Delete and repost Discogs listings at reduced prices"""
     try:
         TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
         if not TOKEN:
@@ -1098,19 +1098,23 @@ def sync_discogs_prices():
         
         from datetime import datetime
         
-        updated = 0
+        reposted = 0
         failed = 0
+        skipped = 0
         results = []
         
         for listing in all_listings:
-            # Find local record
+            # Find local record by discogs_listing_id
             conn = get_db()
             cursor = conn.cursor()
-            cursor.execute('SELECT id, store_price, discogs_listed_date FROM records WHERE discogs_listing_id = ?', (listing['listing_id'],))
+            cursor.execute('SELECT id, store_price, discogs_listing_id, location, notes FROM records WHERE discogs_listing_id = ?', (listing['listing_id'],))
             record = cursor.fetchone()
             conn.close()
             
             if not record:
+                app.logger.warning(f"No local record found for listing {listing['listing_id']}")
+                skipped += 1
+                results.append(f"⚠️ Skipped {listing['artist']} - {listing['title']}: No local record")
                 continue
             
             # Calculate weeks on Discogs
@@ -1125,46 +1129,133 @@ def sync_discogs_prices():
             reduction = weeks * step_percent
             effective_markup = max(0, markup_percent - reduction)
             expected_price = record['store_price'] * (1 + effective_markup / 100)
-            # REMOVED: expected_price = max(record['store_price'], round(expected_price, 2))
-            expected_price = round(expected_price, 2)  # Just round, no floor
+            expected_price = round(expected_price, 2)
             
-            # Update if price changed (allow 1 cent rounding)
-            if abs(listing['price'] - expected_price) > 0.01:
-                update_data = {
-                    "price": expected_price,
-                    "condition": listing['condition'],
-                    "sleeve_condition": listing['sleeve_condition'],
-                    "status": "For Sale"
-                }
+            # Check if price needs reduction (allow 1 cent rounding)
+            if listing['price'] <= expected_price + 0.01:
+                skipped += 1
+                results.append(f"✓ Skip {listing['artist']} - {listing['title']}: ${listing['price']:.2f} ≤ ${expected_price:.2f}")
+                continue
+            
+            app.logger.info(f"Reposting {listing['artist']} - {listing['title']}: ${listing['price']:.2f} → ${expected_price:.2f}")
+            
+            # STEP 1: Delete existing listing
+            delete_response = requests.delete(
+                f'https://api.discogs.com/marketplace/listings/{listing["listing_id"]}',
+                headers=headers
+            )
+            
+            if delete_response.status_code != 204:
+                app.logger.error(f"Failed to delete listing {listing['listing_id']}: {delete_response.status_code}")
+                failed += 1
+                results.append(f"❌ Delete failed: {listing['artist']} - {listing['title']}")
+                time.sleep(1)
+                continue
+            
+            # STEP 2: Create new listing
+            # Search for release
+            search_url = "https://api.discogs.com/database/search"
+            search_query = f"{record['artist']} {record['title']}"
+            if record['catalog_number']:
+                search_query += f" {record['catalog_number']}"
+            
+            search_response = requests.get(
+                search_url,
+                headers=headers,
+                params={'q': search_query, 'type': 'release', 'per_page': 5}
+            )
+            
+            if search_response.status_code != 200:
+                app.logger.error(f"Search failed for record {record['id']}")
+                failed += 1
+                results.append(f"❌ Search failed: {record['artist']} - {record['title']}")
+                time.sleep(1)
+                continue
+            
+            search_data = search_response.json()
+            releases = search_data.get('results', [])
+            
+            # Find exact catalog number match
+            release_id = None
+            target_catalog = (record.get('catalog_number') or '').replace(' ', '').replace('-', '').lower()
+            
+            for release in releases:
+                release_catno = release.get('catno', '').replace(' ', '').replace('-', '').lower()
+                if target_catalog and release_catno == target_catalog:
+                    release_id = release.get('id')
+                    break
+            
+            if not release_id and releases:
+                release_id = releases[0].get('id')
+            
+            if not release_id:
+                app.logger.error(f"No release found for record {record['id']}")
+                failed += 1
+                results.append(f"❌ No release found: {record['artist']} - {record['title']}")
+                time.sleep(1)
+                continue
+            
+            # Create listing data
+            comments = f"[PIGSTYLE ID: {record['id']}]"
+            if record.get('location'):
+                comments += f" | Location: {record['location']}"
+            if record.get('notes'):
+                comments += f" | {record['notes']}"
+            
+            listing_data = {
+                "release_id": release_id,
+                "condition": listing['condition'],
+                "sleeve_condition": listing['sleeve_condition'],
+                "price": expected_price,
+                "status": "For Sale",
+                "comments": comments
+            }
+            
+            create_response = requests.post(
+                'https://api.discogs.com/marketplace/listings',
+                headers=headers,
+                json=listing_data
+            )
+            
+            if create_response.status_code in [200, 201]:
+                new_listing = create_response.json()
+                new_listing_id = new_listing.get('listing_id')
                 
-                update_response = requests.post(
-                    f'https://api.discogs.com/marketplace/listings/{listing["listing_id"]}',
-                    headers=headers,
-                    json=update_data
-                )
+                # Update local database with new listing ID
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE records 
+                    SET discogs_listing_id = ?, discogs_listed_date = CURRENT_DATE
+                    WHERE id = ?
+                ''', (new_listing_id, record['id']))
+                conn.commit()
+                conn.close()
                 
-                if update_response.status_code in [200, 201]:
-                    updated += 1
-                    results.append(f"✅ ${listing['price']:.2f} → ${expected_price:.2f}: {listing['artist']} - {listing['title']}")
-                else:
-                    failed += 1
-                    results.append(f"❌ Failed: {listing['artist']} - {listing['title']}")
+                reposted += 1
+                results.append(f"✅ Reposted: ${listing['price']:.2f} → ${expected_price:.2f}: {record['artist']} - {record['title']}")
+            else:
+                app.logger.error(f"Create failed for record {record['id']}: {create_response.text}")
+                failed += 1
+                results.append(f"❌ Create failed: {record['artist']} - {record['title']}")
             
             # Rate limiting delay
-            import time
-            time.sleep(1)
+            time.sleep(2)
         
         return jsonify({
             'success': True,
-            'message': f'Updated {updated} listings, Failed: {failed}',
-            'updated': updated,
+            'message': f'Reposted {reposted} listings, Failed: {failed}, Skipped: {skipped}',
+            'reposted': reposted,
             'failed': failed,
+            'skipped': skipped,
             'results': results
         })
         
     except Exception as e:
         app.logger.error(f"Error in sync_prices: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/discogs/create-listings', methods=['POST'])
 def create_discogs_listings():
