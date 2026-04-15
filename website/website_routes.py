@@ -57,6 +57,11 @@ def youtube_linker():
     # Serve the YouTube Linker page
     return send_from_directory('HTML', 'youtube-linker.html')
 
+@app.route('/kiosk')
+def kiosk():
+    """Serve the kiosk page for in-store lookup"""
+    return send_from_directory('HTML','kiosk.html')
+
 # *** ONLY ONE /admin ROUTE - THIS IS THE CORRECT ONE ***
 @app.route('/admin')
 def admin_panel():
@@ -86,6 +91,8 @@ def serve_js(path):
 @app.route('/css/<path:path>')
 def serve_css(path):
     return send_from_directory('static/css', path)
+
+
 
 # Serve images
 @app.route('/images/<path:path>')

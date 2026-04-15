@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=yes'>
+    <link rel="icon" href="/static/images/PigStyle.ico">
+    <title>Store Kiosk - Find Your Record</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #121212;
+            color: #fff;
+            min-height: 100vh;
+        }
+        
+        /* Background Image */
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        .background-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+        }
+        
+        /* SPLASH VIEW */
+        .splash-view {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            cursor: pointer;
+        }
+        
+        .splash-view.hide {
+            display: none;
+        }
+        
+        .touch-button {
+            text-align: center;
+            animation: pulse 2s infinite;
+        }
+        
+        .touch-button-circle {
+            width: 200px;
+            height: 200px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            backdrop-filter: blur(10px);
+            border: 3px solid white;
+        }
+        
+        .touch-button-circle i {
+            font-size: 80px;
+            color: white;
+        }
+        
+        .touch-button h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        .touch-button p {
+            font-size: 20px;
+            opacity: 0.9;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        /* RESULTS VIEW */
+        .results-view {
+            display: none;
+            padding: 20px;
+            padding-top: 80px;
+            padding-bottom: 30px;
+            min-height: 100vh;
+        }
+        
+        .results-view.active {
+            display: block;
+        }
+        
+        /* Search Header */
+        .search-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(30, 30, 30, 0.95);
+            padding: 15px 20px;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .back-button {
+            background: #333;
+            border: none;
+            color: white;
+            font-size: 24px;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        
+        .back-button:hover {
+            background: #555;
+        }
+        
+        .back-button:active {
+            background: #777;
+        }
+        
+        .search-input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+        
+        .search-input-wrapper i {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+            font-size: 18px;
+        }
+        
+        .search-input {
+            width: 100%;
+            height: 48px;
+            padding: 0 16px 0 48px;
+            font-size: 18px;
+            border: none;
+            border-radius: 12px;
+            background: #333;
+            color: white;
+            font-family: inherit;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            background: #444;
+        }
+        
+        .search-input::placeholder {
+            color: #999;
+        }
+        
+        /* Results Grid */
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 16px;
+            margin-top: 10px;
+        }
+        
+        /* Record Card */
+        .record-card {
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        
+        .record-card:hover {
+            transform: scale(1.02);
+        }
+        
+        .record-card:active {
+            transform: scale(0.98);
+        }
+        
+        .card-image {
+            width: 100%;
+            aspect-ratio: 1;
+            background: #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .card-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .default-record-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .default-record-bg i {
+            font-size: 48px;
+            color: rgba(255,255,255,0.5);
+        }
+        
+        .card-info {
+            padding: 12px;
+        }
+        
+        .card-artist {
+            font-size: 14px;
+            font-weight: 600;
+            color: #aaa;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .card-price {
+            font-size: 16px;
+            font-weight: 700;
+            color: #4ade80;
+            margin-bottom: 8px;
+        }
+        
+        .location-badge {
+            display: inline-block;
+            background: #2b5e2b;
+            color: #4ade80;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        
+        .location-badge i {
+            margin-right: 5px;
+            font-size: 11px;
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .no-results i {
+            font-size: 64px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .no-results p {
+            font-size: 18px;
+            color: #999;
+        }
+        
+        .idle-warning {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #ff9800;
+            z-index: 200;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .idle-warning.show {
+            opacity: 1;
+        }
+        
+        .loading-spinner {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .loading-spinner i {
+            font-size: 48px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (min-width: 768px) {
+            .results-grid {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            }
+            
+            .touch-button-circle {
+                width: 250px;
+                height: 250px;
+            }
+            
+            .touch-button-circle i {
+                font-size: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Background Image -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+
+    <!-- SPLASH VIEW -->
+    <div class="splash-view" id="splashView">
+        <div class="touch-button" id="touchButton">
+            <div class="touch-button-circle">
+                <i class="fas fa-record-vinyl"></i>
+            </div>
+            <h1>🔍 TOUCH OR CLICK TO SEARCH</h1>
+            <p>Find any record in the store</p>
+        </div>
+    </div>
+
+    <!-- RESULTS VIEW -->
+    <div class="results-view" id="resultsView">
+        <div class="search-header">
+            <button class="back-button" id="backButton">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="search-input-wrapper">
+                <i class="fas fa-search"></i>
+                <input type="text" class="search-input" id="searchInput" placeholder="Artist or album name..." autocomplete="off">
+            </div>
+        </div>
+        
+        <div id="resultsContainer">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner"></i>
+                <p>Loading inventory...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="idle-warning" id="idleWarning">
+        <i class="fas fa-hourglass-half"></i> Returning to search screen in 5 seconds...
+    </div>
+
+    <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/config-value-manager.js"></script>
+    
+    <script>
+        // Global state
+        let allRecords = [];
+        let filteredRecords = [];
+        let idleTimer = null;
+        let warningTimer = null;
+        let idleTimeoutSeconds = 30;
+        let warningSeconds = 5;
+        let isLoading = false;
+        
+        // DOM Elements
+        const splashView = document.getElementById('splashView');
+        const resultsView = document.getElementById('resultsView');
+        const touchButton = document.getElementById('touchButton');
+        const backButton = document.getElementById('backButton');
+        const searchInput = document.getElementById('searchInput');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const idleWarning = document.getElementById('idleWarning');
+        
+        // Load records from API
+        async function loadRecords() {
+            if (isLoading) return;
+            isLoading = true;
+            
+            try {
+                showLoading();
+                const response = await fetch(`${AppConfig.baseUrl}/catalog/records`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    allRecords = data.records;
+                    filteredRecords = [...allRecords];
+                    console.log(`Loaded ${allRecords.length} records`);
+                    displayRecords(filteredRecords);
+                } else {
+                    throw new Error(data.message || 'Failed to load records');
+                }
+            } catch (error) {
+                console.error('Error loading records:', error);
+                resultsContainer.innerHTML = `
+                    <div class="no-results">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Error loading records. Please try again.</p>
+                        <button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: #667eea; border: none; border-radius: 8px; color: white; font-size: 16px; cursor: pointer;">Retry</button>
+                    </div>
+                `;
+            } finally {
+                isLoading = false;
+            }
+        }
+        
+        // Show loading state
+        function showLoading() {
+            resultsContainer.innerHTML = `
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner"></i>
+                    <p>Loading inventory...</p>
+                </div>
+            `;
+        }
+        
+        // Display records as individual cards
+        function displayRecords(records) {
+            if (!records || records.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="no-results">
+                        <i class="fas fa-search"></i>
+                        <p>No records found matching your search.</p>
+                        <p style="font-size: 14px; margin-top: 10px;">Try a different artist or album name.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '<div class="results-grid">';
+            
+            records.forEach(record => {
+                const imageHtml = record.image_url ? 
+                    `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.innerHTML='<i class=\'fas fa-record-vinyl\'></i>'; this.parentElement.classList.add('default-record-bg');">` : 
+                    `<i class="fas fa-record-vinyl"></i>`;
+                
+                const imageClass = record.image_url ? 'card-image' : 'card-image default-record-bg';
+                
+                const artist = escapeHtml(record.artist || 'Unknown Artist');
+                const title = escapeHtml(record.title || 'Unknown Title');
+                const location = escapeHtml(record.location || 'Check with staff');
+                const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'Call for price';
+                
+                html += `
+                    <div class="record-card">
+                        <div class="${imageClass}">
+                            ${imageHtml}
+                        </div>
+                        <div class="card-info">
+                            <div class="card-artist">${artist}</div>
+                            <div class="card-title">${title}</div>
+                            <div class="card-price">${price}</div>
+                            <div class="location-badge">
+                                <i class="fas fa-map-marker-alt"></i> ${location}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            resultsContainer.innerHTML = html;
+        }
+        
+        // Filter records based on search term
+        function filterRecords(searchTerm) {
+            if (!searchTerm || searchTerm.trim() === '') {
+                filteredRecords = [...allRecords];
+            } else {
+                const term = searchTerm.toLowerCase().trim();
+                filteredRecords = allRecords.filter(record => {
+                    const artist = (record.artist || '').toLowerCase();
+                    const title = (record.title || '').toLowerCase();
+                    return artist.includes(term) || title.includes(term);
+                });
+            }
+            displayRecords(filteredRecords);
+        }
+        
+        // Reset idle timer
+        function resetIdleTimer() {
+            if (idleTimer) clearTimeout(idleTimer);
+            if (warningTimer) clearTimeout(warningTimer);
+            
+            idleWarning.classList.remove('show');
+            
+            if (resultsView.classList.contains('active')) {
+                idleTimer = setTimeout(showIdleWarning, (idleTimeoutSeconds - warningSeconds) * 1000);
+            }
+        }
+        
+        // Show warning before returning to splash
+        function showIdleWarning() {
+            idleWarning.classList.add('show');
+            warningTimer = setTimeout(returnToSplash, warningSeconds * 1000);
+        }
+        
+        // Return to splash view
+        function returnToSplash() {
+            if (idleTimer) clearTimeout(idleTimer);
+            if (warningTimer) clearTimeout(warningTimer);
+            
+            idleWarning.classList.remove('show');
+            
+            resultsView.classList.remove('active');
+            splashView.classList.remove('hide');
+            
+            searchInput.value = '';
+        }
+        
+        // Switch to results view and load data
+        async function switchToResults() {
+            splashView.classList.add('hide');
+            resultsView.classList.add('active');
+            
+            // Load records if not already loaded
+            if (allRecords.length === 0) {
+                await loadRecords();
+            }
+            
+            setTimeout(() => {
+                searchInput.focus();
+            }, 300);
+            
+            resetIdleTimer();
+        }
+        
+        // Event listeners
+        touchButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchToResults();
+        });
+        
+        touchButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            switchToResults();
+        });
+        
+        backButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            returnToSplash();
+        });
+        
+        backButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            returnToSplash();
+        });
+        
+        let searchTimeout;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                filterRecords(e.target.value);
+                resetIdleTimer();
+            }, 300);
+        });
+        
+        const resetEvents = ['click', 'touchstart', 'keydown', 'scroll'];
+        resetEvents.forEach(event => {
+            document.addEventListener(event, () => {
+                if (resultsView.classList.contains('active')) {
+                    resetIdleTimer();
+                }
+            });
+        });
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Don't load anything on page load - wait for click
+        console.log('Kiosk ready - waiting for user interaction');
+    </script>
+</body>
+</html>

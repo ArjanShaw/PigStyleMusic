@@ -215,8 +215,11 @@
     <div class="cart-overlay" id="cartOverlay"></div>
 
     <script>
-        // Store all releases globally
-        let allReleases = [];
+        // Store all records flat from API
+        let allRecords = [];
+        
+        // Store grouped releases
+        let groupedReleases = [];
         
         // Store available genres
         let availableGenres = [];
@@ -273,6 +276,81 @@
                 default:
                     return 'unknown';
             }
+        }
+
+        // Get format display name from barcode
+        function getFormatDisplayName(barcode) {
+            const formatCode = getFormatFromBarcode(barcode);
+            switch(formatCode) {
+                case '33': return '33⅓ RPM';
+                case '45': return '45 RPM';
+                case '78': return '78 RPM';
+                case 'cd': return 'CD';
+                case 'cassette': return 'Cassette';
+                default: return 'Unknown';
+            }
+        }
+
+        // Group records by release (title + artist)
+        function groupRecordsByRelease(records) {
+            const groups = new Map();
+            
+            records.forEach(record => {
+                const key = `${record.title}|${record.artist}`;
+                
+                if (!groups.has(key)) {
+                    groups.set(key, {
+                        id: record.id,
+                        title: record.title,
+                        artist: record.artist,
+                        image_url: record.image_url,
+                        genre_name: record.genre_name,
+                        created_at: record.created_at,
+                        copies: [],
+                        price_min: Infinity,
+                        price_max: -Infinity,
+                        conditions_disc: new Set(),
+                        conditions_sleeve: new Set(),
+                        formats: new Set(),
+                        youtube_url: record.youtube_url
+                    });
+                }
+                
+                const group = groups.get(key);
+                group.copies.push(record);
+                
+                // Update aggregates
+                if (record.store_price) {
+                    group.price_min = Math.min(group.price_min, record.store_price);
+                    group.price_max = Math.max(group.price_max, record.store_price);
+                }
+                
+                if (record.condition_disc) {
+                    group.conditions_disc.add(record.condition_disc);
+                }
+                
+                if (record.condition_sleeve) {
+                    group.conditions_sleeve.add(record.condition_sleeve);
+                }
+                
+                const format = getFormatDisplayName(record.barcode);
+                group.formats.add(format);
+                
+                if (record.youtube_url && !group.youtube_url) {
+                    group.youtube_url = record.youtube_url;
+                }
+            });
+            
+            // Convert to array and clean up
+            return Array.from(groups.values()).map(group => ({
+                ...group,
+                price_min: group.price_min === Infinity ? 0 : group.price_min,
+                price_max: group.price_max === -Infinity ? 0 : group.price_max,
+                conditions_disc: Array.from(group.conditions_disc),
+                conditions_sleeve: Array.from(group.conditions_sleeve),
+                formats: Array.from(group.formats),
+                total_copies: group.copies.length
+            }));
         }
 
         // Load cart from localStorage on page load
@@ -337,7 +415,7 @@
                 if (currentTaxRate === 0) {
                     try {
                         currentTaxRate = await getConfigValue('TAX_RATE') || 0;
-                        taxRate = currentTaxRate; // Store for future use
+                        taxRate = currentTaxRate;
                     } catch (e) {
                         console.warn('Could not fetch tax rate, using 0');
                         currentTaxRate = 0;
@@ -380,22 +458,23 @@
                                         ${item.format ? `<div class="cart-item-format"><i class="fas ${item.format === 'CD' ? 'fa-compact-disc' : 'fa-record-vinyl'}"></i> ${item.format}</div>` : ''}
                                     </div>
                                 </div>
-                             </td>
+                              </div>
+                            </td>
                             <td class="item-price-cell">
                                 <div class="cart-item-price">$${item.price.toFixed(2)}</div>
-                             </td>
+                              </td>
                             <td class="item-action-cell">
                                 <button class="cart-item-remove-btn" onclick="removeFromCart(${index})" title="Remove item">
                                     <i class="fas fa-times"></i>
                                 </button>
-                             </td>
-                         </tr>
+                              </td>
+                          </tr>
                     `;
                 });
                 
                 itemsHtml += `
                         </tbody>
-                    </table>
+                     </table>
                 `;
                 
                 cartItems.innerHTML = itemsHtml;
@@ -407,17 +486,17 @@
                             <tr class="subtotal-row">
                                 <td class="label">Subtotal:</td>
                                 <td class="amount">$${subtotal.toFixed(2)}</td>
-                             </tr>
+                              </tr>
                             <tr class="tax-row">
                                 <td class="label">Tax (${currentTaxRate}%):</td>
                                 <td class="amount">$${taxAmount.toFixed(2)}</td>
-                             </tr>
+                              </tr>
                             <tr class="total-row">
                                 <td class="label">Total:</td>
                                 <td class="amount total-amount">$${totalWithTax.toFixed(2)}</td>
-                             </tr>
+                              </tr>
                         </tbody>
-                    </table>
+                     </table>
                     <button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button>
                 `;
                 
@@ -450,7 +529,7 @@
                 copyId: copy.id,
                 title: release.title,
                 artist: release.artist,
-                condition: copy.condition,
+                condition: copy.condition_disc || copy.condition_sleeve || 'Unknown',
                 price: copy.store_price,
                 image_url: release.image_url,
                 format: format,
@@ -511,7 +590,7 @@
         function openCartDrawer() {
             document.getElementById('cartDrawer').classList.add('open');
             document.getElementById('cartOverlay').classList.add('active');
-            updateCartDrawer(); // Refresh contents when opening
+            updateCartDrawer();
         }
 
         // Close cart drawer
@@ -520,11 +599,11 @@
             document.getElementById('cartOverlay').classList.remove('active');
         }
 
-        // Load data from grouped API endpoint
+        // Load data from new records endpoint
         async function loadCatalogData() {
             try {
-                console.log('Loading grouped catalog data from API...');
-                const response = await fetch(`${AppConfig.baseUrl}/catalog/grouped-by-release`);
+                console.log('Loading catalog data from /catalog/records...');
+                const response = await fetch(`${AppConfig.baseUrl}/catalog/records`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
@@ -535,11 +614,14 @@
                 console.log('API Response:', data);
                 
                 if (data.status === 'success') {
-                    allReleases = data.groups || [];
+                    allRecords = data.records;
+                    
+                    // Group records by release
+                    groupedReleases = groupRecordsByRelease(allRecords);
                     
                     // Extract unique genres from releases
                     const genreSet = new Set();
-                    allReleases.forEach(release => {
+                    groupedReleases.forEach(release => {
                         if (release.genre_name && release.genre_name !== 'Unknown') {
                             genreSet.add(release.genre_name);
                         }
@@ -548,7 +630,7 @@
                     // Convert to array and sort
                     availableGenres = Array.from(genreSet).sort();
                     
-                    console.log(`Loaded ${allReleases.length} unique releases with ${data.total_copies} total copies`);
+                    console.log(`Loaded ${allRecords.length} total copies, grouped into ${groupedReleases.length} unique releases`);
                     console.log(`Found ${availableGenres.length} unique genres:`, availableGenres);
                     
                     // Populate genre filter dropdown
@@ -557,13 +639,13 @@
                     // Populate format filter
                     populateFormatFilter();
                     
-                    displayReleases(allReleases);
+                    displayReleases(groupedReleases);
                 } else {
                     throw new Error('Invalid response from server: ' + JSON.stringify(data));
                 }
                 
             } catch (error) {
-                console.error('CRITICAL ERROR: Failed to load grouped catalog data:', error);
+                console.error('CRITICAL ERROR: Failed to load catalog data:', error);
                 
                 // Show error message to user with details
                 document.getElementById('catalogContainer').innerHTML = `
@@ -580,88 +662,54 @@
                     </div>
                 `;
                 
-                // Re-throw the error to ensure it's not silently handled
                 throw error;
             }
         }
         
-        // Helper function to get date category data - FIXED TIMEZONE VERSION
+        // Helper function to get date category data
         function getDateCategoryData(createdDate) {
             if (!createdDate) return null;
             
-            // Parse the date string - handle both UTC and local formats
             let recordDate;
             
-            // If it's a string like "2024-03-28 20:59:22" (database format)
             if (typeof createdDate === 'string' && createdDate.includes(' ')) {
-                // Replace space with T to make it ISO-like, then parse
                 const isoString = createdDate.replace(' ', 'T') + 'Z';
                 recordDate = new Date(isoString);
             } else {
                 recordDate = new Date(createdDate);
             }
             
-            // Check if date is valid
             if (isNaN(recordDate.getTime())) {
                 console.warn('Invalid date:', createdDate);
                 return null;
             }
             
-            // Get today's date at midnight LOCAL time
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             
-            // Get record date at midnight LOCAL time (not UTC)
             const recordDateLocal = new Date(recordDate);
             recordDateLocal.setHours(0, 0, 0, 0);
             
-            // Calculate difference in days (local time)
             const diffDays = Math.floor((today - recordDateLocal) / (1000 * 60 * 60 * 24));
             
-            // Format the full date for display
             const fullDate = recordDate.toLocaleDateString('en-US', { 
                 month: 'long', 
                 day: 'numeric', 
                 year: 'numeric' 
             });
             
-            // If diffDays is negative or zero, show as "Added Today"
             if (diffDays <= 0) {
-                return { 
-                    label: 'Added Today', 
-                    emoji: '🆕',
-                    fullDate: fullDate
-                };
+                return { label: 'Added Today', emoji: '🆕', fullDate: fullDate };
             } else if (diffDays === 1) {
-                return { 
-                    label: 'Added Yesterday', 
-                    emoji: '✨',
-                    fullDate: fullDate
-                };
+                return { label: 'Added Yesterday', emoji: '✨', fullDate: fullDate };
             } else if (diffDays <= 7) {
-                return { 
-                    label: `Added ${diffDays} Days Ago`, 
-                    emoji: '📅',
-                    fullDate: fullDate
-                };
+                return { label: `Added ${diffDays} Days Ago`, emoji: '📅', fullDate: fullDate };
             } else if (diffDays <= 14) {
-                return { 
-                    label: 'Added Last Week', 
-                    emoji: '📆',
-                    fullDate: fullDate
-                };
+                return { label: 'Added Last Week', emoji: '📆', fullDate: fullDate };
             } else if (diffDays <= 30) {
-                return { 
-                    label: 'Added This Month', 
-                    emoji: '🗓️',
-                    fullDate: fullDate
-                };
+                return { label: 'Added This Month', emoji: '🗓️', fullDate: fullDate };
             } else {
-                return { 
-                    label: 'Added Earlier', 
-                    emoji: '💿',
-                    fullDate: fullDate
-                };
+                return { label: 'Added Earlier', emoji: '💿', fullDate: fullDate };
             }
         }
 
@@ -678,12 +726,10 @@
                 const dateKey = release.created_at ? new Date(release.created_at).toDateString() : 'unknown';
                 
                 if (dateKey !== currentDateKey) {
-                    // Save previous group if exists
                     if (currentDateGroup) {
                         groups.push(currentDateGroup);
                     }
                     
-                    // Start new group
                     currentDateKey = dateKey;
                     currentDateGroup = {
                         dateData: dateData,
@@ -694,7 +740,6 @@
                 currentDateGroup.releases.push(release);
             });
             
-            // Push the last group
             if (currentDateGroup) {
                 groups.push(currentDateGroup);
             }
@@ -741,7 +786,6 @@
             
             container.innerHTML = html;
             
-            // Add event listeners
             document.getElementById('selectAllGenres').addEventListener('click', () => {
                 document.querySelectorAll('#genreCheckboxContainer input[type="checkbox"]').forEach(cb => {
                     cb.checked = true;
@@ -755,40 +799,30 @@
             });
             
             document.getElementById('applyGenreFilter').addEventListener('click', () => {
-                // Update selected genres
                 selectedGenres = [];
                 document.querySelectorAll('#genreCheckboxContainer input[type="checkbox"]:checked').forEach(cb => {
                     selectedGenres.push(cb.value);
                 });
                 
-                // Close the dropdown
                 document.getElementById('genreCheckboxContainer').classList.remove('show');
-                
-                // Apply filters
                 applyFilters();
             });
         }
         
         // Populate format filter
         function populateFormatFilter() {
-            const container = document.getElementById('formatCheckboxContainer');
-            if (!container) return;
-            
-            // Get checkbox elements
             const format33 = document.getElementById('format-33');
             const format45 = document.getElementById('format-45');
             const format78 = document.getElementById('format-78');
             const formatCd = document.getElementById('format-cd');
             const formatCassette = document.getElementById('format-cassette');
             
-            // Set initial checked state
             if (format33) format33.checked = selectedFormats.includes('33');
             if (format45) format45.checked = selectedFormats.includes('45');
             if (format78) format78.checked = selectedFormats.includes('78');
             if (formatCd) formatCd.checked = selectedFormats.includes('cd');
             if (formatCassette) formatCassette.checked = selectedFormats.includes('cassette');
             
-            // Add event listeners for buttons
             const selectAllBtn = document.getElementById('selectAllFormats');
             const deselectAllBtn = document.getElementById('deselectAllFormats');
             const applyBtn = document.getElementById('applyFormatFilter');
@@ -822,11 +856,9 @@
                     if (formatCd && formatCd.checked) selectedFormats.push('cd');
                     if (formatCassette && formatCassette.checked) selectedFormats.push('cassette');
                     
-                    // Close dropdown
                     const formatContainer = document.getElementById('formatCheckboxContainer');
                     if (formatContainer) formatContainer.classList.remove('show');
                     
-                    // Apply filters
                     applyFilters();
                 });
             }
@@ -853,84 +885,62 @@
             const card = document.createElement('div');
             card.className = 'card';
             
-            // Set data attributes for filtering
             card.setAttribute('data-artist', (release.artist || '').toLowerCase());
             card.setAttribute('data-title', (release.title || '').toLowerCase());
             card.setAttribute('data-genre', (release.genre_name || '').toLowerCase());
             card.setAttribute('data-created', release.created_at || '');
+            card.setAttribute('data-formats', JSON.stringify(release.formats));
             
-            // Get genre
             const genre = release.genre_name || 'Unknown Genre';
             
-            // Calculate price range display
-            const priceRange = release.price_range;
             let priceDisplay = '';
-            if (priceRange.min > 0 && priceRange.max > 0) {
-                if (priceRange.min === priceRange.max) {
-                    priceDisplay = `$${priceRange.min.toFixed(2)}`;
+            if (release.price_min > 0 && release.price_max > 0) {
+                if (release.price_min === release.price_max) {
+                    priceDisplay = `$${release.price_min.toFixed(2)}`;
                 } else {
-                    priceDisplay = `$${priceRange.min.toFixed(2)} - $${priceRange.max.toFixed(2)}`;
+                    priceDisplay = `$${release.price_min.toFixed(2)} - $${release.price_max.toFixed(2)}`;
                 }
-            } else if (priceRange.min > 0) {
-                priceDisplay = `$${priceRange.min.toFixed(2)}`;
+            } else if (release.price_min > 0) {
+                priceDisplay = `$${release.price_min.toFixed(2)}`;
             } else {
                 priceDisplay = 'Price varies';
             }
             
-            // Build formats list - with format detection from barcode
             let formatsHtml = '';
             if (release.formats && release.formats.length > 0) {
                 formatsHtml = '<div class="formats-list">';
                 release.formats.forEach(format => {
-                    // Determine format class and icon based on barcode of first copy
                     let formatClass = '';
                     let formatIcon = '';
-                    let formatDisplay = format.format;
                     
-                    if (format.copies.length > 0) {
-                        const barcodePrefix = format.copies[0].barcode?.substring(0, 2);
-                        if (barcodePrefix === '22') {
-                            formatClass = 'vinyl-33';
-                            formatIcon = 'fa-record-vinyl';
-                            formatDisplay = '33⅓ RPM';
-                        } else if (barcodePrefix === '55') {
-                            formatClass = 'vinyl-45';
-                            formatIcon = 'fa-record-vinyl';
-                            formatDisplay = '45 RPM';
-                        } else if (barcodePrefix === '66') {
-                            formatClass = 'vinyl-78';
-                            formatIcon = 'fa-record-vinyl';
-                            formatDisplay = '78 RPM';
-                        } else if (barcodePrefix === '33') {
-                            formatClass = 'cd';
-                            formatIcon = 'fa-compact-disc';
-                            formatDisplay = 'CD';
-                        } else if (barcodePrefix === '44') {
-                            formatClass = 'cassette';
-                            formatIcon = 'fa-tape';
-                            formatDisplay = 'Cassette';
-                        }
+                    if (format === '33⅓ RPM') {
+                        formatClass = 'vinyl-33';
+                        formatIcon = 'fa-record-vinyl';
+                    } else if (format === '45 RPM') {
+                        formatClass = 'vinyl-45';
+                        formatIcon = 'fa-record-vinyl';
+                    } else if (format === '78 RPM') {
+                        formatClass = 'vinyl-78';
+                        formatIcon = 'fa-record-vinyl';
+                    } else if (format === 'CD') {
+                        formatClass = 'cd';
+                        formatIcon = 'fa-compact-disc';
+                    } else if (format === 'Cassette') {
+                        formatClass = 'cassette';
+                        formatIcon = 'fa-tape';
                     }
                     
-                    const countDisplay = format.total_copies > 1 ? ` (${format.total_copies})` : '';
-                    formatsHtml += `<span class="format-indicator ${formatClass}" data-format="${formatDisplay}">
-                        <i class="fas ${formatIcon}"></i> ${formatDisplay}${countDisplay}
+                    formatsHtml += `<span class="format-indicator ${formatClass}" data-format="${format}">
+                        <i class="fas ${formatIcon}"></i> ${format}
                     </span>`;
                 });
                 formatsHtml += '</div>';
             }
             
-            // Get all unique conditions from all formats
-            const allConditions = [];
-            release.formats.forEach(format => {
-                format.copies.forEach(copy => {
-                    if (copy.condition && !allConditions.includes(copy.condition)) {
-                        allConditions.push(copy.condition);
-                    }
-                });
-            });
+            let conditionsHtml = '';
+            const allConditions = [...release.conditions_disc, ...release.conditions_sleeve];
+            const uniqueConditions = [...new Set(allConditions)];
             
-            // Sort conditions by grade
             const conditionOrder = {
                 'Mint (M)': 1,
                 'Near Mint (NM or M-)': 2,
@@ -942,12 +952,10 @@
                 'Poor (P)': 8
             };
             
-            const sortedConditions = allConditions.sort((a, b) => 
+            const sortedConditions = uniqueConditions.sort((a, b) => 
                 (conditionOrder[a] || 99) - (conditionOrder[b] || 99)
             );
             
-            // Build conditions HTML
-            let conditionsHtml = '';
             if (sortedConditions.length > 0) {
                 conditionsHtml = '<div class="conditions-list">';
                 sortedConditions.slice(0, 3).forEach(condition => {
@@ -961,13 +969,11 @@
                 conditionsHtml += '</div>';
             }
             
-            // Copy count display
             let copyCountHtml = '';
             if (release.total_copies > 1) {
                 copyCountHtml = `<span class="copy-count">${release.total_copies} copies</span>`;
             }
             
-            // Handle image display
             const imageHtml = release.image_url ? 
                 `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
                 '';
@@ -991,25 +997,20 @@
                     
                     ${conditionsHtml}
                     
-                    ${release.formats.some(f => f.copies.some(c => c.youtube_url)) ? `
-                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.formats.find(f => f.copies.find(c => c.youtube_url))?.copies.find(c => c.youtube_url)?.youtube_url || ''}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">
+                    ${release.youtube_url ? `
+                        <a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.youtube_url}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">
                             🎵 Watch Video
                         </a>
                     ` : ''}
                 </div>
             `;
             
-            // Add click handler to show all copies popup
             card.addEventListener('click', function(e) {
-                // Don't trigger if clicking on YouTube link or format indicator
                 if (e.target.closest('.youtube-link')) return;
                 if (e.target.closest('.format-indicator')) return;
-                
-                // Show popup with all copies grouped by format
                 showCopiesPopup(release);
             });
             
-            // Add click handlers for format indicators
             setTimeout(() => {
                 card.querySelectorAll('.format-indicator').forEach(indicator => {
                     indicator.addEventListener('click', function(e) {
@@ -1026,7 +1027,7 @@
         // Display releases with date cards
         function displayReleases(releases) {
             const container = document.getElementById('catalogContainer');
-            container.innerHTML = ''; // Clear loading message
+            container.innerHTML = '';
 
             if (!releases || releases.length === 0) {
                 container.innerHTML = '<div class="no-records-message"><i class="fas fa-search"></i><p>No records found in the database.</p></div>';
@@ -1035,27 +1036,21 @@
 
             console.log(`Displaying ${releases.length} releases`);
 
-            // Sort releases by date added descending (newest first)
             const sortedReleases = [...releases].sort((a, b) => {
                 const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
                 const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
                 return dateB - dateA;
             });
 
-            // Group releases by date
             const dateGroups = groupReleasesByDate(sortedReleases);
             
-            // Create gallery container
             const gallery = document.createElement('div');
             gallery.className = 'group-gallery';
 
-            // Build the layout with date cards and record cards
             dateGroups.forEach(group => {
-                // Add date card
                 const dateCard = createDateCard(group.dateData, group.releases.length);
                 gallery.appendChild(dateCard);
                 
-                // Add all record cards for this date
                 group.releases.forEach(release => {
                     const recordCard = createRecordCard(release);
                     gallery.appendChild(recordCard);
@@ -1064,88 +1059,77 @@
 
             container.appendChild(gallery);
             
-            // Apply filters after loading
             setTimeout(() => {
                 applyFilters();
             }, 100);
         }
 
-        // Show popup with all copies grouped by format
+        // Show popup with all copies grouped by format (NO LOCATION)
         function showCopiesPopup(release, filterFormat = null) {
-            // Create modal overlay
             const modal = document.createElement('div');
             modal.className = 'copies-modal-overlay';
             
-            // Handle image display
             const imageHtml = release.image_url ? 
                 `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : 
                 '';
             
-            // Filter formats if specified
-            let formatsToShow = release.formats;
-            if (filterFormat) {
-                formatsToShow = release.formats.filter(f => {
-                    // Get format from barcode to compare
-                    if (f.copies.length > 0) {
-                        const barcodeFormat = getFormatFromBarcode(f.copies[0].barcode);
-                        let displayFormat = '';
-                        if (barcodeFormat === '33') displayFormat = '33⅓ RPM';
-                        else if (barcodeFormat === '45') displayFormat = '45 RPM';
-                        else if (barcodeFormat === '78') displayFormat = '78 RPM';
-                        else if (barcodeFormat === 'cd') displayFormat = 'CD';
-                        else if (barcodeFormat === 'cassette') displayFormat = 'Cassette';
-                        return displayFormat === filterFormat;
-                    }
-                    return f.format === filterFormat;
-                });
-            }
+            // Get copies for this release from allRecords
+            const copies = allRecords.filter(record => 
+                record.title === release.title && record.artist === release.artist
+            );
             
-            // Build formats HTML
+            // Group copies by format
+            const copiesByFormat = new Map();
+            copies.forEach(copy => {
+                const format = getFormatDisplayName(copy.barcode);
+                if (!copiesByFormat.has(format)) {
+                    copiesByFormat.set(format, []);
+                }
+                copiesByFormat.get(format).push(copy);
+            });
+            
             let formatsHtml = '';
-            formatsToShow.forEach(format => {
-                // Determine format display based on barcode
-                let formatDisplay = format.format;
-                let formatIcon = 'fa-record-vinyl';
+            for (const [format, formatCopies] of copiesByFormat) {
+                if (filterFormat && format !== filterFormat) continue;
                 
-                if (format.copies.length > 0) {
-                    const barcodeFormat = getFormatFromBarcode(format.copies[0].barcode);
-                    if (barcodeFormat === '33') {
-                        formatDisplay = '33⅓ RPM';
-                        formatIcon = 'fa-record-vinyl';
-                    } else if (barcodeFormat === '45') {
-                        formatDisplay = '45 RPM';
-                        formatIcon = 'fa-record-vinyl';
-                    } else if (barcodeFormat === '78') {
-                        formatDisplay = '78 RPM';
-                        formatIcon = 'fa-record-vinyl';
-                    } else if (barcodeFormat === 'cd') {
-                        formatDisplay = 'CD';
-                        formatIcon = 'fa-compact-disc';
-                    } else if (barcodeFormat === 'cassette') {
-                        formatDisplay = 'Cassette';
-                        formatIcon = 'fa-tape';
-                    }
+                let formatIcon = 'fa-record-vinyl';
+                let formatClass = '';
+                if (format === '33⅓ RPM') {
+                    formatIcon = 'fa-record-vinyl';
+                    formatClass = 'vinyl-33';
+                } else if (format === '45 RPM') {
+                    formatIcon = 'fa-record-vinyl';
+                    formatClass = 'vinyl-45';
+                } else if (format === '78 RPM') {
+                    formatIcon = 'fa-record-vinyl';
+                    formatClass = 'vinyl-78';
+                } else if (format === 'CD') {
+                    formatIcon = 'fa-compact-disc';
+                    formatClass = 'cd';
+                } else if (format === 'Cassette') {
+                    formatIcon = 'fa-tape';
+                    formatClass = 'cassette';
                 }
                 
                 let copiesHtml = '';
-                format.copies.forEach(copy => {
-                    const conditionClass = getConditionClass(copy.condition);
+                formatCopies.forEach(copy => {
+                    const conditionClass = getConditionClass(copy.condition_disc || copy.condition_sleeve);
                     const alreadyInCart = isInCart(copy.id);
+                    const displayCondition = copy.condition_disc || copy.condition_sleeve || 'Unknown';
                     
                     copiesHtml += `
                         <div class="copy-item">
                             <div class="copy-item-content">
                                 <span class="copy-condition">
-                                    <span class="condition-indicator ${conditionClass}">${copy.condition || 'Unknown'}</span>
+                                    <span class="condition-indicator ${conditionClass}">${displayCondition}</span>
                                 </span>
                                 <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
-                                ${copy.barcode ? `<span class="copy-barcode">${copy.barcode}</span>` : ''}
                             </div>
                             <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" 
                                     data-copy-id="${copy.id}" 
-                                    data-copy-condition="${copy.condition}" 
+                                    data-copy-condition="${displayCondition}"
                                     data-copy-price="${copy.store_price}"
-                                    data-format="${formatDisplay}"
+                                    data-format="${format}"
                                     ${alreadyInCart ? 'disabled' : ''}>
                                 <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> 
                                 ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
@@ -1154,24 +1138,20 @@
                     `;
                 });
                 
-                const countDisplay = format.total_copies > 1 ? 
-                    `<span style="font-size: 0.8rem; font-weight: normal; margin-left: auto;">${format.total_copies} copies</span>` : '';
-                
                 formatsHtml += `
                     <div class="modal-format-section">
-                        <div class="modal-format-title">
+                        <div class="modal-format-title ${formatClass}">
                             <i class="fas ${formatIcon}"></i>
-                            ${formatDisplay}
-                            ${countDisplay}
+                            ${format}
+                            <span style="font-size: 0.8rem; font-weight: normal; margin-left: auto;">${formatCopies.length} copy${formatCopies.length !== 1 ? 's' : ''}</span>
                         </div>
                         <div class="copies-list-with-format">
                             ${copiesHtml}
                         </div>
                     </div>
                 `;
-            });
+            }
             
-            // Build footer HTML - only show total if multiple formats or multiple copies
             let footerHtml = '';
             if (release.total_copies > 1) {
                 footerHtml = `
@@ -1181,7 +1161,6 @@
                 `;
             }
             
-            // Create modal content with image
             modal.innerHTML = `
                 <div class="copies-modal">
                     <div class="copies-modal-header">
@@ -1198,42 +1177,35 @@
                 </div>
             `;
             
-            // Add click handler to close button
             const closeBtn = modal.querySelector('.copies-modal-close');
             closeBtn.addEventListener('click', () => {
                 modal.remove();
             });
             
-            // Add click outside to close
             modal.addEventListener('click', function(e) {
                 if (e.target === modal) {
                     modal.remove();
                 }
             });
             
-            // Add event listeners for add to cart buttons
             modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     
-                    const copyId = btn.dataset.copyId;
+                    const copyId = parseInt(btn.dataset.copyId);
                     const format = btn.dataset.format;
                     
-                    // Find the full copy object
-                    let copy = null;
-                    for (const formatData of release.formats) {
-                        const found = formatData.copies.find(c => c.id == copyId);
-                        if (found) {
-                            copy = found;
-                            break;
-                        }
-                    }
+                    const copy = allRecords.find(r => r.id === copyId);
                     
                     if (copy) {
-                        const added = addToCart(copy, release, format);
+                        const releaseForCopy = {
+                            title: copy.title,
+                            artist: copy.artist,
+                            image_url: copy.image_url
+                        };
+                        const added = addToCart(copy, releaseForCopy, format);
                         
                         if (added) {
-                            // Close the modal after adding to cart
                             modal.remove();
                         }
                     }
@@ -1253,7 +1225,8 @@
 
         // Helper function to get CSS class for condition
         function getConditionClass(condition) {
-            const conditionLower = (condition || '').toLowerCase();
+            if (!condition) return '';
+            const conditionLower = condition.toLowerCase();
             if (conditionLower.includes('mint') && !conditionLower.includes('near')) {
                 return 'condition-mint';
             } else if (conditionLower.includes('near mint')) {
@@ -1274,75 +1247,54 @@
             return '';
         }
 
-        // Apply all filters (search, genre, and format)
+        // Apply all filters
         function applyFilters() {
             const container = document.getElementById('catalogContainer');
             const allCards = container.querySelectorAll('.card, .date-card');
             
-            // Get search term
             const searchBox = document.getElementById('searchBox');
             const searchTerm = searchBox ? searchBox.value.toLowerCase().trim() : '';
             
             let visibleCount = 0;
-            let currentDateGroupHasVisible = false;
             let lastDateCard = null;
             
             allCards.forEach(card => {
-                // Check if it's a date card
                 if (card.classList.contains('date-card')) {
-                    // Store reference to date card and reset group visibility
                     lastDateCard = card;
-                    currentDateGroupHasVisible = false;
                     card.style.display = 'flex';
                     return;
                 }
                 
-                // It's a record card
                 const artist = card.getAttribute('data-artist') || '';
                 const title = card.getAttribute('data-title') || '';
                 const genre = card.getAttribute('data-genre') || '';
+                const formatsAttr = card.getAttribute('data-formats');
+                let cardFormats = [];
+                if (formatsAttr) {
+                    try {
+                        cardFormats = JSON.parse(formatsAttr);
+                    } catch(e) {}
+                }
                 
-                // Check search
                 const searchMatch = !searchTerm || 
                     artist.includes(searchTerm) || 
                     title.includes(searchTerm);
                 
-                // Check genre filter
                 let genreMatch = true;
                 if (selectedGenres.length > 0) {
                     genreMatch = selectedGenres.some(g => g.toLowerCase() === genre);
                 }
                 
-                // Check format filter (based on barcode of copies)
                 let formatMatch = true;
                 if (selectedFormats.length > 0 && selectedFormats.length < 5) {
-                    // Find the release data for this card
-                    const releaseArtist = artist;
-                    const releaseTitle = title;
-                    
-                    // Find the release in allReleases
-                    const release = allReleases.find(r => 
-                        r.artist?.toLowerCase() === releaseArtist && 
-                        r.title?.toLowerCase() === releaseTitle
-                    );
-                    
-                    if (release && release.formats) {
-                        // Check if any copy in this release has a format matching selected formats
-                        let hasMatchingFormat = false;
-                        
-                        for (const format of release.formats) {
-                            for (const copy of format.copies) {
-                                const formatType = getFormatFromBarcode(copy.barcode);
-                                if (selectedFormats.includes(formatType)) {
-                                    hasMatchingFormat = true;
-                                    break;
-                                }
-                            }
-                            if (hasMatchingFormat) break;
-                        }
-                        
-                        formatMatch = hasMatchingFormat;
-                    }
+                    formatMatch = cardFormats.some(format => {
+                        if (format === '33⅓ RPM') return selectedFormats.includes('33');
+                        if (format === '45 RPM') return selectedFormats.includes('45');
+                        if (format === '78 RPM') return selectedFormats.includes('78');
+                        if (format === 'CD') return selectedFormats.includes('cd');
+                        if (format === 'Cassette') return selectedFormats.includes('cassette');
+                        return false;
+                    });
                 }
                 
                 const shouldShow = searchMatch && genreMatch && formatMatch;
@@ -1350,16 +1302,12 @@
                 card.style.display = shouldShow ? 'block' : 'none';
                 if (shouldShow) {
                     visibleCount++;
-                    currentDateGroupHasVisible = true;
-                }
-                
-                // Update the date card visibility based on whether any records in its group are visible
-                if (lastDateCard && shouldShow) {
-                    lastDateCard.style.display = 'flex';
+                    if (lastDateCard) {
+                        lastDateCard.style.display = 'flex';
+                    }
                 }
             });
             
-            // Hide date cards that have no visible records in their group
             allCards.forEach(card => {
                 if (card.classList.contains('date-card') && card.style.display !== 'none') {
                     let hasVisibleAfter = false;
@@ -1377,7 +1325,6 @@
                 }
             });
             
-            // Show no results message if needed
             const existingNoResults = container.querySelector('.no-records-message');
             if (visibleCount === 0) {
                 if (!existingNoResults) {
@@ -1394,11 +1341,8 @@
         // Initialize filter functionality
         function initializeFilters() {
             const searchBox = document.getElementById('searchBox');
-            
-            // Search functionality
             searchBox.addEventListener('input', applyFilters);
             
-            // Setup genre filter toggle
             const genreFilterBtn = document.getElementById('genreFilterBtn');
             const genreCheckboxContainer = document.getElementById('genreCheckboxContainer');
             
@@ -1408,7 +1352,6 @@
                     genreCheckboxContainer.classList.toggle('show');
                 });
                 
-                // Close when clicking outside
                 document.addEventListener('click', (e) => {
                     if (!genreCheckboxContainer.contains(e.target) && !genreFilterBtn.contains(e.target)) {
                         genreCheckboxContainer.classList.remove('show');
@@ -1416,7 +1359,6 @@
                 });
             }
             
-            // Setup format filter toggle
             const formatFilterBtn = document.getElementById('formatFilterBtn');
             const formatCheckboxContainer = document.getElementById('formatCheckboxContainer');
             
@@ -1426,7 +1368,6 @@
                     formatCheckboxContainer.classList.toggle('show');
                 });
                 
-                // Close when clicking outside
                 document.addEventListener('click', (e) => {
                     if (!formatCheckboxContainer.contains(e.target) && !formatFilterBtn.contains(e.target)) {
                         formatCheckboxContainer.classList.remove('show');
@@ -1497,7 +1438,6 @@
         // Show shipping/pickup options modal
         function showShippingOptions() {
             return new Promise((resolve) => {
-                // Create modal overlay
                 const modal = document.createElement('div');
                 modal.className = 'payment-modal-overlay';
                 modal.style.zIndex = '4000';
@@ -1574,7 +1514,6 @@
                 
                 document.body.appendChild(modal);
                 
-                // Get elements
                 const pickupOption = document.getElementById('pickupOption');
                 const shipOption = document.getElementById('shipOption');
                 const pickupRadio = document.getElementById('pickupRadio');
@@ -1583,7 +1522,6 @@
                 const continueBtn = document.getElementById('continueShipping');
                 const cancelBtn = document.getElementById('cancelShipping');
                 
-                // Handle option selection
                 pickupOption.addEventListener('click', () => {
                     pickupRadio.checked = true;
                     shipRadio.checked = false;
@@ -1600,12 +1538,10 @@
                     pickupOption.classList.remove('selected');
                 });
                 
-                // Handle continue button
                 continueBtn.addEventListener('click', async () => {
                     const isShip = shipRadio.checked;
                     
                     if (isShip) {
-                        // Validate shipping form
                         const fullName = document.getElementById('fullName')?.value.trim();
                         const address = document.getElementById('address')?.value.trim();
                         const city = document.getElementById('city')?.value.trim();
@@ -1625,7 +1561,6 @@
                         }
                     }
                     
-                    // Collect shipping data
                     const shippingData = {
                         method: isShip ? 'ship' : 'pickup',
                         cost: isShip ? shippingCost : 0,
@@ -1644,20 +1579,15 @@
                     
                     console.log('Shipping data collected:', shippingData);
                     
-                    // Close modal
                     modal.remove();
-                    
-                    // Process checkout with Square
                     await processCheckout(shippingData);
                 });
                 
-                // Handle cancel button
                 cancelBtn.addEventListener('click', () => {
                     modal.remove();
                     resolve(null);
                 });
                 
-                // Handle click outside
                 modal.addEventListener('click', (e) => {
                     if (e.target === modal) {
                         modal.remove();
@@ -1670,10 +1600,8 @@
         // Process checkout with Square
         async function processCheckout(shippingData) {
             try {
-                // Close cart drawer
                 closeCartDrawer();
                 
-                // Show processing modal
                 const modal = document.createElement('div');
                 modal.className = 'payment-modal-overlay';
                 modal.innerHTML = `
@@ -1687,12 +1615,10 @@
                 
                 addDebug('Sending cart to backend for checkout...');
                 
-                // Calculate tax (use stored taxRate)
                 const taxableAmount = cart.total + (shippingData?.cost || 0);
                 const taxAmount = taxableAmount * (taxRate / 100);
                 const totalWithTax = taxableAmount + taxAmount;
                 
-                // Prepare items array
                 const items = cart.items.map(item => ({
                     copy_id: item.copyId,
                     title: item.title,
@@ -1703,7 +1629,6 @@
                     quantity: item.quantity || 1
                 }));
                 
-                // Prepare customer/shipping data
                 const requestData = {
                     items: items,
                     shipping: shippingData.method === 'ship' ? {
@@ -1716,7 +1641,6 @@
                     currency: 'USD'
                 };
                 
-                // Add customer info if shipping
                 if (shippingData.method === 'ship') {
                     Object.assign(requestData, {
                         customer_name: shippingData.fullName,
@@ -1730,7 +1654,6 @@
                     });
                 }
                 
-                // Send to checkout endpoint
                 const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
                     method: 'POST',
                     headers: {
@@ -1742,18 +1665,15 @@
                 const data = await response.json();
                 
                 if (data.status === 'success' && data.checkout_url) {
-                    // Store order info for reference
                     currentOrder = {
                         order_id: data.order_id,
                         order_number: data.order_number
                     };
                     
-                    // Redirect to Square checkout page
                     addDebug(`Redirecting to Square checkout: ${data.checkout_url}`);
                     window.location.href = data.checkout_url;
                     
                 } else if (data.status === 'error') {
-                    // Payment failed
                     modal.innerHTML = `
                         <div class="payment-modal">
                             <i class="fas fa-exclamation-circle"></i>
@@ -1783,7 +1703,6 @@
                 console.error('Checkout error:', error);
                 addDebug(`Checkout error: ${error.message}`, 'error');
                 
-                // Remove any existing modal
                 const existingModal = document.querySelector('.payment-modal-overlay');
                 if (existingModal) {
                     existingModal.remove();
@@ -1805,7 +1724,6 @@
             
             if (transactionId && status === 'completed' && orderId) {
                 try {
-                    // Call backend to update record statuses
                     const response = await fetch(`${AppConfig.baseUrl}/api/order/complete`, {
                         method: 'POST',
                         headers: {
@@ -1827,16 +1745,13 @@
                 } catch (error) {
                     addDebug(`Error calling order complete endpoint: ${error.message}`, 'error');
                 } finally {
-                    // Clear cart on successful payment
                     cart.items = [];
                     saveCart();
                     
-                    // Show success message
                     setTimeout(() => {
                         showNotification('Payment successful! Thank you for your purchase.', 'success');
                     }, 500);
                     
-                    // Remove query parameters from URL
                     window.history.replaceState({}, document.title, '/shop');
                 }
             } else if (status === 'canceled') {
@@ -1847,25 +1762,18 @@
 
         // Initialize cart event listeners
         function initializeCart() {
-            // Cart toggle click
             document.getElementById('cartToggle').addEventListener('click', openCartDrawer);
-            
-            // Close cart drawer
             document.getElementById('closeCartDrawer').addEventListener('click', closeCartDrawer);
-            
-            // Overlay click to close
             document.getElementById('cartOverlay').addEventListener('click', closeCartDrawer);
         }
 
         // Load the catalog data when page loads
         document.addEventListener('DOMContentLoaded', async function() {
             try {
-                // Load shipping cost directly from config
                 const cost = await getConfigValue('SHIPPING_COST');
                 shippingCost = parseFloat(cost);
                 console.log('Shipping cost set to:', shippingCost);
                 
-                // Load tax rate
                 try {
                     taxRate = await getConfigValue('TAX_RATE') || 0;
                     console.log('Tax rate set to:', taxRate);
@@ -1874,13 +1782,12 @@
                     taxRate = 0;
                 }
                 
-                loadCart(); // Load cart from localStorage
+                loadCart();
                 await loadCatalogData();
                 initializeFilters();
                 initializeCart();
                 checkReturnStatus();
                 
-                // Make removeFromCart function globally available
                 window.removeFromCart = removeFromCart;
                 
             } catch (error) {
