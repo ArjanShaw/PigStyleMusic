@@ -405,12 +405,21 @@
     <script src="/static/js/config-value-manager.js"></script>
     
     <script>
+        // DEBUG: Catch all errors
+        window.onerror = function(msg, url, line, col, error) {
+            console.log('ERROR:', msg, 'at', url, 'line', line);
+            alert('Error: ' + msg + ' (line ' + line + ')\nCheck console for details.');
+            return false;
+        };
+        
+        console.log('Kiosk page loaded - current path:', window.location.pathname);
+        
         // Global state
         let allRecords = [];
         let filteredRecords = [];
         let idleTimer = null;
         let warningTimer = null;
-        let idleTimeoutSeconds = 30;
+        let idleTimeoutSeconds = 300;  // Changed from 30 to 300 seconds (5 minutes) for mobile
         let warningSeconds = 5;
         let isLoading = false;
         
@@ -423,15 +432,52 @@
         const resultsContainer = document.getElementById('resultsContainer');
         const idleWarning = document.getElementById('idleWarning');
         
+        // SAFE: Return to splash view - NO NAVIGATION, only view toggle
+        function returnToSplash() {
+            console.log('returnToSplash called - current path:', window.location.pathname);
+            
+            // SAFETY: Never redirect away from kiosk page
+            if (window.location.pathname !== '/kiosk') {
+                console.log('WARNING: Not on kiosk page, but refusing to redirect');
+                // Do nothing - don't change URL
+                return;
+            }
+            
+            // Clear timers
+            if (idleTimer) clearTimeout(idleTimer);
+            if (warningTimer) clearTimeout(warningTimer);
+            
+            // Hide warning
+            idleWarning.classList.remove('show');
+            
+            // ONLY switch views - NO URL NAVIGATION
+            resultsView.classList.remove('active');
+            splashView.classList.remove('hide');
+            
+            // Clear search
+            searchInput.value = '';
+            
+            console.log('Returned to splash view successfully');
+        }
+        
         // Load records from API
         async function loadRecords() {
             if (isLoading) return;
             isLoading = true;
             
+            console.log('Loading records from API...');
+            
             try {
                 showLoading();
                 const response = await fetch(`${AppConfig.baseUrl}/catalog/records`);
+                console.log('API response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('API response data status:', data.status);
                 
                 if (data.status === 'success') {
                     allRecords = data.records;
@@ -446,7 +492,7 @@
                 resultsContainer.innerHTML = `
                     <div class="no-results">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <p>Error loading records. Please try again.</p>
+                        <p>Error loading records: ${error.message}</p>
                         <button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: #667eea; border: none; border-radius: 8px; color: white; font-size: 16px; cursor: pointer;">Retry</button>
                     </div>
                 `;
@@ -546,21 +592,15 @@
             warningTimer = setTimeout(returnToSplash, warningSeconds * 1000);
         }
         
-        // Return to splash view
-        function returnToSplash() {
-            if (idleTimer) clearTimeout(idleTimer);
-            if (warningTimer) clearTimeout(warningTimer);
-            
-            idleWarning.classList.remove('show');
-            
-            resultsView.classList.remove('active');
-            splashView.classList.remove('hide');
-            
-            searchInput.value = '';
-        }
-        
         // Switch to results view and load data
         async function switchToResults() {
+            console.log('switchToResults called');
+            
+            // SAFETY: Never redirect away from kiosk page
+            if (window.location.pathname !== '/kiosk') {
+                console.log('WARNING: Not on kiosk page, but continuing anyway');
+            }
+            
             splashView.classList.add('hide');
             resultsView.classList.add('active');
             
@@ -579,21 +619,25 @@
         // Event listeners
         touchButton.addEventListener('click', (e) => {
             e.preventDefault();
+            console.log('Touch button clicked');
             switchToResults();
         });
         
         touchButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            console.log('Touch button touched');
             switchToResults();
         });
         
         backButton.addEventListener('click', (e) => {
             e.preventDefault();
+            console.log('Back button clicked');
             returnToSplash();
         });
         
         backButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            console.log('Back button touched');
             returnToSplash();
         });
         
@@ -606,6 +650,7 @@
             }, 300);
         });
         
+        // Reset idle timer on user interaction in results view
         const resetEvents = ['click', 'touchstart', 'keydown', 'scroll'];
         resetEvents.forEach(event => {
             document.addEventListener(event, () => {
@@ -622,8 +667,14 @@
             return div.innerHTML;
         }
         
-        // Don't load anything on page load - wait for click
-        console.log('Kiosk ready - waiting for user interaction');
+        // Page loaded - don't load anything automatically, wait for user interaction
+        console.log('Kiosk ready - waiting for user interaction on path:', window.location.pathname);
+        
+        // Safety check: If we're somehow not on /kiosk, don't redirect - just log
+        if (window.location.pathname !== '/kiosk') {
+            console.error('Page loaded at wrong path:', window.location.pathname);
+            console.log('This may cause issues, but we will not redirect automatically');
+        }
     </script>
 </body>
 </html>
