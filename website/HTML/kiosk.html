@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Kiosk fullscreen meta: hides address bar on mobile, prevents zoom/scroll interference -->
+    <!-- Kiosk fullscreen meta: hides address bar on mobile, prevents zoom/scroll -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover, shrink-to-fit=no">
-    <!-- "display: standalone" tricks and also prevents pull-to-refresh in some browsers (basic) -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,15 +16,15 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            user-select: none;          /* prevents text selection on long press */
+            user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* disable body scroll & address bar hiding magic */
+        /* disable body scroll & address bar hiding */
         html, body {
             width: 100%;
             height: 100%;
-            overflow: hidden;           /* kill scrolling everywhere */
+            overflow: hidden;
             position: fixed;
             top: 0;
             left: 0;
@@ -37,10 +36,11 @@
         }
 
         body {
-            overflow-y: auto;            /* we'll manage internal scroll only within results container */
-            -webkit-overflow-scrolling: touch; /* smooth but no page bounce on body */
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
             position: relative;
             height: 100%;
+            touch-action: pan-y pinch-zoom;
         }
 
         /* Background image layer - fixed, no scroll */
@@ -170,7 +170,7 @@
             gap: 6px;
         }
 
-        /* MAIN INVENTORY VIEW (Search + Results) - address bar hidden + custom scroll only inside container */
+        /* MAIN INVENTORY VIEW (Search + Results) */
         .results-view {
             position: fixed;
             top: 0;
@@ -183,7 +183,6 @@
             transition: opacity 0.35s ease, visibility 0s linear 0.35s;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
-            /* ensure content scrolls, but body itself never scrolls (thanks to html/body overflow:hidden) */
             padding: 0;
             padding-top: 80px;
             padding-bottom: 70px;
@@ -194,7 +193,7 @@
             transition: opacity 0.4s ease, visibility 0s linear 0s;
         }
 
-        /* Fixed search header inside results view */
+        /* Fixed search header */
         .search-header {
             position: fixed;
             top: 0;
@@ -240,7 +239,7 @@
             color: #aaa;
         }
 
-        /* scrollable results grid - nice and contained */
+        /* scrollable results grid */
         .results-grid-container {
             padding: 8px 20px 30px 20px;
         }
@@ -345,7 +344,7 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        /* start over button - fixed but not causing address bar */
+        /* start over button */
         .reset-kiosk-btn {
             position: fixed;
             bottom: 20px;
@@ -370,7 +369,6 @@
             transform: scale(0.96);
         }
 
-        /* hide any unwanted browser UI via overscroll behavior */
         @media (max-width: 768px) {
             .results-grid {
                 grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -386,11 +384,6 @@
                 width: 80px;
                 height: 80px;
             }
-        }
-
-        /* extra: prevent pull-to-refresh on touchmove at edges (basic) */
-        body {
-            touch-action: pan-y pinch-zoom; /* allow vertical scroll inside .results-view, but body locked */
         }
     </style>
 </head>
@@ -444,48 +437,71 @@
 
 <script>
     (function() {
-        // FULL KIOSK MODE: hide address bar aggressively, prevent any external navigation
-        // 1. Request fullscreen on user interaction (but also ensure address bar hidden by default)
+        // ========== FULL KIOSK MODE: hide address bar, prevent navigation ==========
         function requestFullscreenIfNeeded() {
             const docEl = document.documentElement;
             if (docEl.requestFullscreen) {
-                docEl.requestFullscreen().catch(err => {
-                    // ignore, browser may block without user gesture; we'll call on first touch.
-                    console.log("Fullscreen needs user gesture");
-                });
+                docEl.requestFullscreen().catch(() => {});
             } else if (docEl.webkitRequestFullscreen) {
                 docEl.webkitRequestFullscreen();
             }
         }
         
-        // On first user touch anywhere (splash or inside), we can attempt fullscreen to hide address bar.
-        // Also prevent any context menu or link navigation.
+        // On first touch, request fullscreen to hide address bar
         document.body.addEventListener('touchstart', function firstTouch() {
             requestFullscreenIfNeeded();
             document.body.removeEventListener('touchstart', firstTouch);
         }, { once: true });
         
-        // Additionally, block any drag that could reveal browser UI on top (overscroll)
-        let startY = 0;
-        document.body.addEventListener('touchmove', function(e) {
-            // allow scrolling only inside .results-view when active, but prevent overscroll at top/bottom that pulls address bar.
-            const target = e.target;
-            const isInsideResults = document.getElementById('resultsView').contains(target);
-            if (!isInsideResults && !document.getElementById('splashScreen').contains(target)) {
-                // if not in scrollable area, prevent scroll (background)
-                e.preventDefault();
-            }
-            // optional: fine-grained check for results-view scroll limits
-        }, { passive: false });
-        
-        // Also disable zoom gestures that could cause UI resize (but keep user-scalable = yes is fine, but we want kiosk)
-        // Ensure no context menu on long press
+        // Block context menu (long press)
         document.addEventListener('contextmenu', function(e) {
             e.preventDefault();
             return false;
         });
         
-        // ----- GLOBALS -----
+        // ========== AUTO-RESET AFTER 60 SECONDS INACTIVITY ==========
+        let idleTimer = null;
+        const INACTIVITY_LIMIT = 60000; // 60 seconds
+        
+        // Function to reset the kiosk back to splash screen
+        function fullResetToStart() {
+            // Clear search input
+            if (searchInput) searchInput.value = '';
+            // If inventory loaded, reset filtered display
+            if (inventoryLoaded && allRecords.length) {
+                filteredRecords = [...allRecords];
+                displayRecords(filteredRecords);
+            }
+            // Show splash screen, hide inventory view
+            showSplashScreen();
+            // Blur any focused input
+            if (document.activeElement === searchInput) searchInput.blur();
+            // Reset idle timer after returning to splash
+            resetIdleTimer();
+        }
+        
+        // Reset the inactivity timer (call on every user interaction)
+        function resetIdleTimer() {
+            if (idleTimer) clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                // Only auto-reset if inventory view is ACTIVE (not already on splash)
+                // and the splash screen is hidden (meaning user is browsing)
+                const isInventoryActive = resultsViewEl.classList.contains('active-view');
+                const isSplashHidden = splashEl.classList.contains('hide-splash');
+                if (isInventoryActive && isSplashHidden) {
+                    console.log('[Kiosk] Auto-reset after 60s inactivity — returning to splash screen');
+                    fullResetToStart();
+                }
+            }, INACTIVITY_LIMIT);
+        }
+        
+        // Listen to all relevant user interactions to reset timer
+        const activityEvents = ['touchstart', 'touchend', 'click', 'input', 'scroll'];
+        activityEvents.forEach(eventType => {
+            document.addEventListener(eventType, resetIdleTimer, { passive: true });
+        });
+        
+        // ========== GLOBALS ==========
         let allRecords = [];
         let filteredRecords = [];
         
@@ -499,6 +515,7 @@
         let inventoryLoaded = false;
         let isLoadingAttempt = false;
         
+        // Show splash screen (attention mode)
         function showSplashScreen() {
             if (searchInput) searchInput.value = '';
             resultsViewEl.classList.remove('active-view');
@@ -509,6 +526,7 @@
             }
         }
         
+        // Show inventory view (search mode)
         function showInventoryView() {
             splashEl.classList.add('hide-splash');
             resultsViewEl.classList.add('active-view');
@@ -522,9 +540,11 @@
                     filterRecords(searchInput.value);
                 }
             }
+            // Reset timer when entering inventory view
+            resetIdleTimer();
         }
         
-        // LOAD INVENTORY (safe)
+        // LOAD INVENTORY (safe, same-origin)
         async function loadRecords() {
             if (isLoadingAttempt) return;
             isLoadingAttempt = true;
@@ -552,11 +572,13 @@
                     <div class="no-results">
                         <i class="fas fa-exclamation-triangle"></i>
                         <p>Unable to load collection.<br>${escapeHtml(err.message)}</p>
-                        <button id="retryLoadBtn" style="margin-top: 20px; padding: 12px 28px; background: #ffcd7e; border: none; border-radius: 50px; color: #1e1e2a; font-weight: bold;">⟳ RETRY</button>
+                        <button id="retryLoadBtn" style="margin-top: 20px; padding: 12px 28px; background: #ffcd7e; border: none; border-radius: 50px; color: #1e1e2a; font-weight: bold; cursor: pointer;">⟳ RETRY</button>
                     </div>
                 `;
                 const retryBtn = document.getElementById('retryLoadBtn');
-                if (retryBtn) retryBtn.addEventListener('click', () => { isLoadingAttempt = false; loadRecords(); }, { once: true });
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', () => { isLoadingAttempt = false; loadRecords(); }, { once: true });
+                }
             } finally {
                 isLoadingAttempt = false;
             }
@@ -595,8 +617,9 @@
         }
         
         function filterRecords(searchTerm) {
-            if (!searchTerm || searchTerm.trim() === '') filteredRecords = [...allRecords];
-            else {
+            if (!searchTerm || searchTerm.trim() === '') {
+                filteredRecords = [...allRecords];
+            } else {
                 const term = searchTerm.toLowerCase().trim();
                 filteredRecords = allRecords.filter(r => (r.artist || '').toLowerCase().includes(term) || (r.title || '').toLowerCase().includes(term));
             }
@@ -608,32 +631,58 @@
             if (!inventoryLoaded) return;
             clearTimeout(debounce);
             debounce = setTimeout(() => filterRecords(e.target.value), 280);
+            resetIdleTimer(); // user typing resets timer
         });
         
-        function fullResetToStart() {
-            if (searchInput) searchInput.value = '';
-            if (inventoryLoaded && allRecords.length) {
-                filteredRecords = [...allRecords];
-                displayRecords(filteredRecords);
-            }
-            showSplashScreen();
-            if (document.activeElement === searchInput) searchInput.blur();
+        function escapeHtml(str) { 
+            if (!str) return ''; 
+            return String(str).replace(/[&<>]/g, function(m) { 
+                if (m === '&') return '&amp;'; 
+                if (m === '<') return '&lt'; 
+                if (m === '>') return '&gt;'; 
+                return m; 
+            }); 
         }
         
-        if (touchCard) touchCard.addEventListener('click', (e) => { e.stopPropagation(); showInventoryView(); });
-        if (splashEl) splashEl.addEventListener('click', (e) => { if (e.target === splashEl || splashEl.contains(e.target)) showInventoryView(); });
-        if (resetBtn) resetBtn.addEventListener('click', (e) => { e.stopPropagation(); fullResetToStart(); });
+        // ========== EVENT LISTENERS ==========
+        if (touchCard) {
+            touchCard.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                showInventoryView(); 
+                resetIdleTimer();
+            });
+        }
+        if (splashEl) {
+            splashEl.addEventListener('click', (e) => { 
+                if (e.target === splashEl || splashEl.contains(e.target)) {
+                    showInventoryView(); 
+                    resetIdleTimer();
+                }
+            });
+        }
+        if (resetBtn) {
+            resetBtn.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                fullResetToStart(); 
+                resetIdleTimer();
+            });
+        }
         
-        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
+        // Additional scroll listener to keep timer alive while browsing
+        resultsViewEl.addEventListener('scroll', () => resetIdleTimer(), { passive: true });
         
+        // ========== INITIAL STATE ==========
         resultsViewEl.classList.remove('active-view');
         splashEl.classList.remove('hide-splash');
         
-        // force re-request fullscreen after any visible tap (makes address bar disappear)
-        const forceFullscreenOnTap = () => { requestFullscreenIfNeeded(); };
-        document.body.addEventListener('touchstart', forceFullscreenOnTap, { once: false, passive: true });
+        // Start idle timer from beginning (splash screen counts as idle? We'll start timer but reset only matters when inventory active)
+        resetIdleTimer();
         
-        console.log('[Kiosk] Address bar hidden via fullscreen + overflow control. Customer cannot scroll away.');
+        // Extra fullscreen attempt on any tap after load (keeps address bar hidden)
+        const forceFullscreen = () => requestFullscreenIfNeeded();
+        document.body.addEventListener('touchstart', forceFullscreen, { passive: true });
+        
+        console.log('[Kiosk] Ready — Touch to Search screen. Auto-reset to splash after 60 seconds inactivity.');
     })();
 </script>
 </body>
