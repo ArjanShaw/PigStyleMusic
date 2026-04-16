@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <!-- No external dependencies that cause HTTPS mixed-content issues; all assets are local or fontawesome CDN (supports HTTPS) -->
+    <!-- All assets are local or HTTPS CDN — no mixed content warnings -->
     <link rel="icon" href="/static/images/PigStyle.ico">
-    <title>Record Kiosk · Touch to Search</title>
+    <title>Record Kiosk · PigStyle · Touch to Search</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            user-select: none; /* prevents accidental text selection on taps, better kiosk feel */
+            user-select: none; /* clean kiosk tap experience */
         }
 
         body {
@@ -23,7 +23,7 @@
             overflow-x: hidden;
         }
 
-        /* Background image with dark overlay — secure, no mixed content (local image) */
+        /* ===== BACKGROUND LAYER (same background.png for both splash + inventory) ===== */
         .background-container {
             position: fixed;
             top: 0;
@@ -43,10 +43,10 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.75);
+            background: rgba(0, 0, 0, 0.72);
         }
 
-        /* === ATTENTION SPLASH SCREEN (TOUCH TO SEARCH) === */
+        /* ===== ATTENTION SPLASH SCREEN ===== */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -54,8 +54,7 @@
             width: 100%;
             height: 100%;
             z-index: 1000;
-            background: rgba(0, 0, 0, 0.94);
-            backdrop-filter: blur(6px);
+            background: transparent;  /* let background.png show through, only card overlay */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -68,16 +67,17 @@
             visibility: hidden;
             pointer-events: none;
         }
-        /* big interactive card */
+
+        /* main glass card – elegant, attention grabbing */
         .touch-card {
-            background: rgba(18, 18, 28, 0.96);
-            backdrop-filter: blur(20px);
+            background: rgba(10, 10, 18, 0.88);
+            backdrop-filter: blur(16px);
             border-radius: 72px;
             width: 86%;
             max-width: 380px;
-            padding: 2.4rem 1.8rem 2.6rem;
+            padding: 2rem 1.8rem 2.4rem;
             text-align: center;
-            box-shadow: 0 30px 50px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 200, 100, 0.3);
+            box-shadow: 0 30px 50px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 200, 100, 0.35);
             border: 1px solid rgba(255, 210, 90, 0.5);
             animation: softPulse 1.6s infinite ease-in-out;
             cursor: pointer;
@@ -85,25 +85,28 @@
         }
         .touch-card:active {
             transform: scale(0.97);
-            background: rgba(10, 10, 18, 0.98);
+            background: rgba(6, 6, 12, 0.94);
         }
         @keyframes softPulse {
-            0% { transform: scale(1); box-shadow: 0 30px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,210,90,0.2); }
-            50% { transform: scale(1.02); box-shadow: 0 35px 60px rgba(0,0,0,0.7), 0 0 0 4px rgba(255,210,90,0.6); }
-            100% { transform: scale(1); box-shadow: 0 30px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,210,90,0.2); }
+            0% { transform: scale(1); box-shadow: 0 30px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,210,90,0.25); }
+            50% { transform: scale(1.02); box-shadow: 0 38px 60px rgba(0,0,0,0.7), 0 0 0 4px rgba(255,210,90,0.6); }
+            100% { transform: scale(1); box-shadow: 0 30px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,210,90,0.25); }
         }
-        .vinyl-glow {
-            font-size: 85px;
-            color: #ffcd7e;
-            margin-bottom: 20px;
+
+        /* PigStyle icon instead of vinyl icon */
+        .pig-icon-large {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 18px;
+            background-image: url('/static/images/PigStyle.ico');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
             display: inline-block;
-            filter: drop-shadow(0 0 6px #ffb347);
-            animation: floatIcon 2s infinite alternate;
         }
-        @keyframes floatIcon {
-            0% { transform: translateY(0px) rotate(0deg); }
-            100% { transform: translateY(-8px) rotate(3deg); }
-        }
+
+        /* fallback if .ico has any weird rendering, we also add an emoji? but it's fine */
         .touch-card h2 {
             font-size: 32px;
             font-weight: 800;
@@ -117,7 +120,7 @@
         .touch-card p {
             font-size: 17px;
             color: #ddd;
-            margin-bottom: 32px;
+            margin-bottom: 28px;
             font-weight: 500;
         }
         .big-touch-area {
@@ -141,8 +144,17 @@
             letter-spacing: 2px;
             color: #FFE0A3;
         }
+        .store-note {
+            margin-top: 22px;
+            font-size: 13px;
+            color: #aaa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
 
-        /* === MAIN INVENTORY VIEW (search + results) === */
+        /* ===== MAIN INVENTORY VIEW (search + results) ===== */
         .results-view {
             padding: 20px;
             padding-top: 80px;
@@ -157,18 +169,17 @@
             visibility: visible;
             transition: opacity 0.4s ease, visibility 0s linear 0s;
         }
-        /* fixed search header */
         .search-header {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            background: rgba(20, 20, 28, 0.96);
+            background: rgba(18, 18, 26, 0.96);
             backdrop-filter: blur(12px);
             padding: 14px 20px;
             z-index: 100;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.4);
-            border-bottom: 1px solid rgba(255,210,90,0.2);
+            box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+            border-bottom: 1px solid rgba(255,210,90,0.25);
         }
         .search-input-wrapper {
             position: relative;
@@ -189,20 +200,19 @@
             font-size: 18px;
             border: none;
             border-radius: 40px;
-            background: #2a2a2e;
+            background: #2a2a2f;
             color: white;
             font-family: inherit;
             transition: all 0.2s;
         }
         .search-input:focus {
             outline: none;
-            background: #35353c;
+            background: #35353e;
             box-shadow: 0 0 0 2px #ffcd7e;
         }
         .search-input::placeholder {
             color: #aaa;
         }
-        /* results grid */
         .results-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -210,12 +220,12 @@
             margin-top: 15px;
         }
         .record-card {
-            background: rgba(25, 25, 33, 0.95);
+            background: rgba(22, 22, 30, 0.94);
             backdrop-filter: blur(4px);
             border-radius: 20px;
             overflow: hidden;
             cursor: pointer;
-            transition: transform 0.15s ease, box-shadow 0.2s;
+            transition: transform 0.12s ease, box-shadow 0.2s;
             border: 1px solid rgba(255,210,90,0.2);
         }
         .record-card:active {
@@ -244,7 +254,7 @@
         .default-record-bg i {
             font-size: 48px;
             color: #ffcd7e;
-            opacity: 0.8;
+            opacity: 0.85;
         }
         .card-info {
             padding: 12px;
@@ -269,13 +279,13 @@
         .card-price {
             font-size: 16px;
             font-weight: 700;
-            color: #7cfc9e;
+            color: #9bffb0;
             margin-bottom: 8px;
         }
         .location-badge {
             display: inline-block;
             background: #2b422b;
-            color: #b3ffaa;
+            color: #c0ffb0;
             padding: 6px 10px;
             border-radius: 30px;
             font-size: 11px;
@@ -304,15 +314,14 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        /* reset button style */
         .reset-kiosk-btn {
             position: fixed;
-            bottom: 18px;
-            right: 18px;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(8px);
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(12px);
             border-radius: 50px;
-            padding: 10px 16px;
+            padding: 10px 18px;
             z-index: 150;
             border: 1px solid #ffcd7e;
             color: #ffcd7e;
@@ -326,7 +335,7 @@
         }
         .reset-kiosk-btn:active {
             background: #ffcd7e20;
-            transform: scale(0.95);
+            transform: scale(0.96);
         }
         @media (max-width: 560px) {
             .results-grid {
@@ -339,37 +348,40 @@
             .big-touch-area span {
                 font-size: 20px;
             }
+            .pig-icon-large {
+                width: 80px;
+                height: 80px;
+            }
         }
     </style>
 </head>
 <body>
 
-<!-- Background (local image, secure, no mixed content) -->
+<!-- BACKGROUND IMAGE: static/images/background.png (same level as HTML folder? path: /static/images/background.png) -->
 <div class="background-container">
-    <img src="/static/images/background.png" alt="Record store background" class="background-image">
+    <img src="/static/images/background.png" alt="Record Store Background" class="background-image">
     <div class="background-overlay"></div>
 </div>
 
-<!-- SPLASH SCREEN: TOUCH TO SEARCH (attention grabbing) -->
+<!-- SPLASH SCREEN (ATTENTION MODE) - using PigStyle.ico image -->
 <div class="splash-screen" id="splashScreen">
     <div class="touch-card" id="touchToStartBtn">
-        <div class="vinyl-glow">
-            <i class="fas fa-record-vinyl"></i>
-        </div>
-        <h2>DIG THE CRATES</h2>
-        <p>Touch anywhere to unlock<br>the full inventory kiosk</p>
+        <!-- PigStyle.ico as large attention icon (instead of vinyl) -->
+        <div class="pig-icon-large" role="img" aria-label="PigStyle Records"></div>
+        <h2>PIGSTYLE RECORDS</h2>
+        <p>Touch anywhere to browse the crates</p>
         <div class="big-touch-area">
             <i class="fas fa-hand-pointer"></i>
             <span>TOUCH TO SEARCH</span>
             <i class="fas fa-search"></i>
         </div>
-        <div style="margin-top: 20px; font-size: 13px; color:#aaa;">
-            <i class="fas fa-shield-alt"></i> Secure in-store mode
+        <div class="store-note">
+            <i class="fas fa-shield-alt"></i> In-store kiosk · secure
         </div>
     </div>
 </div>
 
-<!-- MAIN INVENTORY VIEW (results + search) -->
+<!-- MAIN INVENTORY VIEW (search + catalog) -->
 <div class="results-view" id="resultsView">
     <div class="search-header">
         <div class="search-input-wrapper">
@@ -383,14 +395,13 @@
             <p>Loading vinyl collection...</p>
         </div>
     </div>
-    <!-- optional reset / "start over" button that brings back splash -->
     <div class="reset-kiosk-btn" id="resetKioskBtn">
         <i class="fas fa-arrow-rotate-left"></i> 
         <span>START OVER</span>
     </div>
 </div>
 
-<!-- CONFIG (local app config) -->
+<!-- Load config utilities (local paths, safe) -->
 <script src="/static/js/app-config.js"></script>
 <script src="/static/js/config-value-manager.js"></script>
 
@@ -399,42 +410,36 @@
         // ---------- GLOBALS ----------
         let allRecords = [];
         let filteredRecords = [];
-
+        
         // DOM elements
         const splashEl = document.getElementById('splashScreen');
         const resultsViewEl = document.getElementById('resultsView');
         const searchInput = document.getElementById('searchInput');
         const resultsContainer = document.getElementById('resultsContainer');
-        const touchStartBtn = document.getElementById('touchToStartBtn');
+        const touchCard = document.getElementById('touchToStartBtn');
         const resetBtn = document.getElementById('resetKioskBtn');
-
-        // Flag to avoid double loading of records
+        
         let inventoryLoaded = false;
-        let isLoadingOrLoaded = false;
-
-        // ---------- HELPER: Show/hide splash & main view ----------
+        let isLoadingAttempt = false;
+        
+        // Helper: show splash (attract mode)
         function showSplashScreen() {
-            // clear search input & reset view to fresh state
             if (searchInput) searchInput.value = '';
-            // hide results view and show splash
             resultsViewEl.classList.remove('active-view');
             splashEl.classList.remove('hide-splash');
-            // optional: reset any filter if needed
             if (allRecords.length) {
                 filteredRecords = [...allRecords];
                 displayRecords(filteredRecords);
             }
         }
-
+        
+        // Show inventory (load records lazily)
         function showInventoryView() {
-            // hide splash with smooth transition
             splashEl.classList.add('hide-splash');
             resultsViewEl.classList.add('active-view');
-            // load records only once (when user first touches)
-            if (!inventoryLoaded && !isLoadingOrLoaded) {
+            if (!inventoryLoaded && !isLoadingAttempt) {
                 loadRecords();
             } else if (inventoryLoaded && allRecords.length > 0) {
-                // already loaded: just refresh display based on current search (empty)
                 if (searchInput.value.trim() === '') {
                     filteredRecords = [...allRecords];
                     displayRecords(filteredRecords);
@@ -443,23 +448,19 @@
                 }
             }
         }
-
-        // ---------- API / DATA LOADING (secure relative fetch) ----------
+        
+        // ----- FETCH INVENTORY (secure, same-origin, no mixed content) -----
         async function loadRecords() {
-            if (isLoadingOrLoaded) return;
-            isLoadingOrLoaded = true;
+            if (isLoadingAttempt) return;
+            isLoadingAttempt = true;
             showLoading();
             try {
-                // use AppConfig from imported scripts, fallback to relative path if config missing
                 let baseUrl = '';
                 if (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) {
                     baseUrl = AppConfig.baseUrl;
-                } else {
-                    // fallback to same-origin (safe, no mixed content)
-                    baseUrl = '';
                 }
                 const url = `${baseUrl}/catalog/records`;
-                console.log('[KIOSK] Fetching inventory from:', url);
+                console.log('[Kiosk] Fetching inventory:', url);
                 const response = await fetch(url, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
@@ -472,47 +473,47 @@
                     inventoryLoaded = true;
                     displayRecords(filteredRecords);
                 } else {
-                    throw new Error(data.message || 'Invalid data format');
+                    throw new Error(data.message || 'Invalid inventory format');
                 }
             } catch (err) {
-                console.error('[KIOSK] load error:', err);
+                console.error('[Kiosk] Load error:', err);
                 resultsContainer.innerHTML = `
                     <div class="no-results">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <p>Could not load inventory.<br>${escapeHtml(err.message)}</p>
-                        <button id="retryLoadBtn" style="margin-top: 20px; padding: 12px 24px; background: #ffcd7e; border: none; border-radius: 50px; color: #1e1e2a; font-weight: bold; font-size: 16px;">⟳ RETRY</button>
+                        <p>Unable to load record collection.<br>${escapeHtml(err.message)}</p>
+                        <button id="retryLoadBtn" style="margin-top: 20px; padding: 12px 28px; background: #ffcd7e; border: none; border-radius: 50px; color: #1e1e2a; font-weight: bold; font-size: 16px; cursor: pointer;">⟳ TRY AGAIN</button>
                     </div>
                 `;
                 const retryBtn = document.getElementById('retryLoadBtn');
                 if (retryBtn) {
                     retryBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        isLoadingOrLoaded = false;
+                        isLoadingAttempt = false;
                         loadRecords();
                     }, { once: true });
                 }
             } finally {
-                isLoadingOrLoaded = false;
+                isLoadingAttempt = false;
             }
         }
-
+        
         function showLoading() {
             resultsContainer.innerHTML = `
                 <div class="loading-spinner">
                     <i class="fas fa-spinner"></i>
-                    <p>Scanning vinyl shelves...</p>
+                    <p>Digging through vinyl stacks...</p>
                 </div>
             `;
         }
-
-        // display records as cards
+        
+        // Display records as cards
         function displayRecords(records) {
             if (!records || records.length === 0) {
                 resultsContainer.innerHTML = `
                     <div class="no-results">
                         <i class="fas fa-search"></i>
-                        <p>No matching records found.</p>
-                        <p style="font-size: 14px; margin-top: 8px;">Try different artist or album name.</p>
+                        <p>No records match your search.</p>
+                        <p style="font-size: 14px; margin-top: 8px;">Try a different artist or album.</p>
                     </div>
                 `;
                 return;
@@ -531,7 +532,7 @@
                 }
                 const artist = escapeHtml(rec.artist || 'Unknown Artist');
                 const title = escapeHtml(rec.title || 'Untitled');
-                const location = escapeHtml(rec.location || 'Ask at counter');
+                const location = escapeHtml(rec.location || 'Ask staff');
                 let priceDisplay = 'Call for price';
                 if (rec.store_price && typeof rec.store_price === 'number') {
                     priceDisplay = `$${rec.store_price.toFixed(2)}`;
@@ -557,7 +558,7 @@
             html += '</div>';
             resultsContainer.innerHTML = html;
         }
-
+        
         function filterRecords(searchTerm) {
             if (!searchTerm || searchTerm.trim() === '') {
                 filteredRecords = [...allRecords];
@@ -571,77 +572,59 @@
             }
             displayRecords(filteredRecords);
         }
-
-        // search debounce
-        let debounceTimeout;
-        function onSearchInput(e) {
+        
+        let debounceTimer;
+        function handleSearchInput(e) {
             if (!inventoryLoaded) return;
-            clearTimeout(debounceTimeout);
-            debounceTimeout = setTimeout(() => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
                 filterRecords(e.target.value);
             }, 280);
         }
-
-        // reset everything to "start over" – show attention splash, clear search, keep data but UI back to attract mode
+        
+        // Full reset: back to splash (start over)
         function fullResetToStart() {
-            // clear search input field
             if (searchInput) searchInput.value = '';
-            // if inventory already loaded we keep records, just show splash and reset results
             if (inventoryLoaded && allRecords.length) {
                 filteredRecords = [...allRecords];
                 displayRecords(filteredRecords);
             }
-            // show splash screen, hide inventory view
             showSplashScreen();
-            // optional: blur any active search field
             if (document.activeElement === searchInput) searchInput.blur();
         }
-
-        // ---------- EVENT HANDLERS (secure, no external weirdness) ----------
-        if (touchStartBtn) {
-            // entire touch card triggers inventory view
-            touchStartBtn.addEventListener('click', (e) => {
+        
+        // ----- EVENT LISTENERS (no HTTPS issues, all relative / local assets) -----
+        if (touchCard) {
+            touchCard.addEventListener('click', (e) => {
                 e.stopPropagation();
                 showInventoryView();
             });
-            // also make the whole splash screen touch-friendly (entire splash area if someone taps outside but still on splash)
+        }
+        // Also allow clicking on entire splash background for better usability
+        if (splashEl) {
             splashEl.addEventListener('click', (e) => {
-                // if click target is splash screen itself or background, also trigger
                 if (e.target === splashEl || splashEl.contains(e.target)) {
                     showInventoryView();
                 }
             });
-        } else {
-            // fallback: any click on splash screen
-            splashEl.addEventListener('click', () => showInventoryView());
         }
-
+        
         if (resetBtn) {
             resetBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 fullResetToStart();
             });
         }
-
+        
         if (searchInput) {
-            searchInput.addEventListener('input', onSearchInput);
+            searchInput.addEventListener('input', handleSearchInput);
         }
-
-        // on first load of page: we show splash screen (attention mode). inventory is NOT loaded yet.
-        // to avoid unnecessary network calls before user touches, we lazy-load only after they touch.
-        // but we also keep reset button functional to return to splash.
-        // ensure inventory view is hidden at start
+        
+        // initial state: splash screen active, inventory view hidden, no data loaded until user touches.
         resultsViewEl.classList.remove('active-view');
         splashEl.classList.remove('hide-splash');
         
-        // if by any chance we need to preload? no, we wait for touch. but if reset button re-triggers splash, it's fine.
-        // additionally: handle offline / HTTPS warnings? all fetches are relative to same origin (no mixed content). 
-        // We also ensure we never load external insecure resources. The background is local, icons from fontawesome CDN (HTTPS).
-        // Also the image onerror doesn't cause mixed content because image_url should be relative or https if provided by backend.
-        
-        // extra safety: ensure that any dynamic image from record uses https fallback? Not needed, we trust API.
-        // optional: expose manual method for support.
-        
+        // small helper for escaping HTML
         function escapeHtml(str) {
             if (!str) return '';
             return String(str).replace(/[&<>]/g, function(m) {
@@ -649,15 +632,11 @@
                 if (m === '<') return '&lt;';
                 if (m === '>') return '&gt;';
                 return m;
-            }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
-                return c;
             });
         }
         
-        // if user uses "start over" while inventory visible, it returns to splash, and if they tap again we show inventory with loaded records.
-        // perfect cycle without reloading data each time.
-        // Additionally if loading fails, retry button appears.
-        console.log('[KIOSK] Ready — attention screen active. Touch to search inventory (secure mode).');
+        // Edge: if background.png fails to load, it's still fine; PigStyle.ico shown prominently.
+        console.log('[PigStyle Kiosk] Ready — "Touch to Search" attention screen with custom background and PigStyle icon.');
     })();
 </script>
 </body>
