@@ -8,7 +8,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" href="/static/images/PigStyle.ico">
-    <title>PigStyle Kiosk · Landscape · Touch to Search</title>
+    <title>PigStyle Kiosk · Fullscreen Pig</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
         * {
@@ -40,7 +40,7 @@
             height: 100%;
         }
 
-        /* ===== BACKGROUND LAYER ===== */
+        /* ===== BACKGROUND LAYER (fallback behind pig) ===== */
         .background-container {
             position: fixed;
             top: 0;
@@ -60,11 +60,11 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.5); /* subtle dark overlay for readability */
+            background: rgba(0, 0, 0, 0.4);
             z-index: 1;
         }
 
-        /* ===== SPLASH SCREEN - PIG IMAGE FILLS ENTIRE SCREEN ===== */
+        /* ===== SPLASH SCREEN - PIG FILLS ENTIRE SCREEN (NO PADDING, NO MARGIN) ===== */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -86,7 +86,7 @@
             pointer-events: none;
         }
 
-        /* Full-bleed pig image container - fills entire screen */
+        /* FULL-BLEED PIG - covers 100% of screen, uses cover to fill every pixel */
         .pig-fullscreen {
             position: absolute;
             top: 0;
@@ -94,17 +94,17 @@
             width: 100%;
             height: 100%;
             background-image: url('/static/images/PigStyle.ico');
-            background-size: contain;
+            background-size: cover;      /* Fills entire screen */
             background-repeat: no-repeat;
-            background-position: center;
+            background-position: center center;
             background-color: #0a0a0a;
             cursor: pointer;
         }
 
-        /* Overlay touch zone with text printed ON the pig */
+        /* Overlay touch zone with text printed ON the pig - positioned absolutely over the pig */
         .touch-overlay {
             position: absolute;
-            bottom: 12%;
+            bottom: 10%;
             left: 0;
             right: 0;
             text-align: center;
@@ -116,11 +116,11 @@
             display: inline-flex;
             align-items: center;
             gap: 14px;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(12px);
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(14px);
             padding: 14px 28px;
             border-radius: 80px;
-            border: 2px solid rgba(255, 215, 100, 0.8);
+            border: 2px solid rgba(255, 215, 100, 0.9);
             box-shadow: 0 8px 25px rgba(0,0,0,0.5);
             animation: gentleGlow 1.8s infinite ease-in-out;
         }
@@ -146,21 +146,6 @@
             50% { transform: scale(1.03); box-shadow: 0 12px 30px rgba(0,0,0,0.7), 0 0 0 4px rgba(255,215,100,0.7); }
             100% { transform: scale(1); box-shadow: 0 8px 25px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,215,100,0.3); }
         }
-        
-        /* Optional small store badge at bottom */
-        .store-badge-splash {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(5px);
-            padding: 6px 12px;
-            border-radius: 30px;
-            font-size: 11px;
-            color: #ffcd7e;
-            z-index: 10;
-            pointer-events: none;
-        }
 
         /* ===== MAIN INVENTORY VIEW (LANDSCAPE OPTIMIZED) ===== */
         .results-view {
@@ -185,7 +170,6 @@
             transition: opacity 0.4s ease, visibility 0s linear 0s;
         }
 
-        /* Fixed search header - landscape friendly */
         .search-header {
             position: fixed;
             top: 0;
@@ -229,7 +213,6 @@
             box-shadow: 0 0 0 2px #ffcd7e;
         }
 
-        /* Grid optimized for landscape tablets/phones */
         .results-grid-container {
             padding: 12px 20px 30px 20px;
         }
@@ -362,27 +345,20 @@
             background: #ffcd7e20;
             transform: scale(0.96);
         }
-        
-        /* Landscape orientation hint (optional) */
-        @media (orientation: portrait) {
-            .landscape-hint {
-                display: flex;
-            }
-        }
     </style>
 </head>
 <body>
 
-<!-- BACKGROUND IMAGE (fixed, but splash screen will overlay with pig) -->
+<!-- BACKGROUND IMAGE (fallback) -->
 <div class="background-container">
     <img src="/static/images/background.png" alt="Store Background" class="background-image" id="bgImage">
     <div class="background-overlay"></div>
 </div>
 
-<!-- SPLASH SCREEN: PIG IMAGE FILLS SCREEN, TOUCH TEXT PRINTED ON PIG -->
+<!-- SPLASH SCREEN: PIG FILLS ENTIRE SCREEN - NO BOTTOM RIGHT BADGE -->
 <div class="splash-screen" id="splashScreen">
     <div class="pig-fullscreen" id="pigFullscreenBtn">
-        <!-- "Touch to Search" printed directly ON the pig image overlay -->
+        <!-- "Touch to Search" printed directly ON the pig -->
         <div class="touch-overlay">
             <div class="touch-badge">
                 <i class="fas fa-hand-peace"></i>
@@ -390,9 +366,7 @@
                 <i class="fas fa-search"></i>
             </div>
         </div>
-        <div class="store-badge-splash">
-            <i class="fas fa-record-vinyl"></i> PigStyle Records
-        </div>
+        <!-- Removed the bottom-right "PigStyle Records" badge as requested -->
     </div>
 </div>
 
@@ -421,38 +395,69 @@
 
 <script>
     (function() {
-        // ========== FULLSCREEN KIOSK & LANDSCAPE FOCUS ==========
-        function requestFullscreenIfNeeded() {
+        // ========== FULLSCREEN MANAGEMENT - PERSISTENT ==========
+        let isFullscreen = false;
+        
+        function enterFullscreen() {
             const docEl = document.documentElement;
-            if (docEl.requestFullscreen) {
-                docEl.requestFullscreen().catch(() => {});
-            } else if (docEl.webkitRequestFullscreen) {
-                docEl.webkitRequestFullscreen();
+            const requestMethod = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
+            if (requestMethod && !isFullscreen) {
+                requestMethod.call(docEl).catch(err => {
+                    console.log('Fullscreen error:', err);
+                }).then(() => {
+                    isFullscreen = true;
+                    console.log('[Kiosk] Entered fullscreen mode');
+                });
             }
         }
         
-        document.body.addEventListener('touchstart', function firstTouch() {
-            requestFullscreenIfNeeded();
-            document.body.removeEventListener('touchstart', firstTouch);
-        }, { once: true });
+        function handleFullscreenChange() {
+            isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            if (!isFullscreen) {
+                console.log('[Kiosk] Exited fullscreen - re-entering...');
+                setTimeout(() => {
+                    enterFullscreen();
+                }, 100);
+            }
+        }
         
+        // Listen for fullscreen change events
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        
+        // Enter fullscreen on any user interaction AND periodically ensure it stays
+        function ensureFullscreen() {
+            if (!isFullscreen) {
+                enterFullscreen();
+            }
+        }
+        
+        // Trigger on every touch/click
+        document.body.addEventListener('touchstart', ensureFullscreen, { passive: true });
+        document.body.addEventListener('click', ensureFullscreen, { passive: true });
+        
+        // Also check every few seconds to be safe (kiosk robustness)
+        setInterval(() => {
+            if (!isFullscreen && (document.visibilityState === 'visible')) {
+                enterFullscreen();
+            }
+        }, 3000);
+        
+        // Initial fullscreen attempt
+        setTimeout(() => enterFullscreen(), 500);
+        
+        // Block context menu
         document.addEventListener('contextmenu', (e) => e.preventDefault());
         
         // ========== FIX BACKGROUND IMAGE ISSUE ==========
-        // Why background.png wasn't showing? 
-        // Potential reasons: wrong path, CORS? but likely path issue.
-        // Since kiosk.html is in HTML/ folder and static is at same level, path "/static/images/background.png" is correct.
-        // But sometimes on local servers without proper root, we add a fallback.
-        // Also we make sure the image loads and if fails, console logs but no error is thrown.
         const bgImg = document.getElementById('bgImage');
         if (bgImg) {
             bgImg.onerror = function() {
-                console.warn('[Kiosk] background.png not found at /static/images/background.png — using solid color fallback');
-                // fallback: add a gradient background via style
+                console.warn('[Kiosk] background.png not found - using fallback');
                 document.querySelector('.background-container').style.background = 'linear-gradient(145deg, #1a1a2a, #0a0a12)';
                 this.style.display = 'none';
             };
-            bgImg.onload = () => console.log('[Kiosk] background.png loaded successfully');
+            bgImg.onload = () => console.log('[Kiosk] background.png loaded');
         }
         
         // ========== AUTO-RESET AFTER 60 SECONDS INACTIVITY ==========
@@ -468,6 +473,8 @@
             showSplashScreen();
             if (document.activeElement === searchInput) searchInput.blur();
             resetIdleTimer();
+            // Re-enter fullscreen after reset to ensure address bar stays hidden
+            setTimeout(() => enterFullscreen(), 100);
         }
         
         function resetIdleTimer() {
@@ -507,6 +514,8 @@
                 filteredRecords = [...allRecords];
                 displayRecords(filteredRecords);
             }
+            // Ensure fullscreen when returning to splash
+            enterFullscreen();
         }
         
         function showInventoryView() {
@@ -523,6 +532,7 @@
                 }
             }
             resetIdleTimer();
+            enterFullscreen();
         }
         
         // LOAD INVENTORY
@@ -554,7 +564,7 @@
                     <div class="no-results">
                         <i class="fas fa-exclamation-triangle"></i>
                         <p>Unable to load collection.<br>${escapeHtml(err.message)}</p>
-                        <button id="retryLoadBtn" style="margin-top:20px; padding:12px 28px; background:#ffcd7e; border:none; border-radius:50px; color:#1e1e2a; font-weight:bold;">⟳ RETRY</button>
+                        <button id="retryLoadBtn" style="margin-top:20px; padding:12px 28px; background:#ffcd7e; border:none; border-radius:50px; color:#1e1e2a; font-weight:bold; cursor:pointer;">⟳ RETRY</button>
                     </div>
                 `;
                 const retry = document.getElementById('retryLoadBtn');
@@ -623,19 +633,21 @@
             }); 
         }
         
-        // Event listeners for splash (pig image)
+        // Event listeners
         if (pigBtn) {
             pigBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 showInventoryView();
                 resetIdleTimer();
+                enterFullscreen();
             });
         }
-        // fallback: entire splash screen click
+        
         splashEl.addEventListener('click', (e) => {
             if (e.target === splashEl || splashEl.contains(e.target)) {
                 showInventoryView();
                 resetIdleTimer();
+                enterFullscreen();
             }
         });
         
@@ -644,25 +656,18 @@
                 e.stopPropagation();
                 fullResetToStart();
                 resetIdleTimer();
+                enterFullscreen();
             });
         }
         
         resultsViewEl.addEventListener('scroll', () => resetIdleTimer(), { passive: true });
         
-        // initial state
+        // Initial state
         resultsViewEl.classList.remove('active-view');
         splashEl.classList.remove('hide-splash');
         resetIdleTimer();
         
-        // extra fullscreen call
-        document.body.addEventListener('touchstart', () => requestFullscreenIfNeeded(), { passive: true });
-        
-        // landscape check: if orientation changes, we keep fullscreen layout robust
-        window.addEventListener('resize', () => { 
-            requestFullscreenIfNeeded(); 
-        });
-        
-        console.log('[Kiosk] Landscape mode ready — pig fills screen, touch to search on pig. Background.png fallback active.');
+        console.log('[Kiosk] Landscape mode — pig fills screen, no bottom badge, persistent fullscreen, auto-reset 60s');
     })();
 </script>
 </body>
