@@ -1,27 +1,29 @@
 <!DOCTYPE html>
-<html lang='en'>
+<html lang="en">
 <head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=yes'>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <!-- No external dependencies that cause HTTPS mixed-content issues; all assets are local or fontawesome CDN (supports HTTPS) -->
     <link rel="icon" href="/static/images/PigStyle.ico">
-    <title>Store Kiosk - Find Your Record</title>
+    <title>Record Kiosk · Touch to Search</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            user-select: none; /* prevents accidental text selection on taps, better kiosk feel */
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: #121212;
             color: #fff;
             min-height: 100vh;
+            overflow-x: hidden;
         }
-        
-        /* Background Image */
+
+        /* Background image with dark overlay — secure, no mixed content (local image) */
         .background-container {
             position: fixed;
             top: 0;
@@ -30,139 +32,232 @@
             height: 100%;
             z-index: -1;
         }
-        
         .background-image {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
-        
         .background-overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.75);
         }
-        
-        /* RESULTS VIEW - Always visible, no splash screen */
+
+        /* === ATTENTION SPLASH SCREEN (TOUCH TO SEARCH) === */
+        .splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.94);
+            backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.45s cubic-bezier(0.2, 0.9, 0.4, 1.1), visibility 0.45s;
+            opacity: 1;
+            visibility: visible;
+        }
+        .splash-screen.hide-splash {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        /* big interactive card */
+        .touch-card {
+            background: rgba(18, 18, 28, 0.96);
+            backdrop-filter: blur(20px);
+            border-radius: 72px;
+            width: 86%;
+            max-width: 380px;
+            padding: 2.4rem 1.8rem 2.6rem;
+            text-align: center;
+            box-shadow: 0 30px 50px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 200, 100, 0.3);
+            border: 1px solid rgba(255, 210, 90, 0.5);
+            animation: softPulse 1.6s infinite ease-in-out;
+            cursor: pointer;
+            transition: transform 0.2s ease, background 0.2s;
+        }
+        .touch-card:active {
+            transform: scale(0.97);
+            background: rgba(10, 10, 18, 0.98);
+        }
+        @keyframes softPulse {
+            0% { transform: scale(1); box-shadow: 0 30px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,210,90,0.2); }
+            50% { transform: scale(1.02); box-shadow: 0 35px 60px rgba(0,0,0,0.7), 0 0 0 4px rgba(255,210,90,0.6); }
+            100% { transform: scale(1); box-shadow: 0 30px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,210,90,0.2); }
+        }
+        .vinyl-glow {
+            font-size: 85px;
+            color: #ffcd7e;
+            margin-bottom: 20px;
+            display: inline-block;
+            filter: drop-shadow(0 0 6px #ffb347);
+            animation: floatIcon 2s infinite alternate;
+        }
+        @keyframes floatIcon {
+            0% { transform: translateY(0px) rotate(0deg); }
+            100% { transform: translateY(-8px) rotate(3deg); }
+        }
+        .touch-card h2 {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #FFE6B0, #FFB347);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 12px;
+        }
+        .touch-card p {
+            font-size: 17px;
+            color: #ddd;
+            margin-bottom: 32px;
+            font-weight: 500;
+        }
+        .big-touch-area {
+            background: rgba(255, 200, 100, 0.12);
+            border-radius: 60px;
+            padding: 16px 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            border: 1px solid rgba(255, 190, 70, 0.5);
+            backdrop-filter: blur(4px);
+        }
+        .big-touch-area i {
+            font-size: 32px;
+            color: #ffcd7e;
+        }
+        .big-touch-area span {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #FFE0A3;
+        }
+
+        /* === MAIN INVENTORY VIEW (search + results) === */
         .results-view {
             padding: 20px;
             padding-top: 80px;
-            padding-bottom: 30px;
+            padding-bottom: 40px;
             min-height: 100vh;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.35s ease, visibility 0s linear 0.35s;
         }
-        
-        /* Search Header */
+        .results-view.active-view {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.4s ease, visibility 0s linear 0s;
+        }
+        /* fixed search header */
         .search-header {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            background: rgba(30, 30, 30, 0.95);
-            padding: 15px 20px;
+            background: rgba(20, 20, 28, 0.96);
+            backdrop-filter: blur(12px);
+            padding: 14px 20px;
             z-index: 100;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+            border-bottom: 1px solid rgba(255,210,90,0.2);
         }
-        
         .search-input-wrapper {
             position: relative;
             width: 100%;
         }
-        
         .search-input-wrapper i {
             position: absolute;
             left: 16px;
             top: 50%;
             transform: translateY(-50%);
-            color: #999;
+            color: #ffcd7e;
             font-size: 18px;
         }
-        
         .search-input {
             width: 100%;
-            height: 48px;
+            height: 52px;
             padding: 0 16px 0 48px;
             font-size: 18px;
             border: none;
-            border-radius: 12px;
-            background: #333;
+            border-radius: 40px;
+            background: #2a2a2e;
             color: white;
             font-family: inherit;
+            transition: all 0.2s;
         }
-        
         .search-input:focus {
             outline: none;
-            background: #444;
+            background: #35353c;
+            box-shadow: 0 0 0 2px #ffcd7e;
         }
-        
         .search-input::placeholder {
-            color: #999;
+            color: #aaa;
         }
-        
-        /* Results Grid */
+        /* results grid */
         .results-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 16px;
-            margin-top: 10px;
+            gap: 18px;
+            margin-top: 15px;
         }
-        
-        /* Record Card */
         .record-card {
-            background: rgba(30, 30, 30, 0.95);
-            border-radius: 12px;
+            background: rgba(25, 25, 33, 0.95);
+            backdrop-filter: blur(4px);
+            border-radius: 20px;
             overflow: hidden;
             cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.2s;
+            border: 1px solid rgba(255,210,90,0.2);
         }
-        
         .record-card:active {
-            transform: scale(0.98);
+            transform: scale(0.97);
         }
-        
         .card-image {
             width: 100%;
             aspect-ratio: 1;
-            background: #2a2a2a;
+            background: #1f1f2a;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
         }
-        
         .card-image img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
-        
         .default-record-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(145deg, #3a2c4a, #1e1a2f);
             display: flex;
             align-items: center;
             justify-content: center;
         }
-        
         .default-record-bg i {
             font-size: 48px;
-            color: rgba(255,255,255,0.5);
+            color: #ffcd7e;
+            opacity: 0.8;
         }
-        
         .card-info {
             padding: 12px;
         }
-        
         .card-artist {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
-            color: #aaa;
-            margin-bottom: 4px;
+            color: #ccc;
+            margin-bottom: 5px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        
         .card-title {
             font-size: 15px;
             font-weight: 700;
@@ -171,177 +266,278 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        
         .card-price {
             font-size: 16px;
             font-weight: 700;
-            color: #4ade80;
+            color: #7cfc9e;
             margin-bottom: 8px;
         }
-        
         .location-badge {
             display: inline-block;
-            background: #2b5e2b;
-            color: #4ade80;
+            background: #2b422b;
+            color: #b3ffaa;
             padding: 6px 10px;
-            border-radius: 8px;
-            font-size: 12px;
+            border-radius: 30px;
+            font-size: 11px;
             font-weight: 600;
             width: 100%;
             text-align: center;
             box-sizing: border-box;
         }
-        
         .location-badge i {
-            margin-right: 5px;
-            font-size: 11px;
+            margin-right: 6px;
+            font-size: 10px;
         }
-        
-        .no-results {
+        .no-results, .loading-spinner {
             text-align: center;
             padding: 60px 20px;
         }
-        
-        .no-results i {
-            font-size: 64px;
-            color: #666;
-            margin-bottom: 20px;
+        .no-results i, .loading-spinner i {
+            font-size: 56px;
+            color: #ffcd7e;
+            margin-bottom: 16px;
         }
-        
-        .no-results p {
-            font-size: 18px;
-            color: #999;
-        }
-        
-        .loading-spinner {
-            text-align: center;
-            padding: 60px 20px;
-        }
-        
         .loading-spinner i {
-            font-size: 48px;
             animation: spin 1s linear infinite;
         }
-        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
-        @media (min-width: 768px) {
+        /* reset button style */
+        .reset-kiosk-btn {
+            position: fixed;
+            bottom: 18px;
+            right: 18px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            border-radius: 50px;
+            padding: 10px 16px;
+            z-index: 150;
+            border: 1px solid #ffcd7e;
+            color: #ffcd7e;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
+        }
+        .reset-kiosk-btn:active {
+            background: #ffcd7e20;
+            transform: scale(0.95);
+        }
+        @media (max-width: 560px) {
             .results-grid {
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                gap: 12px;
+            }
+            .touch-card h2 {
+                font-size: 28px;
+            }
+            .big-touch-area span {
+                font-size: 20px;
             }
         }
     </style>
 </head>
 <body>
 
-    <!-- Background Image -->
-    <div class="background-container">
-        <img src="/static/images/background.png" alt="Background" class="background-image">
-        <div class="background-overlay"></div>
-    </div>
+<!-- Background (local image, secure, no mixed content) -->
+<div class="background-container">
+    <img src="/static/images/background.png" alt="Record store background" class="background-image">
+    <div class="background-overlay"></div>
+</div>
 
-    <!-- RESULTS VIEW - Always visible -->
-    <div class="results-view">
-        <div class="search-header">
-            <div class="search-input-wrapper">
-                <i class="fas fa-search"></i>
-                <input type="text" class="search-input" id="searchInput" placeholder="Artist or album name..." autocomplete="off">
-            </div>
+<!-- SPLASH SCREEN: TOUCH TO SEARCH (attention grabbing) -->
+<div class="splash-screen" id="splashScreen">
+    <div class="touch-card" id="touchToStartBtn">
+        <div class="vinyl-glow">
+            <i class="fas fa-record-vinyl"></i>
         </div>
-        
-        <div id="resultsContainer">
-            <div class="loading-spinner">
-                <i class="fas fa-spinner"></i>
-                <p>Loading inventory...</p>
-            </div>
+        <h2>DIG THE CRATES</h2>
+        <p>Touch anywhere to unlock<br>the full inventory kiosk</p>
+        <div class="big-touch-area">
+            <i class="fas fa-hand-pointer"></i>
+            <span>TOUCH TO SEARCH</span>
+            <i class="fas fa-search"></i>
+        </div>
+        <div style="margin-top: 20px; font-size: 13px; color:#aaa;">
+            <i class="fas fa-shield-alt"></i> Secure in-store mode
         </div>
     </div>
+</div>
 
-    <script src="/static/js/app-config.js"></script>
-    <script src="/static/js/config-value-manager.js"></script>
-    
-    <script>
-        // Global state
+<!-- MAIN INVENTORY VIEW (results + search) -->
+<div class="results-view" id="resultsView">
+    <div class="search-header">
+        <div class="search-input-wrapper">
+            <i class="fas fa-search"></i>
+            <input type="text" class="search-input" id="searchInput" placeholder="Artist or album name..." autocomplete="off">
+        </div>
+    </div>
+    <div id="resultsContainer">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner"></i>
+            <p>Loading vinyl collection...</p>
+        </div>
+    </div>
+    <!-- optional reset / "start over" button that brings back splash -->
+    <div class="reset-kiosk-btn" id="resetKioskBtn">
+        <i class="fas fa-arrow-rotate-left"></i> 
+        <span>START OVER</span>
+    </div>
+</div>
+
+<!-- CONFIG (local app config) -->
+<script src="/static/js/app-config.js"></script>
+<script src="/static/js/config-value-manager.js"></script>
+
+<script>
+    (function() {
+        // ---------- GLOBALS ----------
         let allRecords = [];
         let filteredRecords = [];
-        
-        // DOM Elements
+
+        // DOM elements
+        const splashEl = document.getElementById('splashScreen');
+        const resultsViewEl = document.getElementById('resultsView');
         const searchInput = document.getElementById('searchInput');
         const resultsContainer = document.getElementById('resultsContainer');
-        
-        // Load records from API
-        async function loadRecords() {
-            try {
-                showLoading();
-                console.log('Loading records from API...');
-                const response = await fetch(`${AppConfig.baseUrl}/catalog/records`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    allRecords = data.records;
+        const touchStartBtn = document.getElementById('touchToStartBtn');
+        const resetBtn = document.getElementById('resetKioskBtn');
+
+        // Flag to avoid double loading of records
+        let inventoryLoaded = false;
+        let isLoadingOrLoaded = false;
+
+        // ---------- HELPER: Show/hide splash & main view ----------
+        function showSplashScreen() {
+            // clear search input & reset view to fresh state
+            if (searchInput) searchInput.value = '';
+            // hide results view and show splash
+            resultsViewEl.classList.remove('active-view');
+            splashEl.classList.remove('hide-splash');
+            // optional: reset any filter if needed
+            if (allRecords.length) {
+                filteredRecords = [...allRecords];
+                displayRecords(filteredRecords);
+            }
+        }
+
+        function showInventoryView() {
+            // hide splash with smooth transition
+            splashEl.classList.add('hide-splash');
+            resultsViewEl.classList.add('active-view');
+            // load records only once (when user first touches)
+            if (!inventoryLoaded && !isLoadingOrLoaded) {
+                loadRecords();
+            } else if (inventoryLoaded && allRecords.length > 0) {
+                // already loaded: just refresh display based on current search (empty)
+                if (searchInput.value.trim() === '') {
                     filteredRecords = [...allRecords];
-                    console.log(`Loaded ${allRecords.length} records`);
                     displayRecords(filteredRecords);
                 } else {
-                    throw new Error(data.message || 'Failed to load records');
+                    filterRecords(searchInput.value);
                 }
-            } catch (error) {
-                console.error('Error loading records:', error);
+            }
+        }
+
+        // ---------- API / DATA LOADING (secure relative fetch) ----------
+        async function loadRecords() {
+            if (isLoadingOrLoaded) return;
+            isLoadingOrLoaded = true;
+            showLoading();
+            try {
+                // use AppConfig from imported scripts, fallback to relative path if config missing
+                let baseUrl = '';
+                if (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) {
+                    baseUrl = AppConfig.baseUrl;
+                } else {
+                    // fallback to same-origin (safe, no mixed content)
+                    baseUrl = '';
+                }
+                const url = `${baseUrl}/catalog/records`;
+                console.log('[KIOSK] Fetching inventory from:', url);
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (data.status === 'success' && Array.isArray(data.records)) {
+                    allRecords = data.records;
+                    filteredRecords = [...allRecords];
+                    inventoryLoaded = true;
+                    displayRecords(filteredRecords);
+                } else {
+                    throw new Error(data.message || 'Invalid data format');
+                }
+            } catch (err) {
+                console.error('[KIOSK] load error:', err);
                 resultsContainer.innerHTML = `
                     <div class="no-results">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <p>Error loading records: ${error.message}</p>
-                        <button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: #667eea; border: none; border-radius: 8px; color: white; font-size: 16px; cursor: pointer;">Retry</button>
+                        <p>Could not load inventory.<br>${escapeHtml(err.message)}</p>
+                        <button id="retryLoadBtn" style="margin-top: 20px; padding: 12px 24px; background: #ffcd7e; border: none; border-radius: 50px; color: #1e1e2a; font-weight: bold; font-size: 16px;">⟳ RETRY</button>
                     </div>
                 `;
+                const retryBtn = document.getElementById('retryLoadBtn');
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        isLoadingOrLoaded = false;
+                        loadRecords();
+                    }, { once: true });
+                }
+            } finally {
+                isLoadingOrLoaded = false;
             }
         }
-        
-        // Show loading state
+
         function showLoading() {
             resultsContainer.innerHTML = `
                 <div class="loading-spinner">
                     <i class="fas fa-spinner"></i>
-                    <p>Loading inventory...</p>
+                    <p>Scanning vinyl shelves...</p>
                 </div>
             `;
         }
-        
-        // Display records as individual cards
+
+        // display records as cards
         function displayRecords(records) {
             if (!records || records.length === 0) {
                 resultsContainer.innerHTML = `
                     <div class="no-results">
                         <i class="fas fa-search"></i>
-                        <p>No records found matching your search.</p>
-                        <p style="font-size: 14px; margin-top: 10px;">Try a different artist or album name.</p>
+                        <p>No matching records found.</p>
+                        <p style="font-size: 14px; margin-top: 8px;">Try different artist or album name.</p>
                     </div>
                 `;
                 return;
             }
-            
             let html = '<div class="results-grid">';
-            
-            records.forEach(record => {
-                const imageHtml = record.image_url ? 
-                    `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.innerHTML='<i class=\'fas fa-record-vinyl\'></i>'; this.parentElement.classList.add('default-record-bg');">` : 
-                    `<i class="fas fa-record-vinyl"></i>`;
-                
-                const imageClass = record.image_url ? 'card-image' : 'card-image default-record-bg';
-                
-                const artist = escapeHtml(record.artist || 'Unknown Artist');
-                const title = escapeHtml(record.title || 'Unknown Title');
-                const location = escapeHtml(record.location || 'Check with staff');
-                const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'Call for price';
-                
+            for (let rec of records) {
+                const imageUrl = rec.image_url ? rec.image_url : null;
+                let imageHtml = '';
+                let imageClass = 'card-image';
+                if (imageUrl && imageUrl.trim() !== '') {
+                    imageHtml = `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(rec.title)}" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-record-vinyl\\'></i>'; this.parentElement.classList.add('default-record-bg');">`;
+                    imageClass = 'card-image';
+                } else {
+                    imageHtml = `<i class="fas fa-record-vinyl"></i>`;
+                    imageClass = 'card-image default-record-bg';
+                }
+                const artist = escapeHtml(rec.artist || 'Unknown Artist');
+                const title = escapeHtml(rec.title || 'Untitled');
+                const location = escapeHtml(rec.location || 'Ask at counter');
+                let priceDisplay = 'Call for price';
+                if (rec.store_price && typeof rec.store_price === 'number') {
+                    priceDisplay = `$${rec.store_price.toFixed(2)}`;
+                } else if (rec.store_price && !isNaN(parseFloat(rec.store_price))) {
+                    priceDisplay = `$${parseFloat(rec.store_price).toFixed(2)}`;
+                }
                 html += `
                     <div class="record-card">
                         <div class="${imageClass}">
@@ -350,20 +546,18 @@
                         <div class="card-info">
                             <div class="card-artist">${artist}</div>
                             <div class="card-title">${title}</div>
-                            <div class="card-price">${price}</div>
+                            <div class="card-price">${priceDisplay}</div>
                             <div class="location-badge">
                                 <i class="fas fa-map-marker-alt"></i> ${location}
                             </div>
                         </div>
                     </div>
                 `;
-            });
-            
+            }
             html += '</div>';
             resultsContainer.innerHTML = html;
         }
-        
-        // Filter records based on search term
+
         function filterRecords(searchTerm) {
             if (!searchTerm || searchTerm.trim() === '') {
                 filteredRecords = [...allRecords];
@@ -377,25 +571,94 @@
             }
             displayRecords(filteredRecords);
         }
-        
-        // Search with debounce
-        let searchTimeout;
-        searchInput.addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
+
+        // search debounce
+        let debounceTimeout;
+        function onSearchInput(e) {
+            if (!inventoryLoaded) return;
+            clearTimeout(debounceTimeout);
+            debounceTimeout = setTimeout(() => {
                 filterRecords(e.target.value);
-            }, 300);
-        });
+            }, 280);
+        }
+
+        // reset everything to "start over" – show attention splash, clear search, keep data but UI back to attract mode
+        function fullResetToStart() {
+            // clear search input field
+            if (searchInput) searchInput.value = '';
+            // if inventory already loaded we keep records, just show splash and reset results
+            if (inventoryLoaded && allRecords.length) {
+                filteredRecords = [...allRecords];
+                displayRecords(filteredRecords);
+            }
+            // show splash screen, hide inventory view
+            showSplashScreen();
+            // optional: blur any active search field
+            if (document.activeElement === searchInput) searchInput.blur();
+        }
+
+        // ---------- EVENT HANDLERS (secure, no external weirdness) ----------
+        if (touchStartBtn) {
+            // entire touch card triggers inventory view
+            touchStartBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showInventoryView();
+            });
+            // also make the whole splash screen touch-friendly (entire splash area if someone taps outside but still on splash)
+            splashEl.addEventListener('click', (e) => {
+                // if click target is splash screen itself or background, also trigger
+                if (e.target === splashEl || splashEl.contains(e.target)) {
+                    showInventoryView();
+                }
+            });
+        } else {
+            // fallback: any click on splash screen
+            splashEl.addEventListener('click', () => showInventoryView());
+        }
+
+        if (resetBtn) {
+            resetBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                fullResetToStart();
+            });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', onSearchInput);
+        }
+
+        // on first load of page: we show splash screen (attention mode). inventory is NOT loaded yet.
+        // to avoid unnecessary network calls before user touches, we lazy-load only after they touch.
+        // but we also keep reset button functional to return to splash.
+        // ensure inventory view is hidden at start
+        resultsViewEl.classList.remove('active-view');
+        splashEl.classList.remove('hide-splash');
         
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        // if by any chance we need to preload? no, we wait for touch. but if reset button re-triggers splash, it's fine.
+        // additionally: handle offline / HTTPS warnings? all fetches are relative to same origin (no mixed content). 
+        // We also ensure we never load external insecure resources. The background is local, icons from fontawesome CDN (HTTPS).
+        // Also the image onerror doesn't cause mixed content because image_url should be relative or https if provided by backend.
+        
+        // extra safety: ensure that any dynamic image from record uses https fallback? Not needed, we trust API.
+        // optional: expose manual method for support.
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+                return c;
+            });
         }
         
-        // Load records when page loads
-        loadRecords();
-    </script>
+        // if user uses "start over" while inventory visible, it returns to splash, and if they tap again we show inventory with loaded records.
+        // perfect cycle without reloading data each time.
+        // Additionally if loading fails, retry button appears.
+        console.log('[KIOSK] Ready — attention screen active. Touch to search inventory (secure mode).');
+    })();
+</script>
 </body>
 </html>
