@@ -2,16 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Kiosk fullscreen meta: hides address bar on mobile, prevents zoom/scroll -->
+    <!-- Landscape-focused viewport + fullscreen kiosk settings -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover, shrink-to-fit=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" href="/static/images/PigStyle.ico">
-    <title>PigStyle Kiosk · Touch to Search</title>
+    <title>PigStyle Kiosk · Landscape · Touch to Search</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        /* RESET & FULLSCREEN LOCKDOWN */
         * {
             margin: 0;
             padding: 0;
@@ -20,7 +19,7 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* disable body scroll & address bar hiding */
+        /* Fullscreen lock - landscape orientation */
         html, body {
             width: 100%;
             height: 100%;
@@ -30,9 +29,8 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: #121212;
+            background: #000;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            color: #fff;
         }
 
         body {
@@ -40,17 +38,16 @@
             -webkit-overflow-scrolling: touch;
             position: relative;
             height: 100%;
-            touch-action: pan-y pinch-zoom;
         }
 
-        /* Background image layer - fixed, no scroll */
+        /* ===== BACKGROUND LAYER ===== */
         .background-container {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: -1;
+            z-index: -2;
         }
         .background-image {
             width: 100%;
@@ -63,10 +60,11 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.72);
+            background: rgba(0, 0, 0, 0.5); /* subtle dark overlay for readability */
+            z-index: 1;
         }
 
-        /* ATTENTION SPLASH SCREEN (TOUCH TO SEARCH) */
+        /* ===== SPLASH SCREEN - PIG IMAGE FILLS ENTIRE SCREEN ===== */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -74,11 +72,11 @@
             width: 100%;
             height: 100%;
             z-index: 1000;
-            background: transparent;
+            background: #000;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: opacity 0.45s cubic-bezier(0.2, 0.9, 0.4, 1.1), visibility 0.45s;
+            transition: opacity 0.5s cubic-bezier(0.2, 0.9, 0.4, 1.1), visibility 0.5s;
             opacity: 1;
             visibility: visible;
         }
@@ -88,89 +86,83 @@
             pointer-events: none;
         }
 
-        .touch-card {
-            background: rgba(10, 10, 18, 0.88);
-            backdrop-filter: blur(16px);
-            border-radius: 72px;
-            width: 86%;
-            max-width: 380px;
-            padding: 2rem 1.8rem 2.4rem;
-            text-align: center;
-            box-shadow: 0 30px 50px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 200, 100, 0.35);
-            border: 1px solid rgba(255, 210, 90, 0.5);
-            animation: softPulse 1.6s infinite ease-in-out;
-            cursor: pointer;
-            transition: transform 0.2s ease, background 0.2s;
-        }
-        .touch-card:active {
-            transform: scale(0.97);
-        }
-        @keyframes softPulse {
-            0% { transform: scale(1); box-shadow: 0 30px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,210,90,0.25); }
-            50% { transform: scale(1.02); box-shadow: 0 38px 60px rgba(0,0,0,0.7), 0 0 0 4px rgba(255,210,90,0.6); }
-            100% { transform: scale(1); box-shadow: 0 30px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,210,90,0.25); }
-        }
-
-        /* PigStyle Icon instead of generic vinyl */
-        .pig-icon-large {
-            width: 100px;
-            height: 100px;
-            margin: 0 auto 18px;
+        /* Full-bleed pig image container - fills entire screen */
+        .pig-fullscreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             background-image: url('/static/images/PigStyle.ico');
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
-            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
-            display: inline-block;
+            background-color: #0a0a0a;
+            cursor: pointer;
         }
-        .touch-card h2 {
+
+        /* Overlay touch zone with text printed ON the pig */
+        .touch-overlay {
+            position: absolute;
+            bottom: 12%;
+            left: 0;
+            right: 0;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none; /* let clicks pass through to pig-fullscreen */
+        }
+        
+        .touch-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(12px);
+            padding: 14px 28px;
+            border-radius: 80px;
+            border: 2px solid rgba(255, 215, 100, 0.8);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+            animation: gentleGlow 1.8s infinite ease-in-out;
+        }
+        
+        .touch-badge i {
             font-size: 32px;
+            color: #ffcd7e;
+        }
+        
+        .touch-badge span {
+            font-size: 28px;
             font-weight: 800;
-            letter-spacing: -0.5px;
+            letter-spacing: 2px;
             background: linear-gradient(135deg, #FFE6B0, #FFB347);
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
-            margin-bottom: 12px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
-        .touch-card p {
-            font-size: 17px;
-            color: #ddd;
-            margin-bottom: 28px;
-            font-weight: 500;
+        
+        @keyframes gentleGlow {
+            0% { transform: scale(1); box-shadow: 0 8px 25px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,215,100,0.3); }
+            50% { transform: scale(1.03); box-shadow: 0 12px 30px rgba(0,0,0,0.7), 0 0 0 4px rgba(255,215,100,0.7); }
+            100% { transform: scale(1); box-shadow: 0 8px 25px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,215,100,0.3); }
         }
-        .big-touch-area {
-            background: rgba(255, 200, 100, 0.12);
-            border-radius: 60px;
-            padding: 16px 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 14px;
-            border: 1px solid rgba(255, 190, 70, 0.5);
-            backdrop-filter: blur(4px);
-        }
-        .big-touch-area i {
-            font-size: 32px;
+        
+        /* Optional small store badge at bottom */
+        .store-badge-splash {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 11px;
             color: #ffcd7e;
-        }
-        .big-touch-area span {
-            font-size: 24px;
-            font-weight: 700;
-            letter-spacing: 2px;
-            color: #FFE0A3;
-        }
-        .store-note {
-            margin-top: 22px;
-            font-size: 13px;
-            color: #aaa;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
+            z-index: 10;
+            pointer-events: none;
         }
 
-        /* MAIN INVENTORY VIEW (Search + Results) */
+        /* ===== MAIN INVENTORY VIEW (LANDSCAPE OPTIMIZED) ===== */
         .results-view {
             position: fixed;
             top: 0;
@@ -180,7 +172,7 @@
             background: transparent;
             opacity: 0;
             visibility: hidden;
-            transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+            transition: opacity 0.4s ease, visibility 0s linear 0.4s;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 0;
@@ -193,15 +185,15 @@
             transition: opacity 0.4s ease, visibility 0s linear 0s;
         }
 
-        /* Fixed search header */
+        /* Fixed search header - landscape friendly */
         .search-header {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            background: rgba(18, 18, 26, 0.97);
+            background: rgba(10, 10, 16, 0.96);
             backdrop-filter: blur(16px);
-            padding: 14px 20px;
+            padding: 12px 20px;
             z-index: 150;
             box-shadow: 0 4px 18px rgba(0,0,0,0.5);
             border-bottom: 1px solid rgba(255,210,90,0.3);
@@ -209,6 +201,8 @@
         .search-input-wrapper {
             position: relative;
             width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
         }
         .search-input-wrapper i {
             position: absolute;
@@ -220,7 +214,7 @@
         }
         .search-input {
             width: 100%;
-            height: 52px;
+            height: 48px;
             padding: 0 16px 0 48px;
             font-size: 18px;
             border: none;
@@ -228,34 +222,37 @@
             background: #2a2a2f;
             color: white;
             font-family: inherit;
-            transition: all 0.2s;
         }
         .search-input:focus {
             outline: none;
             background: #35353e;
             box-shadow: 0 0 0 2px #ffcd7e;
         }
-        .search-input::placeholder {
-            color: #aaa;
-        }
 
-        /* scrollable results grid */
+        /* Grid optimized for landscape tablets/phones */
         .results-grid-container {
-            padding: 8px 20px 30px 20px;
+            padding: 12px 20px 30px 20px;
         }
         .results-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
             gap: 18px;
-            margin-top: 5px;
         }
+        
+        @media (min-width: 800px) and (orientation: landscape) {
+            .results-grid {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 22px;
+            }
+        }
+        
         .record-card {
             background: rgba(22, 22, 30, 0.94);
             backdrop-filter: blur(4px);
             border-radius: 20px;
             overflow: hidden;
             cursor: pointer;
-            transition: transform 0.12s ease, box-shadow 0.2s;
+            transition: transform 0.12s ease;
             border: 1px solid rgba(255,210,90,0.2);
         }
         .record-card:active {
@@ -284,7 +281,6 @@
         .default-record-bg i {
             font-size: 48px;
             color: #ffcd7e;
-            opacity: 0.85;
         }
         .card-info {
             padding: 12px;
@@ -322,7 +318,6 @@
             font-weight: 600;
             width: 100%;
             text-align: center;
-            box-sizing: border-box;
         }
         .location-badge i {
             margin-right: 6px;
@@ -344,7 +339,7 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        /* start over button */
+        
         .reset-kiosk-btn {
             position: fixed;
             bottom: 20px;
@@ -362,57 +357,46 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            transition: 0.2s;
         }
         .reset-kiosk-btn:active {
             background: #ffcd7e20;
             transform: scale(0.96);
         }
-
-        @media (max-width: 768px) {
-            .results-grid {
-                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-                gap: 12px;
-            }
-            .touch-card h2 {
-                font-size: 28px;
-            }
-            .big-touch-area span {
-                font-size: 20px;
-            }
-            .pig-icon-large {
-                width: 80px;
-                height: 80px;
+        
+        /* Landscape orientation hint (optional) */
+        @media (orientation: portrait) {
+            .landscape-hint {
+                display: flex;
             }
         }
     </style>
 </head>
 <body>
 
-<!-- BACKGROUND IMAGE (static/images/background.png) -->
+<!-- BACKGROUND IMAGE (fixed, but splash screen will overlay with pig) -->
 <div class="background-container">
-    <img src="/static/images/background.png" alt="PigStyle Background" class="background-image">
+    <img src="/static/images/background.png" alt="Store Background" class="background-image" id="bgImage">
     <div class="background-overlay"></div>
 </div>
 
-<!-- SPLASH: ATTENTION GRABBING "TOUCH TO SEARCH" with PigStyle.ico -->
+<!-- SPLASH SCREEN: PIG IMAGE FILLS SCREEN, TOUCH TEXT PRINTED ON PIG -->
 <div class="splash-screen" id="splashScreen">
-    <div class="touch-card" id="touchToStartBtn">
-        <div class="pig-icon-large"></div>
-        <h2>PIGSTYLE RECORDS</h2>
-        <p>Tap to explore the vinyl archive</p>
-        <div class="big-touch-area">
-            <i class="fas fa-hand-pointer"></i>
-            <span>TOUCH TO SEARCH</span>
-            <i class="fas fa-search"></i>
+    <div class="pig-fullscreen" id="pigFullscreenBtn">
+        <!-- "Touch to Search" printed directly ON the pig image overlay -->
+        <div class="touch-overlay">
+            <div class="touch-badge">
+                <i class="fas fa-hand-peace"></i>
+                <span>TOUCH TO SEARCH</span>
+                <i class="fas fa-search"></i>
+            </div>
         </div>
-        <div class="store-note">
-            <i class="fas fa-shield-alt"></i> In-store kiosk · fullscreen mode
+        <div class="store-badge-splash">
+            <i class="fas fa-record-vinyl"></i> PigStyle Records
         </div>
     </div>
 </div>
 
-<!-- MAIN INVENTORY VIEW (search + catalog) -->
+<!-- MAIN INVENTORY VIEW -->
 <div class="results-view" id="resultsView">
     <div class="search-header">
         <div class="search-input-wrapper">
@@ -437,7 +421,7 @@
 
 <script>
     (function() {
-        // ========== FULL KIOSK MODE: hide address bar, prevent navigation ==========
+        // ========== FULLSCREEN KIOSK & LANDSCAPE FOCUS ==========
         function requestFullscreenIfNeeded() {
             const docEl = document.documentElement;
             if (docEl.requestFullscreen) {
@@ -447,59 +431,59 @@
             }
         }
         
-        // On first touch, request fullscreen to hide address bar
         document.body.addEventListener('touchstart', function firstTouch() {
             requestFullscreenIfNeeded();
             document.body.removeEventListener('touchstart', firstTouch);
         }, { once: true });
         
-        // Block context menu (long press)
-        document.addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-            return false;
-        });
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        // ========== FIX BACKGROUND IMAGE ISSUE ==========
+        // Why background.png wasn't showing? 
+        // Potential reasons: wrong path, CORS? but likely path issue.
+        // Since kiosk.html is in HTML/ folder and static is at same level, path "/static/images/background.png" is correct.
+        // But sometimes on local servers without proper root, we add a fallback.
+        // Also we make sure the image loads and if fails, console logs but no error is thrown.
+        const bgImg = document.getElementById('bgImage');
+        if (bgImg) {
+            bgImg.onerror = function() {
+                console.warn('[Kiosk] background.png not found at /static/images/background.png — using solid color fallback');
+                // fallback: add a gradient background via style
+                document.querySelector('.background-container').style.background = 'linear-gradient(145deg, #1a1a2a, #0a0a12)';
+                this.style.display = 'none';
+            };
+            bgImg.onload = () => console.log('[Kiosk] background.png loaded successfully');
+        }
         
         // ========== AUTO-RESET AFTER 60 SECONDS INACTIVITY ==========
         let idleTimer = null;
-        const INACTIVITY_LIMIT = 60000; // 60 seconds
+        const INACTIVITY_LIMIT = 60000;
         
-        // Function to reset the kiosk back to splash screen
         function fullResetToStart() {
-            // Clear search input
             if (searchInput) searchInput.value = '';
-            // If inventory loaded, reset filtered display
             if (inventoryLoaded && allRecords.length) {
                 filteredRecords = [...allRecords];
                 displayRecords(filteredRecords);
             }
-            // Show splash screen, hide inventory view
             showSplashScreen();
-            // Blur any focused input
             if (document.activeElement === searchInput) searchInput.blur();
-            // Reset idle timer after returning to splash
             resetIdleTimer();
         }
         
-        // Reset the inactivity timer (call on every user interaction)
         function resetIdleTimer() {
             if (idleTimer) clearTimeout(idleTimer);
             idleTimer = setTimeout(() => {
-                // Only auto-reset if inventory view is ACTIVE (not already on splash)
-                // and the splash screen is hidden (meaning user is browsing)
                 const isInventoryActive = resultsViewEl.classList.contains('active-view');
                 const isSplashHidden = splashEl.classList.contains('hide-splash');
                 if (isInventoryActive && isSplashHidden) {
-                    console.log('[Kiosk] Auto-reset after 60s inactivity — returning to splash screen');
+                    console.log('[Kiosk] Auto-reset after 60s inactivity');
                     fullResetToStart();
                 }
             }, INACTIVITY_LIMIT);
         }
         
-        // Listen to all relevant user interactions to reset timer
         const activityEvents = ['touchstart', 'touchend', 'click', 'input', 'scroll'];
-        activityEvents.forEach(eventType => {
-            document.addEventListener(eventType, resetIdleTimer, { passive: true });
-        });
+        activityEvents.forEach(ev => document.addEventListener(ev, resetIdleTimer, { passive: true }));
         
         // ========== GLOBALS ==========
         let allRecords = [];
@@ -509,13 +493,12 @@
         const resultsViewEl = document.getElementById('resultsView');
         const searchInput = document.getElementById('searchInput');
         const resultsContainer = document.getElementById('resultsContainer');
-        const touchCard = document.getElementById('touchToStartBtn');
+        const pigBtn = document.getElementById('pigFullscreenBtn');
         const resetBtn = document.getElementById('resetKioskBtn');
         
         let inventoryLoaded = false;
         let isLoadingAttempt = false;
         
-        // Show splash screen (attention mode)
         function showSplashScreen() {
             if (searchInput) searchInput.value = '';
             resultsViewEl.classList.remove('active-view');
@@ -526,7 +509,6 @@
             }
         }
         
-        // Show inventory view (search mode)
         function showInventoryView() {
             splashEl.classList.add('hide-splash');
             resultsViewEl.classList.add('active-view');
@@ -540,11 +522,10 @@
                     filterRecords(searchInput.value);
                 }
             }
-            // Reset timer when entering inventory view
             resetIdleTimer();
         }
         
-        // LOAD INVENTORY (safe, same-origin)
+        // LOAD INVENTORY
         async function loadRecords() {
             if (isLoadingAttempt) return;
             isLoadingAttempt = true;
@@ -555,7 +536,7 @@
                     baseUrl = AppConfig.baseUrl;
                 }
                 const url = `${baseUrl}/catalog/records`;
-                console.log('[Kiosk] Fetching inventory:', url);
+                console.log('[Kiosk] Fetching:', url);
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
@@ -568,17 +549,16 @@
                     throw new Error(data.message || 'Invalid data');
                 }
             } catch (err) {
+                console.error(err);
                 resultsContainer.innerHTML = `
                     <div class="no-results">
                         <i class="fas fa-exclamation-triangle"></i>
                         <p>Unable to load collection.<br>${escapeHtml(err.message)}</p>
-                        <button id="retryLoadBtn" style="margin-top: 20px; padding: 12px 28px; background: #ffcd7e; border: none; border-radius: 50px; color: #1e1e2a; font-weight: bold; cursor: pointer;">⟳ RETRY</button>
+                        <button id="retryLoadBtn" style="margin-top:20px; padding:12px 28px; background:#ffcd7e; border:none; border-radius:50px; color:#1e1e2a; font-weight:bold;">⟳ RETRY</button>
                     </div>
                 `;
-                const retryBtn = document.getElementById('retryLoadBtn');
-                if (retryBtn) {
-                    retryBtn.addEventListener('click', () => { isLoadingAttempt = false; loadRecords(); }, { once: true });
-                }
+                const retry = document.getElementById('retryLoadBtn');
+                if (retry) retry.addEventListener('click', () => { isLoadingAttempt = false; loadRecords(); }, { once: true });
             } finally {
                 isLoadingAttempt = false;
             }
@@ -617,9 +597,8 @@
         }
         
         function filterRecords(searchTerm) {
-            if (!searchTerm || searchTerm.trim() === '') {
-                filteredRecords = [...allRecords];
-            } else {
+            if (!searchTerm || searchTerm.trim() === '') filteredRecords = [...allRecords];
+            else {
                 const term = searchTerm.toLowerCase().trim();
                 filteredRecords = allRecords.filter(r => (r.artist || '').toLowerCase().includes(term) || (r.title || '').toLowerCase().includes(term));
             }
@@ -631,58 +610,59 @@
             if (!inventoryLoaded) return;
             clearTimeout(debounce);
             debounce = setTimeout(() => filterRecords(e.target.value), 280);
-            resetIdleTimer(); // user typing resets timer
+            resetIdleTimer();
         });
         
         function escapeHtml(str) { 
             if (!str) return ''; 
             return String(str).replace(/[&<>]/g, function(m) { 
                 if (m === '&') return '&amp;'; 
-                if (m === '<') return '&lt'; 
+                if (m === '<') return '&lt;'; 
                 if (m === '>') return '&gt;'; 
                 return m; 
             }); 
         }
         
-        // ========== EVENT LISTENERS ==========
-        if (touchCard) {
-            touchCard.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
-                showInventoryView(); 
+        // Event listeners for splash (pig image)
+        if (pigBtn) {
+            pigBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showInventoryView();
                 resetIdleTimer();
             });
         }
-        if (splashEl) {
-            splashEl.addEventListener('click', (e) => { 
-                if (e.target === splashEl || splashEl.contains(e.target)) {
-                    showInventoryView(); 
-                    resetIdleTimer();
-                }
-            });
-        }
+        // fallback: entire splash screen click
+        splashEl.addEventListener('click', (e) => {
+            if (e.target === splashEl || splashEl.contains(e.target)) {
+                showInventoryView();
+                resetIdleTimer();
+            }
+        });
+        
         if (resetBtn) {
-            resetBtn.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
-                fullResetToStart(); 
+            resetBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                fullResetToStart();
                 resetIdleTimer();
             });
         }
         
-        // Additional scroll listener to keep timer alive while browsing
         resultsViewEl.addEventListener('scroll', () => resetIdleTimer(), { passive: true });
         
-        // ========== INITIAL STATE ==========
+        // initial state
         resultsViewEl.classList.remove('active-view');
         splashEl.classList.remove('hide-splash');
-        
-        // Start idle timer from beginning (splash screen counts as idle? We'll start timer but reset only matters when inventory active)
         resetIdleTimer();
         
-        // Extra fullscreen attempt on any tap after load (keeps address bar hidden)
-        const forceFullscreen = () => requestFullscreenIfNeeded();
-        document.body.addEventListener('touchstart', forceFullscreen, { passive: true });
+        // extra fullscreen call
+        document.body.addEventListener('touchstart', () => requestFullscreenIfNeeded(), { passive: true });
         
-        console.log('[Kiosk] Ready — Touch to Search screen. Auto-reset to splash after 60 seconds inactivity.');
+        // landscape check: if orientation changes, we keep fullscreen layout robust
+        window.addEventListener('resize', () => { 
+            requestFullscreenIfNeeded(); 
+        });
+        
+        console.log('[Kiosk] Landscape mode ready — pig fills screen, touch to search on pig. Background.png fallback active.');
     })();
 </script>
 </body>
