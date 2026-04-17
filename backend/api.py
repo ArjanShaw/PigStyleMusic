@@ -3125,6 +3125,87 @@ def get_dropoff_records():
     return jsonify({'status': 'success', 'records': records_list})
 
 
+@app.route('/api/price-estimate', methods=['POST'])
+def price_estimate():
+    """Get price estimate for a record"""
+    try:
+        data = request.json
+        artist = data.get('artist')
+        title = data.get('title')
+        condition = data.get('condition')
+        discogs_genre = data.get('discogs_genre', '')
+        discogs_id = data.get('discogs_id', '')
+        discogs_format = data.get('discogs_format', '')
+        
+        app.logger.info(f"Price estimate called: {artist} - {title} - Condition: {condition}")
+        
+        # Simple price estimation logic
+        condition_prices = {
+            'Mint': 34.99,
+            'Near Mint': 29.99,
+            'Very Good Plus': 24.99,
+            'Very Good': 19.99,
+            'Good Plus': 14.99,
+            'Good': 11.99,
+            'Fair': 7.99,
+            'Poor': 4.99
+        }
+        
+        # Find matching condition
+        estimated_price = 19.99  # default
+        for cond, price in condition_prices.items():
+            if cond.lower() in condition.lower():
+                estimated_price = price
+                break
+        
+        # Round down to nearest .99
+        import math
+        dollars = math.floor(estimated_price)
+        cents = estimated_price - dollars
+        
+        if abs(cents - 0.99) < 0.01:
+            rounded_price = estimated_price
+        elif dollars == 0:
+            rounded_price = 0.99
+        else:
+            rounded_price = (dollars - 1) + 0.99
+        
+        min_price = 1.99
+        if rounded_price < min_price:
+            rounded_price = min_price
+        
+        return jsonify({
+            'status': 'success',
+            'success': True,
+            'estimated_price': rounded_price,
+            'original_estimated_price': estimated_price,
+            'rounded_price': rounded_price,
+            'minimum_price': min_price,
+            'price': rounded_price,
+            'price_source': 'estimated',
+            'calculation': [
+                f"Base price for {condition}: ${estimated_price:.2f}",
+                f"Rounded to nearest .99: ${rounded_price:.2f}"
+            ],
+            'ebay_summary': {},
+            'ebay_listings': [],
+            'ebay_listings_count': 0
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Price estimate error: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'success': False,
+            'error': str(e),
+            'estimated_price': 19.99,
+            'rounded_price': 19.99,
+            'minimum_price': 1.99,
+            'calculation': [f"Error: {str(e)}"],
+            'ebay_summary': {},
+            'ebay_listings': [],
+            'ebay_listings_count': 0
+        }), 200
 # ==================== CATALOG ENDPOINTS ====================
 
 @app.route('/catalog/records', methods=['GET'])
