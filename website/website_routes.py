@@ -39,7 +39,7 @@ def dashboard():
     return send_from_directory('HTML', 'dashboard.html')
 
 
-@app.route('/merch')
+@app.route('/misch')
 def merchandise():
     # Check if user is logged in and has appropriate role
     # This is a simplified check - you may want to implement proper session checking

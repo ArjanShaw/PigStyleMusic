@@ -3525,7 +3525,7 @@ def upload_accessory_image():
         filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
         file.save(filepath)
         
-        image_url = f"/static/images/merch/{unique_filename}"
+        image_url = f"/static/images/misc/{unique_filename}"
         
         accessory_id = request.form.get('accessory_id')
         if accessory_id:
