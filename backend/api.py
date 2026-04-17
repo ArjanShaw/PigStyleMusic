@@ -1752,11 +1752,29 @@ def api_get_terminals():
         
         for device in devices:
             device_id = device.get('id')
-            status_obj = device.get('status', {})
-            raw_status = status_obj.get('category', 'UNKNOWN')
-            display_status = 'ONLINE' if raw_status == 'AVAILABLE' else 'OFFLINE' if raw_status == 'OFFLINE' else 'UNKNOWN'
             attributes = device.get('attributes', {})
             device_name = attributes.get('name', 'Square Terminal')
+            status_obj = device.get('status', {})
+            raw_status = status_obj.get('category', 'UNKNOWN')
+            
+            # IMPROVED: Check actual connectivity from components
+            components = device.get('components', [])
+            has_active_wifi = False
+            has_active_ethernet = False
+            
+            for component in components:
+                if component.get('type') == 'WIFI':
+                    wifi_details = component.get('wifi_details', {})
+                    if wifi_details.get('active') == True:
+                        has_active_wifi = True
+                elif component.get('type') == 'ETHERNET':
+                    ethernet_details = component.get('ethernet_details', {})
+                    if ethernet_details.get('active') == True:
+                        has_active_ethernet = True
+            
+            # Device is online if it has active network connection OR status is AVAILABLE
+            is_online = (has_active_wifi or has_active_ethernet) or raw_status == 'AVAILABLE'
+            display_status = 'ONLINE' if is_online else 'OFFLINE'
             
             enhanced_devices.append({
                 'id': device_id,
@@ -1764,7 +1782,9 @@ def api_get_terminals():
                 'status': display_status,
                 'raw_status': raw_status,
                 'device_type': attributes.get('type', 'TERMINAL'),
-                'manufacturer': attributes.get('manufacturer', 'Square')
+                'manufacturer': attributes.get('manufacturer', 'Square'),
+                'has_wifi': has_active_wifi,
+                'has_ethernet': has_active_ethernet
             })
         
         return jsonify({'status': 'success', 'terminals': enhanced_devices}), 200
@@ -1772,7 +1792,6 @@ def api_get_terminals():
     except Exception as e:
         app.logger.error(f"Error in api_get_terminals: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
-
 
 @app.route('/api/square/terminal/checkout', methods=['POST'])
 @login_required
