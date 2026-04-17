@@ -45,12 +45,19 @@ def merchandise():
     # This is a simplified check - you may want to implement proper session checking
     return send_from_directory('HTML', 'merchandise.html')
 
-
 @app.route('/shop')
 def shop():
     # Check if user is logged in and has appropriate role
     # This is a simplified check - you may want to implement proper session checking
     return send_from_directory('HTML', 'shopping.html')
+      
+ 
+
+@app.route('/misc')
+def misc():
+    # Check if user is logged in and has appropriate role
+    # This is a simplified check - you may want to implement proper session checking
+    return send_from_directory('HTML', 'misc.html')
       
 @app.route('/youtube-linker')
 def youtube_linker():
