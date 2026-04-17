@@ -1968,7 +1968,7 @@
         </a>
         <div style="display: flex; gap: 20px; align-items: center;">
              <a href="/shop" style="color: white; text-decoration: none;">Browse</a>
-            <a href="/merch" style="color: white; text-decoration: none;">Merch</a>
+            <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
             <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
             
@@ -1992,6 +1992,9 @@
             </div>
             <div class="tab" data-tab="discogs">
                 <i class="fab fa-discogs"></i> Discogs
+            </div>
+            <div class="tab" data-tab="accessories">
+                <i class="fas fa-tshirt"></i> Accessories
             </div>
             <div class="tab" data-tab="receipts">
                 <i class="fas fa-receipt"></i> Receipts
@@ -2092,7 +2095,118 @@
                 </div>
             </div>
         </div>
+         
+        <!-- Accessories Tab -->
+<div id="accessories-tab" class="tab-content">
+    <h2><i class="fas fa-tshirt"></i> Accessories Management</h2>
+    
+    <!-- Status Message -->
+    <div id="accessories-status" class="status-message" style="display: none;"></div>
+    
+    <!-- Add New Accessory Form -->
+    <div class="user-form-section" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+        <h3 style="margin-bottom: 20px;"><i class="fas fa-plus-circle"></i> Add New Accessory</h3>
         
+        <div class="user-form-grid">
+            <div class="user-form-group">
+                <label for="accessory-title">Title *</label>
+                <input type="text" id="accessory-title" placeholder="e.g., PigStyle T-Shirt - Black">
+            </div>
+            <div class="user-form-group">
+                <label for="accessory-price">Price ($) *</label>
+                <input type="number" id="accessory-price" step="0.01" min="0" placeholder="24.99">
+            </div>
+            <div class="user-form-group">
+                <label for="accessory-description">Description</label>
+                <textarea id="accessory-description" rows="3" placeholder="Detailed description of the item..." style="width: 100%; padding: 10px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.95);"></textarea>
+            </div>
+            <div class="user-form-group">
+                <label for="accessory-image-url">Image URL (or upload below)</label>
+                <input type="text" id="accessory-image-url" placeholder="/static/images/merch/item.jpg">
+            </div>
+            <div class="user-form-group">
+                <label for="accessory-image-file">Upload Image</label>
+                <input type="file" id="accessory-image-file" accept="image/*" onchange="previewImage(this)">
+                <button type="button" class="btn btn-info btn-small" onclick="uploadAccessoryImage()" style="margin-top: 10px; width: 100%;">
+                    <i class="fas fa-cloud-upload-alt"></i> Upload Image
+                </button>
+                <div id="image-preview" style="margin-top: 10px; display: none;"></div>
+            </div>
+        </div>
+        
+        <div class="action-buttons" style="justify-content: flex-start;">
+            <button class="btn btn-success" onclick="createAccessory()">
+                <i class="fas fa-save"></i> Create Accessory
+            </button>
+            <button class="btn btn-secondary" onclick="clearAccessoryForm()">
+                <i class="fas fa-times"></i> Clear Form
+            </button>
+        </div>
+    </div>
+    
+    <!-- Stats Cards -->
+    <div class="stats-grid" style="margin-bottom: 20px; margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+            <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Accessories</h3>
+            <p class="stat-number" id="total-accessories" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+            <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Active Items</h3>
+            <p class="stat-number" id="active-accessories" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+            <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Avg. Price</h3>
+            <p class="stat-number" id="avg-accessory-price" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">$0.00</p>
+        </div>
+    </div>
+    
+    <!-- Search Section -->
+    <div class="search-section" style="margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px;">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" 
+                           id="accessory-search" 
+                           class="search-input" 
+                           placeholder="Search by title or description..."
+                           style="flex: 1;">
+                    <button class="btn btn-primary" onclick="searchAccessories()">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadAccessories()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Accessories Table -->
+    <div class="records-table-container">
+        <table class="records-table" id="accessories-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Image</th>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Price</th>
+                    <th>Barcode</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </thead>
+            <tbody id="accessories-body">
+                <td colspan="8" style="text-align:center; padding:40px;">Loading accessories...</td>
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="loading" id="accessories-loading" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>Loading...</p>
+    </div>
+</div>
+
         <!-- Check Out Tab -->
         <div id="check-out-tab" class="tab-content">
             <h2><i class="fas fa-shopping-cart"></i> Check Out</h2>
@@ -3918,6 +4032,7 @@
     <script src="/static/js/discogs.js"></script>
     <script src="/static/js/square-payments.js"></script>
     <script src="/static/js/gift-cards.js"></script>
+    <script src="/static/js/accessories-manager.js"></script>
 
     <script>
     // Starting position variables for price tags

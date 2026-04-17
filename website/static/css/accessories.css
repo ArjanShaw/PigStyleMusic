@@ -1,0 +1,213 @@
+/* Accessories Store Front Styles - Matching shopping.css */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #0a0a0a;
+    color: #fff;
+    min-height: 100vh;
+}
+
+/* Navbar Styles */
+nav {
+    background: #000;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    border-bottom: 2px solid #ff6b6b;
+}
+
+nav a {
+    color: white;
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+nav a:hover {
+    color: #ff6b6b;
+}
+
+/* Background Container */
+.background-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    overflow: hidden;
+}
+
+.background-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.background-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+/* Catalog Grid */
+.catalog-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px 20px 40px 20px;
+    position: relative;
+    z-index: 1;
+}
+
+.merch-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 30px;
+}
+
+/* Card styling - Matching shopping page cards */
+.merch-card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.3s, box-shadow 0.3s;
+    border: none;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.merch-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.merch-image {
+    width: 100%;
+    height: 250px;
+    background: #f5f5f5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.merch-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.default-merch-bg {
+    background: linear-gradient(135deg, #e0e0e0, #cccccc);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.default-merch-bg::after {
+    content: '\f07a';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 48px;
+    color: #999;
+}
+
+.merch-info {
+    padding: 20px;
+}
+
+.merch-info h3 {
+    font-size: 18px;
+    margin-bottom: 10px;
+    color: #333;
+    font-weight: 600;
+}
+
+.merch-price {
+    font-size: 24px;
+    font-weight: bold;
+    color: #28a745;
+}
+
+.merch-description {
+    color: #666;
+    font-size: 14px;
+    margin-top: 10px;
+    line-height: 1.4;
+}
+
+/* Loading Animation */
+.loading {
+    text-align: center;
+    padding: 60px;
+    color: white;
+}
+
+.loading-dots {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.loading-dots div {
+    width: 12px;
+    height: 12px;
+    background: #ff6b6b;
+    border-radius: 50%;
+    animation: bounce 0.5s ease-in-out infinite;
+}
+
+.loading-dots div:nth-child(2) { animation-delay: 0.1s; }
+.loading-dots div:nth-child(3) { animation-delay: 0.2s; }
+.loading-dots div:nth-child(4) { animation-delay: 0.3s; }
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+/* Error Message */
+.error-message {
+    text-align: center;
+    padding: 60px;
+    background: white;
+    border-radius: 12px;
+    color: #333;
+}
+
+.error-message i {
+    font-size: 48px;
+    color: #dc3545;
+    margin-bottom: 20px;
+}
+
+.retry-btn {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 20px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .merch-gallery {
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 20px;
+    }
+}

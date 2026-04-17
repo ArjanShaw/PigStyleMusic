@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <link rel="icon" href="/static/images/PigStyle.ico">
+    <title>Merchandise - PigStyle Records</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/accessories.css">
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav>
+        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
+            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+            <span>PigStyle Records</span>
+        </a>
+        <div style="display: flex; gap: 20px; align-items: center;">
+            <a href="/shop">Browse</a>
+            <a href="/merchandise" style="color: #ff6b6b; font-weight: bold;">Merch</a>
+            <a href="/streaming">Stream</a>
+            <a href="/connect">Connect</a>
+            <div id="auth-section"></div>
+        </div>
+    </nav>
+
+    <!-- Add padding to account for fixed navbar -->
+    <div style="padding-top: 60px;"></div>
+
+    <!-- Background Image -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+
+    <div class="catalog-container" id="catalogContainer">
+        <div class="loading">
+            <div class="loading-dots">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <p>Loading merchandise...</p>
+        </div>
+    </div>
+
+    <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/merchandise-store.js"></script>
+</body>
+</html>
