@@ -154,7 +154,7 @@ async function uploadAccessoryImage(accessoryId = null) {
     const file = fileInput.files[0];
     
     if (!file) {
-        showStatus('Please select an image file first', 'error');
+        showStatusMessage('Please select an image file first', 'error');
         return null;
     }
     
@@ -165,7 +165,7 @@ async function uploadAccessoryImage(accessoryId = null) {
     }
     
     try {
-        showStatus('Uploading image...', 'info');
+        showStatusMessage('Uploading image...', 'info');
         
         const response = await fetch(`${AppConfig.baseUrl}/accessories/upload-image`, {
             method: 'POST',
@@ -178,15 +178,13 @@ async function uploadAccessoryImage(accessoryId = null) {
         const result = await response.json();
         
         if (result.status === 'success') {
-            showStatus('Image uploaded successfully!', 'success');
+            showStatusMessage('Image uploaded successfully!', 'success');
             
-            // Update image URL field
             const imageUrlInput = document.getElementById('accessory-image-url');
             if (imageUrlInput) {
                 imageUrlInput.value = result.image_url;
             }
             
-            // Clear file input and preview
             fileInput.value = '';
             const preview = document.getElementById('image-preview');
             if (preview) {
@@ -201,7 +199,7 @@ async function uploadAccessoryImage(accessoryId = null) {
         
     } catch (error) {
         console.error('Error uploading image:', error);
-        showStatus(`Error: ${error.message}`, 'error');
+        showStatusMessage(`Error: ${error.message}`, 'error');
         return null;
     }
 }
@@ -214,12 +212,12 @@ async function createAccessory() {
     const image_url = document.getElementById('accessory-image-url')?.value.trim();
     
     if (!title) {
-        showStatus('Please enter a title', 'error');
+        showStatusMessage('Please enter a title', 'error');
         return;
     }
     
     if (isNaN(price) || price <= 0) {
-        showStatus('Please enter a valid price greater than 0', 'error');
+        showStatusMessage('Please enter a valid price greater than 0', 'error');
         return;
     }
     
@@ -239,7 +237,7 @@ async function createAccessory() {
         const result = await response.json();
         
         if (result.status === 'success') {
-            showStatus('Accessory created successfully!', 'success');
+            showStatusMessage('Accessory created successfully!', 'success');
             clearAccessoryForm();
             loadAccessories();
         } else {
@@ -248,7 +246,7 @@ async function createAccessory() {
         
     } catch (error) {
         console.error('Error creating accessory:', error);
-        showStatus(`Error: ${error.message}`, 'error');
+        showStatusMessage(`Error: ${error.message}`, 'error');
     }
 }
 
@@ -301,7 +299,6 @@ function editAccessory(id) {
     if (descInput) descInput.value = accessory.description || '';
     if (imageInput) imageInput.value = accessory.image_url || '';
     
-    // Clear file input and preview
     if (fileInput) fileInput.value = '';
     if (preview) {
         if (accessory.image_url) {
@@ -313,7 +310,6 @@ function editAccessory(id) {
         }
     }
     
-    // Change button to update mode
     const createBtn = document.querySelector('#accessories-tab .btn-success');
     if (createBtn) {
         createBtn.innerHTML = '<i class="fas fa-save"></i> Update Accessory';
@@ -321,7 +317,6 @@ function editAccessory(id) {
         createBtn.setAttribute('data-update-id', id);
     }
     
-    // Add cancel button if not exists
     if (!document.getElementById('cancel-update-btn')) {
         const cancelBtn = document.createElement('button');
         cancelBtn.id = 'cancel-update-btn';
@@ -335,7 +330,6 @@ function editAccessory(id) {
         }
     }
     
-    // Scroll to form
     const formSection = document.querySelector('#accessories-tab .user-form-section');
     if (formSection) formSection.scrollIntoView({ behavior: 'smooth' });
 }
@@ -348,12 +342,12 @@ async function updateAccessory(id) {
     const image_url = document.getElementById('accessory-image-url')?.value.trim();
     
     if (!title) {
-        showStatus('Please enter a title', 'error');
+        showStatusMessage('Please enter a title', 'error');
         return;
     }
     
     if (isNaN(price) || price <= 0) {
-        showStatus('Please enter a valid price greater than 0', 'error');
+        showStatusMessage('Please enter a valid price greater than 0', 'error');
         return;
     }
     
@@ -373,7 +367,7 @@ async function updateAccessory(id) {
         const result = await response.json();
         
         if (result.status === 'success') {
-            showStatus('Accessory updated successfully!', 'success');
+            showStatusMessage('Accessory updated successfully!', 'success');
             clearAccessoryForm();
             loadAccessories();
         } else {
@@ -382,7 +376,7 @@ async function updateAccessory(id) {
         
     } catch (error) {
         console.error('Error updating accessory:', error);
-        showStatus(`Error: ${error.message}`, 'error');
+        showStatusMessage(`Error: ${error.message}`, 'error');
     }
 }
 
@@ -410,7 +404,7 @@ async function deleteAccessory(id) {
         const result = await response.json();
         
         if (result.status === 'success') {
-            showStatus('Accessory deleted successfully!', 'success');
+            showStatusMessage('Accessory deleted successfully!', 'success');
             loadAccessories();
         } else {
             throw new Error(result.error || 'Failed to delete accessory');
@@ -418,7 +412,7 @@ async function deleteAccessory(id) {
         
     } catch (error) {
         console.error('Error deleting accessory:', error);
-        showStatus(`Error: ${error.message}`, 'error');
+        showStatusMessage(`Error: ${error.message}`, 'error');
     }
 }
 
@@ -443,7 +437,7 @@ async function regenerateAccessoryBarcode(id) {
         const result = await response.json();
         
         if (result.status === 'success') {
-            showStatus(`New barcode generated: ${result.new_barcode}`, 'success');
+            showStatusMessage(`New barcode generated: ${result.new_barcode}`, 'success');
             loadAccessories();
         } else {
             throw new Error(result.error || 'Failed to regenerate barcode');
@@ -451,7 +445,7 @@ async function regenerateAccessoryBarcode(id) {
         
     } catch (error) {
         console.error('Error regenerating barcode:', error);
-        showStatus(`Error: ${error.message}`, 'error');
+        showStatusMessage(`Error: ${error.message}`, 'error');
     }
 }
 
@@ -484,14 +478,14 @@ async function searchAccessories() {
         
         if (data.status === 'success') {
             renderAccessoriesTable(data.accessories);
-            showStatus(`Found ${data.count} results for "${query}"`, 'success');
+            showStatusMessage(`Found ${data.count} results for "${query}"`, 'success');
         } else {
             throw new Error(data.error || 'Search failed');
         }
         
     } catch (error) {
         console.error('Error searching accessories:', error);
-        showStatus(`Error: ${error.message}`, 'error');
+        showStatusMessage(`Error: ${error.message}`, 'error');
     } finally {
         if (loading) loading.style.display = 'none';
     }
@@ -504,31 +498,48 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function showStatus(message, type) {
-    // Use existing showStatus function or create one
-    if (typeof window.showStatus === 'function') {
+// FIXED: No recursion - direct alert fallback
+function showStatusMessage(message, type) {
+    console.log(`${type.toUpperCase()}: ${message}`);
+    
+    // Try to use existing showStatus if available (from utils.js)
+    if (typeof window.showStatus === 'function' && window.showStatus !== showStatusMessage) {
         window.showStatus(message, type);
-    } else {
-        console.log(`${type}: ${message}`);
-        // Create a temporary status message
-        const statusDiv = document.getElementById('accessories-status');
-        if (statusDiv) {
-            statusDiv.textContent = message;
-            statusDiv.className = `status-message status-${type}`;
-            statusDiv.style.display = 'block';
-            setTimeout(() => {
-                statusDiv.style.display = 'none';
-            }, 3000);
-        } else {
-            alert(message);
-        }
+        return;
     }
+    
+    // Fallback: create a temporary status div
+    let statusDiv = document.getElementById('accessories-status');
+    if (!statusDiv) {
+        statusDiv = document.createElement('div');
+        statusDiv.id = 'accessories-status';
+        statusDiv.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 10000; padding: 12px 20px; border-radius: 8px; font-size: 14px; display: none;';
+        document.body.appendChild(statusDiv);
+    }
+    
+    // Set colors based on type
+    if (type === 'error') {
+        statusDiv.style.backgroundColor = '#dc3545';
+        statusDiv.style.color = 'white';
+    } else if (type === 'success') {
+        statusDiv.style.backgroundColor = '#28a745';
+        statusDiv.style.color = 'white';
+    } else {
+        statusDiv.style.backgroundColor = '#17a2b8';
+        statusDiv.style.color = 'white';
+    }
+    
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+    
+    setTimeout(() => {
+        statusDiv.style.display = 'none';
+    }, 3000);
 }
 
 // Auto-load when tab is shown
 if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
-        // Check if accessories tab is active on load
         const accessoriesTab = document.querySelector('#accessories-tab');
         if (accessoriesTab && accessoriesTab.style.display !== 'none') {
             loadAccessories();
