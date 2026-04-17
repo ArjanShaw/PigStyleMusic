@@ -3802,5 +3802,124 @@ def merchandise_page():
     return send_from_directory('static', 'accessories.html')
 
 
+# Add after your existing batch endpoints (around line 3200+)
+
+@app.route('/api/batches/current-active', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_current_active_batch():
+    """Get the currently active batch"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM batches 
+            WHERE status = 'active' 
+            ORDER BY start_datetime DESC 
+            LIMIT 1
+        ''')
+        
+        batch = cursor.fetchone()
+        conn.close()
+        
+        if batch:
+            return jsonify({
+                'status': 'success',
+                'has_active': True,
+                'batch': dict(batch)
+            })
+        else:
+            return jsonify({
+                'status': 'success',
+                'has_active': False
+            })
+            
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/discogs/search', methods=['GET'])
+def discogs_search():
+    """Search Discogs API - alias for search-release"""
+    # Reuse your existing search-release logic
+    search_term = request.args.get('q', '')
+    
+    if not search_term:
+        return jsonify({'status': 'error', 'error': 'Search term required'}), 400
+    
+    # Forward to your existing search-release endpoint logic
+    # Or implement Discogs search here
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+        
+        headers = {'Authorization': f'Discogs token={TOKEN}', 'User-Agent': 'PigStyleMusic/1.0'}
+        
+        response = requests.get(
+            'https://api.discogs.com/database/search',
+            headers=headers,
+            params={'q': search_term, 'type': 'release', 'per_page': 20}
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'status': 'error', 'error': 'Discogs search failed'}), response.status_code
+        
+        data = response.json()
+        results = []
+        
+        for item in data.get('results', []):
+            results.append({
+                'artist': item.get('artist', 'Unknown'),
+                'title': item.get('title', 'Unknown'),
+                'year': item.get('year'),
+                'genre': item.get('genre', [''])[0] if item.get('genre') else '',
+                'format': item.get('format', [''])[0] if item.get('format') else '',
+                'country': item.get('country'),
+                'image_url': item.get('thumb', ''),
+                'catalog_number': item.get('catno', ''),
+                'discogs_id': item.get('id'),
+                'barcode': ''  # Discogs search doesn't return barcode directly
+            })
+        
+        return jsonify({'status': 'success', 'results': results})
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/artist-genre/<artist_name>', methods=['PUT'])
+@login_required
+def update_artist_genre(artist_name):
+    """Update artist-genre mapping"""
+    try:
+        data = request.get_json()
+        genre_id = data.get('genre_id')
+        
+        if not genre_id:
+            return jsonify({'status': 'error', 'error': 'genre_id required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE artist_genre 
+            SET genre_id = ? 
+            WHERE artist = ?
+        ''', (genre_id, artist_name))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Artist not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success', 'message': 'Artist genre updated'})
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
