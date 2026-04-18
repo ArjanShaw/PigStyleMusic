@@ -3127,9 +3127,16 @@ def get_dropoff_records():
 
 @app.route('/api/price-estimate', methods=['POST'])
 def price_estimate():
-    """Get price estimate for a record"""
+    """Get price estimate for a record using Discogs and eBay APIs"""
     try:
         data = request.json
+        
+        # Validate required fields
+        required_fields = ['artist', 'title', 'condition']
+        for field in required_fields:
+            if not data.get(field):
+                raise ValueError(f"Missing required field: {field}")
+        
         artist = data.get('artist')
         title = data.get('title')
         condition = data.get('condition')
@@ -3137,76 +3144,146 @@ def price_estimate():
         discogs_id = data.get('discogs_id', '')
         discogs_format = data.get('discogs_format', '')
         
-        app.logger.info(f"Price estimate called: {artist} - {title} - Condition: {condition}")
+        app.logger.info(f"Price estimate called: {artist} - {title} - Condition: {condition} - Format: {discogs_format} - Discogs ID: {discogs_id}")
         
-        # Simple price estimation logic
-        condition_prices = {
-            'Mint': 34.99,
-            'Near Mint': 29.99,
-            'Very Good Plus': 24.99,
-            'Very Good': 19.99,
-            'Good Plus': 14.99,
-            'Good': 11.99,
-            'Fair': 7.99,
-            'Poor': 4.99
-        }
+        # Validate that we have a Discogs ID (required for price estimation)
+        if not discogs_id:
+            raise ValueError("Discogs ID is required for price estimation. Please search for the record first.")
         
-        # Find matching condition
-        estimated_price = 19.99  # default
-        for cond, price in condition_prices.items():
-            if cond.lower() in condition.lower():
-                estimated_price = price
-                break
+        # Get credentials from environment
+        discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
+        if not discogs_token:
+            raise RuntimeError("DISCOGS_USER_TOKEN not configured in environment")
         
-        # Round down to nearest .99
-        import math
-        dollars = math.floor(estimated_price)
-        cents = estimated_price - dollars
+        ebay_client_id = os.environ.get('EBAY_CLIENT_ID')
+        ebay_client_secret = os.environ.get('EBAY_CLIENT_SECRET')
         
-        if abs(cents - 0.99) < 0.01:
-            rounded_price = estimated_price
-        elif dollars == 0:
-            rounded_price = 0.99
-        else:
-            rounded_price = (dollars - 1) + 0.99
+        # Initialize the PriceAdviseHandler
+        price_advisor = PriceAdviseHandler(
+            discogs_token=discogs_token,
+            ebay_client_id=ebay_client_id,
+            ebay_client_secret=ebay_client_secret
+        )
         
-        min_price = 1.99
-        if rounded_price < min_price:
-            rounded_price = min_price
+        # Get price estimate from Discogs and eBay
+        result = price_advisor.get_price_estimate(
+            artist=artist,
+            title=title,
+            selected_condition=condition,
+            discogs_genre=discogs_genre,
+            discogs_id=discogs_id,
+            discogs_format=discogs_format
+        )
         
-        return jsonify({
+        # Check if the estimate was successful
+        if not result.get('success'):
+            error_msg = result.get('error', 'Price estimation failed')
+            raise RuntimeError(f"Price estimation failed: {error_msg}")
+        
+        # Check if we got a valid price
+        estimated_price = result.get('estimated_price')
+        if estimated_price is None or estimated_price <= 0:
+            raise RuntimeError(f"No valid price estimate received. Discogs price: {result.get('discogs_price')}, eBay price: {result.get('ebay_price')}")
+        
+        # Get minimum price from config (this is a store setting, not a fallback)
+        min_price = None
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('MIN_STORE_PRICE',))
+            row = cursor.fetchone()
+            if row:
+                min_price = float(row['config_value'])
+            conn.close()
+        except Exception as e:
+            app.logger.error(f"Failed to load MIN_STORE_PRICE: {e}")
+            raise RuntimeError("Store minimum price configuration not found")
+        
+        if min_price is None:
+            raise RuntimeError("MIN_STORE_PRICE not configured in database")
+        
+        # Round DOWN to nearest .99 (store pricing rule)
+        def round_down_to_99(price):
+            """Round any price DOWN to nearest .99 below it"""
+            import math
+            price_float = float(price)
+            dollars = math.floor(price_float)
+            cents = price_float - dollars
+            if abs(cents - 0.99) < 0.01:
+                return dollars + 0.99
+            if dollars == 0:
+                return 0.99
+            return (dollars - 1) + 0.99
+        
+        rounded_price = round_down_to_99(estimated_price)
+        
+        # Apply minimum price (store rule)
+        final_price = max(rounded_price, min_price)
+        
+        # Build calculation steps from the handler's result
+        calculation_steps = result.get('calculation_steps', [])
+        if not calculation_steps:
+            calculation_steps = result.get('calculation', [])
+        
+        # Add rounding information to calculation steps
+        if estimated_price != final_price:
+            calculation_steps.append(f"Original estimated price: ${estimated_price:.2f}")
+            calculation_steps.append(f"Rounded DOWN to nearest .99: ${rounded_price:.2f}")
+        if final_price == min_price and estimated_price < min_price:
+            calculation_steps.append(f"Minimum store price ${min_price:.2f} applied")
+        
+        # Prepare response
+        response_data = {
             'status': 'success',
             'success': True,
-            'estimated_price': rounded_price,
+            'estimated_price': final_price,
             'original_estimated_price': estimated_price,
             'rounded_price': rounded_price,
             'minimum_price': min_price,
-            'price': rounded_price,
-            'price_source': 'estimated',
-            'calculation': [
-                f"Base price for {condition}: ${estimated_price:.2f}",
-                f"Rounded to nearest .99: ${rounded_price:.2f}"
-            ],
-            'ebay_summary': {},
-            'ebay_listings': [],
-            'ebay_listings_count': 0
-        })
+            'price': final_price,
+            'price_source': result.get('price_source', 'unknown'),
+            'calculation': calculation_steps,
+            'ebay_summary': result.get('ebay_summary', {}),
+            'ebay_listings': result.get('ebay_listings', []),
+            'ebay_listings_count': len(result.get('ebay_listings', [])),
+            'discogs_price': result.get('discogs_price'),
+            'ebay_price': result.get('ebay_price'),
+            'price_discrepancy_warning': result.get('price_discrepancy_warning', False),
+            'warning_message': result.get('warning_message', '')
+        }
         
-    except Exception as e:
-        app.logger.error(f"Price estimate error: {str(e)}")
+        return jsonify(response_data)
+        
+    except ValueError as e:
+        # Validation errors (missing required fields, etc.)
+        app.logger.error(f"Price estimate validation error: {str(e)}")
         return jsonify({
             'status': 'error',
             'success': False,
             'error': str(e),
-            'estimated_price': 19.99,
-            'rounded_price': 19.99,
-            'minimum_price': 1.99,
-            'calculation': [f"Error: {str(e)}"],
-            'ebay_summary': {},
-            'ebay_listings': [],
-            'ebay_listings_count': 0
-        }), 200
-# ==================== CATALOG ENDPOINTS ====================
+            'error_type': 'validation_error'
+        }), 400
+        
+    except RuntimeError as e:
+        # Configuration or business logic errors
+        app.logger.error(f"Price estimate runtime error: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'success': False,
+            'error': str(e),
+            'error_type': 'configuration_error'
+        }), 500
+        
+    except Exception as e:
+        # Unexpected errors
+        app.logger.error(f"Price estimate unexpected error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'success': False,
+            'error': f"Unexpected error: {str(e)}",
+            'error_type': 'unexpected_error'
+        }), 500
 
 @app.route('/catalog/records', methods=['GET'])
 def get_catalog_records():
