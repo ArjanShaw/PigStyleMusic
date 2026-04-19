@@ -3285,6 +3285,167 @@ def price_estimate():
             'error_type': 'unexpected_error'
         }), 500
 
+@app.route('/api/discogs/price-suggestions/<release_id>', methods=['GET'])
+def discogs_price_suggestions_proxy(release_id):
+    """Proxy endpoint to fetch Discogs price suggestions"""
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+        
+        headers = {
+            'Authorization': f'Discogs token={TOKEN}',
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
+        
+        url = f"https://api.discogs.com/marketplace/price_suggestions/{release_id}"
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            return jsonify({'status': 'error', 'error': f'Discogs API returned {response.status_code}'}), response.status_code
+        
+        return jsonify(response.json())
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/ebay/search', methods=['POST'])
+def ebay_search_proxy():
+    """Proxy endpoint to search eBay listings"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'query' not in data:
+            return jsonify({'status': 'error', 'error': 'query required'}), 400
+        
+        search_query = data.get('query')
+        limit = data.get('limit', 50)
+        
+        ebay_client_id = os.environ.get('EBAY_CLIENT_ID')
+        ebay_client_secret = os.environ.get('EBAY_CLIENT_SECRET')
+        
+        if not ebay_client_id or not ebay_client_secret:
+            return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
+        
+        # Get OAuth token
+        token_url = "https://api.ebay.com/identity/v1/oauth2/token"
+        token_headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        token_data = {
+            'grant_type': 'client_credentials',
+            'scope': 'https://api.ebay.com/oauth/api_scope'
+        }
+        
+        token_response = requests.post(
+            token_url, 
+            headers=token_headers, 
+            data=token_data, 
+            auth=(ebay_client_id, ebay_client_secret), 
+            timeout=10
+        )
+        
+        if token_response.status_code != 200:
+            return jsonify({'status': 'error', 'error': 'Failed to get eBay access token'}), 500
+        
+        access_token = token_response.json().get('access_token')
+        
+        # Search eBay
+        search_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        params = {
+            'q': search_query,
+            'limit': limit,
+            'filter': 'conditions:{NEW|USED}',
+            'sort': 'price'
+        }
+        
+        response = requests.get(search_url, headers=headers, params=params, timeout=15)
+        
+        if response.status_code != 200:
+            return jsonify({
+                'status': 'error',
+                'error': f'eBay API returned {response.status_code}'
+            }), response.status_code
+        
+        return jsonify(response.json())
+        
+    except Exception as e:
+        app.logger.error(f"eBay search error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+        
+@app.route('/api/discogs/search', methods=['GET'])
+def discogs_search_proxy():
+    try:
+        search_term = request.args.get('q', '')
+        
+        if not search_term:
+            return jsonify({'status': 'error', 'error': 'Search term required'}), 400
+        
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+        
+        headers = {
+            'Authorization': f'Discogs token={TOKEN}',
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
+        
+        response = requests.get(
+            'https://api.discogs.com/database/search',
+            headers=headers,
+            params={'q': search_term, 'type': 'release', 'per_page': 20}
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'status': 'error', 'error': 'Discogs search failed'}), response.status_code
+        
+        data = response.json()
+        results = []
+        
+        for item in data.get('results', []):
+            # Get artist from response or extract from title
+            artist = item.get('artist', '')
+            title = item.get('title', '')
+            
+            # If artist is missing or "Unknown", try to extract from title
+            if not artist or artist == 'Unknown':
+                if title and ' - ' in title:
+                    parts = title.split(' - ', 1)
+                    artist = parts[0].strip()
+                    title = parts[1].strip() if len(parts) > 1 else title
+                    print(f"Extracted artist '{artist}' from title")
+            
+            # Handle artist being a list
+            if isinstance(artist, list):
+                artist = artist[0] if artist else 'Unknown'
+            
+            # Final fallback
+            if not artist or artist == 'Unknown':
+                artist = 'Unknown Artist'
+            
+            results.append({
+                'artist': artist,
+                'title': title,
+                'year': item.get('year'),
+                'genre': item.get('genre', [''])[0] if item.get('genre') else '',
+                'format': item.get('format', [''])[0] if item.get('format') else '',
+                'country': item.get('country'),
+                'image_url': item.get('thumb', ''),
+                'catalog_number': item.get('catno', ''),
+                'discogs_id': item.get('id'),
+                'barcode': item.get('barcode', [''])[0] if item.get('barcode') else ''
+            })
+        
+        return jsonify({'status': 'success', 'results': results, 'count': len(results)})
+        
+    except Exception as e:
+        app.logger.error(f"Discogs search error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/catalog/records', methods=['GET'])
 def get_catalog_records():
     try:
