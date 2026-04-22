@@ -2467,12 +2467,13 @@
         </button>
         <div class="filter-group" style="margin-left: auto;">
             <label for="discogs-category"><i class="fas fa-filter"></i> Category:</label>
-            <select id="discogs-category" class="filter-select" onchange="filterByCategory()" disabled style="min-width: 200px; padding: 8px 12px;">
+            <select id="discogs-category" class="filter-select" onchange="filterByCategory()" disabled style="min-width: 250px; padding: 8px 12px;">
                 <option value="">-- Select a category --</option>
                 <option value="discogs_orphans">🗑 Discogs Orphans</option>
-                <option value="local_orphans">⚠ Local Orphans</option>
+                <option value="local_orphans_missing">⚠ Local Orphans (Missing/Deleted)</option>
+                <option value="local_orphans_sold">💰 Sold on Discogs (Needs Local Update)</option>
                 <option value="not_listed">📋 Not Listed (Eligible)</option>
-                <option value="due_reduction">💰 Due for Reduction</option>
+                <option value="due_reduction">📉 Due for Reduction</option>
             </select>
         </div>
     </div>
@@ -2513,7 +2514,8 @@
                     <th style="padding: 12px; text-align: center; background: #007bff; color: white;">Total Records</th>
                     <th style="padding: 12px; text-align: center; background: #28a745; color: white;">Active Records</th>
                     <th style="padding: 12px; text-align: center; background: #dc3545; color: white;">Discogs Orphans</th>
-                    <th style="padding: 12px; text-align: center; background: #ffc107; color: #333;">Local Orphans</th>
+                    <th style="padding: 12px; text-align: center; background: #ffc107; color: #333;">Missing/Deleted</th>
+                    <th style="padding: 12px; text-align: center; background: #28a745; color: white;">Sold on Discogs</th>
                     <th style="padding: 12px; text-align: center; background: #6c757d; color: white;">Not Listed</th>
                     <th style="padding: 12px; text-align: center; background: #fd7e14; color: white;">Due Reduction</th>
                 </thead>
@@ -2522,7 +2524,8 @@
                     <td id="stat-total" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
                     <td id="stat-active" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
                     <td id="stat-discogs-orphans" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
-                    <td id="stat-local-orphans" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                    <td id="stat-local-orphans-missing" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
+                    <td id="stat-local-orphans-sold" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
                     <td id="stat-not-listed" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
                     <td id="stat-due-reduction" style="padding: 15px; text-align: center; font-size: 24px; font-weight: bold;">—</td>
                 </tr>
@@ -2577,11 +2580,13 @@
             <li><strong>Due for Reduction:</strong> Shows listings where current price > calculated price based on age</li>
             <li><strong>Resolve (on Due Reduction):</strong> Applies price reductions to Discogs</li>
             <li><strong>Discogs Orphans:</strong> Delete from Discogs</li>
-            <li><strong>Local Orphans:</strong> Clear discogs_listing_id</li>
+            <li><strong>Missing/Deleted Orphans:</strong> Clear discogs_listing_id from local records (listing not found)</li>
+            <li><strong>Sold on Discogs:</strong> Mark local records as sold (matches Discogs status)</li>
             <li><strong>Not Listed:</strong> Use the search bar to find records, then click <strong>Post</strong> to list individually on Discogs</li>
         </ul>
         <p style="margin-top: 10px;"><strong>Formula:</strong> Current price = store_price × (1 + (markup% - weeks × weekly_reduction%) / 100)</p>
         <p style="margin-top: 10px;"><strong>💡 Tip:</strong> After posting a record, the Discogs URL will appear in the status message and modal log. Click it to verify your listing!</p>
+        <p style="margin-top: 10px;"><strong>🔄 Auto-sync:</strong> Records sold on Discogs are automatically detected and marked as sold in the local database when you refresh data.</p>
     </div>
 </div>
 

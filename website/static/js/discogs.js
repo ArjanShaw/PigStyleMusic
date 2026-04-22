@@ -235,26 +235,30 @@ async function updateStatsTable() {
         const totalRecords = data.stats.total_records;
         const activeRecords = data.stats.active_records;
         
+        // Get counts from cached inventory
         const discogsOrphans = cachedInventory.filter(item => item.type === 'discogs_orphan').length;
-        const localOrphans = cachedInventory.filter(item => item.type === 'local_orphan').length;
+        const localOrphansMissing = cachedInventory.filter(item => item.type === 'local_orphan_missing').length;
+        const localOrphansSold = cachedInventory.filter(item => item.type === 'local_orphan_sold').length;
         const notListed = cachedInventory.filter(item => item.type === 'not_listed').length;
         const dueReduction = cachedInventory.filter(item => item.type === 'both' && item.needs_reduction === true).length;
         
         const statTotal = document.getElementById('stat-total');
         const statActive = document.getElementById('stat-active');
         const statDiscogsOrphans = document.getElementById('stat-discogs-orphans');
-        const statLocalOrphans = document.getElementById('stat-local-orphans');
+        const statLocalOrphansMissing = document.getElementById('stat-local-orphans-missing');
+        const statLocalOrphansSold = document.getElementById('stat-local-orphans-sold');
         const statNotListed = document.getElementById('stat-not-listed');
         const statDueReduction = document.getElementById('stat-due-reduction');
         
         if (statTotal) statTotal.textContent = totalRecords;
         if (statActive) statActive.textContent = activeRecords;
         if (statDiscogsOrphans) statDiscogsOrphans.textContent = discogsOrphans;
-        if (statLocalOrphans) statLocalOrphans.textContent = localOrphans;
+        if (statLocalOrphansMissing) statLocalOrphansMissing.textContent = localOrphansMissing;
+        if (statLocalOrphansSold) statLocalOrphansSold.textContent = localOrphansSold;
         if (statNotListed) statNotListed.textContent = notListed;
         if (statDueReduction) statDueReduction.textContent = dueReduction;
         
-        console.log(`📊 Stats: Total=${totalRecords}, Active=${activeRecords}, DiscogsOrphans=${discogsOrphans}, LocalOrphans=${localOrphans}, NotListed=${notListed}, DueReduction=${dueReduction}`);
+        console.log(`📊 Stats: Total=${totalRecords}, Active=${activeRecords}, DiscogsOrphans=${discogsOrphans}, LocalOrphansMissing=${localOrphansMissing}, LocalOrphansSold=${localOrphansSold}, NotListed=${notListed}, DueReduction=${dueReduction}`);
         
     } catch (error) {
         console.error('Error fetching stats:', error);
@@ -352,6 +356,8 @@ async function loadInitialData() {
         
         console.log(`📦 Cached ${cachedInventory.length} total records from combined inventory`);
         console.log(`📋 Not listed count: ${cachedInventory.filter(item => item.type === 'not_listed').length}`);
+        console.log(`📋 Local orphans missing: ${cachedInventory.filter(item => item.type === 'local_orphan_missing').length}`);
+        console.log(`📋 Local orphans sold: ${cachedInventory.filter(item => item.type === 'local_orphan_sold').length}`);
         
         await updateStatsTable();
         
@@ -360,10 +366,11 @@ async function loadInitialData() {
         if (statusMessage) {
             const totalRecords = cachedInventory.length;
             const discogsOrphans = cachedInventory.filter(item => item.type === 'discogs_orphan').length;
-            const localOrphans = cachedInventory.filter(item => item.type === 'local_orphan').length;
+            const localOrphansMissing = cachedInventory.filter(item => item.type === 'local_orphan_missing').length;
+            const localOrphansSold = cachedInventory.filter(item => item.type === 'local_orphan_sold').length;
             const notListed = cachedInventory.filter(item => item.type === 'not_listed').length;
             
-            statusMessage.innerHTML = `✅ Data loaded. Combined inventory: ${totalRecords} items | Discogs Orphans: ${discogsOrphans} | Local Orphans: ${localOrphans} | Not Listed: ${notListed}`;
+            statusMessage.innerHTML = `✅ Data loaded. Combined inventory: ${totalRecords} items | Discogs Orphans: ${discogsOrphans} | Missing Orphans: ${localOrphansMissing} | Sold Orphans: ${localOrphansSold} | Not Listed: ${notListed}`;
             statusMessage.className = 'status-message status-success';
             statusMessage.style.display = 'block';
             setTimeout(() => { statusMessage.style.display = 'none'; }, 5000);
@@ -409,8 +416,10 @@ window.filterByCategory = function() {
     let categoryFiltered = [];
     if (currentCategory === 'discogs_orphans') {
         categoryFiltered = cachedInventory.filter(item => item.type === 'discogs_orphan');
-    } else if (currentCategory === 'local_orphans') {
-        categoryFiltered = cachedInventory.filter(item => item.type === 'local_orphan');
+    } else if (currentCategory === 'local_orphans_missing') {
+        categoryFiltered = cachedInventory.filter(item => item.type === 'local_orphan_missing');
+    } else if (currentCategory === 'local_orphans_sold') {
+        categoryFiltered = cachedInventory.filter(item => item.type === 'local_orphan_sold');
     } else if (currentCategory === 'not_listed') {
         categoryFiltered = cachedInventory.filter(item => item.type === 'not_listed');
         console.log(`Found ${categoryFiltered.length} not_listed items`);
@@ -439,14 +448,15 @@ window.filterByCategory = function() {
     
     renderTable();
     
-    // Update resolve button state - ENABLED FOR ALL CATEGORIES including not_listed
+    // Update resolve button state
     if (filteredInventory.length > 0) {
         resolveButton.disabled = false;
         resolveButton.style.opacity = '1';
         
         let buttonText = '';
         if (currentCategory === 'discogs_orphans') buttonText = '🗑 Delete All Discogs Orphans';
-        else if (currentCategory === 'local_orphans') buttonText = '⚠ Clear All Local Orphans';
+        else if (currentCategory === 'local_orphans_missing') buttonText = '⚠ Clear Discogs Listing IDs (Missing/Deleted)';
+        else if (currentCategory === 'local_orphans_sold') buttonText = '💰 Mark All as Sold (Sold on Discogs)';
         else if (currentCategory === 'not_listed') buttonText = '📋 List All on Discogs';
         else if (currentCategory === 'due_reduction') buttonText = '💰 Apply Price Reductions';
         resolveButton.innerHTML = buttonText;
@@ -459,7 +469,8 @@ window.filterByCategory = function() {
     if (statusMessage) {
         let categoryName = '';
         if (currentCategory === 'discogs_orphans') categoryName = 'Discogs Orphans';
-        else if (currentCategory === 'local_orphans') categoryName = 'Local Orphans';
+        else if (currentCategory === 'local_orphans_missing') categoryName = 'Local Orphans (Missing/Deleted)';
+        else if (currentCategory === 'local_orphans_sold') categoryName = 'Sold on Discogs (Needs Local Update)';
         else if (currentCategory === 'not_listed') categoryName = 'Listing Candidates';
         else if (currentCategory === 'due_reduction') categoryName = 'Due for Reduction';
         
@@ -499,7 +510,8 @@ function renderTable() {
     if (filteredInventory.length === 0) {
         let message = '';
         if (currentCategory === 'discogs_orphans') message = 'No Discogs orphans found.';
-        else if (currentCategory === 'local_orphans') message = 'No local orphans found.';
+        else if (currentCategory === 'local_orphans_missing') message = 'No missing/deleted local orphans found.';
+        else if (currentCategory === 'local_orphans_sold') message = 'No sold-on-Discogs records found.';
         else if (currentCategory === 'not_listed') message = 'No listing candidates found. Try adjusting the cutoff date and click "Refresh Data".';
         else if (currentCategory === 'due_reduction') message = 'No listings due for price reduction.';
         else message = 'Select a category above';
@@ -517,15 +529,22 @@ function renderTable() {
             typeBadge = '<span class="status-badge" style="background: #dc3545; color: white;">🗑 Discogs Orphan</span>';
             reasonDisplay = item.reason ? `<span style="color: #dc3545; font-size: 12px;">⚠️ ${escapeHtml(item.reason)}</span>` : '—';
             actionButton = '—';
-        } else if (currentCategory === 'local_orphans') {
-            typeBadge = '<span class="status-badge" style="background: #ffc107; color: #333;">⚠ Local Orphan</span>';
-            reasonDisplay = item.reason ? `<span style="color: #856404; font-size: 12px;">⚠️ ${escapeHtml(item.reason)}</span>` : '—';
-            actionButton = '—';
+        } else if (currentCategory === 'local_orphans_missing') {
+            typeBadge = '<span class="status-badge" style="background: #ffc107; color: #333;">⚠ Missing/Deleted Orphan</span>';
+            reasonDisplay = item.reason ? `<span style="color: #856404; font-size: 12px;">${escapeHtml(item.reason)}</span>` : '—';
+            actionButton = `<button class="resolve-local-orphan-btn" data-record-id="${item.record_id}" data-listing-id="${item.listing_id}" data-type="missing">
+                                <i class="fas fa-eraser"></i> Clear Listing ID
+                            </button>`;
+        } else if (currentCategory === 'local_orphans_sold') {
+            typeBadge = '<span class="status-badge" style="background: #28a745; color: white;">💰 Sold on Discogs</span>';
+            reasonDisplay = item.reason ? `<span style="color: #28a745; font-size: 12px;">✅ ${escapeHtml(item.reason)}</span>` : '—';
+            actionButton = `<button class="resolve-local-orphan-btn" data-record-id="${item.record_id}" data-listing-id="${item.listing_id}" data-type="sold">
+                                <i class="fas fa-check-circle"></i> Mark as Sold
+                            </button>`;
         } else if (currentCategory === 'not_listed') {
             typeBadge = '<span class="status-badge" style="background: #28a745; color: white;">📋 Listing Candidate</span>';
             reasonDisplay = '<span style="color: #28a745; font-size: 12px;">✓ Eligible for Discogs</span>';
             
-            // Escape strings for JavaScript
             const escapedArtist = escapeHtml(item.artist || '').replace(/'/g, "\\'");
             const escapedTitle = escapeHtml(item.title || '').replace(/'/g, "\\'");
             const escapedMediaCondition = escapeHtml(item.media_condition || '').replace(/'/g, "\\'");
@@ -534,7 +553,6 @@ function renderTable() {
             const escapedLocation = escapeHtml(item.location || '').replace(/'/g, "\\'");
             const escapedNotes = escapeHtml(item.notes || '').replace(/'/g, "\\'");
             
-            // Add Post button for not_listed items
             actionButton = `<button class="post-to-discogs-btn" 
                                     data-record-id="${item.record_id}"
                                     data-artist="${escapedArtist}"
@@ -585,7 +603,7 @@ function renderTable() {
     
     tableBody.innerHTML = html;
     
-    // Attach event listeners to all post buttons
+    // Attach event listeners to post buttons
     document.querySelectorAll('.post-to-discogs-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
@@ -602,7 +620,90 @@ function renderTable() {
             postSingleRecordToDiscogs(recordId, artist, title, price, mediaCondition, sleeveCondition, catalogNumber, location, notes);
         });
     });
+    
+    // Attach event listeners to local orphan resolve buttons
+    document.querySelectorAll('.resolve-local-orphan-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const recordId = parseInt(this.dataset.recordId);
+            const listingId = this.dataset.listingId;
+            const type = this.dataset.type;
+            
+            resolveSingleLocalOrphan(recordId, listingId, type);
+        });
+    });
 }
+
+// ============================================================================
+// Resolve Single Local Orphan (Missing or Sold)
+// ============================================================================
+
+window.resolveSingleLocalOrphan = async function(recordId, listingId, type) {
+    console.log('resolveSingleLocalOrphan called', { recordId, listingId, type });
+    
+    if (!recordId) {
+        showStatus('Invalid record ID', 'error');
+        return;
+    }
+    
+    let confirmMessage = '';
+    let action = '';
+    
+    if (type === 'missing') {
+        confirmMessage = `⚠️ Clear Discogs listing ID for record #${recordId}?\n\nThis will remove the discogs_listing_id from the local record.`;
+        action = 'clear';
+    } else if (type === 'sold') {
+        confirmMessage = `💰 Mark record #${recordId} as SOLD?\n\nThis will:\n- Change status to "Sold"\n- Set date_sold to today\n- Clear discogs_listing_id\n\nThis matches the Discogs listing status.`;
+        action = 'sold';
+    } else {
+        showStatus('Invalid orphan type', 'error');
+        return;
+    }
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    openProgressModal(`Processing Local Orphan: Record #${recordId}`);
+    appendToModalLog(`🔄 Processing record #${recordId} (Type: ${type})...`, 'info');
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/discogs/resolve-local-orphan`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                record_id: recordId,
+                listing_id: listingId,
+                action: action
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            appendToModalLog(`✅ SUCCESS: ${result.message}`, 'success');
+            showStatus(`✅ ${result.message}`, 'success');
+            
+            // Refresh data to update the table
+            appendToModalLog(`🔄 Refreshing data...`, 'info');
+            await refreshData();
+            
+            // Reselect the current category to show updated list
+            if (categorySelect) {
+                filterByCategory();
+            }
+        } else {
+            throw new Error(result.error || 'Failed to process');
+        }
+        
+    } catch (error) {
+        appendToModalLog(`❌ FAILED: ${error.message}`, 'error');
+        showStatus(`Error: ${error.message}`, 'error');
+    }
+};
 
 // ============================================================================
 // Post Single Record to Discogs
@@ -674,7 +775,6 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
         const result = await response.json();
         
         if (result.success) {
-            // Construct Discogs URL from listing ID if not provided
             let discogsUrl = result.listing_url;
             if (!discogsUrl && result.listing_id) {
                 discogsUrl = `https://www.discogs.com/sell/item/${result.listing_id}`;
@@ -690,15 +790,10 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
             }
             appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'success');
             
-            // Show success message with clickable link
             showStatusWithLink(`✅ Successfully posted "${artist} - ${title}" to Discogs!`, discogsUrl, 'success');
             
-            // Refresh data after posting
-            appendToModalLog(`🔄 Refreshing data...`, 'info');
             await refreshData();
-            appendToModalLog(`✅ Data refreshed`, 'success');
             
-            // Reselect the not_listed category to show updated list
             if (categorySelect) {
                 categorySelect.value = 'not_listed';
                 filterByCategory();
@@ -728,7 +823,6 @@ function showStatusWithLink(message, url, type = 'success') {
     statusMessage.className = `status-message status-${type}`;
     statusMessage.style.display = 'block';
     
-    // Keep visible longer for URLs
     setTimeout(() => {
         if (statusMessage) statusMessage.style.display = 'none';
     }, 15000);
@@ -826,15 +920,15 @@ async function resolveDiscogsOrphans() {
 }
 
 // ============================================================================
-// RESOLVE: Clear Local Orphans
+// RESOLVE: Clear Missing Local Orphans (clear discogs_listing_id)
 // ============================================================================
 
-async function resolveLocalOrphans() {
+async function resolveMissingLocalOrphans() {
     const items = filteredInventory;
     const total = items.length;
     
-    openProgressModal(`Clearing ${total} Local Orphans`);
-    appendToModalLog(`🚀 Starting to clear ${total} local orphans...`, 'info');
+    openProgressModal(`Clearing ${total} Missing/Deleted Local Orphans`);
+    appendToModalLog(`🚀 Starting to clear discogs_listing_id for ${total} missing/deleted orphans...`, 'info');
     appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
     
     let cleared = 0;
@@ -851,24 +945,27 @@ async function resolveLocalOrphans() {
         appendToModalLog(`[${i+1}/${total}] Clearing: ${item.artist} - ${item.title}`, 'info');
         
         try {
-            const response = await fetch(`${AppConfig.baseUrl}/records/${item.record_id}`, {
-                method: 'PUT',
+            const response = await fetch(`${AppConfig.baseUrl}/api/discogs/resolve-local-orphan`, {
+                method: 'POST',
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    discogs_listing_id: null,
-                    discogs_listed_date: null
+                    record_id: item.record_id,
+                    listing_id: item.listing_id,
+                    action: 'clear'
                 })
             });
             
-            if (response.ok) {
+            const result = await response.json();
+            
+            if (result.success) {
                 cleared++;
                 appendToModalLog(`   ✅ CLEARED: ${item.artist} - ${item.title}`, 'success');
             } else {
                 failed++;
-                appendToModalLog(`   ❌ FAILED: ${item.artist} - ${item.title} - HTTP ${response.status}`, 'error');
+                appendToModalLog(`   ❌ FAILED: ${item.artist} - ${item.title} - ${result.error}`, 'error');
             }
         } catch (error) {
             failed++;
@@ -886,6 +983,76 @@ async function resolveLocalOrphans() {
     appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
     
     if (cleared > 0) {
+        appendToModalLog(`🔄 Refreshing data...`, 'info');
+        await refreshData();
+        appendToModalLog(`✅ Data refreshed`, 'success');
+    }
+}
+
+// ============================================================================
+// RESOLVE: Mark Sold Local Orphans (mark as sold in local DB)
+// ============================================================================
+
+async function resolveSoldLocalOrphans() {
+    const items = filteredInventory;
+    const total = items.length;
+    
+    openProgressModal(`Marking ${total} Records as Sold`);
+    appendToModalLog(`🚀 Starting to mark ${total} sold-on-Discogs records as sold locally...`, 'info');
+    appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+    
+    let marked = 0;
+    let failed = 0;
+    
+    for (let i = 0; i < total; i++) {
+        if (cancelResolve) {
+            appendToModalLog(`⏹️ Operation cancelled by user.`, 'warning');
+            break;
+        }
+        
+        const item = items[i];
+        updateModalProgress(i + 1, total);
+        appendToModalLog(`[${i+1}/${total}] Marking as sold: ${item.artist} - ${item.title}`, 'info');
+        
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/discogs/resolve-local-orphan`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    record_id: item.record_id,
+                    listing_id: item.listing_id,
+                    action: 'sold'
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                marked++;
+                appendToModalLog(`   ✅ MARKED AS SOLD: ${item.artist} - ${item.title}`, 'success');
+            } else {
+                failed++;
+                appendToModalLog(`   ❌ FAILED: ${item.artist} - ${item.title} - ${result.error}`, 'error');
+            }
+        } catch (error) {
+            failed++;
+            appendToModalLog(`   ❌ FAILED: ${item.artist} - ${item.title} - ${error.message}`, 'error');
+        }
+        
+        if (i < total - 1 && !cancelResolve) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+    
+    appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+    appendToModalLog(`📊 RESULTS:`, 'info');
+    appendToModalLog(`   ✅ Marked as Sold: ${marked}`, 'success');
+    appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
+    
+    if (marked > 0) {
         appendToModalLog(`🔄 Refreshing data...`, 'info');
         await refreshData();
         appendToModalLog(`✅ Data refreshed`, 'success');
@@ -917,7 +1084,6 @@ async function resolveNotListed() {
         const item = items[i];
         updateModalProgress(i + 1, total);
         
-        // Validate conditions before sending
         if (!item.media_condition || !item.media_condition.trim()) {
             failed++;
             appendToModalLog(`❌ SKIPPED: ${item.artist} - ${item.title} (missing media condition)`, 'error');
@@ -1141,9 +1307,12 @@ window.resolveCategory = async function() {
     if (currentCategory === 'discogs_orphans') {
         if (!confirm(`🗑️ DELETE ${filteredInventory.length} Discogs orphan(s) from Discogs?\n\nThis cannot be undone.`)) return;
         await resolveDiscogsOrphans();
-    } else if (currentCategory === 'local_orphans') {
-        if (!confirm(`⚠️ Clear discogs_listing_id for ${filteredInventory.length} local record(s)?`)) return;
-        await resolveLocalOrphans();
+    } else if (currentCategory === 'local_orphans_missing') {
+        if (!confirm(`⚠️ Clear discogs_listing_id for ${filteredInventory.length} missing/deleted local record(s)?`)) return;
+        await resolveMissingLocalOrphans();
+    } else if (currentCategory === 'local_orphans_sold') {
+        if (!confirm(`💰 Mark ${filteredInventory.length} record(s) as SOLD?\n\nThese records sold on Discogs but are still active in local inventory.`)) return;
+        await resolveSoldLocalOrphans();
     } else if (currentCategory === 'not_listed') {
         if (!confirm(`📋 List ${filteredInventory.length} record(s) on Discogs?\n\n⚠️ Rate limited to 1 per second.`)) return;
         await resolveNotListed();
@@ -1190,4 +1359,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - with search, single post, bulk post, and Discogs URL display');
+console.log('✅ discogs.js loaded - with local orphan resolution (missing/sold)');
