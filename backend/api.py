@@ -884,7 +884,6 @@ def create_discogs_listing_single():
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/discogs/combined-inventory', methods=['GET'])
 def get_combined_inventory():
     """One API call to Discogs + one DB query = combined inventory with orphan detection"""
@@ -910,7 +909,7 @@ def get_combined_inventory():
             'User-Agent': 'PigStyleMusic/1.0'
         }
         
-        # Fetch all active Discogs listings (includes Sold listings temporarily)
+        # Fetch all Discogs listings (includes Sold listings temporarily)
         print("\n📡 STEP 1: Fetching Discogs listings...")
         all_discogs_listings = []
         page = 1
@@ -1031,10 +1030,6 @@ def get_combined_inventory():
         
         combined_results = []
         
-        # Track auto-updated records
-        auto_sold_count = 0
-        auto_cleared_count = 0
-        
         # 1. Process Discogs Orphans (listings without matching local records)
         print("\n📡 STEP 4: Processing Discogs Orphans...")
         for listing_id, discogs_item in discogs_by_listing_id.items():
@@ -1094,22 +1089,8 @@ def get_combined_inventory():
                             print(f"   Listing status: {listing_status}")
                             
                             if listing_status == 'Sold':
-                                print(f"   ✅ LISTING IS SOLD! Auto-marking record {record['id']} as sold...")
-                                update_conn = get_db()
-                                update_cursor = update_conn.cursor()
-                                update_cursor.execute('''
-                                    UPDATE records 
-                                    SET status_id = 3, 
-                                        date_sold = CURRENT_DATE,
-                                        discogs_listing_id = NULL,
-                                        discogs_listed_date = NULL
-                                    WHERE id = ?
-                                ''', (record['id'],))
-                                update_conn.commit()
-                                update_conn.close()
-                                auto_sold_count += 1
-                                print(f"   ✅ Record {record['id']} marked as sold in database")
-                                
+                                print(f"   ✅ LISTING IS SOLD! Adding to Sold category (user must resolve)")
+                                # TWO-STEP: Don't auto-update DB, just add to results
                                 combined_results.append({
                                     'type': 'local_orphan_sold',
                                     'record_id': record['id'],
@@ -1124,7 +1105,7 @@ def get_combined_inventory():
                                     'expected_price': None,
                                     'weeks_on_discogs': None,
                                     'url': listing_data.get('uri', ''),
-                                    'reason': f'✅ AUTO-SOLD: Listing sold on Discogs - Local record marked as sold'
+                                    'reason': f'💰 SOLD: Listing sold on Discogs - Click "Mark as Sold" to update local record'
                                 })
                                 continue
                             else:
@@ -1206,9 +1187,8 @@ def get_combined_inventory():
                         print(f"\n🎯 RECORD 6285: listing_id {listing_id} IS in discogs_by_listing_id")
                         print(f"   This means it will go to STEP 7 (Process Both)")
         
-        print(f"\n📊 Auto-sold count (from STEP 5): {auto_sold_count}")
         print(f"📊 Local orphans (missing): {len([r for r in combined_results if r['type'] == 'local_orphan_missing'])}")
-        print(f"📊 Local orphans (sold): {len([r for r in combined_results if r['type'] == 'local_orphan_sold'])}")
+        print(f"📊 Local orphans (sold - pending user action): {len([r for r in combined_results if r['type'] == 'local_orphan_sold'])}")
         
         # 3. Process Not Listed (records with no discogs_listing_id that meet criteria)
         print("\n📡 STEP 6: Processing Not Listed records...")
@@ -1250,7 +1230,7 @@ def get_combined_inventory():
             if listing_id in local_by_listing_id:
                 record = local_by_listing_id[listing_id]
                 
-                # CRITICAL FIX: Check if the listing is actually sold
+                # Check if the listing is actually sold
                 listing_status = discogs_item.get('status', 'Unknown')
                 
                 if record['id'] == 6285:
@@ -1258,23 +1238,8 @@ def get_combined_inventory():
                     print(f"   listing_status from Discogs feed: {listing_status}")
                 
                 if listing_status == 'Sold':
-                    print(f"🎯 RECORD {record['id']} - {record['artist']} has status 'Sold' - auto-marking as sold")
-                    
-                    # Auto-mark as sold
-                    update_conn = get_db()
-                    update_cursor = update_conn.cursor()
-                    update_cursor.execute('''
-                        UPDATE records 
-                        SET status_id = 3, 
-                            date_sold = CURRENT_DATE,
-                            discogs_listing_id = NULL,
-                            discogs_listed_date = NULL
-                        WHERE id = ?
-                    ''', (record['id'],))
-                    update_conn.commit()
-                    update_conn.close()
-                    auto_sold_count += 1
-                    
+                    print(f"🎯 RECORD {record['id']} - {record['artist']} has status 'Sold' - Adding to Sold category (user must resolve)")
+                    # TWO-STEP: Don't auto-update database, just add to results for user to resolve
                     combined_results.append({
                         'type': 'local_orphan_sold',
                         'record_id': record['id'],
@@ -1289,7 +1254,7 @@ def get_combined_inventory():
                         'expected_price': None,
                         'weeks_on_discogs': None,
                         'url': discogs_item.get('url', ''),
-                        'reason': f'✅ AUTO-SOLD: Listing sold on Discogs - Local record marked as sold'
+                        'reason': f'💰 SOLD: Listing sold on Discogs - Click "Mark as Sold" to update local record'
                     })
                     continue  # Skip adding to "both"
                 
@@ -1330,7 +1295,7 @@ def get_combined_inventory():
         
         print(f"📊 Both count: {len([r for r in combined_results if r['type'] == 'both'])}")
         
-        # Calculate stats
+        # Calculate stats (no auto_sold_count in two-step approach)
         stats = {
             'total': len(combined_results),
             'discogs_orphans': len([r for r in combined_results if r['type'] == 'discogs_orphan']),
@@ -1338,9 +1303,7 @@ def get_combined_inventory():
             'local_orphans_sold': len([r for r in combined_results if r['type'] == 'local_orphan_sold']),
             'not_listed': len([r for r in combined_results if r['type'] == 'not_listed']),
             'both': len([r for r in combined_results if r['type'] == 'both']),
-            'due_reduction': len([r for r in combined_results if r['type'] == 'both' and r.get('needs_reduction')]),
-            'auto_sold_count': auto_sold_count,
-            'auto_cleared_count': auto_cleared_count
+            'due_reduction': len([r for r in combined_results if r['type'] == 'both' and r.get('needs_reduction')])
         }
         
         print("\n" + "="*80)
@@ -1348,15 +1311,11 @@ def get_combined_inventory():
         print(f"   Total: {stats['total']}")
         print(f"   Discogs Orphans: {stats['discogs_orphans']}")
         print(f"   Local Orphans (Missing): {stats['local_orphans_missing']}")
-        print(f"   Local Orphans (Sold): {stats['local_orphans_sold']}")
+        print(f"   Local Orphans (Sold - Pending User Action): {stats['local_orphans_sold']}")
         print(f"   Not Listed: {stats['not_listed']}")
         print(f"   Both: {stats['both']}")
         print(f"   Due for Reduction: {stats['due_reduction']}")
-        print(f"   Auto-sold this run: {auto_sold_count}")
         print("="*80 + "\n")
-        
-        if auto_sold_count > 0:
-            app.logger.info(f"Auto-marked {auto_sold_count} records as sold based on Discogs status")
         
         return jsonify({
             'success': True,
@@ -1373,7 +1332,6 @@ def get_combined_inventory():
         app.logger.error(f"Error in get_combined_inventory: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/discogs/resolve-local-orphan', methods=['POST'])
 @login_required
