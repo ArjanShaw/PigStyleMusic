@@ -264,6 +264,7 @@ class AddEditDeleteManager {
         this.selectedConsignorId = null;
         this.autoEstimatePrice = true;
         this.activeBatch = null;
+        this.newRecordsCount = 0;
         
         this.init();
     }
@@ -275,6 +276,7 @@ class AddEditDeleteManager {
         await this.loadConditions();
         await this.loadConsignors();
         await this.checkActiveBatch();
+        await this.loadNewRecordsCount();
         this.loadSavedSettings();
         this.setupEventListeners();
         this.renderGlobalSettings();
@@ -294,6 +296,21 @@ class AddEditDeleteManager {
         } catch (error) {
             console.error('Error checking active batch:', error);
             this.activeBatch = null;
+        }
+    }
+
+    async loadNewRecordsCount() {
+        try {
+            const response = await APIUtils.get('/records/count', { status_id: 1 });
+            this.newRecordsCount = response.count || 0;
+            const newRecordsElement = document.getElementById('new-records-count');
+            if (newRecordsElement) {
+                newRecordsElement.textContent = this.newRecordsCount;
+            }
+            console.log(`NEW_RECORDS: Count loaded: ${this.newRecordsCount}`);
+        } catch (error) {
+            console.error('Error loading new records count:', error);
+            this.newRecordsCount = 0;
         }
     }
 
@@ -1145,6 +1162,17 @@ class AddEditDeleteManager {
                                         Internal notes and visible on Discogs listing if posted
                                     </div>
                                 </div>
+                                
+                                <div>
+                                    <label class="form-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" class="no-original-sleeve-checkbox">
+                                        <i class="fas fa-exclamation-triangle" style="color: #ffc107;"></i>
+                                        <span>No original sleeve</span>
+                                    </label>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Adds "[NO ORIGINAL SLEEVE]" to notes
+                                    </div>
+                                </div>
                             </div>
                             
                             <div class="barcode-info" style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 4px;">
@@ -1237,9 +1265,15 @@ class AddEditDeleteManager {
                     ? record.location 
                     : '<span style="color: #999;">Not set</span>';
                 
-                const notesDisplay = record.notes && record.notes.trim() !== ''
-                    ? `<div style="margin-top: 5px; font-size: 12px; color: #666; background: #f8f9fa; padding: 4px 8px; border-radius: 4px;"><i class="fas fa-comment"></i> ${this.escapeHtml(record.notes)}</div>`
-                    : '';
+                const notes = record.notes || '';
+                const hasNoOriginalSleeve = notes.includes('[NO ORIGINAL SLEEVE]');
+                const notesWithoutTag = notes.replace('[NO ORIGINAL SLEEVE]', '').trim();
+                
+                const notesDisplay = notes ? `
+                    <div style="margin-top: 5px; font-size: 12px; color: #666; background: #f8f9fa; padding: 4px 8px; border-radius: 4px;">
+                        <i class="fas fa-comment"></i> ${this.escapeHtml(notes)}
+                    </div>
+                ` : '';
                 
                 return `
                     <div class="record-card" data-record-id="${record.id}" data-index="${index}">
@@ -1317,9 +1351,20 @@ class AddEditDeleteManager {
                                               data-record-id="${record.id}"
                                               rows="2"
                                               placeholder="Internal notes and Discogs listing comments"
-                                              style="resize: vertical;">${this.escapeHtml(record.notes || '')}</textarea>
+                                              style="resize: vertical;">${this.escapeHtml(notesWithoutTag)}</textarea>
                                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                                         Will be posted to Discogs when listed
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" class="edit-no-original-sleeve-checkbox" data-record-id="${record.id}" ${hasNoOriginalSleeve ? 'checked' : ''}>
+                                        <i class="fas fa-exclamation-triangle" style="color: #ffc107;"></i>
+                                        <span>No original sleeve</span>
+                                    </label>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Adds "[NO ORIGINAL SLEEVE]" to notes
                                     </div>
                                 </div>
                                 
@@ -2050,6 +2095,50 @@ class AddEditDeleteManager {
                 if (recordId) this.handleManualEstimate(recordId, isEdit);
             });
         });
+        
+        // Add event listeners for "No Original Sleeve" checkboxes in add mode
+        document.querySelectorAll('.no-original-sleeve-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const card = e.target.closest('.record-card');
+                const notesTextarea = card.querySelector('.notes-input');
+                const isChecked = e.target.checked;
+                
+                if (notesTextarea) {
+                    let currentNotes = notesTextarea.value;
+                    const tag = '[NO ORIGINAL SLEEVE]';
+                    
+                    if (isChecked) {
+                        if (!currentNotes.includes(tag)) {
+                            notesTextarea.value = currentNotes ? `${tag}\n${currentNotes}` : tag;
+                        }
+                    } else {
+                        notesTextarea.value = currentNotes.replace(tag, '').replace(/^\n+/, '').replace(/\n+$/, '');
+                    }
+                }
+            });
+        });
+        
+        // Add event listeners for "No Original Sleeve" checkboxes in edit mode
+        document.querySelectorAll('.edit-no-original-sleeve-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const card = e.target.closest('.record-card');
+                const notesTextarea = card.querySelector('.edit-notes-input');
+                const isChecked = e.target.checked;
+                
+                if (notesTextarea) {
+                    let currentNotes = notesTextarea.value;
+                    const tag = '[NO ORIGINAL SLEEVE]';
+                    
+                    if (isChecked) {
+                        if (!currentNotes.includes(tag)) {
+                            notesTextarea.value = currentNotes ? `${tag}\n${currentNotes}` : tag;
+                        }
+                    } else {
+                        notesTextarea.value = currentNotes.replace(tag, '').replace(/^\n+/, '').replace(/\n+$/, '');
+                    }
+                }
+            });
+        });
     }
 
     attachResultEventListeners() {
@@ -2085,13 +2174,22 @@ class AddEditDeleteManager {
         const priceInput = card.querySelector('.price-input');
         const consignorSelect = card.querySelector('.consignor-select');
         const notesInput = card.querySelector('.notes-input');
+        const noSleeveCheckbox = card.querySelector('.no-original-sleeve-checkbox');
         
         const genreId = genreSelect.value;
         const sleeveConditionId = sleeveConditionSelect.value;
         const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
         const consignorId = consignorSelect ? consignorSelect.value : this.selectedConsignorId;
-        const notes = notesInput ? notesInput.value.trim() : '';
+        let notes = notesInput ? notesInput.value.trim() : '';
+        
+        // Add tag if checkbox is checked
+        if (noSleeveCheckbox && noSleeveCheckbox.checked) {
+            const tag = '[NO ORIGINAL SLEEVE]';
+            if (!notes.includes(tag)) {
+                notes = notes ? `${tag}\n${notes}` : tag;
+            }
+        }
         
         const errors = [];
         if (!genreId) errors.push('Please select a genre');
@@ -2149,6 +2247,7 @@ class AddEditDeleteManager {
                 }
                 
                 await this.loadStats();
+                await this.loadNewRecordsCount();
                 
                 if (this.activeBatch) {
                     await this.checkActiveBatch();
@@ -2176,6 +2275,7 @@ class AddEditDeleteManager {
         const discConditionSelect = card.querySelector('.edit-disc-condition-select');
         const locationInput = card.querySelector('.edit-location-input');
         const notesInput = card.querySelector('.edit-notes-input');
+        const noSleeveCheckbox = card.querySelector('.edit-no-original-sleeve-checkbox');
         const priceInput = card.querySelector('.edit-price-input');
         const statusSelect = card.querySelector('.edit-status-select');
         const consignorSelect = card.querySelector('.edit-consignor-select');
@@ -2186,6 +2286,18 @@ class AddEditDeleteManager {
         let newGenreName = null;
         
         const currentRecord = this.currentResults.find(r => r.id == recordId);
+        
+        // Build notes with tag if checkbox is checked
+        let notes = notesInput ? notesInput.value.trim() : '';
+        if (noSleeveCheckbox && noSleeveCheckbox.checked) {
+            const tag = '[NO ORIGINAL SLEEVE]';
+            if (!notes.includes(tag)) {
+                notes = notes ? `${tag}\n${notes}` : tag;
+            }
+        } else if (notes) {
+            // Remove the tag if it exists and checkbox is unchecked
+            notes = notes.replace('[NO ORIGINAL SLEEVE]', '').replace(/^\n+/, '').replace(/\n+$/, '');
+        }
         
         if (genreSelect && genreSelect.value) {
             newGenreId = parseInt(genreSelect.value);
@@ -2200,7 +2312,7 @@ class AddEditDeleteManager {
         if (sleeveConditionSelect && sleeveConditionSelect.value) updates.condition_sleeve_id = parseInt(sleeveConditionSelect.value);
         if (discConditionSelect && discConditionSelect.value) updates.condition_disc_id = parseInt(discConditionSelect.value);
         if (locationInput) updates.location = locationInput.value.trim() || null;
-        if (notesInput) updates.notes = notesInput.value.trim() || null;
+        if (notes !== undefined && notes !== (currentRecord?.notes || '')) updates.notes = notes || null;
         
         if (priceInput) {
             const price = parseFloat(priceInput.value);
@@ -2239,6 +2351,7 @@ class AddEditDeleteManager {
                 const currentSearch = document.getElementById('searchInput').value;
                 if (currentSearch) await this.performSearch(currentSearch);
                 await this.loadStats();
+                await this.loadNewRecordsCount();
             } else {
                 showMessage(`Error: ${response.error || 'Failed to update record'}`, 'error');
             }
@@ -2256,6 +2369,7 @@ class AddEditDeleteManager {
                 this.currentResults = this.currentResults.filter(r => r.id != recordId);
                 this.displayResults();
                 await this.loadStats();
+                await this.loadNewRecordsCount();
             } else {
                 showMessage(`Error: ${response.error || 'Failed to delete record'}`, 'error');
             }
@@ -2285,6 +2399,7 @@ document.addEventListener('tabChanged', function(e) {
         } else {
             window.addEditDeleteManager.checkActiveBatch();
             window.addEditDeleteManager.renderBatchSection();
+            window.addEditDeleteManager.loadNewRecordsCount();
         }
     }
 });

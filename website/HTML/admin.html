@@ -2028,76 +2028,80 @@
             </div>
         </div>
         
-        <!-- Add/Edit/Delete Tab -->
-        <div id="add-edit-delete-tab" class="tab-content">
-            <div class="inventory-container">
-                <div class="stats-row">
-                    <div class="stat-card">
-                        <div class="stat-value" id="total-records">0</div>
-                        <div class="stat-label">Total Records</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="commission-rate">20.0%</div>
-                        <div class="stat-label">Commission Rate</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="store-fill">0%</div>
-                        <div class="stat-label">Store Fill</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="last-added">--</div>
-                        <div class="stat-label">Last Added</div>
-                    </div>
-                </div>
-
-                <div class="search-section">
-                    <div class="radio-group">
-                        <label class="radio-option">
-                            <input type="radio" name="searchType" value="add" checked>
-                            Add Item (Search Discogs)
-                        </label>
-                        <label class="radio-option">
-                            <input type="radio" name="searchType" value="edit">
-                            Edit or Delete Item
-                        </label>
-                    </div>
-
-                    <div class="search-options-row">
-                        <div class="search-field-select">
-                            <label for="searchField"><i class="fas fa-search"></i> Search by:</label>
-                            <select id="searchField" class="search-field-select">
-                                <option value="all">Barcode, Artist, or Title</option>
-                                <option value="barcode">Barcode</option>
-                                <option value="artist">Artist</option>
-                                <option value="title">Title</option>
-                            </select>
-                        </div>
-                        
-                        <form class="search-form" id="searchForm">
-                            <input type="text" 
-                                   class="search-input" 
-                                   id="searchInput" 
-                                   placeholder="Enter search term...">
-                            <div class="action-buttons">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-search"></i> Search
-                                </button>
-                                <button type="button" class="btn btn-secondary" id="clearSearch">
-                                    <i class="fas fa-times"></i> Clear
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <div id="results-container" class="results-container">
-                    <div class="loading" id="default-loading">
-                        <i class="fas fa-search"></i>
-                        <p>Search for records to get started</p>
-                    </div>
-                </div>
+         <!-- Add/Edit/Delete Tab -->
+<div id="add-edit-delete-tab" class="tab-content">
+    <div class="inventory-container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="total-records">0</div>
+                <div class="stat-label">Total Records</div>
+            </div>
+            <div class="stat-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+                <div class="stat-value" id="new-records-count" style="color: #856404;">0</div>
+                <div class="stat-label">📋 New Records (status_id=1)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="commission-rate">20.0%</div>
+                <div class="stat-label">Commission Rate</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="store-fill">0%</div>
+                <div class="stat-label">Store Fill</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="last-added">--</div>
+                <div class="stat-label">Last Added</div>
             </div>
         </div>
+
+        <div class="search-section">
+            <div class="radio-group">
+                <label class="radio-option">
+                    <input type="radio" name="searchType" value="add" checked>
+                    Add Item (Search Discogs)
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="searchType" value="edit">
+                    Edit or Delete Item
+                </label>
+            </div>
+
+            <div class="search-options-row">
+                <div class="search-field-select">
+                    <label for="searchField"><i class="fas fa-search"></i> Search by:</label>
+                    <select id="searchField" class="search-field-select">
+                        <option value="all">Barcode, Artist, or Title</option>
+                        <option value="barcode">Barcode</option>
+                        <option value="artist">Artist</option>
+                        <option value="title">Title</option>
+                    </select>
+                </div>
+                
+                <form class="search-form" id="searchForm">
+                    <input type="text" 
+                           class="search-input" 
+                           id="searchInput" 
+                           placeholder="Enter search term...">
+                    <div class="action-buttons">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="clearSearch">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="results-container" class="results-container">
+            <div class="loading" id="default-loading">
+                <i class="fas fa-search"></i>
+                <p>Search for records to get started</p>
+            </div>
+        </div>
+    </div>
+</div>
          
         <!-- Accessories Tab -->
 <div id="accessories-tab" class="tab-content">
