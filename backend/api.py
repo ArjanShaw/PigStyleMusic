@@ -3036,9 +3036,17 @@ def get_random_records():
 
 @app.route('/records/count', methods=['GET'])
 def get_records_count():
+    """Get count of records. Can optionally filter by status_id."""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) as count FROM records')
+    
+    status_id = request.args.get('status_id', type=int)
+    
+    if status_id is not None:
+        cursor.execute('SELECT COUNT(*) as count FROM records WHERE status_id = ?', (status_id,))
+    else:
+        cursor.execute('SELECT COUNT(*) as count FROM records')
+    
     result = cursor.fetchone()
     conn.close()
     return jsonify({'status': 'success', 'count': result['count']})
