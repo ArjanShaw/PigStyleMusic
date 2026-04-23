@@ -1,6 +1,13 @@
 // ============================================================================
 // add-edit-delete-manager.js - Add/Edit/Delete Tab Functionality
 // ============================================================================
+// ⚠️ CRITICAL RULE - ABSOLUTELY NO FALLBACK PRICES ⚠️
+// NEVER use default/fallback prices for price estimation.
+// If price estimation fails, show the error to the user and let them enter manually.
+// DO NOT auto-populate with 19.99 or any other default value.
+// If Discogs/eBay APIs fail or return no data, the price field should remain empty.
+// The user must see the error and decide what to do.
+// ============================================================================
 
 // Genre Predictor Class - Only checks artist_genre table
 class GenrePredictor {
@@ -1125,6 +1132,19 @@ class AddEditDeleteManager {
                                         Default consignor pre-selected
                                     </div>
                                 </div>
+                                
+                                <div>
+                                    <label class="form-label">
+                                        <i class="fas fa-comment"></i> Notes / Comment (optional)
+                                    </label>
+                                    <textarea class="form-control notes-input" 
+                                              rows="2" 
+                                              placeholder="Add any notes about this record...&#10;Will be posted to Discogs if you list it later."
+                                              style="resize: vertical; font-size: 12px;"></textarea>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Internal notes and visible on Discogs listing if posted
+                                    </div>
+                                </div>
                             </div>
                             
                             <div class="barcode-info" style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 4px;">
@@ -1217,6 +1237,10 @@ class AddEditDeleteManager {
                     ? record.location 
                     : '<span style="color: #999;">Not set</span>';
                 
+                const notesDisplay = record.notes && record.notes.trim() !== ''
+                    ? `<div style="margin-top: 5px; font-size: 12px; color: #666; background: #f8f9fa; padding: 4px 8px; border-radius: 4px;"><i class="fas fa-comment"></i> ${this.escapeHtml(record.notes)}</div>`
+                    : '';
+                
                 return `
                     <div class="record-card" data-record-id="${record.id}" data-index="${index}">
                         <div class="record-header">
@@ -1240,6 +1264,7 @@ class AddEditDeleteManager {
                                     <span><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></span>
                                     ${record.consignor_name ? `<span><strong>Consignor:</strong> ${record.consignor_name}</span>` : ''}
                                 </div>
+                                ${notesDisplay}
                             </div>
                         </div>
                         
@@ -1283,6 +1308,18 @@ class AddEditDeleteManager {
                                            placeholder="e.g., bin 1/12, shelf A/3">
                                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                                         Physical location in store
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="form-label">Notes</label>
+                                    <textarea class="form-control edit-notes-input" 
+                                              data-record-id="${record.id}"
+                                              rows="2"
+                                              placeholder="Internal notes and Discogs listing comments"
+                                              style="resize: vertical;">${this.escapeHtml(record.notes || '')}</textarea>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Will be posted to Discogs when listed
                                     </div>
                                 </div>
                                 
@@ -1610,6 +1647,10 @@ class AddEditDeleteManager {
         return (dollars - 1) + 0.99;
     }
 
+    // ⚠️ CRITICAL: NO FALLBACK PRICES ⚠️
+    // This function will ONLY return a price if Discogs or eBay provide valid data.
+    // If both APIs fail or return no price data, success will be false.
+    // The calling function MUST handle the false case and NOT populate the price field.
     async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
         const result = {
             success: false,
@@ -1623,7 +1664,8 @@ class AddEditDeleteManager {
             ebay_request: null,
             ebay_response: null,
             ebay_listings: [],
-            ebay_summary: {}
+            ebay_summary: {},
+            error: null
         };
 
         // Discogs
@@ -1647,7 +1689,7 @@ class AddEditDeleteManager {
                     result.calculation_steps.push(`⚠️ No price found for condition "${conditionName}" in Discogs suggestions`);
                 }
             } else {
-                result.calculation_steps.push(`❌ Discogs API call failed`);
+                result.calculation_steps.push(`❌ Discogs API call failed: ${discogsResult.error || 'Unknown error'}`);
             }
         } else {
             result.calculation_steps.push(`⚠️ No Discogs ID available - skipping Discogs`);
@@ -1681,48 +1723,60 @@ class AddEditDeleteManager {
                 result.calculation_steps.push(`⚠️ No valid eBay listings found`);
             }
         } else {
-            result.calculation_steps.push(`❌ eBay API call failed`);
+            result.calculation_steps.push(`❌ eBay API call failed: ${ebayResult.error || 'Unknown error'}`);
         }
         
-        // Calculate final price (minimum of both)
+        // ⚠️ CRITICAL: NO FALLBACK PRICES - Only calculate if we have valid data
         let finalPrice = null;
         let priceSource = null;
         
         if (result.discogs_price !== null && result.ebay_price !== null) {
+            // Both APIs returned valid prices - use minimum
             finalPrice = Math.min(result.discogs_price, result.ebay_price);
             priceSource = result.discogs_price <= result.ebay_price ? 'discogs' : 'ebay';
             result.calculation_steps.push(`📊 Price comparison: Discogs $${result.discogs_price.toFixed(2)} vs eBay $${result.ebay_price.toFixed(2)}`);
             result.calculation_steps.push(`  → Taking minimum: $${finalPrice.toFixed(2)} (from ${priceSource})`);
         } else if (result.discogs_price !== null) {
+            // Only Discogs returned a price
             finalPrice = result.discogs_price;
             priceSource = 'discogs';
             result.calculation_steps.push(`📊 Using only Discogs price: $${finalPrice.toFixed(2)}`);
         } else if (result.ebay_price !== null) {
+            // Only eBay returned a price
             finalPrice = result.ebay_price;
             priceSource = 'ebay';
             result.calculation_steps.push(`📊 Using only eBay price: $${finalPrice.toFixed(2)}`);
         } else {
-            finalPrice = 19.99;
-            priceSource = 'fallback';
-            result.calculation_steps.push(`⚠️ No price data - using fallback: $${finalPrice.toFixed(2)}`);
+            // ⚠️ NO PRICE DATA AVAILABLE - DO NOT USE FALLBACK ⚠️
+            result.success = false;
+            result.error = 'No price data available from Discogs or eBay. Please enter price manually.';
+            result.calculation_steps.push(`❌ NO PRICE DATA: Discogs price: ${result.discogs_price}, eBay price: ${result.ebay_price}`);
+            result.calculation_steps.push(`❌ NO FALLBACK PRICE WILL BE SET - User must enter manually.`);
+            return result;
         }
         
-        // Apply rounding
-        const roundedPrice = this.roundDownTo99(finalPrice);
-        result.calculation_steps.push(`💰 Applying store pricing rules:`);
-        result.calculation_steps.push(`  → Original: $${finalPrice.toFixed(2)}`);
-        result.calculation_steps.push(`  → Rounded down to .99: $${roundedPrice.toFixed(2)}`);
-        
-        const storePrice = Math.max(roundedPrice, this.minimumPrice);
-        if (storePrice !== roundedPrice) {
-            result.calculation_steps.push(`  → Minimum store price applied ($${this.minimumPrice.toFixed(2)})`);
+        // Only apply rounding if we have a valid price
+        if (finalPrice !== null) {
+            const roundedPrice = this.roundDownTo99(finalPrice);
+            result.calculation_steps.push(`💰 Applying store pricing rules:`);
+            result.calculation_steps.push(`  → Original: $${finalPrice.toFixed(2)}`);
+            result.calculation_steps.push(`  → Rounded down to .99: $${roundedPrice.toFixed(2)}`);
+            
+            let storePrice = roundedPrice;
+            if (storePrice < this.minimumPrice) {
+                storePrice = this.minimumPrice;
+                result.calculation_steps.push(`  → Minimum store price applied ($${this.minimumPrice.toFixed(2)})`);
+            }
+            
+            result.calculation_steps.push(`✨ FINAL ADVISED PRICE: $${storePrice.toFixed(2)}`);
+            
+            result.final_price = storePrice;
+            result.price_source = priceSource;
+            result.success = true;
+        } else {
+            result.success = false;
+            result.error = 'Unable to determine a valid price from available data.';
         }
-        
-        result.calculation_steps.push(`✨ FINAL ADVISED PRICE: $${storePrice.toFixed(2)}`);
-        
-        result.final_price = storePrice;
-        result.price_source = priceSource;
-        result.success = true;
         
         return result;
     }
@@ -1744,7 +1798,7 @@ class AddEditDeleteManager {
         }
         
         if (!conditionForEstimate) {
-            return { success: false, final_price: null, calculation_steps: ['No condition selected'] };
+            return { success: false, final_price: null, calculation_steps: ['No condition selected'], error: 'Please select sleeve and disc conditions first.' };
         }
         
         return await this.estimatePriceFromBothApis(
@@ -1886,7 +1940,8 @@ class AddEditDeleteManager {
         tempOverlay.remove();
         priceInput.disabled = false;
         
-        if (estimate.success && estimate.final_price) {
+        // ⚠️ CRITICAL: Only populate price if estimate was successful
+        if (estimate.success && estimate.final_price !== null) {
             const finalPrice = estimate.final_price;
             priceInput.value = parseFloat(finalPrice).toFixed(2);
             priceInput.classList.add('price-estimated');
@@ -1911,8 +1966,12 @@ class AddEditDeleteManager {
             priceInput.parentElement.appendChild(hint);
             this.showPriceCalculationDetails(estimate, recordId, finalPrice);
         } else {
-            if (!hasExistingValue) priceInput.value = '';
-            showMessage('Could not estimate price. Please enter manually.', 'warning');
+            // ⚠️ NO PRICE ESTIMATE AVAILABLE - Leave field empty and show error
+            if (!hasExistingValue) {
+                priceInput.value = '';
+            }
+            const errorMsg = estimate.error || 'Could not estimate price. Please enter manually.';
+            showMessage(errorMsg, 'error');
             this.showPriceCalculationDetails(estimate, recordId, null);
         }
     }
@@ -1925,6 +1984,10 @@ class AddEditDeleteManager {
         
         if (finalPrice !== null) {
             html += `<div style="margin-bottom: 15px; padding: 10px; background: #d4edda; border-radius: 4px;"><strong>💰 Final Advised Price: $${finalPrice.toFixed(2)} (from ${estimate.price_source || 'unknown'})</strong></div>`;
+        } else if (estimate.error) {
+            html += `<div style="margin-bottom: 15px; padding: 10px; background: #f8d7da; border-radius: 4px; color: #721c24;"><strong>❌ ${estimate.error}</strong></div>`;
+        } else {
+            html += `<div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-radius: 4px;"><strong>⚠️ No price estimate available</strong></div>`;
         }
         
         if (estimate.calculation_steps && estimate.calculation_steps.length > 0) {
@@ -2021,12 +2084,14 @@ class AddEditDeleteManager {
         const discConditionSelect = card.querySelector('.disc-condition-select');
         const priceInput = card.querySelector('.price-input');
         const consignorSelect = card.querySelector('.consignor-select');
+        const notesInput = card.querySelector('.notes-input');
         
         const genreId = genreSelect.value;
         const sleeveConditionId = sleeveConditionSelect.value;
         const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
         const consignorId = consignorSelect ? consignorSelect.value : this.selectedConsignorId;
+        const notes = notesInput ? notesInput.value.trim() : '';
         
         const errors = [];
         if (!genreId) errors.push('Please select a genre');
@@ -2065,6 +2130,7 @@ class AddEditDeleteManager {
             youtube_url: '',
             consignor_id: consignorId ? parseInt(consignorId) : null,
             status_id: 1,
+            notes: notes
         };
         
         try {
@@ -2109,6 +2175,7 @@ class AddEditDeleteManager {
         const sleeveConditionSelect = card.querySelector('.edit-sleeve-condition-select');
         const discConditionSelect = card.querySelector('.edit-disc-condition-select');
         const locationInput = card.querySelector('.edit-location-input');
+        const notesInput = card.querySelector('.edit-notes-input');
         const priceInput = card.querySelector('.edit-price-input');
         const statusSelect = card.querySelector('.edit-status-select');
         const consignorSelect = card.querySelector('.edit-consignor-select');
@@ -2133,6 +2200,7 @@ class AddEditDeleteManager {
         if (sleeveConditionSelect && sleeveConditionSelect.value) updates.condition_sleeve_id = parseInt(sleeveConditionSelect.value);
         if (discConditionSelect && discConditionSelect.value) updates.condition_disc_id = parseInt(discConditionSelect.value);
         if (locationInput) updates.location = locationInput.value.trim() || null;
+        if (notesInput) updates.notes = notesInput.value.trim() || null;
         
         if (priceInput) {
             const price = parseFloat(priceInput.value);
