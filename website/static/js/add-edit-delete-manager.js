@@ -265,6 +265,7 @@ class AddEditDeleteManager {
         this.autoEstimatePrice = true;
         this.activeBatch = null;
         this.newRecordsCount = 0;
+        this.storePriceMultiplier = 0.7;
         
         this.init();
     }
@@ -277,6 +278,7 @@ class AddEditDeleteManager {
         await this.loadConsignors();
         await this.checkActiveBatch();
         await this.loadNewRecordsCount();
+        await this.loadStorePriceMultiplier();
         this.loadSavedSettings();
         this.setupEventListeners();
         this.renderGlobalSettings();
@@ -311,6 +313,44 @@ class AddEditDeleteManager {
         } catch (error) {
             console.error('Error loading new records count:', error);
             this.newRecordsCount = 0;
+        }
+    }
+
+    async loadStorePriceMultiplier() {
+        try {
+            const response = await APIUtils.get('/config/STORE_PRICE_ESTIMATED_MULTIPLIER');
+            this.storePriceMultiplier = parseFloat(response.config_value) || 0.7;
+            console.log(`STORE_PRICE_MULTIPLIER: Loaded: ${this.storePriceMultiplier}`);
+        } catch (error) {
+            console.warn('Could not load STORE_PRICE_ESTIMATED_MULTIPLIER, using default 0.7:', error);
+            this.storePriceMultiplier = 0.7;
+        }
+    }
+
+    async saveStorePriceMultiplier() {
+        const input = document.getElementById('store-price-multiplier-input');
+        if (!input) return;
+        
+        const multiplier = parseFloat(input.value);
+        if (isNaN(multiplier) || multiplier < 0.01 || multiplier > 1.00) {
+            showMessage('Ratio must be between 0.01 and 1.00', 'error');
+            return;
+        }
+        
+        try {
+            const response = await APIUtils.put('/config/STORE_PRICE_ESTIMATED_MULTIPLIER', {
+                config_value: multiplier.toString()
+            });
+            
+            if (response.status === 'success') {
+                this.storePriceMultiplier = multiplier;
+                showMessage(`Store price ratio saved: ${(multiplier * 100).toFixed(0)}%`, 'success');
+            } else {
+                showMessage('Error saving ratio', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving multiplier:', error);
+            showMessage('Error saving ratio', 'error');
         }
     }
 
@@ -792,7 +832,7 @@ class AddEditDeleteManager {
             background: #f8f9fa;
             padding: 15px;
             border-top: 1px solid #dee2e6;
-            display: none;
+            display: block;
         `;
         content.innerHTML = `
             <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
@@ -818,6 +858,26 @@ class AddEditDeleteManager {
                     <p style="margin-top: 5px; font-size: 0.8rem; color: #666;">
                         <i class="fas fa-info-circle"></i> When disabled, you can still click "Estimate Price" button
                     </p>
+                </div>
+                <div style="flex: 1; min-width: 150px;">
+                    <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-percent"></i> Store Price Ratio
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" 
+                               id="store-price-multiplier-input" 
+                               step="0.01" 
+                               min="0.01" 
+                               max="1.00" 
+                               value="${this.storePriceMultiplier.toFixed(2)}" 
+                               style="width: 80px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px;">
+                        <button class="btn btn-small btn-info" id="save-multiplier-btn" style="padding: 4px 10px; font-size: 12px;">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                    </div>
+                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                        Market price × ratio = store price (0.70 = 70%)
+                    </div>
                 </div>
                 <div style="flex: 0 0 auto;">
                     <button class="btn btn-small" id="clear-defaults-btn" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
@@ -858,6 +918,11 @@ class AddEditDeleteManager {
             this.saveSettings();
             showMessage(`Auto-estimate ${this.autoEstimatePrice ? 'enabled' : 'disabled'}`, 'success');
         });
+        
+        const saveMultiplierBtn = document.getElementById('save-multiplier-btn');
+        if (saveMultiplierBtn) {
+            saveMultiplierBtn.addEventListener('click', () => this.saveStorePriceMultiplier());
+        }
         
         document.getElementById('clear-defaults-btn').addEventListener('click', () => {
             this.selectedConsignorId = null;
@@ -1693,9 +1758,6 @@ class AddEditDeleteManager {
     }
 
     // ⚠️ CRITICAL: NO FALLBACK PRICES ⚠️
-    // This function will ONLY return a price if Discogs or eBay provide valid data.
-    // If both APIs fail or return no price data, success will be false.
-    // The calling function MUST handle the false case and NOT populate the price field.
     async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
         const result = {
             success: false,
@@ -1712,6 +1774,10 @@ class AddEditDeleteManager {
             ebay_summary: {},
             error: null
         };
+
+        // Use the current multiplier
+        const multiplier = this.storePriceMultiplier;
+        result.calculation_steps.push(`💰 Store Price Ratio: ${(multiplier * 100).toFixed(0)}%`);
 
         // Discogs
         if (discogsId) {
@@ -1771,26 +1837,34 @@ class AddEditDeleteManager {
             result.calculation_steps.push(`❌ eBay API call failed: ${ebayResult.error || 'Unknown error'}`);
         }
         
-        // ⚠️ CRITICAL: NO FALLBACK PRICES - Only calculate if we have valid data
-        let finalPrice = null;
+        // Calculate market price (minimum of Discogs and eBay)
+        let marketPrice = null;
         let priceSource = null;
         
         if (result.discogs_price !== null && result.ebay_price !== null) {
-            // Both APIs returned valid prices - use minimum
-            finalPrice = Math.min(result.discogs_price, result.ebay_price);
+            marketPrice = Math.min(result.discogs_price, result.ebay_price);
             priceSource = result.discogs_price <= result.ebay_price ? 'discogs' : 'ebay';
+            
+            const maxPrice = Math.max(result.discogs_price, result.ebay_price);
+            const minPrice = Math.min(result.discogs_price, result.ebay_price);
+            
+            if (minPrice > 0 && (maxPrice / minPrice) > 2.0) {
+                result.calculation_steps.push(`⚠️ Price discrepancy warning: ${(maxPrice/minPrice).toFixed(1)}x difference between sources`);
+            }
+            
             result.calculation_steps.push(`📊 Price comparison: Discogs $${result.discogs_price.toFixed(2)} vs eBay $${result.ebay_price.toFixed(2)}`);
-            result.calculation_steps.push(`  → Taking minimum: $${finalPrice.toFixed(2)} (from ${priceSource})`);
+            result.calculation_steps.push(`  → Market price (minimum): $${marketPrice.toFixed(2)} (from ${priceSource})`);
+            
         } else if (result.discogs_price !== null) {
-            // Only Discogs returned a price
-            finalPrice = result.discogs_price;
+            marketPrice = result.discogs_price;
             priceSource = 'discogs';
-            result.calculation_steps.push(`📊 Using only Discogs price: $${finalPrice.toFixed(2)}`);
+            result.calculation_steps.push(`📊 Using only Discogs price: $${marketPrice.toFixed(2)}`);
+            
         } else if (result.ebay_price !== null) {
-            // Only eBay returned a price
-            finalPrice = result.ebay_price;
+            marketPrice = result.ebay_price;
             priceSource = 'ebay';
-            result.calculation_steps.push(`📊 Using only eBay price: $${finalPrice.toFixed(2)}`);
+            result.calculation_steps.push(`📊 Using only eBay price: $${marketPrice.toFixed(2)}`);
+            
         } else {
             // ⚠️ NO PRICE DATA AVAILABLE - DO NOT USE FALLBACK ⚠️
             result.success = false;
@@ -1800,28 +1874,31 @@ class AddEditDeleteManager {
             return result;
         }
         
-        // Only apply rounding if we have a valid price
-        if (finalPrice !== null) {
-            const roundedPrice = this.roundDownTo99(finalPrice);
-            result.calculation_steps.push(`💰 Applying store pricing rules:`);
-            result.calculation_steps.push(`  → Original: $${finalPrice.toFixed(2)}`);
-            result.calculation_steps.push(`  → Rounded down to .99: $${roundedPrice.toFixed(2)}`);
-            
-            let storePrice = roundedPrice;
-            if (storePrice < this.minimumPrice) {
-                storePrice = this.minimumPrice;
-                result.calculation_steps.push(`  → Minimum store price applied ($${this.minimumPrice.toFixed(2)})`);
-            }
-            
-            result.calculation_steps.push(`✨ FINAL ADVISED PRICE: $${storePrice.toFixed(2)}`);
-            
-            result.final_price = storePrice;
-            result.price_source = priceSource;
-            result.success = true;
-        } else {
-            result.success = false;
-            result.error = 'Unable to determine a valid price from available data.';
+        // Apply store price multiplier
+        result.calculation_steps.push(``);
+        result.calculation_steps.push(`💰 Applying store price ratio:`);
+        result.calculation_steps.push(`  → Market price: $${marketPrice.toFixed(2)}`);
+        result.calculation_steps.push(`  → Ratio: ${multiplier.toFixed(2)} (${(multiplier * 100).toFixed(0)}%)`);
+        
+        const multipliedPrice = marketPrice * multiplier;
+        result.calculation_steps.push(`  → Ratio price: $${multipliedPrice.toFixed(2)}`);
+        
+        // Apply rounding to .99
+        const roundedPrice = this.roundDownTo99(multipliedPrice);
+        result.calculation_steps.push(`  → Rounded down to .99: $${roundedPrice.toFixed(2)}`);
+        
+        // Apply minimum price
+        let finalPrice = roundedPrice;
+        if (finalPrice < this.minimumPrice) {
+            finalPrice = this.minimumPrice;
+            result.calculation_steps.push(`  → Minimum store price applied ($${this.minimumPrice.toFixed(2)})`);
         }
+        
+        result.calculation_steps.push(`✨ FINAL ADVISED PRICE: $${finalPrice.toFixed(2)}`);
+        
+        result.final_price = finalPrice;
+        result.price_source = priceSource;
+        result.success = true;
         
         return result;
     }
@@ -2400,6 +2477,7 @@ document.addEventListener('tabChanged', function(e) {
             window.addEditDeleteManager.checkActiveBatch();
             window.addEditDeleteManager.renderBatchSection();
             window.addEditDeleteManager.loadNewRecordsCount();
+            window.addEditDeleteManager.loadStorePriceMultiplier();
         }
     }
 });

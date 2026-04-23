@@ -3502,10 +3502,9 @@ def get_dropoff_records():
         records_list.append(record_dict)
     return jsonify({'status': 'success', 'records': records_list})
 
-
 @app.route('/api/price-estimate', methods=['POST'])
 def price_estimate():
-    """Get price estimate for a record using Discogs and eBay APIs"""
+    """Get price estimate for a record using Discogs and eBay APIs with store price multiplier"""
     try:
         data = request.json
         
@@ -3536,11 +3535,22 @@ def price_estimate():
         ebay_client_id = os.environ.get('EBAY_CLIENT_ID')
         ebay_client_secret = os.environ.get('EBAY_CLIENT_SECRET')
         
-        # Initialize the PriceAdviseHandler
+        # Get store price multiplier from config
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('STORE_PRICE_ESTIMATED_MULTIPLIER',))
+        row = cursor.fetchone()
+        store_price_multiplier = float(row['config_value']) if row else 0.7
+        conn.close()
+        
+        app.logger.info(f"Using store price multiplier: {store_price_multiplier}")
+        
+        # Initialize the PriceAdviseHandler with multiplier
         price_advisor = PriceAdviseHandler(
             discogs_token=discogs_token,
             ebay_client_id=ebay_client_id,
-            ebay_client_secret=ebay_client_secret
+            ebay_client_secret=ebay_client_secret,
+            store_price_multiplier=store_price_multiplier
         )
         
         # Get price estimate from Discogs and eBay
@@ -3563,16 +3573,13 @@ def price_estimate():
         if estimated_price is None or estimated_price <= 0:
             raise RuntimeError(f"No valid price estimate received. Discogs price: {result.get('discogs_price')}, eBay price: {result.get('ebay_price')}")
         
-        # Get minimum price from config (this is a store setting, not a fallback)
+        # Get minimum price from config
         min_price = None
         try:
-            conn = get_db()
-            cursor = conn.cursor()
             cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('MIN_STORE_PRICE',))
             row = cursor.fetchone()
             if row:
                 min_price = float(row['config_value'])
-            conn.close()
         except Exception as e:
             app.logger.error(f"Failed to load MIN_STORE_PRICE: {e}")
             raise RuntimeError("Store minimum price configuration not found")
@@ -3593,7 +3600,8 @@ def price_estimate():
                 return 0.99
             return (dollars - 1) + 0.99
         
-        rounded_price = round_down_to_99(estimated_price)
+        multiplied_price = result.get('estimated_price', estimated_price)
+        rounded_price = round_down_to_99(multiplied_price)
         
         # Apply minimum price (store rule)
         final_price = max(rounded_price, min_price)
@@ -3604,11 +3612,12 @@ def price_estimate():
             calculation_steps = result.get('calculation', [])
         
         # Add rounding information to calculation steps
-        if estimated_price != final_price:
-            calculation_steps.append(f"Original estimated price: ${estimated_price:.2f}")
-            calculation_steps.append(f"Rounded DOWN to nearest .99: ${rounded_price:.2f}")
-        if final_price == min_price and estimated_price < min_price:
-            calculation_steps.append(f"Minimum store price ${min_price:.2f} applied")
+        if multiplied_price != final_price:
+            calculation_steps.append(f"💰 Applying store pricing rules:")
+            calculation_steps.append(f"  → Price after multiplier: ${multiplied_price:.2f}")
+            calculation_steps.append(f"  → Rounded down to .99: ${rounded_price:.2f}")
+        if final_price == min_price and multiplied_price < min_price:
+            calculation_steps.append(f"  → Minimum store price ${min_price:.2f} applied")
         
         # Prepare response
         response_data = {
@@ -3616,8 +3625,11 @@ def price_estimate():
             'success': True,
             'estimated_price': final_price,
             'original_estimated_price': estimated_price,
+            'multiplied_price': multiplied_price,
+            'market_price': result.get('market_price'),
             'rounded_price': rounded_price,
             'minimum_price': min_price,
+            'store_price_multiplier': store_price_multiplier,
             'price': final_price,
             'price_source': result.get('price_source', 'unknown'),
             'calculation': calculation_steps,
@@ -3633,7 +3645,6 @@ def price_estimate():
         return jsonify(response_data)
         
     except ValueError as e:
-        # Validation errors (missing required fields, etc.)
         app.logger.error(f"Price estimate validation error: {str(e)}")
         return jsonify({
             'status': 'error',
@@ -3643,7 +3654,6 @@ def price_estimate():
         }), 400
         
     except RuntimeError as e:
-        # Configuration or business logic errors
         app.logger.error(f"Price estimate runtime error: {str(e)}")
         return jsonify({
             'status': 'error',
@@ -3653,7 +3663,6 @@ def price_estimate():
         }), 500
         
     except Exception as e:
-        # Unexpected errors
         app.logger.error(f"Price estimate unexpected error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({
@@ -3662,7 +3671,7 @@ def price_estimate():
             'error': f"Unexpected error: {str(e)}",
             'error_type': 'unexpected_error'
         }), 500
-
+ 
 @app.route('/api/discogs/price-suggestions/<release_id>', methods=['GET'])
 def discogs_price_suggestions_proxy(release_id):
     """Proxy endpoint to fetch Discogs price suggestions"""

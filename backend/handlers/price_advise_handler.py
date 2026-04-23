@@ -1,6 +1,7 @@
 """
 Price Advise Handler - Integrates Discogs and eBay for price estimation
-Uses minimum of median eBay and Discogs price suggestion
+Uses minimum of median eBay and Discogs price suggestion multiplied by store price ratio
+NO FALLBACK PRICES - Returns error if no price data available
 """
 
 import os
@@ -19,18 +20,26 @@ logger = logging.getLogger(__name__)
 class PriceAdviseHandler:
     """
     Handler for getting price advice from Discogs and eBay APIs
-    Uses minimum of median eBay and Discogs price suggestion
+    Uses minimum of median eBay and Discogs price suggestion multiplied by store price ratio
     """
     
     def __init__(self, discogs_token: str = None, 
                  ebay_client_id: str = None, 
-                 ebay_client_secret: str = None):
+                 ebay_client_secret: str = None,
+                 store_price_multiplier: float = 0.7):
         """
         Initialize the price advise handler with API credentials
+        
+        Args:
+            discogs_token: Discogs API token
+            ebay_client_id: eBay client ID
+            ebay_client_secret: eBay client secret
+            store_price_multiplier: Multiplier to apply to market price (default 0.7 = 70%)
         """
         self.discogs_token = discogs_token or os.environ.get('DISCOGS_USER_TOKEN')
         self.ebay_client_id = ebay_client_id or os.environ.get('EBAY_CLIENT_ID')
         self.ebay_client_secret = ebay_client_secret or os.environ.get('EBAY_CLIENT_SECRET')
+        self.store_price_multiplier = store_price_multiplier
         
         # eBay OAuth token
         self.ebay_access_token = None
@@ -59,20 +68,38 @@ class PriceAdviseHandler:
             'p': ['poor', 'p', 'poor (p)']
         }
     
+    def set_store_price_multiplier(self, multiplier: float):
+        """Update the store price multiplier"""
+        self.store_price_multiplier = multiplier
+        logger.info(f"Store price multiplier updated to: {multiplier}")
+    
     def get_price_estimate(self, 
                           artist: str, 
                           title: str, 
                           selected_condition: str,
                           discogs_genre: str = '',
                           discogs_id: str = '',
-                          discogs_format: str = '') -> Dict[str, Any]:
+                          discogs_format: str = '',
+                          store_price_multiplier: float = None) -> Dict[str, Any]:
         """
         Get price estimate from Discogs and eBay
+        
+        Args:
+            artist: Artist name
+            title: Release title
+            selected_condition: Selected condition (e.g., "Very Good (VG)")
+            discogs_genre: Discogs genre (optional)
+            discogs_id: Discogs release ID (optional)
+            discogs_format: Discogs format (optional)
+            store_price_multiplier: Override the default multiplier (optional)
         """
+        # Use provided multiplier or instance default
+        multiplier = store_price_multiplier if store_price_multiplier is not None else self.store_price_multiplier
+        
         result = {
             'success': False,
-            'estimated_price': 0.0,
-            'price': 0.0,
+            'estimated_price': None,
+            'price': None,
             'price_source': 'none',
             'calculation': [],
             'calculation_steps': [],
@@ -80,10 +107,12 @@ class PriceAdviseHandler:
             'ebay_listings': [],
             'discogs_price': None,
             'ebay_price': None,
+            'market_price': None,
             'search_query': f"{artist} - {title}",
             'price_discrepancy_warning': False,
             'discrepancy_ratio': 1.0,
             'warning_message': '',
+            'store_price_multiplier': multiplier,
             'error': None
         }
         
@@ -111,8 +140,8 @@ class PriceAdviseHandler:
             result['ebay_listings'] = ebay_listings
             result['ebay_summary'] = ebay_summary
             
-            # Calculate minimum price with discrepancy detection
-            estimated_price = 0.0
+            # Calculate market price (minimum of Discogs and eBay)
+            market_price = None
             calculation_steps = []
             price_discrepancy_warning = False
             discrepancy_ratio = 1.0
@@ -120,7 +149,7 @@ class PriceAdviseHandler:
             price_source = 'minimum'
             
             if discogs_price is not None and ebay_price is not None:
-                estimated_price = min(discogs_price, ebay_price)
+                market_price = min(discogs_price, ebay_price)
                 price_source = 'discogs' if discogs_price <= ebay_price else 'ebay'
                 
                 max_price = max(discogs_price, ebay_price)
@@ -137,37 +166,56 @@ class PriceAdviseHandler:
                 
                 calculation_steps.append(f"Discogs Price: ${discogs_price:.2f}")
                 calculation_steps.append(f"eBay Median Price: ${ebay_price:.2f}")
-                calculation_steps.append(f"Minimum Price Selected: ${estimated_price:.2f} (from {price_source})")
+                calculation_steps.append(f"Market Price (minimum): ${market_price:.2f} (from {price_source})")
                 
             elif discogs_price is not None:
-                estimated_price = discogs_price
+                market_price = discogs_price
                 price_source = 'discogs'
                 calculation_steps.append(f"Discogs Price: ${discogs_price:.2f}")
+                calculation_steps.append(f"Market Price: ${market_price:.2f} (from Discogs only)")
                 
             elif ebay_price is not None:
-                estimated_price = ebay_price
+                market_price = ebay_price
                 price_source = 'ebay'
                 calculation_steps.append(f"eBay Median Price: ${ebay_price:.2f}")
+                calculation_steps.append(f"Market Price: ${market_price:.2f} (from eBay only)")
                 
             else:
-                estimated_price = 19.99
-                price_source = 'fallback'
-                calculation_steps.append(f"No data found, using fallback: ${estimated_price:.2f}")
+                # ⚠️ CRITICAL: NO FALLBACK PRICES ⚠️
+                result['success'] = False
+                result['error'] = 'No price data available from Discogs or eBay. Please enter price manually.'
+                calculation_steps.append('❌ NO PRICE DATA: Discogs and eBay both returned no valid prices')
+                calculation_steps.append('❌ NO FALLBACK PRICE WILL BE SET - User must enter manually.')
+                result['calculation_steps'] = calculation_steps
+                result['calculation'] = calculation_steps
+                return result
             
-            result['estimated_price'] = round(estimated_price, 2)
-            result['price'] = round(estimated_price, 2)
+            # Apply store price multiplier to market price
+            calculation_steps.append(f"")
+            calculation_steps.append(f"💰 STORE PRICE CALCULATION:")
+            calculation_steps.append(f"Market Price: ${market_price:.2f}")
+            calculation_steps.append(f"Store Price Multiplier: {multiplier:.2f} ({(multiplier * 100):.0f}%)")
+            
+            multiplied_price = market_price * multiplier
+            calculation_steps.append(f"Multiplied Price: ${market_price:.2f} × {multiplier:.2f} = ${multiplied_price:.2f}")
+            
+            result['market_price'] = market_price
+            result['estimated_price'] = round(multiplied_price, 2)
+            result['price'] = round(multiplied_price, 2)
             result['price_source'] = price_source
             result['calculation_steps'] = calculation_steps
             result['calculation'] = calculation_steps
             result['price_discrepancy_warning'] = price_discrepancy_warning
             result['discrepancy_ratio'] = discrepancy_ratio
             result['warning_message'] = warning_message
+            result['store_price_multiplier'] = multiplier
             result['success'] = True
             
         except Exception as e:
+            result['success'] = False
             result['error'] = str(e)
-            result['estimated_price'] = 19.99
-            result['price'] = 19.99
+            result['estimated_price'] = None
+            result['price'] = None
         
         return result
     
@@ -259,11 +307,6 @@ class PriceAdviseHandler:
         }
         
         try:
-            # === START OF FOCUSED EBAY API LOGGING ===
-            logger.info("=" * 80)
-            logger.info("EBAY API CALL - DETAILED LOG")
-            logger.info("=" * 80)
-            
             # Get eBay OAuth token
             access_token = self._get_ebay_access_token()
             result['calculation'].append(f"Access token obtained: {'Yes' if access_token else 'No'}")
@@ -277,10 +320,6 @@ class PriceAdviseHandler:
             search_query = self._build_ebay_search_query(artist, title, format_type)
             result['summary']['search_query'] = search_query
             
-            # Keep encoded version for logging only
-            encoded_query = urllib.parse.quote(search_query)
-            result['summary']['raw_api_query'] = encoded_query
-            
             # Build API URL with filters
             url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
             params = {
@@ -290,49 +329,12 @@ class PriceAdviseHandler:
                 'sort': 'price'
             }
             
-            # Build the full URL for logging
-            full_url = f"{url}?{urllib.parse.urlencode(params)}"
-            
-            # Log request details
-            logger.info(f"REQUEST DETAILS:")
-            logger.info(f"  Endpoint: {url}")
-            logger.info(f"  Full URL: {full_url}")
-            logger.info(f"  Search Query: '{search_query}'")
-            logger.info(f"  Encoded Query (for reference): '{encoded_query}'")
-            logger.info(f"  Params: {params}")
-            logger.info(f"  Access Token (first 50 chars): {access_token[:50]}...")
-            
             headers = {
                 'Authorization': f'Bearer {access_token}',
                 'Content-Type': 'application/json'
             }
             
-            # Make the API call
-            logger.info(f"\nMAKING API REQUEST...")
             response = requests.get(url, headers=headers, params=params, timeout=15)
-            
-            # Log response details
-            logger.info(f"\nRESPONSE DETAILS:")
-            logger.info(f"  Status Code: {response.status_code}")
-            logger.info(f"  Response Headers: {dict(response.headers)}")
-            
-            try:
-                response_json = response.json()
-                logger.info(f"  Response Body (JSON):")
-                logger.info(json.dumps(response_json, indent=2))
-                
-                # Check for API errors
-                if 'errors' in response_json:
-                    logger.error(f"  API Errors: {response_json['errors']}")
-                    for error in response_json['errors']:
-                        result['calculation'].append(f"eBay API Error: {error.get('message', 'Unknown error')}")
-                
-            except json.JSONDecodeError:
-                logger.info(f"  Response Body (Raw): {response.text[:500]}")
-                result['calculation'].append(f"eBay: Invalid JSON response")
-            
-            logger.info("=" * 80 + "\n")
-            # === END OF FOCUSED EBAY API LOGGING ===
             
             if response.status_code != 200:
                 return result
