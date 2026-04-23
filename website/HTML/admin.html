@@ -2011,6 +2011,9 @@
             <div class="tab" data-tab="price-tags">
                 <i class="fas fa-tags"></i> Print Price Tags
             </div>
+             <div class="tab" data-tab="custom-labels">
+        <i class="fas fa-tag"></i> Custom Labels
+    </div>
             <div class="tab" data-tab="orders">
                 <i class="fas fa-shopping-bag"></i> Orders
             </div>
@@ -2589,6 +2592,8 @@
         <p style="margin-top: 10px;"><strong>🔄 Auto-sync:</strong> Records sold on Discogs are automatically detected and marked as sold in the local database when you refresh data.</p>
     </div>
 </div>
+
+ 
 
         <!-- Receipts Tab -->
         <div id="receipts-tab" class="tab-content">
@@ -3587,6 +3592,99 @@
             <div id="square-payments-error" class="status-message status-error" style="display: none;"></div>
         </div>
 
+        <!-- Custom Labels Tab -->
+<div id="custom-labels-tab" class="tab-content">
+    <h2><i class="fas fa-tag"></i> Custom Labels</h2>
+    
+    <!-- Instructions -->
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px; color: white;">
+        <h3 style="margin: 0 0 10px 0;"><i class="fas fa-info-circle"></i> How to Use Custom Labels</h3>
+        <p style="margin: 0;">Enter one label per line. Each line will be printed on a separate label using the same dimensions as price tags. Supports multiple lines per label by using the format: <code>Line 1|Line 2|Line 3</code> (use pipe | to separate lines).</p>
+    </div>
+    
+    <!-- Starting Position Selector -->
+    <div class="starting-position-section" style="background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%);">
+        <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-flag-checkered" style="font-size: 24px;"></i>
+                <span style="font-weight: bold;">Start Printing At:</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="font-weight: 500;">Row:</label>
+                <input type="number" id="custom-label-start-row" min="1" max="15" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
+                <label style="font-weight: 500;">Column:</label>
+                <input type="number" id="custom-label-start-col" min="1" max="4" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
+                <button class="btn btn-light btn-small" onclick="customLabelsUpdateStartPosition()" style="background: white; color: #fd7e14;">
+                    <i class="fas fa-sync-alt"></i> Update
+                </button>
+            </div>
+            <div style="font-size: 12px; opacity: 0.9;">
+                <i class="fas fa-info-circle"></i> Labels will start at position <strong id="custom-label-start-display">1, 1</strong> on the sheet
+            </div>
+        </div>
+    </div>
+    
+    <!-- Label Input Section -->
+    <div class="user-form-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-top: 20px;">
+        <h3 style="margin-bottom: 20px;"><i class="fas fa-pencil-alt"></i> Enter Custom Labels</h3>
+        
+        <div class="user-form-grid">
+            <div class="user-form-group" style="grid-column: 1/-1;">
+                <label for="custom-label-text"><i class="fas fa-font"></i> Labels (one per line):</label>
+                <textarea id="custom-label-text" rows="10" class="search-input" placeholder="Enter one label per line...
+Examples:
+Summer Sale 50% Off
+New Arrivals|Vinyl Records
+Store Credit Available
+Buy One Get One Free|Limited Time
+Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
+                <p style="font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 8px;">
+                    <i class="fas fa-info-circle"></i> Use <strong>|</strong> (pipe) to create multiple lines on a single label. Each line will be centered separately.
+                </p>
+            </div>
+        </div>
+        
+        <div class="action-buttons" style="justify-content: flex-start; gap: 15px;">
+            <button class="btn btn-success" onclick="customLabelsGeneratePDF()">
+                <i class="fas fa-print"></i> Generate PDF
+            </button>
+            <button class="btn btn-secondary" onclick="customLabelsClearText()">
+                <i class="fas fa-trash"></i> Clear All
+            </button>
+            <button class="btn btn-info" onclick="customLabelsLoadSample()">
+                <i class="fas fa-tasks"></i> Load Sample
+            </button>
+        </div>
+    </div>
+    
+    <!-- Preview Section -->
+    <div class="stats-table-container" style="margin-top: 20px;">
+        <div class="table-header">
+            <h4><i class="fas fa-eye"></i> Preview</h4>
+            <span class="table-count" id="custom-label-preview-count">0 labels</span>
+        </div>
+        <div id="custom-label-preview" style="background: #f8f9fa; border-radius: 8px; padding: 15px; max-height: 300px; overflow-y: auto;">
+            <p style="color: #666; text-align: center;">Enter labels above to see preview</p>
+        </div>
+    </div>
+    
+    <!-- Info Box -->
+    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
+        <h4><i class="fas fa-info-circle"></i> Label Printing Information:</h4>
+        <ul style="margin: 10px 0 0 20px;">
+            <li>Uses the SAME label dimensions as price tags (configured in Admin Config)</li>
+            <li>Each line of text is centered on the label</li>
+            <li>Use <strong>|</strong> (pipe) to create multi-line labels (up to 5 lines)</li>
+            <li>Starting position (Row, Column) determines where on the sheet printing begins</li>
+            <li>Labels are arranged left-to-right, top-to-bottom on the sheet</li>
+            <li>Sheet layout: 4 columns × 15 rows = 60 labels per page</li>
+        </ul>
+    </div>
+</div>
+
+
+
+
         <!-- Sticky Notes Tab -->
         <div id="sticky-notes-tab" class="tab-content">
             <h2><i class="fas fa-sticky-note"></i> Sticky Notes Management</h2>
@@ -4019,7 +4117,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
-    
+    <script src="/static/js/custom-labels.js"></script>
+
     <!-- Admin JavaScript Modules -->
     <script src="/static/js/tab-manager.js"></script>
     <script src="/static/js/utils.js"></script>

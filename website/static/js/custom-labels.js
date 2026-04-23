@@ -1,240 +1,155 @@
 // ============================================================================
-// custom-labels.js - Custom Label Placer with Starting Position
+// custom-labels.js - Independent Custom Labels Module
+// ALL function names are prefixed with "customLabels" to avoid conflicts
+// Does NOT share any variables or functions with price-tags.js
 // ============================================================================
 
-window.customLabelsModule = window.customLabelsModule || {};
+// Module namespace - completely isolated
+window.CustomLabelsModule = window.CustomLabelsModule || {};
 
-// State variables
-window.customLabelsItems = window.customLabelsItems || []; // Array of {text}
-window.labelSheetConfig = null;
-window.startRow = 1;
-window.startCol = 1;
+// Private state variables (using unique names)
+let customLabels_list = [];
+let customLabels_startRow = 1;
+let customLabels_startCol = 1;
 
-// Load label sheet configuration
-async function loadLabelSheetConfig() {
+// ============================================================================
+// Helper Functions (unique names)
+// ============================================================================
+
+function customLabelsEscapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function customLabelsShowStatus(message, type = 'info') {
+    let statusEl = document.getElementById('custom-labels-status-message');
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'custom-labels-status-message';
+        statusEl.className = 'status-message';
+        const tabContent = document.getElementById('custom-labels-tab');
+        if (tabContent) {
+            tabContent.insertBefore(statusEl, tabContent.firstChild);
+        }
+    }
+    
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    statusEl.innerHTML = `${icons[type] || 'ℹ️'} ${customLabelsEscapeHtml(message)}`;
+    statusEl.className = `status-message status-${type}`;
+    statusEl.style.display = 'block';
+    
+    setTimeout(() => {
+        if (statusEl) statusEl.style.display = 'none';
+    }, 5000);
+}
+
+function customLabelsShowLoading(show) {
+    let loadingEl = document.getElementById('custom-labels-loading');
+    if (!loadingEl && show) {
+        loadingEl = document.createElement('div');
+        loadingEl.id = 'custom-labels-loading';
+        loadingEl.className = 'loading';
+        loadingEl.innerHTML = '<div class="loading-spinner"></div><p>Generating PDF...</p>';
+        loadingEl.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10000; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+        document.body.appendChild(loadingEl);
+    }
+    
+    if (loadingEl) {
+        loadingEl.style.display = show ? 'flex' : 'none';
+    }
+}
+
+// ============================================================================
+// Configuration Loading
+// ============================================================================
+
+async function customLabelsGetConfigValue(configKey) {
     try {
-        if (typeof window.getConfigValue !== 'function') {
-            throw new Error('getConfigValue not available');
+        const response = await fetch(`${AppConfig.baseUrl}/config/${configKey}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            return data.config_value;
         }
-        
-        window.labelSheetConfig = await window.labelGenerator.loadLabelConfig();
-        
-        // Calculate grid dimensions (15 rows, 4 columns)
-        window.labelSheetConfig.rows = 15;
-        window.labelSheetConfig.cols = 4;
-        window.labelSheetConfig.labelsPerPage = window.labelSheetConfig.rows * window.labelSheetConfig.cols;
-        
-        console.log('Label sheet config loaded:', window.labelSheetConfig);
-        
-        // Update display
-        renderLabelSheetGrid();
-        updateCustomLabelsQueueDisplay();
-        updateStartingPositionDisplay();
-        
-        return window.labelSheetConfig;
     } catch (error) {
-        console.error('Failed to load config:', error);
-        showStatus('Failed to load configuration: ' + error.message, 'error');
-        return null;
-    }
-}
-
-// Render the label sheet grid
-function renderLabelSheetGrid() {
-    const gridContainer = document.getElementById('label-sheet-grid');
-    if (!gridContainer || !window.labelSheetConfig) return;
-    
-    const { rows, cols, labelWidthMM, labelHeightMM } = window.labelSheetConfig;
-    
-    // Scale for display (pixels per mm)
-    const scale = 3;
-    const cellWidth = labelWidthMM * scale;
-    const cellHeight = labelHeightMM * scale;
-    
-    gridContainer.innerHTML = '';
-    gridContainer.style.display = 'grid';
-    gridContainer.style.gridTemplateColumns = `repeat(${cols}, ${cellWidth}px)`;
-    gridContainer.style.gap = '5px';
-    gridContainer.style.justifyContent = 'center';
-    gridContainer.style.background = '#e9ecef';
-    gridContainer.style.padding = '20px';
-    gridContainer.style.overflowX = 'auto';
-    
-    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            const labelIndex = row * cols + col;
-            const labelItem = window.customLabelsItems[labelIndex];
-            
-            const cell = document.createElement('div');
-            cell.className = 'label-sheet-cell';
-            cell.style.width = `${cellWidth}px`;
-            cell.style.height = `${cellHeight}px`;
-            cell.style.border = window.labelSheetConfig.printBorders ? '1px solid #ccc' : '1px dashed #ddd';
-            cell.style.borderRadius = '4px';
-            cell.style.background = labelItem ? '#fff3cd' : 'white';
-            cell.style.cursor = 'pointer';
-            cell.style.display = 'flex';
-            cell.style.flexDirection = 'column';
-            cell.style.alignItems = 'center';
-            cell.style.justifyContent = 'center';
-            cell.style.textAlign = 'center';
-            cell.style.padding = '5px';
-            cell.style.position = 'relative';
-            cell.style.overflow = 'hidden';
-            
-            cell.onclick = () => selectLabelPosition(row, col);
-            
-            if (labelItem) {
-                const textSpan = document.createElement('div');
-                textSpan.style.fontSize = '12px';
-                textSpan.style.fontWeight = 'normal';
-                textSpan.style.color = '#333';
-                textSpan.style.wordBreak = 'break-word';
-                textSpan.style.maxWidth = '100%';
-                textSpan.textContent = labelItem.text;
-                cell.appendChild(textSpan);
-                
-                const removeBtn = document.createElement('button');
-                removeBtn.className = 'btn btn-small';
-                removeBtn.style.position = 'absolute';
-                removeBtn.style.top = '2px';
-                removeBtn.style.right = '2px';
-                removeBtn.style.padding = '2px 4px';
-                removeBtn.style.fontSize = '10px';
-                removeBtn.style.background = '#dc3545';
-                removeBtn.style.color = 'white';
-                removeBtn.style.border = 'none';
-                removeBtn.style.borderRadius = '2px';
-                removeBtn.style.cursor = 'pointer';
-                removeBtn.innerHTML = '×';
-                removeBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    removeLabelFromPosition(row, col);
-                };
-                cell.appendChild(removeBtn);
-            } else {
-                const plusIcon = document.createElement('i');
-                plusIcon.className = 'fas fa-plus';
-                plusIcon.style.color = '#999';
-                plusIcon.style.fontSize = '20px';
-                cell.appendChild(plusIcon);
-                
-                const coordText = document.createElement('div');
-                coordText.style.fontSize = '10px';
-                coordText.style.marginTop = '5px';
-                coordText.style.color = '#999';
-                coordText.textContent = `${row + 1},${col + 1}`;
-                cell.appendChild(coordText);
-            }
-            
-            if (window.selectedPosition && window.selectedPosition.row === row && window.selectedPosition.col === col) {
-                cell.style.border = '3px solid #007bff';
-                cell.style.boxShadow = '0 0 0 2px rgba(0,123,255,0.25)';
-            }
-            
-            gridContainer.appendChild(cell);
-        }
-    }
-}
-
-// Select a label position
-function selectLabelPosition(row, col) {
-    window.selectedPosition = { row, col };
-    renderLabelSheetGrid();
-    
-    const labelIndex = row * 4 + col;
-    const existingItem = window.customLabelsItems[labelIndex];
-    
-    if (existingItem) {
-        document.getElementById('label-text').value = existingItem.text;
-        document.getElementById('position-info').textContent = `Editing position (${row + 1}, ${col + 1})`;
-        document.getElementById('add-update-btn').innerHTML = '<i class="fas fa-save"></i> Update Label';
-    } else {
-        document.getElementById('label-text').value = '';
-        document.getElementById('position-info').textContent = `Adding label at position (${row + 1}, ${col + 1})`;
-        document.getElementById('add-update-btn').innerHTML = '<i class="fas fa-plus"></i> Add Label';
+        console.error(`Error loading config ${configKey}:`, error);
     }
     
-    document.getElementById('label-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-// Remove label from position
-function removeLabelFromPosition(row, col) {
-    const labelIndex = row * 4 + col;
-    if (window.customLabelsItems[labelIndex]) {
-        delete window.customLabelsItems[labelIndex];
-        if (window.selectedPosition && window.selectedPosition.row === row && window.selectedPosition.col === col) {
-            window.selectedPosition = null;
-            document.getElementById('label-text').value = '';
-            document.getElementById('add-update-btn').innerHTML = '<i class="fas fa-plus"></i> Add Label';
-            document.getElementById('position-info').textContent = 'No position selected';
-        }
-        renderLabelSheetGrid();
-        updateCustomLabelsQueueDisplay();
-        showStatus('Label removed', 'info');
-    }
-}
-
-// Add or update label
-function addOrUpdateLabel() {
-    if (!window.selectedPosition) {
-        showStatus('Please select a position on the label sheet first', 'warning');
-        return;
-    }
-    
-    const text = document.getElementById('label-text').value.trim();
-    
-    if (!text) {
-        showStatus('Please enter text for the label', 'warning');
-        return;
-    }
-    
-    const labelIndex = window.selectedPosition.row * 4 + window.selectedPosition.col;
-    
-    window.customLabelsItems[labelIndex] = {
-        text: text
+    const defaults = {
+        'LABEL_WIDTH_MM': '101.6',
+        'LABEL_HEIGHT_MM': '50.8',
+        'LEFT_MARGIN_MM': '12.7',
+        'GUTTER_SPACING_MM': '3.175',
+        'TOP_MARGIN_MM': '12.7',
+        'PRINT_BORDERS': 'true',
+        'BARCODE_HEIGHT': '10'
     };
     
-    document.getElementById('label-text').value = '';
-    window.selectedPosition = null;
-    renderLabelSheetGrid();
-    updateCustomLabelsQueueDisplay();
-    showStatus('Label added', 'success');
+    return defaults[configKey] || null;
 }
 
-// Clear all labels
-function clearAllLabels() {
-    const hasLabels = window.customLabelsItems.some(item => item);
-    if (!hasLabels) return;
+// ============================================================================
+// Calculate Optimal Font Size
+// ============================================================================
+
+function customLabelsCalculateFontSize(text, maxWidthPt, maxHeightPt, lineCount, doc) {
+    // Start with a large font size
+    let fontSize = Math.min(72, maxHeightPt / (lineCount * 1.2));
+    let minFontSize = 8;
     
-    if (confirm('Are you sure you want to clear ALL labels from the sheet?')) {
-        window.customLabelsItems = [];
-        window.selectedPosition = null;
-        renderLabelSheetGrid();
-        updateCustomLabelsQueueDisplay();
-        showStatus('All labels cleared', 'info');
+    doc.setFont('helvetica', 'bold');
+    
+    // Binary search for the largest font that fits
+    let bestSize = minFontSize;
+    let low = minFontSize;
+    let high = fontSize;
+    
+    for (let attempt = 0; attempt < 15; attempt++) {
+        if (low > high) break;
+        
+        const testSize = (low + high) / 2;
+        doc.setFontSize(testSize);
+        
+        // Check if all lines fit
+        let allLinesFit = true;
+        for (const line of text) {
+            const lineWidth = doc.getTextWidth(line);
+            if (lineWidth > maxWidthPt) {
+                allLinesFit = false;
+                break;
+            }
+        }
+        
+        const totalHeight = testSize * 1.2 * lineCount;
+        if (allLinesFit && totalHeight <= maxHeightPt) {
+            bestSize = testSize;
+            low = testSize + 0.5;
+        } else {
+            high = testSize - 0.5;
+        }
     }
-}
-
-// Update starting position display
-function updateStartingPositionDisplay() {
-    const startRowDisplay = document.getElementById('start-row-display');
-    const startColDisplay = document.getElementById('start-col-display');
     
-    if (startRowDisplay) startRowDisplay.textContent = window.startRow;
-    if (startColDisplay) startColDisplay.textContent = window.startCol;
+    return Math.max(minFontSize, Math.min(72, bestSize));
 }
 
-// Update starting position
-function updateStartingPosition() {
-    const rowInput = document.getElementById('start-row');
-    const colInput = document.getElementById('start-col');
+// ============================================================================
+// Start Position Management
+// ============================================================================
+
+function customLabelsUpdateStartPosition() {
+    const rowInput = document.getElementById('custom-label-start-row');
+    const colInput = document.getElementById('custom-label-start-col');
     
     if (rowInput) {
         let newRow = parseInt(rowInput.value);
         if (isNaN(newRow)) newRow = 1;
         newRow = Math.max(1, Math.min(15, newRow));
-        window.startRow = newRow;
+        customLabels_startRow = newRow;
         rowInput.value = newRow;
     }
     
@@ -242,271 +157,300 @@ function updateStartingPosition() {
         let newCol = parseInt(colInput.value);
         if (isNaN(newCol)) newCol = 1;
         newCol = Math.max(1, Math.min(4, newCol));
-        window.startCol = newCol;
+        customLabels_startCol = newCol;
         colInput.value = newCol;
     }
     
-    updateStartingPositionDisplay();
-    showStatus(`Printing will start at position (${window.startRow}, ${window.startCol})`, 'info');
-}
-
-// Update queue display
-function updateCustomLabelsQueueDisplay() {
-    const queueContent = document.getElementById('custom-labels-queue-content');
-    const queueCount = document.getElementById('custom-labels-queue-count');
-    const printQueueCount = document.getElementById('print-custom-queue-count');
-    const printQueueBtn = document.getElementById('print-custom-queue-btn');
-    
-    if (!queueContent) return;
-    
-    const validLabels = window.customLabelsItems.filter(item => item);
-    
-    queueCount.textContent = validLabels.length;
-    printQueueCount.textContent = validLabels.length;
-    
-    if (printQueueBtn) {
-        printQueueBtn.disabled = validLabels.length === 0;
+    const displayEl = document.getElementById('custom-label-start-display');
+    if (displayEl) {
+        displayEl.textContent = `${customLabels_startRow}, ${customLabels_startCol}`;
     }
     
-    if (validLabels.length === 0) {
-        queueContent.innerHTML = `
-            <div class="queue-empty" style="text-align: center; padding: 40px; color: #999;">
-                <i class="fas fa-inbox" style="font-size: 48px; margin-bottom: 15px;"></i>
-                <p>No labels placed on the sheet</p>
-                <p style="font-size: 12px;">Click on any cell in the grid above to add a label</p>
-            </div>
-        `;
+    customLabelsShowStatus(`Labels will start at position (${customLabels_startRow}, ${customLabels_startCol})`, 'info');
+}
+
+// ============================================================================
+// Label Processing
+// ============================================================================
+
+function customLabelsParseInput() {
+    const textarea = document.getElementById('custom-label-text');
+    if (!textarea) return [];
+    
+    const rawText = textarea.value;
+    const lines = rawText.split(/\r?\n/);
+    
+    const labels = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === '') continue;
+        
+        const linesArray = trimmed.split('|').map(l => l.trim()).filter(l => l !== '');
+        
+        labels.push({
+            raw: trimmed,
+            lines: linesArray,
+            lineCount: linesArray.length
+        });
+    }
+    
+    return labels;
+}
+
+function customLabelsUpdatePreview() {
+    const labels = customLabelsParseInput();
+    const previewDiv = document.getElementById('custom-label-preview');
+    const countSpan = document.getElementById('custom-label-preview-count');
+    
+    if (countSpan) {
+        countSpan.textContent = `${labels.length} label${labels.length !== 1 ? 's' : ''}`;
+    }
+    
+    if (!previewDiv) return;
+    
+    if (labels.length === 0) {
+        previewDiv.innerHTML = '<p style="color: #666; text-align: center;">Enter labels above to see preview</p>';
         return;
     }
     
-    queueContent.innerHTML = '';
+    let previewHtml = '<div style="display: flex; flex-wrap: wrap; gap: 15px;">';
     
-    let index = 1;
-    for (let i = 0; i < window.customLabelsItems.length; i++) {
-        const item = window.customLabelsItems[i];
-        if (!item) continue;
-        
-        const row = Math.floor(i / 4);
-        const col = i % 4;
-        
-        const queueItem = document.createElement('div');
-        queueItem.className = 'queue-item';
-        queueItem.style.background = 'white';
-        queueItem.style.border = '1px solid #e0e0e0';
-        queueItem.style.borderRadius = '6px';
-        queueItem.style.padding = '12px 15px';
-        queueItem.style.marginBottom = '8px';
-        queueItem.style.display = 'flex';
-        queueItem.style.alignItems = 'center';
-        queueItem.style.gap = '15px';
-        
-        queueItem.innerHTML = `
-            <div class="queue-item-number" style="background: #6c757d; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">${index}</div>
-            <div class="queue-item-info" style="flex: 1;">
-                <div class="queue-item-title" style="font-weight: 600; margin-bottom: 4px;">Position (${row + 1}, ${col + 1})</div>
-                <div class="queue-item-details" style="font-size: 12px; color: #666;">
-                    <span>${escapeHtml(item.text)}</span>
+    labels.forEach((label, idx) => {
+        previewHtml += `
+            <div style="background: white; border: 1px solid #ddd; border-radius: 4px; padding: 10px; width: 200px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="font-size: 11px; color: #999; margin-bottom: 5px;">Label #${idx + 1}</div>
+                <div style="text-align: center;">
+                    ${label.lines.map(line => `<div style="font-size: 12px; padding: 2px 0;">${customLabelsEscapeHtml(line)}</div>`).join('')}
                 </div>
             </div>
-            <button class="queue-item-remove" onclick="removeLabelFromPosition(${row}, ${col})" style="background: none; border: 1px solid #dc3545; color: #dc3545; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
-                <i class="fas fa-times"></i> Remove
-            </button>
         `;
-        
-        queueContent.appendChild(queueItem);
-        index++;
-    }
+    });
+    
+    previewHtml += '</div>';
+    previewDiv.innerHTML = previewHtml;
 }
 
-// Show print confirmation
-function showPrintConfirmation() {
-    const validLabels = window.customLabelsItems.filter(item => item);
+// ============================================================================
+// PDF Generation with Dynamic Font Sizing
+// ============================================================================
+
+async function customLabelsGeneratePDF() {
+    const labels = customLabelsParseInput();
     
-    if (validLabels.length === 0) {
-        showStatus('No labels to print', 'error');
+    if (labels.length === 0) {
+        customLabelsShowStatus('Please enter at least one label', 'error');
         return;
     }
     
-    const summaryList = document.getElementById('custom-print-summary-list');
-    if (summaryList) {
-        summaryList.innerHTML = '';
-        
-        let count = 0;
-        for (let i = 0; i < window.customLabelsItems.length && count < 20; i++) {
-            const item = window.customLabelsItems[i];
-            if (!item) continue;
-            
-            const row = Math.floor(i / 4);
-            const col = i % 4;
-            
-            const div = document.createElement('div');
-            div.style.padding = '5px';
-            div.style.borderBottom = '1px solid #eee';
-            div.innerHTML = `${count + 1}. Position (${row + 1},${col + 1}): ${escapeHtml(item.text)}`;
-            summaryList.appendChild(div);
-            count++;
-        }
-        
-        const totalLabels = validLabels.length;
-        if (totalLabels > 20) {
-            const more = document.createElement('div');
-            more.style.padding = '5px';
-            more.style.fontStyle = 'italic';
-            more.style.color = '#666';
-            more.textContent = `... and ${totalLabels - 20} more`;
-            summaryList.appendChild(more);
-        }
-    }
-    
-    document.getElementById('custom-print-count').textContent = validLabels.length;
-    document.getElementById('custom-print-start-position').textContent = `(${window.startRow}, ${window.startCol})`;
-    document.getElementById('custom-print-confirmation-modal').style.display = 'flex';
-}
-
-// Close print confirmation
-function closePrintConfirmation() {
-    document.getElementById('custom-print-confirmation-modal').style.display = 'none';
-}
-
-// Confirm and print
-async function confirmPrint() {
-    closePrintConfirmation();
-    showLoading(true);
+    customLabelsShowLoading(true);
     
     try {
-        // Convert items array to labels array for PDF generator
-        const labels = [];
-        for (let i = 0; i < window.customLabelsItems.length; i++) {
-            if (window.customLabelsItems[i]) {
-                labels.push({
-                    text: window.customLabelsItems[i].text
-                });
-            }
-        }
+        const labelWidthMM = await customLabelsGetConfigValue('LABEL_WIDTH_MM');
+        const labelHeightMM = await customLabelsGetConfigValue('LABEL_HEIGHT_MM');
+        const leftMarginMM = await customLabelsGetConfigValue('LEFT_MARGIN_MM');
+        const gutterSpacingMM = await customLabelsGetConfigValue('GUTTER_SPACING_MM');
+        const topMarginMM = await customLabelsGetConfigValue('TOP_MARGIN_MM');
+        const printBorders = await customLabelsGetConfigValue('PRINT_BORDERS');
         
-        const pdfBlob = await window.labelGenerator.generateCustomLabelsPDF(labels, {
-            startRow: window.startRow,
-            startCol: window.startCol
+        const { jsPDF } = window.jspdf;
+        
+        const mmToPt = 2.83465;
+        const labelWidthPt = parseFloat(labelWidthMM) * mmToPt;
+        const labelHeightPt = parseFloat(labelHeightMM) * mmToPt;
+        const leftMarginPt = parseFloat(leftMarginMM) * mmToPt;
+        const gutterSpacingPt = parseFloat(gutterSpacingMM) * mmToPt;
+        const topMarginPt = parseFloat(topMarginMM) * mmToPt;
+        
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'pt',
+            format: 'letter'
         });
         
-        if (pdfBlob) {
-            const url = URL.createObjectURL(pdfBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `custom_labels_${new Date().toISOString().slice(0, 10)}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+        const rows = 15;
+        const cols = 4;
+        const labelsPerPage = rows * cols;
+        
+        const startIndex = ((customLabels_startRow - 1) * cols) + (customLabels_startCol - 1);
+        let currentLabelIndex = 0;
+        let pageNumber = 0;
+        
+        // Available area for text (with 10pt padding on each side)
+        const textMaxWidth = labelWidthPt - 20;
+        const textMaxHeight = labelHeightPt - 20;
+        
+        console.log(`📄 Custom Labels PDF Generation with Dynamic Font Sizing`);
+        console.log(`📍 Starting at position: Row ${customLabels_startRow}, Col ${customLabels_startCol}`);
+        console.log(`📊 Total labels: ${labels.length}`);
+        console.log(`📏 Label size: ${labelWidthPt}pt x ${labelHeightPt}pt`);
+        console.log(`📏 Text area: ${textMaxWidth}pt x ${textMaxHeight}pt`);
+        
+        for (let i = 0; i < labels.length; i++) {
+            const label = labels[i];
             
-            showStatus(`Printed ${labels.length} labels successfully`, 'success');
+            const absoluteIndex = startIndex + currentLabelIndex;
+            const pageIndex = absoluteIndex % labelsPerPage;
+            const pageNum = Math.floor(absoluteIndex / labelsPerPage);
+            
+            if (pageNum > pageNumber) {
+                doc.addPage();
+                pageNumber = pageNum;
+            }
+            
+            const row = Math.floor(pageIndex / cols);
+            const col = pageIndex % cols;
+            
+            const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
+            const y = topMarginPt + (row * labelHeightPt);
+            
+            if (printBorders === 'true' || printBorders === true) {
+                doc.setDrawColor(0);
+                doc.setLineWidth(0.5);
+                doc.rect(x, y, labelWidthPt, labelHeightPt);
+            }
+            
+            // Calculate optimal font size for this label
+            const optimalFontSize = customLabelsCalculateFontSize(
+                label.lines, 
+                textMaxWidth, 
+                textMaxHeight, 
+                label.lineCount, 
+                doc
+            );
+            
+            doc.setFontSize(optimalFontSize);
+            doc.setFont('helvetica', 'bold');
+            
+            const lineHeight = optimalFontSize * 1.2;
+            const totalTextHeight = label.lineCount * lineHeight;
+            const startY = y + (labelHeightPt - totalTextHeight) / 2 + (lineHeight * 0.8);
+            
+            // Draw each line centered
+            for (let lineIdx = 0; lineIdx < label.lines.length; lineIdx++) {
+                const line = label.lines[lineIdx];
+                const lineY = startY + (lineIdx * lineHeight);
+                
+                const textWidth = doc.getTextWidth(line);
+                const textX = x + (labelWidthPt - textWidth) / 2;
+                
+                doc.text(line, textX, lineY);
+            }
+            
+            console.log(`  Label ${i+1}: "${label.lines[0]}${label.lines.length > 1 ? '...' : ''}" - Font size: ${optimalFontSize.toFixed(1)}pt`);
+            
+            currentLabelIndex++;
         }
+        
+        console.log(`✅ Generated ${currentLabelIndex} custom labels`);
+        
+        const pdfBlob = doc.output('blob');
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `custom_labels_${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        customLabelsShowStatus(`PDF generated with ${currentLabelIndex} labels (dynamic font sizing)`, 'success');
+        
     } catch (error) {
-        console.error('Print failed:', error);
-        showStatus(`Print failed: ${error.message}`, 'error');
-    }
-    
-    showLoading(false);
-}
-
-// Show sheet information
-function showSheetInfo() {
-    if (!window.labelSheetConfig) {
-        showStatus('Config not loaded', 'error');
-        return;
-    }
-    
-    const info = `
-        Label Sheet Information:
-        - Label Size: ${window.labelSheetConfig.labelWidthMM}mm x ${window.labelSheetConfig.labelHeightMM}mm
-        - Grid: ${window.labelSheetConfig.cols} columns x ${window.labelSheetConfig.rows} rows
-        - Labels per page: ${window.labelSheetConfig.labelsPerPage}
-        - Margins: Left=${window.labelSheetConfig.leftMarginMM}mm, Top=${window.labelSheetConfig.topMarginMM}mm
-        - Gutter spacing: ${window.labelSheetConfig.gutterSpacingMM}mm
-        - Print borders: ${window.labelSheetConfig.printBorders ? 'Yes' : 'No'}
-        - Starting position: Row ${window.startRow}, Column ${window.startCol}
-    `;
-    
-    alert(info);
-}
-
-// Refresh label sheet
-function refreshLabelSheet() {
-    loadLabelSheetConfig();
-}
-
-// Helper functions
-function showStatus(message, type = 'info') {
-    const statusEl = document.getElementById('custom-labels-status');
-    if (statusEl) {
-        statusEl.textContent = message;
-        statusEl.className = `status-message status-${type}`;
-        statusEl.style.display = 'block';
-        
-        setTimeout(() => {
-            statusEl.style.display = 'none';
-        }, 5000);
+        console.error('Custom labels PDF generation failed:', error);
+        customLabelsShowStatus(`PDF generation failed: ${error.message}`, 'error');
+    } finally {
+        customLabelsShowLoading(false);
     }
 }
 
-function showLoading(show) {
-    const loadingEl = document.getElementById('custom-labels-loading');
-    if (loadingEl) {
-        loadingEl.style.display = show ? 'flex' : 'none';
+// ============================================================================
+// UI Actions
+// ============================================================================
+
+function customLabelsClearText() {
+    const textarea = document.getElementById('custom-label-text');
+    if (textarea) {
+        textarea.value = '';
+        customLabelsUpdatePreview();
+        customLabelsShowStatus('All labels cleared', 'info');
     }
 }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+function customLabelsLoadSample() {
+    const textarea = document.getElementById('custom-label-text');
+    if (textarea) {
+        textarea.value = `SUMMER SALE!
+50% OFF ALL RECORDS
+
+NEW ARRIVALS
+VINYL & CDS
+
+STORE CREDIT
+AVAILABLE HERE
+
+BUY ONE GET ONE FREE
+LIMITED TIME
+
+CLEARANCE
+ALL SALES FINAL
+
+STAFF PICK
+RECOMMENDED
+
+GIFT CARDS
+AVAILABLE
+
+FREE SHIPPING
+ON ORDERS OVER $50
+
+RECORD STORE DAY
+EXCLUSIVE RELEASES
+
+TRADE-INS WELCOME
+BRING YOUR RECORDS`;
+        customLabelsUpdatePreview();
+        customLabelsShowStatus('Sample labels loaded', 'success');
+    }
 }
 
-// Initialize
-if (!window.customLabelsModule.initialized) {
-    document.addEventListener('tabChanged', function(e) {
-        if (e.detail && e.detail.tabName === 'custom-labels') {
-            console.log('Custom labels tab activated');
-            loadLabelSheetConfig();
-        }
-    });
+// ============================================================================
+// Event Listeners
+// ============================================================================
+
+function customLabelsInit() {
+    console.log('🎨 Custom Labels Module Initialized');
     
-    document.addEventListener('DOMContentLoaded', function() {
-        const activeTab = document.querySelector('.tab-content.active');
-        if (activeTab && activeTab.id === 'custom-labels-tab') {
-            loadLabelSheetConfig();
-        }
-        
-        // Initialize starting position inputs
-        const startRowInput = document.getElementById('start-row');
-        const startColInput = document.getElementById('start-col');
-        
-        if (startRowInput) {
-            startRowInput.value = window.startRow;
-            startRowInput.addEventListener('change', updateStartingPosition);
-        }
-        
-        if (startColInput) {
-            startColInput.value = window.startCol;
-            startColInput.addEventListener('change', updateStartingPosition);
-        }
-    });
+    const textarea = document.getElementById('custom-label-text');
+    if (textarea) {
+        textarea.addEventListener('input', customLabelsUpdatePreview);
+    }
     
-    window.customLabelsModule.initialized = true;
+    customLabelsUpdateStartPosition();
+    customLabelsUpdatePreview();
 }
 
-// Export functions
-window.loadLabelSheetConfig = loadLabelSheetConfig;
-window.renderLabelSheetGrid = renderLabelSheetGrid;
-window.selectLabelPosition = selectLabelPosition;
-window.addOrUpdateLabel = addOrUpdateLabel;
-window.removeLabelFromPosition = removeLabelFromPosition;
-window.clearAllLabels = clearAllLabels;
-window.updateStartingPosition = updateStartingPosition;
-window.showPrintConfirmation = showPrintConfirmation;
-window.closePrintConfirmation = closePrintConfirmation;
-window.confirmPrint = confirmPrint;
-window.showSheetInfo = showSheetInfo;
-window.refreshLabelSheet = refreshLabelSheet;
-window.updateCustomLabelsQueueDisplay = updateCustomLabelsQueueDisplay;
+// ============================================================================
+// Tab Activation Handler
+// ============================================================================
+
+document.addEventListener('tabChanged', function(e) {
+    if (e.detail && e.detail.tabName === 'custom-labels') {
+        console.log('🎨 Custom labels tab activated');
+        setTimeout(customLabelsInit, 100);
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const customLabelsTab = document.querySelector('.tab[data-tab="custom-labels"]');
+    if (customLabelsTab && customLabelsTab.classList.contains('active')) {
+        setTimeout(customLabelsInit, 200);
+    }
+});
+
+// Export functions for use in HTML
+window.customLabelsUpdateStartPosition = customLabelsUpdateStartPosition;
+window.customLabelsGeneratePDF = customLabelsGeneratePDF;
+window.customLabelsClearText = customLabelsClearText;
+window.customLabelsLoadSample = customLabelsLoadSample;
+
+console.log('✅ custom-labels.js loaded - Dynamic font sizing enabled');
