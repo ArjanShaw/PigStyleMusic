@@ -884,6 +884,7 @@ def create_discogs_listing_single():
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @app.route('/api/discogs/combined-inventory', methods=['GET'])
 def get_combined_inventory():
     """One API call to Discogs + one DB query = combined inventory with orphan detection"""
@@ -909,11 +910,10 @@ def get_combined_inventory():
             'User-Agent': 'PigStyleMusic/1.0'
         }
         
-        # Fetch all Discogs listings (includes Sold listings temporarily)
+        # Fetch all Discogs listings
         print("\n📡 STEP 1: Fetching Discogs listings...")
         all_discogs_listings = []
         page = 1
-        sold_listings_found = []
         while True:
             print(f"  📄 Fetching page {page}...")
             response = requests.get(
@@ -930,40 +930,29 @@ def get_combined_inventory():
             print(f"  📊 Found {len(listings)} listings on page {page}")
             
             if not listings:
-                print(f"  📭 No more listings, breaking")
                 break
             
             for listing in listings:
                 release = listing.get('release', {})
-                listing_status = listing.get('status', 'Unknown')
-                listing_id = str(listing.get('id'))
-                
                 all_discogs_listings.append({
-                    'listing_id': listing_id,
+                    'listing_id': str(listing.get('id')),
                     'artist': release.get('artist', 'Unknown'),
                     'title': release.get('title', 'Unknown'),
+                    'catalog_number': release.get('catno', ''),
                     'price': float(listing.get('price', {}).get('value', 0)),
                     'condition': listing.get('condition', ''),
                     'sleeve_condition': listing.get('sleeve_condition', ''),
-                    'status': listing_status,
+                    'status': listing.get('status', 'Unknown'),
                     'url': f"https://www.discogs.com/sell/item/{listing.get('id')}",
                     'listed_date': listing.get('listed', '')
                 })
-                
-                # Track sold listings for debugging
-                if listing_status == 'Sold':
-                    sold_listings_found.append(listing_id)
-                    if listing_id == '4113071160':
-                        print(f"  🎯 FOUND SOLD LISTING 4113071160 on page {page} with status: Sold")
             
             pagination = data.get('pagination', {})
             if page >= pagination.get('pages', 1):
-                print(f"  📄 Reached last page ({page}/{pagination.get('pages', 1)})")
                 break
             page += 1
         
         print(f"\n📊 Total Discogs listings fetched: {len(all_discogs_listings)}")
-        print(f"📊 Sold listings found in feed: {len(sold_listings_found)}")
         
         # Fetch all local records
         print("\n📡 STEP 2: Fetching local records from database...")
@@ -974,7 +963,7 @@ def get_combined_inventory():
                 r.id, r.artist, r.title, r.last_seen, r.location, 
                 r.discogs_listing_id, r.store_price, r.status_id,
                 r.condition_sleeve_id, r.condition_disc_id,
-                r.catalog_number, r.discogs_listed_date,
+                r.catalog_number, r.discogs_listed_date, r.notes,
                 sc.condition_name as sleeve_condition_name,
                 dc.condition_name as disc_condition_name
             FROM records r
@@ -987,32 +976,12 @@ def get_combined_inventory():
         # Build lookup maps
         print("\n📡 STEP 3: Building lookup maps...")
         discogs_by_listing_id = {listing['listing_id']: listing for listing in all_discogs_listings}
-        print(f"  📊 discogs_by_listing_id has {len(discogs_by_listing_id)} entries")
-        
-        # Check if our specific listing is in the map
-        if '4113071160' in discogs_by_listing_id:
-            print(f"  🎯 LISTING 4113071160 IS in discogs_by_listing_id")
-            print(f"     Status: {discogs_by_listing_id['4113071160'].get('status')}")
-        else:
-            print(f"  🎯 LISTING 4113071160 is NOT in discogs_by_listing_id")
-        
         local_by_listing_id = {}
         local_by_id = {}
         for record in local_records:
             local_by_id[record['id']] = record
             if record['discogs_listing_id']:
                 local_by_listing_id[str(record['discogs_listing_id'])] = record
-        
-        print(f"  📊 local_by_listing_id has {len(local_by_listing_id)} entries")
-        
-        # Check if record 6285 has a discogs_listing_id
-        record_6285 = local_by_id.get(6285)
-        if record_6285:
-            print(f"\n🎯 RECORD 6285 found in local DB:")
-            print(f"   Artist: {record_6285['artist']}")
-            print(f"   Title: {record_6285['title']}")
-            print(f"   discogs_listing_id: {record_6285['discogs_listing_id']}")
-            print(f"   status_id: {record_6285['status_id']}")
         
         # Get config for price calculations
         cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('DISCOGS_MARKUP_PERCENT',))
@@ -1030,13 +999,11 @@ def get_combined_inventory():
         
         combined_results = []
         
-        # 1. Process Discogs Orphans (listings without matching local records)
+        # 1. Process Discogs Orphans
         print("\n📡 STEP 4: Processing Discogs Orphans...")
         for listing_id, discogs_item in discogs_by_listing_id.items():
             if listing_id not in local_by_listing_id:
-                # Skip sold listings as orphans if they have no local match
                 if discogs_item.get('status') == 'Sold':
-                    print(f"  ⏭️ Skipping sold orphan listing {listing_id} - {discogs_item['artist']}")
                     continue
                     
                 weeks_on_discogs = 0
@@ -1053,6 +1020,7 @@ def get_combined_inventory():
                     'listing_id': discogs_item['listing_id'],
                     'artist': discogs_item['artist'],
                     'title': discogs_item['title'],
+                    'catalog_number': discogs_item.get('catalog_number', ''),
                     'media_condition': discogs_item['condition'],
                     'sleeve_condition': discogs_item['sleeve_condition'],
                     'last_seen': None,
@@ -1064,137 +1032,35 @@ def get_combined_inventory():
                     'reason': 'Listing exists on Discogs but not in local database'
                 })
         
-        print(f"  📊 Discogs orphans: {len([r for r in combined_results if r['type'] == 'discogs_orphan'])}")
-        
-        # 2. Process Local Orphans (records with discogs_listing_id but listing not in Discogs feed)
-        print("\n📡 STEP 5: Processing Local Orphans (records not found in Discogs feed)...")
-        
+        # 2. Process Local Orphans
+        print("\n📡 STEP 5: Processing Local Orphans...")
         for record in local_records:
             if record['discogs_listing_id']:
                 listing_id = str(record['discogs_listing_id'])
-                
                 if listing_id not in discogs_by_listing_id:
-                    print(f"\n🔍 Record {record['id']} - {record['artist']} - Listing {listing_id} not in Discogs feed")
-                    print(f"   Making individual API call to check status...")
-                    
-                    # Not in feed - check the actual status via individual API
-                    check_url = f"https://api.discogs.com/marketplace/listings/{listing_id}"
-                    try:
-                        check_response = requests.get(check_url, headers=headers, timeout=10)
-                        print(f"   Individual API response status: {check_response.status_code}")
-                        
-                        if check_response.status_code == 200:
-                            listing_data = check_response.json()
-                            listing_status = listing_data.get('status')
-                            print(f"   Listing status: {listing_status}")
-                            
-                            if listing_status == 'Sold':
-                                print(f"   ✅ LISTING IS SOLD! Adding to Sold category (user must resolve)")
-                                # TWO-STEP: Don't auto-update DB, just add to results
-                                combined_results.append({
-                                    'type': 'local_orphan_sold',
-                                    'record_id': record['id'],
-                                    'listing_id': listing_id,
-                                    'artist': record['artist'],
-                                    'title': record['title'],
-                                    'media_condition': record['disc_condition_name'],
-                                    'sleeve_condition': record['sleeve_condition_name'],
-                                    'last_seen': record['last_seen'],
-                                    'location': record['location'],
-                                    'price': record['store_price'],
-                                    'expected_price': None,
-                                    'weeks_on_discogs': None,
-                                    'url': listing_data.get('uri', ''),
-                                    'reason': f'💰 SOLD: Listing sold on Discogs - Click "Mark as Sold" to update local record'
-                                })
-                                continue
-                            else:
-                                print(f"   ⚠️ Listing status is '{listing_status}' - treating as missing")
-                                combined_results.append({
-                                    'type': 'local_orphan_missing',
-                                    'record_id': record['id'],
-                                    'listing_id': listing_id,
-                                    'artist': record['artist'],
-                                    'title': record['title'],
-                                    'media_condition': record['disc_condition_name'],
-                                    'sleeve_condition': record['sleeve_condition_name'],
-                                    'last_seen': record['last_seen'],
-                                    'location': record['location'],
-                                    'price': record['store_price'],
-                                    'expected_price': None,
-                                    'weeks_on_discogs': None,
-                                    'url': None,
-                                    'reason': f'⚠️ Listing status: {listing_status} - Not found in Discogs feed'
-                                })
-                                
-                        elif check_response.status_code == 404:
-                            print(f"   ❌ Listing not found (404) - treating as missing/deleted")
-                            combined_results.append({
-                                'type': 'local_orphan_missing',
-                                'record_id': record['id'],
-                                'listing_id': listing_id,
-                                'artist': record['artist'],
-                                'title': record['title'],
-                                'media_condition': record['disc_condition_name'],
-                                'sleeve_condition': record['sleeve_condition_name'],
-                                'last_seen': record['last_seen'],
-                                'location': record['location'],
-                                'price': record['store_price'],
-                                'expected_price': None,
-                                'weeks_on_discogs': None,
-                                'url': None,
-                                'reason': '❌ Missing/Deleted: Record has discogs_listing_id but listing not found on Discogs'
-                            })
-                        else:
-                            print(f"   ⚠️ API Error {check_response.status_code}")
-                            combined_results.append({
-                                'type': 'local_orphan_missing',
-                                'record_id': record['id'],
-                                'listing_id': listing_id,
-                                'artist': record['artist'],
-                                'title': record['title'],
-                                'media_condition': record['disc_condition_name'],
-                                'sleeve_condition': record['sleeve_condition_name'],
-                                'last_seen': record['last_seen'],
-                                'location': record['location'],
-                                'price': record['store_price'],
-                                'expected_price': None,
-                                'weeks_on_discogs': None,
-                                'url': None,
-                                'reason': f'⚠️ API Error {check_response.status_code}: Could not verify listing status'
-                            })
-                            
-                    except Exception as e:
-                        print(f"   ❌ Exception: {str(e)}")
-                        combined_results.append({
-                            'type': 'local_orphan_missing',
-                            'record_id': record['id'],
-                            'listing_id': listing_id,
-                            'artist': record['artist'],
-                            'title': record['title'],
-                            'media_condition': record['disc_condition_name'],
-                            'sleeve_condition': record['sleeve_condition_name'],
-                            'last_seen': record['last_seen'],
-                            'location': record['location'],
-                            'price': record['store_price'],
-                            'expected_price': None,
-                            'weeks_on_discogs': None,
-                            'url': None,
-                            'reason': f'⚠️ Error checking listing: {str(e)[:50]}'
-                        })
-                else:
-                    if record['id'] == 6285:
-                        print(f"\n🎯 RECORD 6285: listing_id {listing_id} IS in discogs_by_listing_id")
-                        print(f"   This means it will go to STEP 7 (Process Both)")
+                    combined_results.append({
+                        'type': 'local_orphan_missing',
+                        'record_id': record['id'],
+                        'listing_id': listing_id,
+                        'artist': record['artist'],
+                        'title': record['title'],
+                        'catalog_number': record['catalog_number'],  # ✅ ADDED
+                        'media_condition': record['disc_condition_name'],
+                        'sleeve_condition': record['sleeve_condition_name'],
+                        'last_seen': record['last_seen'],
+                        'location': record['location'],
+                        'price': record['store_price'],
+                        'expected_price': None,
+                        'weeks_on_discogs': None,
+                        'url': None,
+                        'reason': 'Missing/Deleted: Record has discogs_listing_id but listing not found'
+                    })
         
-        print(f"📊 Local orphans (missing): {len([r for r in combined_results if r['type'] == 'local_orphan_missing'])}")
-        print(f"📊 Local orphans (sold - pending user action): {len([r for r in combined_results if r['type'] == 'local_orphan_sold'])}")
-        
-        # 3. Process Not Listed (records with no discogs_listing_id that meet criteria)
+        # 3. Process Not Listed (MOST IMPORTANT - THIS IS YOUR 39 RECORDS)
         print("\n📡 STEP 6: Processing Not Listed records...")
         for record in local_records:
             if not record['discogs_listing_id']:
-                if record['status_id'] == 2:
+                if record['status_id'] == 2:  # Active status
                     if record['location'] and record['location'].strip():
                         if record['last_seen']:
                             try:
@@ -1208,6 +1074,7 @@ def get_combined_inventory():
                                         'listing_id': None,
                                         'artist': record['artist'],
                                         'title': record['title'],
+                                        'catalog_number': record['catalog_number'],  # ✅ ADDED - THIS IS THE FIX!
                                         'media_condition': record['disc_condition_name'],
                                         'sleeve_condition': record['sleeve_condition_name'],
                                         'last_seen': record['last_seen'],
@@ -1216,6 +1083,7 @@ def get_combined_inventory():
                                         'expected_price': round(expected_price, 2),
                                         'weeks_on_discogs': 0,
                                         'url': None,
+                                        'notes': record['notes'],  # ✅ Also add notes
                                         'reason': 'Eligible for Discogs listing'
                                     })
                             except:
@@ -1223,29 +1091,20 @@ def get_combined_inventory():
         
         print(f"📊 Not listed count: {len([r for r in combined_results if r['type'] == 'not_listed'])}")
         
-        # 4. Process Both (records with matching listings in Discogs feed)
-        print("\n📡 STEP 7: Processing Both (matching records in Discogs feed)...")
-        
+        # 4. Process Both (matching records)
+        print("\n📡 STEP 7: Processing Both...")
         for listing_id, discogs_item in discogs_by_listing_id.items():
             if listing_id in local_by_listing_id:
                 record = local_by_listing_id[listing_id]
                 
-                # Check if the listing is actually sold
-                listing_status = discogs_item.get('status', 'Unknown')
-                
-                if record['id'] == 6285:
-                    print(f"\n🎯 RECORD 6285 being processed in STEP 7")
-                    print(f"   listing_status from Discogs feed: {listing_status}")
-                
-                if listing_status == 'Sold':
-                    print(f"🎯 RECORD {record['id']} - {record['artist']} has status 'Sold' - Adding to Sold category (user must resolve)")
-                    # TWO-STEP: Don't auto-update database, just add to results for user to resolve
+                if discogs_item.get('status') == 'Sold':
                     combined_results.append({
                         'type': 'local_orphan_sold',
                         'record_id': record['id'],
                         'listing_id': listing_id,
                         'artist': record['artist'],
                         'title': record['title'],
+                        'catalog_number': record['catalog_number'],  # ✅ ADDED
                         'media_condition': record['disc_condition_name'],
                         'sleeve_condition': record['sleeve_condition_name'],
                         'last_seen': record['last_seen'],
@@ -1254,11 +1113,10 @@ def get_combined_inventory():
                         'expected_price': None,
                         'weeks_on_discogs': None,
                         'url': discogs_item.get('url', ''),
-                        'reason': f'💰 SOLD: Listing sold on Discogs - Click "Mark as Sold" to update local record'
+                        'reason': 'SOLD: Listing sold on Discogs'
                     })
-                    continue  # Skip adding to "both"
+                    continue
                 
-                # Normal processing for active (For Sale) listings
                 weeks_on_discogs = 0
                 if discogs_item.get('listed_date'):
                     try:
@@ -1267,12 +1125,10 @@ def get_combined_inventory():
                     except:
                         pass
                 
-                # Calculate expected price with reduction
                 reduction = weeks_on_discogs * weekly_step_percent
                 effective_markup = max(0, markup_percent - reduction)
                 expected_price = record['store_price'] * (1 + effective_markup / 100)
                 expected_price = round(expected_price, 2)
-                
                 needs_reduction = discogs_item['price'] > expected_price + 0.01
                 
                 combined_results.append({
@@ -1282,6 +1138,7 @@ def get_combined_inventory():
                     'listing_id': listing_id,
                     'artist': record['artist'],
                     'title': record['title'],
+                    'catalog_number': record['catalog_number'],  # ✅ ADDED
                     'media_condition': record['disc_condition_name'],
                     'sleeve_condition': record['sleeve_condition_name'],
                     'last_seen': record['last_seen'],
@@ -1290,12 +1147,11 @@ def get_combined_inventory():
                     'expected_price': expected_price,
                     'weeks_on_discogs': weeks_on_discogs,
                     'url': discogs_item['url'],
-                    'reason': f'On Discogs for {weeks_on_discogs} weeks' + (' - Due for reduction' if needs_reduction else '')
+                    'notes': record['notes'],  # ✅ ADDED
+                    'reason': f'On Discogs for {weeks_on_discogs} weeks'
                 })
         
-        print(f"📊 Both count: {len([r for r in combined_results if r['type'] == 'both'])}")
-        
-        # Calculate stats (no auto_sold_count in two-step approach)
+        # Calculate stats
         stats = {
             'total': len(combined_results),
             'discogs_orphans': len([r for r in combined_results if r['type'] == 'discogs_orphan']),
@@ -1307,15 +1163,8 @@ def get_combined_inventory():
         }
         
         print("\n" + "="*80)
-        print("📊 FINAL STATS:")
-        print(f"   Total: {stats['total']}")
-        print(f"   Discogs Orphans: {stats['discogs_orphans']}")
-        print(f"   Local Orphans (Missing): {stats['local_orphans_missing']}")
-        print(f"   Local Orphans (Sold - Pending User Action): {stats['local_orphans_sold']}")
-        print(f"   Not Listed: {stats['not_listed']}")
-        print(f"   Both: {stats['both']}")
-        print(f"   Due for Reduction: {stats['due_reduction']}")
-        print("="*80 + "\n")
+        print(f"📊 FINAL STATS: {stats}")
+        print("="*80)
         
         return jsonify({
             'success': True,
@@ -1326,12 +1175,11 @@ def get_combined_inventory():
         })
         
     except Exception as e:
-        print(f"\n❌ ERROR in get_combined_inventory: {str(e)}")
+        print(f"\n❌ ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
-        app.logger.error(f"Error in get_combined_inventory: {str(e)}")
-        app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/discogs/resolve-local-orphan', methods=['POST'])
 @login_required
