@@ -1044,7 +1044,7 @@ def get_combined_inventory():
                         'listing_id': listing_id,
                         'artist': record['artist'],
                         'title': record['title'],
-                        'catalog_number': record['catalog_number'],  # ✅ ADDED
+                        'catalog_number': record['catalog_number'],
                         'media_condition': record['disc_condition_name'],
                         'sleeve_condition': record['sleeve_condition_name'],
                         'last_seen': record['last_seen'],
@@ -1074,7 +1074,7 @@ def get_combined_inventory():
                                         'listing_id': None,
                                         'artist': record['artist'],
                                         'title': record['title'],
-                                        'catalog_number': record['catalog_number'],  # ✅ ADDED - THIS IS THE FIX!
+                                        'catalog_number': record['catalog_number'],
                                         'media_condition': record['disc_condition_name'],
                                         'sleeve_condition': record['sleeve_condition_name'],
                                         'last_seen': record['last_seen'],
@@ -1083,7 +1083,7 @@ def get_combined_inventory():
                                         'expected_price': round(expected_price, 2),
                                         'weeks_on_discogs': 0,
                                         'url': None,
-                                        'notes': record['notes'],  # ✅ Also add notes
+                                        'notes': record['notes'],
                                         'reason': 'Eligible for Discogs listing'
                                     })
                             except:
@@ -1104,7 +1104,7 @@ def get_combined_inventory():
                         'listing_id': listing_id,
                         'artist': record['artist'],
                         'title': record['title'],
-                        'catalog_number': record['catalog_number'],  # ✅ ADDED
+                        'catalog_number': record['catalog_number'],
                         'media_condition': record['disc_condition_name'],
                         'sleeve_condition': record['sleeve_condition_name'],
                         'last_seen': record['last_seen'],
@@ -1138,7 +1138,7 @@ def get_combined_inventory():
                     'listing_id': listing_id,
                     'artist': record['artist'],
                     'title': record['title'],
-                    'catalog_number': record['catalog_number'],  # ✅ ADDED
+                    'catalog_number': record['catalog_number'],
                     'media_condition': record['disc_condition_name'],
                     'sleeve_condition': record['sleeve_condition_name'],
                     'last_seen': record['last_seen'],
@@ -1147,7 +1147,7 @@ def get_combined_inventory():
                     'expected_price': expected_price,
                     'weeks_on_discogs': weeks_on_discogs,
                     'url': discogs_item['url'],
-                    'notes': record['notes'],  # ✅ ADDED
+                    'notes': record['notes'],
                     'reason': f'On Discogs for {weeks_on_discogs} weeks'
                 })
         
@@ -1622,7 +1622,7 @@ def delete_discogs_listing(listing_id):
 
 @app.route('/api/discogs/search-release', methods=['POST'])
 def search_discogs_release():
-    """Search Discogs for a release"""
+    """Search Discogs for a release - returns raw genre string"""
     try:
         data = request.json
         artist = data.get('artist', '')
@@ -1655,6 +1655,10 @@ def search_discogs_release():
                 result_artist = parts[0]
                 result_title = parts[1]
             
+            # Get raw genre string (comma-separated list)
+            genre_list = result.get('genre', [])
+            raw_genre = ', '.join(genre_list) if genre_list else ''
+            
             formatted_results.append({
                 'release_id': result.get('id'),
                 'title': result_title,
@@ -1664,7 +1668,8 @@ def search_discogs_release():
                 'label': result.get('label', [''])[0] if result.get('label') else '',
                 'catalog_number': result.get('catno', ''),
                 'thumb': result.get('thumb', ''),
-                'url': f"https://www.discogs.com/release/{result.get('id')}"
+                'url': f"https://www.discogs.com/release/{result.get('id')}",
+                'genre_raw': raw_genre  # Return raw genre string
             })
         
         return jsonify({'success': True, 'results': formatted_results, 'count': len(formatted_results)})
@@ -2559,74 +2564,36 @@ def delete_user(user_id):
     return jsonify({'status': 'success', 'message': f'User {user["username"]} deleted successfully'})
 
 
-# ==================== ARTIST-GENRE ENDPOINTS ====================
+# ==================== GENRE-RELATED ENDPOINTS REMOVED ====================
+# The following endpoints have been removed:
+# - GET /artist-genre
+# - GET /artist-genre/<artist_name>
+# - POST /artist-genre
+# - PUT /artist-genre/<artist_name>
+# - GET /artist-genre/genre/<int:genre_id>
+# - GET /genres
+# - POST /genres
+# - GET /genres/by-name/<genre_name>
+# - GET /artists/with-genres (modified below to return artists without genre)
 
-@app.route('/artist-genre', methods=['GET'])
-def get_all_artist_genres():
+# ==================== ARTISTS ENDPOINT (MODIFIED - NO GENRES) ====================
+
+@app.route('/artists', methods=['GET'])
+def get_artists():
+    """Get all unique artists from records (no genre mapping)"""
+    search_term = request.args.get('search', '')
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT ag.artist, ag.genre_id, g.genre_name FROM artist_genre ag LEFT JOIN genres g ON ag.genre_id = g.id ORDER BY ag.artist ASC')
+    if search_term:
+        cursor.execute('SELECT DISTINCT artist FROM records WHERE artist LIKE ? ORDER BY artist', (f'%{search_term}%',))
+    else:
+        cursor.execute('SELECT DISTINCT artist FROM records ORDER BY artist')
     artists = cursor.fetchall()
     conn.close()
-    return jsonify([dict(artist) for artist in artists])
+    return jsonify({'status': 'success', 'artists': [dict(artist) for artist in artists]})
 
 
-@app.route('/artist-genre/<artist_name>', methods=['GET'])
-def get_artist_genre(artist_name):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT ag.artist, ag.genre_id, g.genre_name FROM artist_genre ag LEFT JOIN genres g ON ag.genre_id = g.id WHERE ag.artist = ?', (artist_name,))
-    artist = cursor.fetchone()
-    conn.close()
-    if not artist:
-        return jsonify({'status': 'error', 'error': 'Artist not found'}), 404
-    return jsonify(dict(artist))
-
-
-@app.route('/artist-genre', methods=['POST'])
-def create_artist_genre():
-    data = request.get_json()
-    if not data:
-        return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-
-    artist = data.get('artist')
-    genre_id = data.get('genre_id')
-
-    if not artist or not genre_id:
-        return jsonify({'status': 'error', 'error': 'artist and genre_id required'}), 400
-
-    artist = artist.strip()
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, genre_name FROM genres WHERE id = ?', (genre_id,))
-    genre = cursor.fetchone()
-    if not genre:
-        conn.close()
-        return jsonify({'status': 'error', 'error': f'Genre ID {genre_id} not found'}), 404
-
-    cursor.execute('SELECT * FROM artist_genre WHERE artist = ?', (artist,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': f'Artist "{artist}" already exists'}), 400
-
-    cursor.execute('INSERT INTO artist_genre (artist, genre_id) VALUES (?, ?)', (artist, genre_id))
-    conn.commit()
-    conn.close()
-
-    return jsonify({'status': 'success', 'message': f'Artist "{artist}" mapped to genre "{genre["genre_name"]}"', 'artist': artist, 'genre_id': genre_id}), 201
-
-
-@app.route('/artist-genre/genre/<int:genre_id>', methods=['GET'])
-def get_artists_by_genre(genre_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT ag.artist, ag.genre_id, g.genre_name FROM artist_genre ag LEFT JOIN genres g ON ag.genre_id = g.id WHERE ag.genre_id = ? ORDER BY ag.artist ASC', (genre_id,))
-    artists = cursor.fetchall()
-    conn.close()
-    return jsonify([dict(artist) for artist in artists])
-
-
-# ==================== RECORDS ENDPOINTS ====================
+# ==================== RECORDS ENDPOINTS (ALL MODIFIED - NO GENRE JOINS) ====================
 
 @app.route('/records', methods=['POST'])
 def create_record():
@@ -2634,7 +2601,7 @@ def create_record():
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
     
-    required_fields = ['artist', 'title', 'genre_id', 'store_price']
+    required_fields = ['artist', 'title', 'store_price']
     for field in required_fields:
         if field not in data:
             return jsonify({'status': 'error', 'error': f'{field} required'}), 400
@@ -2657,34 +2624,56 @@ def create_record():
                 condition_sleeve_id = result['id']
                 condition_disc_id = result['id']
         
+        # Get discogs_genre_raw if provided
+        discogs_genre_raw = data.get('discogs_genre_raw', '')
+        
         cursor.execute('''
-            INSERT INTO records (artist, title, barcode, genre_id, image_url, catalog_number,
-            condition_sleeve_id, condition_disc_id, store_price, youtube_url, consignor_id,
-            commission_rate, status_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (data.get('artist'), data.get('title'), data.get('barcode', ''), data.get('genre_id'),
-              data.get('image_url', ''), data.get('catalog_number', ''), condition_sleeve_id,
-              condition_disc_id, float(data.get('store_price', 0.0)), data.get('youtube_url', ''),
-              consignor_id, float(commission_rate) if commission_rate else None, int(status_id)))
+            INSERT INTO records (
+                artist, title, barcode, image_url, catalog_number,
+                condition_sleeve_id, condition_disc_id, store_price, youtube_url, 
+                consignor_id, commission_rate, status_id, discogs_genre_raw, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (
+            data.get('artist'), 
+            data.get('title'), 
+            data.get('barcode', ''), 
+            data.get('image_url', ''), 
+            data.get('catalog_number', ''), 
+            condition_sleeve_id,
+            condition_disc_id, 
+            float(data.get('store_price', 0.0)), 
+            data.get('youtube_url', ''),
+            consignor_id, 
+            float(commission_rate) if commission_rate else None, 
+            int(status_id),
+            discogs_genre_raw
+        ))
         
         record_id = cursor.lastrowid
         conn.commit()
         
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name, cs.condition_name as sleeve_condition_name,
-            cd.condition_name as disc_condition_name FROM records r LEFT JOIN genres g ON r.genre_id = g.id
-            LEFT JOIN d_status s ON r.status_id = s.id LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id WHERE r.id = ?
+            SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
+            cd.condition_name as disc_condition_name 
+            FROM records r 
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id 
+            WHERE r.id = ?
         ''', (record_id,))
         
         record = cursor.fetchone()
-        return jsonify({'status': 'success', 'record': dict(record) if record else {}, 'message': f'Record added successfully with ID: {record_id}'})
+        return jsonify({
+            'status': 'success', 
+            'record': dict(record) if record else {}, 
+            'message': f'Record added successfully with ID: {record_id}'
+        })
         
     except Exception as e:
         conn.rollback()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
     finally:
         conn.close()
-
 
 @app.route('/records', methods=['GET'])
 def get_records():
@@ -2697,13 +2686,12 @@ def get_records():
     status_id = request.args.get('status_id', type=int)
     
     query = '''
-        SELECT r.*, COALESCE(g.genre_name, 'Unknown') as genre_name, s.status_name,
+        SELECT r.*, s.status_name,
         cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
         cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
         cd.condition_name as disc_condition_name, cd.display_name as disc_display,
         cd.abbreviation as disc_abbr, cd.quality_index as disc_quality
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -2741,11 +2729,10 @@ def get_record(record_id):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT r.*, g.genre_name, s.status_name, cs.condition_name as sleeve_condition_name,
+        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
         cs.display_name as sleeve_display, cs.abbreviation as sleeve_abbr,
         cd.condition_name as disc_condition_name, cd.display_name as disc_display, cd.abbreviation as disc_abbr
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -2802,9 +2789,8 @@ def get_record_by_barcode(barcode):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT r.*, g.genre_name, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -2830,9 +2816,8 @@ def search_records():
     cursor = conn.cursor()
     search_term = f'%{query}%'
     cursor.execute('''
-        SELECT r.*, g.genre_name, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -2857,9 +2842,8 @@ def get_random_records():
     conn = get_db()
     cursor = conn.cursor()
     query = '''
-        SELECT r.*, g.genre_name, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -2912,9 +2896,8 @@ def get_records_by_ids():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(f'''
-        SELECT r.*, g.genre_name, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -2960,9 +2943,8 @@ def get_user_records(user_id):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT r.*, g.genre_name, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -2985,9 +2967,8 @@ def get_records_without_barcodes():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT r.*, g.genre_name, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -3014,10 +2995,9 @@ def get_records_by_status(status_id):
         conn.close()
         return jsonify({'status': 'error', 'error': 'Invalid status ID'}), 400
     cursor.execute('''
-        SELECT r.*, g.genre_name, s.status_name, u.username as consignor_name,
+        SELECT r.*, s.status_name, u.username as consignor_name,
         cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN users u ON r.consignor_id = u.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -3068,54 +3048,6 @@ def get_condition_by_id(condition_id):
         return jsonify({'status': 'success', 'condition': dict(condition)})
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-# ==================== GENRES ENDPOINTS ====================
-
-@app.route('/genres', methods=['GET'])
-def get_genres():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, genre_name FROM genres ORDER BY id')
-    genres = cursor.fetchall()
-    conn.close()
-    return jsonify({'status': 'success', 'count': len(genres), 'genres': [dict(g) for g in genres]})
-
-
-@app.route('/genres', methods=['POST'])
-def create_genre():
-    data = request.get_json()
-    if not data or 'genre_name' not in data:
-        return jsonify({'status': 'error', 'error': 'genre_name required'}), 400
-    genre_name = data['genre_name']
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id FROM genres WHERE genre_name = ?', (genre_name,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Genre already exists'}), 400
-    cursor.execute('INSERT INTO genres (genre_name) VALUES (?)', (genre_name,))
-    genre_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'genre_id': genre_id})
-
-
-@app.route('/genres/by-name/<genre_name>', methods=['GET'])
-def get_genre_by_name(genre_name):
-    decoded_genre_name = urllib.parse.unquote(genre_name)
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, genre_name FROM genres WHERE genre_name = ?', (decoded_genre_name,))
-    genre = cursor.fetchone()
-    if not genre:
-        cursor.execute('SELECT id, genre_name FROM genres WHERE LOWER(genre_name) = LOWER(?)', (decoded_genre_name,))
-        genre = cursor.fetchone()
-    conn.close()
-    if genre:
-        return jsonify({'status': 'success', 'genre_id': genre['id'], 'genre_name': genre['genre_name']})
-    else:
-        return jsonify({'status': 'error', 'error': f'Genre "{decoded_genre_name}" not found'}), 404
 
 
 # ==================== CONFIG ENDPOINTS ====================
@@ -3183,10 +3115,9 @@ def get_consignor_records():
     cursor = conn.cursor()
     if session.get('role') == 'admin':
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name, u.username as consignor_name,
+            SELECT r.*, s.status_name, u.username as consignor_name,
             cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
             FROM records r
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -3196,10 +3127,9 @@ def get_consignor_records():
         ''')
     else:
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name,
+            SELECT r.*, s.status_name,
             cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
             FROM records r
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -3215,6 +3145,7 @@ def get_consignor_records():
             record_dict['condition'] = record_dict['sleeve_condition_name']
         records_list.append(record_dict)
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
+
 
 
 @app.route('/api/consignor/add-record', methods=['POST'])
@@ -3240,19 +3171,39 @@ def add_consignor_record():
         if result:
             condition_sleeve_id = result['id']
             condition_disc_id = result['id']
+    
+    discogs_genre_raw = data.get('discogs_genre_raw', '')
+    
     cursor.execute('''
-        INSERT INTO records (artist, title, barcode, genre_id, image_url, catalog_number,
-        condition_sleeve_id, condition_disc_id, store_price, youtube_url, consignor_id,
-        commission_rate, status_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ''', (data.get('artist'), data.get('title'), data.get('barcode', ''), data.get('genre_id'),
-          data.get('image_url', ''), data.get('catalog_number', ''), condition_sleeve_id,
-          condition_disc_id, float(data.get('store_price')), data.get('youtube_url', ''),
-          session['user_id'], commission_rate, 1))
+        INSERT INTO records (
+            artist, title, barcode, image_url, catalog_number,
+            condition_sleeve_id, condition_disc_id, store_price, youtube_url, 
+            consignor_id, commission_rate, status_id, created_at, discogs_genre_raw
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+    ''', (
+        data.get('artist'), 
+        data.get('title'), 
+        data.get('barcode', ''), 
+        data.get('image_url', ''),
+        data.get('catalog_number', ''), 
+        condition_sleeve_id, 
+        condition_disc_id, 
+        float(data.get('store_price')), 
+        data.get('youtube_url', ''), 
+        session['user_id'],
+        commission_rate, 
+        1, 
+        discogs_genre_raw
+    ))
     record_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    return jsonify({'status': 'success', 'message': 'Record added for consignment', 'record_id': record_id, 'commission_rate': commission_rate})
+    return jsonify({
+        'status': 'success', 
+        'message': 'Record added for consignment', 
+        'record_id': record_id, 
+        'commission_rate': commission_rate
+    })
 
 
 @app.route('/consignment/records', methods=['GET'])
@@ -3262,10 +3213,9 @@ def get_consignment_records():
     cursor = conn.cursor()
     if user_id:
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name, u.username as consignor_name,
+            SELECT r.*, s.status_name, u.username as consignor_name,
             cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
             FROM records r
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -3275,10 +3225,9 @@ def get_consignment_records():
         ''', (user_id,))
     else:
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name, u.username as consignor_name,
+            SELECT r.*, s.status_name, u.username as consignor_name,
             cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
             FROM records r
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -3316,10 +3265,9 @@ def get_dropoff_records():
     cursor = conn.cursor()
     if user_id:
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name, u.username as consignor_name,
+            SELECT r.*, s.status_name, u.username as consignor_name,
             cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
             FROM records r
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -3329,10 +3277,9 @@ def get_dropoff_records():
         ''', (user_id,))
     else:
         cursor.execute('''
-            SELECT r.*, g.genre_name, s.status_name, u.username as consignor_name,
+            SELECT r.*, s.status_name, u.username as consignor_name,
             cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
             FROM records r
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -3349,6 +3296,9 @@ def get_dropoff_records():
             record_dict['condition'] = record_dict['sleeve_condition_name']
         records_list.append(record_dict)
     return jsonify({'status': 'success', 'records': records_list})
+
+
+# ==================== PRICE ESTIMATE ENDPOINT ====================
 
 @app.route('/api/price-estimate', methods=['POST'])
 def price_estimate():
@@ -3519,6 +3469,7 @@ def price_estimate():
             'error': f"Unexpected error: {str(e)}",
             'error_type': 'unexpected_error'
         }), 500
+
  
 @app.route('/api/discogs/price-suggestions/<release_id>', methods=['GET'])
 def discogs_price_suggestions_proxy(release_id):
@@ -3544,6 +3495,7 @@ def discogs_price_suggestions_proxy(release_id):
         
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/ebay/search', methods=['POST'])
 def ebay_search_proxy():
@@ -3662,11 +3614,15 @@ def discogs_search_proxy():
             if not artist or artist == 'Unknown':
                 artist = 'Unknown Artist'
             
+            # Get raw genre string
+            genre_list = item.get('genre', [])
+            raw_genre = ', '.join(genre_list) if genre_list else ''
+            
             results.append({
                 'artist': artist,
                 'title': title,
                 'year': item.get('year'),
-                'genre': item.get('genre', [''])[0] if item.get('genre') else '',
+                'genre_raw': raw_genre,
                 'format': item.get('format', [''])[0] if item.get('format') else '',
                 'country': item.get('country'),
                 'image_url': item.get('thumb', ''),
@@ -3681,6 +3637,7 @@ def discogs_search_proxy():
         app.logger.error(f"Discogs search error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/catalog/records', methods=['GET'])
 def get_catalog_records():
     try:
@@ -3690,14 +3647,12 @@ def get_catalog_records():
         cutoff_row = cursor.fetchone()
         cutoff_days = int(cutoff_row['config_value']) if cutoff_row else 30
         query = """
-            SELECT r.id, r.artist, r.title, r.barcode, r.genre_id, g.genre_name as genre_name,
-            r.image_url, r.catalog_number, r.store_price, r.youtube_url, r.consignor_id,
+            SELECT r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number, r.store_price, r.youtube_url, r.consignor_id,
             r.commission_rate, r.created_at, r.status_id, ds.status_name as status_name,
             r.date_sold, r.condition_sleeve_id, cs.condition_name as condition_sleeve,
             r.condition_disc_id, cd.condition_name as condition_disc, r.last_seen,
-            r.discogs_listing_id, r.discogs_listed_date, r.location
+            r.discogs_listing_id, r.discogs_listed_date, r.location, r.discogs_genre_raw
             FROM records r
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN d_status ds ON r.status_id = ds.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -3710,17 +3665,17 @@ def get_catalog_records():
         for row in rows:
             record = {
                 'id': row['id'], 'artist': row['artist'], 'title': row['title'],
-                'barcode': row['barcode'], 'genre_id': row['genre_id'], 'genre_name': row['genre_name'],
-                'image_url': row['image_url'], 'catalog_number': row['catalog_number'],
-                'store_price': row['store_price'], 'youtube_url': row['youtube_url'],
-                'consignor_id': row['consignor_id'], 'commission_rate': row['commission_rate'],
-                'created_at': row['created_at'], 'status_id': row['status_id'],
-                'status_name': row['status_name'], 'date_sold': row['date_sold'],
-                'condition_sleeve_id': row['condition_sleeve_id'], 'condition_sleeve': row['condition_sleeve'],
-                'condition_disc_id': row['condition_disc_id'], 'condition_disc': row['condition_disc'],
-                'last_seen': row['last_seen'], 'discogs_listing_id': row['discogs_listing_id'],
-                'discogs_listed_date': row['discogs_listed_date'],
-                'location': row['location'] if row['location'] else 'Check with staff'
+                'barcode': row['barcode'], 'image_url': row['image_url'],
+                'catalog_number': row['catalog_number'], 'store_price': row['store_price'],
+                'youtube_url': row['youtube_url'], 'consignor_id': row['consignor_id'],
+                'commission_rate': row['commission_rate'], 'created_at': row['created_at'],
+                'status_id': row['status_id'], 'status_name': row['status_name'],
+                'date_sold': row['date_sold'], 'condition_sleeve_id': row['condition_sleeve_id'],
+                'condition_sleeve': row['condition_sleeve'], 'condition_disc_id': row['condition_disc_id'],
+                'condition_disc': row['condition_disc'], 'last_seen': row['last_seen'],
+                'discogs_listing_id': row['discogs_listing_id'], 'discogs_listed_date': row['discogs_listed_date'],
+                'location': row['location'] if row['location'] else 'Check with staff',
+                'discogs_genre_raw': row['discogs_genre_raw'] or ''
             }
             records.append(record)
         return jsonify({'status': 'success', 'records': records, 'total': len(records), 'cutoff_days': cutoff_days})
@@ -3734,11 +3689,10 @@ def get_catalog_grouped_by_release():
     cursor = conn.cursor()
     cursor.execute('''
         SELECT r.id, r.artist, r.title, r.barcode, COALESCE(r.image_url, '') as image_url,
-        COALESCE(g.genre_name, 'Unknown') as genre_name, cs.condition_name as sleeve_condition,
-        cd.condition_name as disc_condition, r.store_price, r.catalog_number, r.youtube_url,
-        r.created_at, s.status_name
+        cs.condition_name as sleeve_condition, cd.condition_name as disc_condition, 
+        r.store_price, r.catalog_number, r.youtube_url, r.created_at, s.status_name,
+        r.discogs_genre_raw
         FROM records r
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
@@ -3782,9 +3736,9 @@ def get_catalog_grouped_by_release():
         if key not in groups:
             unique_releases += 1
             groups[key] = {
-                'artist': artist, 'title': title, 'genre_name': record_dict.get('genre_name', 'Unknown'),
-                'image_url': record_dict.get('image_url', ''), 'total_copies': 0, 'formats': {},
-                'created_at': record_dict.get('created_at'),
+                'artist': artist, 'title': title, 'image_url': record_dict.get('image_url', ''),
+                'total_copies': 0, 'formats': {}, 'created_at': record_dict.get('created_at'),
+                'discogs_genre_raw': record_dict.get('discogs_genre_raw', ''),
                 'price_range': {'min': float('inf'), 'max': 0}
             }
         if record_format not in groups[key]['formats']:
@@ -3839,22 +3793,6 @@ def get_catalog_grouped_by_release():
                     copy['condition'] = f"Sleeve: {copy['sleeve_condition']}, Disc: {copy['disc_condition']}"
     
     return jsonify({'status': 'success', 'total_unique_releases': len(groups_list), 'total_copies': total_copies, 'groups': groups_list})
-
-
-# ==================== ARTISTS ENDPOINTS ====================
-
-@app.route('/artists/with-genres', methods=['GET'])
-def get_artists_with_genres():
-    search_term = request.args.get('search', '')
-    conn = get_db()
-    cursor = conn.cursor()
-    if search_term:
-        cursor.execute('SELECT DISTINCT r.artist as artist_name, COALESCE(g.genre_name, "Unknown") as genre_name FROM records r LEFT JOIN genres g ON r.genre_id = g.id WHERE r.artist LIKE ? ORDER BY r.artist', (f'%{search_term}%',))
-    else:
-        cursor.execute('SELECT DISTINCT r.artist as artist_name, COALESCE(g.genre_name, "Unknown") as genre_name FROM records r LEFT JOIN genres g ON r.genre_id = g.id ORDER BY r.artist')
-    artists = cursor.fetchall()
-    conn.close()
-    return jsonify({'status': 'success', 'artists': [dict(artist) for artist in artists]})
 
 
 # ==================== COMMISSION RATE ENDPOINT ====================
@@ -4356,7 +4294,7 @@ def merchandise_page():
     return send_from_directory('static', 'accessories.html')
 
 
-# Add after your existing batch endpoints (around line 3200+)
+# ==================== BATCH ENDPOINTS ====================
 
 @app.route('/api/batches/current-active', methods=['GET'])
 @login_required
@@ -4392,88 +4330,6 @@ def get_current_active_batch():
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
-@app.route('/api/discogs/search', methods=['GET'])
-def discogs_search():
-    """Search Discogs API - alias for search-release"""
-    # Reuse your existing search-release logic
-    search_term = request.args.get('q', '')
-    
-    if not search_term:
-        return jsonify({'status': 'error', 'error': 'Search term required'}), 400
-    
-    # Forward to your existing search-release endpoint logic
-    # Or implement Discogs search here
-    try:
-        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
-        if not TOKEN:
-            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
-        
-        headers = {'Authorization': f'Discogs token={TOKEN}', 'User-Agent': 'PigStyleMusic/1.0'}
-        
-        response = requests.get(
-            'https://api.discogs.com/database/search',
-            headers=headers,
-            params={'q': search_term, 'type': 'release', 'per_page': 20}
-        )
-        
-        if response.status_code != 200:
-            return jsonify({'status': 'error', 'error': 'Discogs search failed'}), response.status_code
-        
-        data = response.json()
-        results = []
-        
-        for item in data.get('results', []):
-            results.append({
-                'artist': item.get('artist', 'Unknown'),
-                'title': item.get('title', 'Unknown'),
-                'year': item.get('year'),
-                'genre': item.get('genre', [''])[0] if item.get('genre') else '',
-                'format': item.get('format', [''])[0] if item.get('format') else '',
-                'country': item.get('country'),
-                'image_url': item.get('thumb', ''),
-                'catalog_number': item.get('catno', ''),
-                'discogs_id': item.get('id'),
-                'barcode': ''  # Discogs search doesn't return barcode directly
-            })
-        
-        return jsonify({'status': 'success', 'results': results})
-        
-    except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/artist-genre/<artist_name>', methods=['PUT'])
-@login_required
-def update_artist_genre(artist_name):
-    """Update artist-genre mapping"""
-    try:
-        data = request.get_json()
-        genre_id = data.get('genre_id')
-        
-        if not genre_id:
-            return jsonify({'status': 'error', 'error': 'genre_id required'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            UPDATE artist_genre 
-            SET genre_id = ? 
-            WHERE artist = ?
-        ''', (genre_id, artist_name))
-        
-        if cursor.rowcount == 0:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Artist not found'}), 404
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'status': 'success', 'message': 'Artist genre updated'})
-        
-    except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
