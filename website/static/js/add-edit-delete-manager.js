@@ -9,122 +9,8 @@
 // The user must see the error and decide what to do.
 // ============================================================================
 
-// Genre Predictor Class - Only checks artist_genre table
-class GenrePredictor {
-    constructor() {
-        this.artistGenreCache = {};
-    }
-    
-    async predictGenre(artist) {
-        console.log(`GENRE_PREDICTION: Predicting for artist="${artist}"`);
-        
-        if (artist) {
-            const artistGenre = await this.getArtistGenre(artist);
-            if (artistGenre) {
-                console.log(`GENRE_PREDICTION: Found artist "${artist}" in artist_genre table with genre ID ${artistGenre.genre_id} (${artistGenre.genre_name})`);
-                return {
-                    local_genre_id: artistGenre.genre_id,
-                    local_genre_name: artistGenre.genre_name
-                };
-            } else {
-                console.log(`GENRE_PREDICTION: Artist "${artist}" not found in artist_genre table`);
-            }
-        }
-        
-        return null;
-    }
-    
-    async getArtistGenre(artist) {
-        if (this.artistGenreCache[artist]) {
-            console.log(`🔍 CACHE HIT: Artist "${artist}" found in cache:`, this.artistGenreCache[artist]);
-            return this.artistGenreCache[artist];
-        }
-        console.log(`🔍 CACHE MISS: Artist "${artist}" not in cache, making API call...`);
-        
-        try {
-            const response = await APIUtils.get(`/artist-genre/${encodeURIComponent(artist)}`);
-            
-            if (response && response.artist && response.genre_id) {
-                console.log(`✅ API SUCCESS: Artist "${artist}" found with genre ID ${response.genre_id}`);
-                this.artistGenreCache[artist] = {
-                    artist: response.artist,
-                    genre_id: response.genre_id,
-                    genre_name: response.genre_name
-                };
-                return this.artistGenreCache[artist];
-            } else if (response && response.status === 'error' && response.error === 'Artist not found') {
-                console.log(`❌ API RESPONSE: Artist "${artist}" not found in database`);
-                this.artistGenreCache[artist] = null;
-                return null;
-            } else {
-                console.log(`⚠️ UNEXPECTED API RESPONSE FORMAT:`, response);
-                this.artistGenreCache[artist] = null;
-                return null;
-            }
-        } catch (error) {
-            console.error(`🔥 ERROR fetching artist genre for "${artist}":`, error);
-            return null;
-        }
-    }
-
-    async saveArtistGenre(artist, genreId, genreName) {
-        if (!artist || !genreId) return null;
-        
-        const existing = await this.getArtistGenre(artist);
-        if (existing) {
-            console.log(`Artist "${artist}" already has genre ID ${existing.genre_id}, not overwriting`);
-            return existing;
-        }
-        
-        try {
-            const data = {
-                artist: artist,
-                genre_id: genreId
-            };
-            
-            const response = await APIUtils.post('/artist-genre', data);
-            
-            if (response.status === 'success') {
-                this.artistGenreCache[artist] = {
-                    artist: artist,
-                    genre_id: genreId,
-                    genre_name: genreName
-                };
-                console.log(`ARTIST_GENRE: Saved artist "${artist}" -> ${genreName}`);
-                return response;
-            }
-        } catch (error) {
-            console.error('Error saving artist genre:', error);
-        }
-        return null;
-    }
-
-    async updateArtistGenre(artist, genreId, genreName) {
-        if (!artist || !genreId) return null;
-        
-        try {
-            const data = {
-                artist: artist,
-                genre_id: genreId
-            };
-            
-            const response = await APIUtils.put(`/artist-genre/${encodeURIComponent(artist)}`, data);
-            
-            if (response.status === 'success') {
-                this.artistGenreCache[artist] = {
-                    artist: artist,
-                    genre_id: genreId,
-                    genre_name: genreName
-                };
-                console.log(`ARTIST_GENRE: Updated artist "${artist}" -> ${genreName}`);
-                return response;
-            }
-        } catch (error) {
-            console.error('Error updating artist genre:', error);
-        }
-        return null;
-    }
-}
+// Note: Genre functionality has been removed. Discogs genre is now stored as raw text
+// in the discogs_genre_raw field and displayed read-only on price tags.
 
 // Barcode Generator Class - Supports multiple formats
 class BarcodeGenerator {
@@ -254,11 +140,9 @@ class AddEditDeleteManager {
         this.currentSearchType = 'add';
         this.currentSearchField = 'all';
         this.currentResults = [];
-        this.genres = [];
         this.conditions = [];
         this.statuses = ['new', 'active', 'sold', 'removed'];
         this.consignors = [];
-        this.genrePredictor = new GenrePredictor();
         this.barcodeGenerator = new BarcodeGenerator();
         this.minimumPrice = 1.99;
         this.selectedConsignorId = null;
@@ -273,7 +157,6 @@ class AddEditDeleteManager {
     async init() {
         await this.loadMinimumPrice();
         await this.loadStats();
-        await this.loadGenres();
         await this.loadConditions();
         await this.loadConsignors();
         await this.checkActiveBatch();
@@ -700,23 +583,6 @@ class AddEditDeleteManager {
         }
     }
 
-    async loadGenres() {
-        console.log('LOAD_GENRES: Starting to load genres from /genres endpoint');
-        try {
-            const response = await APIUtils.get('/genres');
-            if (response && response.genres) {
-                this.genres = response.genres;
-                console.log('LOAD_GENRES: Genres loaded successfully:', this.genres);
-            } else {
-                console.error('LOAD_GENRES: Invalid response format:', response);
-                this.genres = [];
-            }
-        } catch (error) {
-            console.error('Error loading genres:', error);
-            this.genres = [];
-        }
-    }
-
     async loadConditions() {
         console.log('LOAD_CONDITIONS: Loading conditions from /api/conditions');
         try {
@@ -1097,10 +963,6 @@ class AddEditDeleteManager {
             return `<option value="${condition.id}">${condition.display_name || condition.condition_name}</option>`;
         }).join('');
         
-        const genreOptions = this.genres.map(genre => {
-            return `<option value="${genre.id}">${genre.genre_name}</option>`;
-        }).join('');
-        
         const consignorOptions = this.consignors.map(consignor => {
             const selected = consignor.id === this.selectedConsignorId ? 'selected' : '';
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
@@ -1119,6 +981,8 @@ class AddEditDeleteManager {
                     }
                 }
                 
+                const discogsGenreRaw = record.genre_raw || '';
+                
                 return `
                     <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}" data-artist="${record.artist}" data-format="${record.format || ''}">
                         <div class="record-header">
@@ -1134,7 +998,7 @@ class AddEditDeleteManager {
                                 <div class="record-title">${record.artist} - ${record.title}</div>
                                 <div class="record-details" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px 15px; margin-top: 8px;">
                                     ${record.year ? `<span><strong>Year:</strong> ${record.year}</span>` : ''}
-                                    ${record.genre ? `<span><strong>Discogs Genre:</strong> ${record.genre}</span>` : ''}
+                                    ${discogsGenreRaw ? `<span><strong>Discogs Genre:</strong> ${discogsGenreRaw}</span>` : ''}
                                     ${record.format ? `<span><strong>Format:</strong> ${record.format}</span>` : ''}
                                     ${record.country ? `<span><strong>Country:</strong> ${record.country}</span>` : ''}
                                     ${record.catalog_number ? `<span><strong>Catalog #:</strong> ${record.catalog_number}</span>` : ''}
@@ -1142,8 +1006,6 @@ class AddEditDeleteManager {
                                 </div>
                             </div>
                         </div>
-                        
-                        <div id="prediction-container-${record.discogs_id || record.id}" class="genre-prediction-container" style="margin: 10px 0;"></div>
                         
                         <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
@@ -1174,15 +1036,12 @@ class AddEditDeleteManager {
                                 </div>
                                 
                                 <div>
-                                    <label class="form-label">Genre *</label>
-                                    <select class="form-control genre-select" 
-                                            required
-                                            data-record-id="${record.discogs_id || record.id}">
-                                        <option value="">Select genre...</option>
-                                        ${genreOptions}
-                                    </select>
+                                    <label class="form-label"><i class="fab fa-discogs"></i> Discogs Genre</label>
+                                    <div class="form-control" style="background: #f8f9fa; cursor: default; min-height: 38px;">
+                                        ${discogsGenreRaw || 'No genre information'}
+                                    </div>
                                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Genre will load when conditions are selected
+                                        Raw genre from Discogs - will be saved and printed on price tags
                                     </div>
                                 </div>
                                 
@@ -1282,14 +1141,6 @@ class AddEditDeleteManager {
             `;
         }
         
-        const getGenreOptions = (recordId) => {
-            const record = this.currentResults.find(r => r.id == recordId);
-            return this.genres.map(genre => {
-                const selected = record && record.genre_id == genre.id ? 'selected' : '';
-                return `<option value="${genre.id}" ${selected}>${genre.genre_name}</option>`;
-            }).join('');
-        };
-        
         const getConditionOptions = (recordId, type = 'sleeve') => {
             const record = this.currentResults.find(r => r.id == recordId);
             const conditionId = type === 'sleeve' ? record.condition_sleeve_id : record.condition_disc_id;
@@ -1334,6 +1185,8 @@ class AddEditDeleteManager {
                 const hasNoOriginalSleeve = notes.includes('[NO ORIGINAL SLEEVE]');
                 const notesWithoutTag = notes.replace('[NO ORIGINAL SLEEVE]', '').trim();
                 
+                const discogsGenreRaw = record.discogs_genre_raw || '';
+                
                 const notesDisplay = notes ? `
                     <div style="margin-top: 5px; font-size: 12px; color: #666; background: #f8f9fa; padding: 4px 8px; border-radius: 4px;">
                         <i class="fas fa-comment"></i> ${this.escapeHtml(notes)}
@@ -1362,6 +1215,7 @@ class AddEditDeleteManager {
                                     <span><strong>Location:</strong> ${locationDisplay}</span>
                                     <span><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></span>
                                     ${record.consignor_name ? `<span><strong>Consignor:</strong> ${record.consignor_name}</span>` : ''}
+                                    ${discogsGenreRaw ? `<span><strong>Discogs Genre:</strong> ${discogsGenreRaw.substring(0, 50)}${discogsGenreRaw.length > 50 ? '...' : ''}</span>` : ''}
                                 </div>
                                 ${notesDisplay}
                             </div>
@@ -1372,11 +1226,13 @@ class AddEditDeleteManager {
                         <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
                                 <div>
-                                    <label class="form-label">Genre</label>
-                                    <select class="form-control edit-genre-select" data-record-id="${record.id}">
-                                        <option value="">Select genre...</option>
-                                        ${getGenreOptions(record.id)}
-                                    </select>
+                                    <label class="form-label"><i class="fab fa-discogs"></i> Discogs Genre</label>
+                                    <div class="form-control" style="background: #f8f9fa; cursor: default; min-height: 38px;">
+                                        ${discogsGenreRaw || 'No genre information'}
+                                    </div>
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Raw genre from Discogs - appears on price tags
+                                    </div>
                                 </div>
                                 
                                 <div>
@@ -1486,448 +1342,6 @@ class AddEditDeleteManager {
         `;
     }
 
-    async loadGenreForRecord(card, artist) {
-        if (!artist) return;
-        
-        const predictionContainer = card.querySelector('.genre-prediction-container');
-        const genreSelect = card.querySelector('.genre-select');
-        
-        if (!genreSelect) return;
-        
-        predictionContainer.innerHTML = `
-            <div class="genre-prediction" style="padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; border-radius: 4px;">
-                <i class="fas fa-spinner fa-spin" style="color: #007bff;"></i>
-                <span>Checking for artist match...</span>
-            </div>
-        `;
-        
-        const prediction = await this.genrePredictor.predictGenre(artist);
-        
-        if (prediction) {
-            const options = genreSelect.options;
-            for (let i = 0; i < options.length; i++) {
-                if (options[i].value == prediction.local_genre_id) {
-                    options[i].selected = true;
-                    break;
-                }
-            }
-            
-            predictionContainer.innerHTML = `
-                <div class="genre-prediction prediction-available" style="padding: 10px; background: #d4edda; border-left: 4px solid #28a745; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-check-circle" style="color: #28a745; font-size: 20px;"></i>
-                    <div style="flex: 1;">
-                        <strong>✅ Artist Match:</strong> Artist "${artist}" found in database - genre set to ${prediction.local_genre_name}
-                    </div>
-                </div>
-            `;
-        } else {
-            predictionContainer.innerHTML = `
-                <div class="genre-prediction" style="padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
-                    <i class="fas fa-search" style="color: #856404;"></i>
-                    <span>No artist match found for '${artist}'. Select a genre manually.</span>
-                </div>
-            `;
-        }
-    }
-
-    // ============================================================================
-    // DISCOGS PRICE ESTIMATION
-    // ============================================================================
-
-    async fetchDiscogsPriceSuggestions(discogsId) {
-        try {
-            console.log(`📀 Fetching Discogs price suggestions for release ID: ${discogsId}`);
-            
-            const url = `http://localhost:5000/api/discogs/price-suggestions/${discogsId}`;
-            
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const data = await response.json();
-            
-            return {
-                success: true,
-                data: data,
-                request: { url: url, method: 'GET' }
-            };
-        } catch (error) {
-            console.error('Error fetching Discogs price suggestions:', error);
-            return { success: false, error: error.message };
-        }
-    }
-
-    mapConditionToDiscogs(conditionName) {
-        const mapping = {
-            'Mint': 'Mint (M)',
-            'Mint (M)': 'Mint (M)',
-            'Near Mint': 'Near Mint (NM or M-)',
-            'Near Mint (NM or M-)': 'Near Mint (NM or M-)',
-            'Very Good Plus': 'Very Good Plus (VG+)',
-            'Very Good Plus (VG+)': 'Very Good Plus (VG+)',
-            'Very Good': 'Very Good (VG)',
-            'Very Good (VG)': 'Very Good (VG)',
-            'Good Plus': 'Good Plus (G+)',
-            'Good Plus (G+)': 'Good Plus (G+)',
-            'Good': 'Good (G)',
-            'Good (G)': 'Good (G)',
-            'Fair': 'Fair (F)',
-            'Fair (F)': 'Fair (F)',
-            'Poor': 'Poor (P)',
-            'Poor (P)': 'Poor (P)'
-        };
-        return mapping[conditionName] || conditionName;
-    }
-
-    extractDiscogsPrice(suggestions, conditionName) {
-        if (!suggestions) return null;
-        
-        const discogsCondition = this.mapConditionToDiscogs(conditionName);
-        
-        if (suggestions[discogsCondition] && suggestions[discogsCondition].value) {
-            return parseFloat(suggestions[discogsCondition].value);
-        }
-        
-        const firstKey = Object.keys(suggestions)[0];
-        if (firstKey && suggestions[firstKey].value) {
-            return parseFloat(suggestions[firstKey].value);
-        }
-        
-        return null;
-    }
-
-    // ============================================================================
-    // EBAY PRICE ESTIMATION
-    // ============================================================================
-
-    async searchEbayListings(query, limit = 50) {
-        try {
-            console.log(`🛒 Searching eBay for: ${query}`);
-            
-            const url = `http://localhost:5000/api/ebay/search`;
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: query, limit: limit })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const data = await response.json();
-            
-            return {
-                success: true,
-                data: data,
-                request: { url: url, method: 'POST', body: { query: query, limit: limit } }
-            };
-        } catch (error) {
-            console.error('Error searching eBay:', error);
-            return { success: false, error: error.message };
-        }
-    }
-
-    extractEbayPriceAndListings(ebayData, condition, formatType = '') {
-        const items = ebayData.itemSummaries || [];
-        
-        if (items.length === 0) {
-            return { estimated_price: null, listings: [], summary: {} };
-        }
-        
-        const getMediaKeywords = (format) => {
-            const formatLower = format.toLowerCase();
-            if (formatLower.includes('cd')) return ['cd', 'compact disc'];
-            if (formatLower.includes('cassette')) return ['cassette', 'tape'];
-            return ['vinyl', 'lp', 'record', '12"', '7"'];
-        };
-        
-        const mediaKeywords = getMediaKeywords(formatType);
-        
-        const getConditionTerms = (cond) => {
-            const condLower = cond.toLowerCase();
-            const mapping = {
-                'mint': ['mint', 'new', 'sealed', 'brand new'],
-                'near mint': ['near mint', 'nm', 'm-', 'near-mint'],
-                'very good plus': ['very good plus', 'vg+', 'vg plus'],
-                'very good': ['very good', 'vg'],
-                'good plus': ['good plus', 'g+', 'g plus'],
-                'good': ['good', 'g'],
-                'fair': ['fair', 'f'],
-                'poor': ['poor', 'p']
-            };
-            for (const [key, terms] of Object.entries(mapping)) {
-                if (condLower.includes(key)) return terms;
-            }
-            return [];
-        };
-        
-        const conditionTerms = getConditionTerms(condition);
-        
-        const processedListings = [];
-        for (const item of items) {
-            const title = item.title || '';
-            const titleLower = title.toLowerCase();
-            
-            const isCorrectMedia = mediaKeywords.some(keyword => titleLower.includes(keyword));
-            if (!isCorrectMedia) continue;
-            
-            let price = 0;
-            if (item.price && item.price.value) price = parseFloat(item.price.value);
-            if (price <= 0) continue;
-            
-            let shippingCost = 0;
-            if (item.shippingOptions && item.shippingOptions.length > 0) {
-                const shipping = item.shippingOptions[0].shippingCost;
-                if (shipping && shipping.value) shippingCost = parseFloat(shipping.value);
-            }
-            
-            const totalPrice = price + shippingCost;
-            const itemCondition = (item.condition || '').toLowerCase();
-            const matchesCondition = conditionTerms.some(term => itemCondition.includes(term));
-            
-            processedListings.push({
-                title: title,
-                price: price,
-                shipping: shippingCost,
-                total: totalPrice,
-                condition: item.condition || 'Unknown',
-                url: item.itemWebUrl || '',
-                matches_condition: matchesCondition
-            });
-        }
-        
-        if (processedListings.length === 0) {
-            return { estimated_price: null, listings: [], summary: {} };
-        }
-        
-        processedListings.sort((a, b) => a.total - b.total);
-        
-        const allTotals = processedListings.map(l => l.total);
-        const genericMedian = this.calculateMedian(allTotals);
-        
-        const conditionListings = processedListings.filter(l => l.matches_condition);
-        let conditionMedian = null;
-        if (conditionListings.length > 0) {
-            const conditionTotals = conditionListings.map(l => l.total);
-            conditionMedian = this.calculateMedian(conditionTotals);
-        }
-        
-        const estimatedPrice = conditionMedian !== null ? conditionMedian : genericMedian;
-        
-        return {
-            estimated_price: estimatedPrice,
-            listings: processedListings.slice(0, 20),
-            summary: {
-                total_listings: processedListings.length,
-                condition_listings: conditionListings.length,
-                generic_median: genericMedian,
-                condition_median: conditionMedian,
-                price_range: { min: Math.min(...allTotals), max: Math.max(...allTotals) },
-                average_price: allTotals.reduce((a, b) => a + b, 0) / allTotals.length
-            }
-        };
-    }
-
-    calculateMedian(numbers) {
-        if (numbers.length === 0) return null;
-        const sorted = [...numbers].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
-        return sorted[mid];
-    }
-
-    getFormatKeyword(formatType) {
-        if (!formatType) return 'vinyl';
-        const formatLower = formatType.toLowerCase();
-        if (formatLower.includes('cd')) return 'cd';
-        if (formatLower.includes('cassette')) return 'cassette';
-        return 'vinyl';
-    }
-
-    roundDownTo99(price) {
-        const dollars = Math.floor(price);
-        if (dollars === 0) return 0.99;
-        return (dollars - 1) + 0.99;
-    }
-
-    // ⚠️ CRITICAL: NO FALLBACK PRICES ⚠️
-    async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
-        const result = {
-            success: false,
-            discogs_price: null,
-            ebay_price: null,
-            final_price: null,
-            price_source: null,
-            calculation_steps: [],
-            discogs_request: null,
-            discogs_response: null,
-            ebay_request: null,
-            ebay_response: null,
-            ebay_listings: [],
-            ebay_summary: {},
-            error: null
-        };
-
-        // Use the current multiplier
-        const multiplier = this.storePriceMultiplier;
-        result.calculation_steps.push(`💰 Store Price Ratio: ${(multiplier * 100).toFixed(0)}%`);
-
-        // Discogs
-        if (discogsId) {
-            result.calculation_steps.push(`📀 Fetching Discogs price suggestions for release ID: ${discogsId}`);
-            result.calculation_steps.push(`🎚️ Selected condition: ${conditionName}`);
-
-            const discogsResult = await this.fetchDiscogsPriceSuggestions(discogsId);
-            
-            if (discogsResult.request) result.discogs_request = discogsResult.request;
-            
-            if (discogsResult.success && discogsResult.data) {
-                result.discogs_response = discogsResult.data;
-                result.calculation_steps.push('✅ Discogs API call successful');
-                
-                const discogsPrice = this.extractDiscogsPrice(discogsResult.data, conditionName);
-                if (discogsPrice) {
-                    result.discogs_price = discogsPrice;
-                    result.calculation_steps.push(`💰 Discogs advised price for "${conditionName}": $${discogsPrice.toFixed(2)}`);
-                } else {
-                    result.calculation_steps.push(`⚠️ No price found for condition "${conditionName}" in Discogs suggestions`);
-                }
-            } else {
-                result.calculation_steps.push(`❌ Discogs API call failed: ${discogsResult.error || 'Unknown error'}`);
-            }
-        } else {
-            result.calculation_steps.push(`⚠️ No Discogs ID available - skipping Discogs`);
-        }
-        
-        // eBay
-        const searchQuery = `${artist} ${title} ${this.getFormatKeyword(formatType)}`;
-        result.calculation_steps.push(`🛒 Searching eBay for: "${searchQuery}"`);
-        
-        const ebayResult = await this.searchEbayListings(searchQuery, 50);
-        
-        if (ebayResult.request) result.ebay_request = ebayResult.request;
-        
-        if (ebayResult.success && ebayResult.data) {
-            result.ebay_response = ebayResult.data;
-            result.calculation_steps.push('✅ eBay API call successful');
-            
-            const ebayAnalysis = this.extractEbayPriceAndListings(ebayResult.data, conditionName, formatType);
-            
-            if (ebayAnalysis.estimated_price) {
-                result.ebay_price = ebayAnalysis.estimated_price;
-                result.ebay_listings = ebayAnalysis.listings;
-                result.ebay_summary = ebayAnalysis.summary;
-                
-                if (ebayAnalysis.summary.condition_median) {
-                    result.calculation_steps.push(`💰 eBay condition-matched median: $${ebayAnalysis.summary.condition_median.toFixed(2)} (${ebayAnalysis.summary.condition_listings} listings)`);
-                } else {
-                    result.calculation_steps.push(`💰 eBay generic median: $${ebayAnalysis.summary.generic_median.toFixed(2)} (${ebayAnalysis.summary.total_listings} total listings)`);
-                }
-            } else {
-                result.calculation_steps.push(`⚠️ No valid eBay listings found`);
-            }
-        } else {
-            result.calculation_steps.push(`❌ eBay API call failed: ${ebayResult.error || 'Unknown error'}`);
-        }
-        
-        // Calculate market price (minimum of Discogs and eBay)
-        let marketPrice = null;
-        let priceSource = null;
-        
-        if (result.discogs_price !== null && result.ebay_price !== null) {
-            marketPrice = Math.min(result.discogs_price, result.ebay_price);
-            priceSource = result.discogs_price <= result.ebay_price ? 'discogs' : 'ebay';
-            
-            const maxPrice = Math.max(result.discogs_price, result.ebay_price);
-            const minPrice = Math.min(result.discogs_price, result.ebay_price);
-            
-            if (minPrice > 0 && (maxPrice / minPrice) > 2.0) {
-                result.calculation_steps.push(`⚠️ Price discrepancy warning: ${(maxPrice/minPrice).toFixed(1)}x difference between sources`);
-            }
-            
-            result.calculation_steps.push(`📊 Price comparison: Discogs $${result.discogs_price.toFixed(2)} vs eBay $${result.ebay_price.toFixed(2)}`);
-            result.calculation_steps.push(`  → Market price (minimum): $${marketPrice.toFixed(2)} (from ${priceSource})`);
-            
-        } else if (result.discogs_price !== null) {
-            marketPrice = result.discogs_price;
-            priceSource = 'discogs';
-            result.calculation_steps.push(`📊 Using only Discogs price: $${marketPrice.toFixed(2)}`);
-            
-        } else if (result.ebay_price !== null) {
-            marketPrice = result.ebay_price;
-            priceSource = 'ebay';
-            result.calculation_steps.push(`📊 Using only eBay price: $${marketPrice.toFixed(2)}`);
-            
-        } else {
-            // ⚠️ NO PRICE DATA AVAILABLE - DO NOT USE FALLBACK ⚠️
-            result.success = false;
-            result.error = 'No price data available from Discogs or eBay. Please enter price manually.';
-            result.calculation_steps.push(`❌ NO PRICE DATA: Discogs price: ${result.discogs_price}, eBay price: ${result.ebay_price}`);
-            result.calculation_steps.push(`❌ NO FALLBACK PRICE WILL BE SET - User must enter manually.`);
-            return result;
-        }
-        
-        // Apply store price multiplier
-        result.calculation_steps.push(``);
-        result.calculation_steps.push(`💰 Applying store price ratio:`);
-        result.calculation_steps.push(`  → Market price: $${marketPrice.toFixed(2)}`);
-        result.calculation_steps.push(`  → Ratio: ${multiplier.toFixed(2)} (${(multiplier * 100).toFixed(0)}%)`);
-        
-        const multipliedPrice = marketPrice * multiplier;
-        result.calculation_steps.push(`  → Ratio price: $${multipliedPrice.toFixed(2)}`);
-        
-        // Apply rounding to .99
-        const roundedPrice = this.roundDownTo99(multipliedPrice);
-        result.calculation_steps.push(`  → Rounded down to .99: $${roundedPrice.toFixed(2)}`);
-        
-        // Apply minimum price
-        let finalPrice = roundedPrice;
-        if (finalPrice < this.minimumPrice) {
-            finalPrice = this.minimumPrice;
-            result.calculation_steps.push(`  → Minimum store price applied ($${this.minimumPrice.toFixed(2)})`);
-        }
-        
-        result.calculation_steps.push(`✨ FINAL ADVISED PRICE: $${finalPrice.toFixed(2)}`);
-        
-        result.final_price = finalPrice;
-        result.price_source = priceSource;
-        result.success = true;
-        
-        return result;
-    }
-
-    async estimatePriceForRecord(record, sleeveConditionId, discConditionId) {
-        let conditionForEstimate = '';
-        
-        if (sleeveConditionId && discConditionId) {
-            const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
-            const discCond = this.conditions.find(c => c.id == discConditionId);
-            
-            if (sleeveCond && discCond) {
-                if (sleeveCond.quality_index >= discCond.quality_index) {
-                    conditionForEstimate = sleeveCond.display_name || sleeveCond.condition_name;
-                } else {
-                    conditionForEstimate = discCond.display_name || discCond.condition_name;
-                }
-            }
-        }
-        
-        if (!conditionForEstimate) {
-            return { success: false, final_price: null, calculation_steps: ['No condition selected'], error: 'Please select sleeve and disc conditions first.' };
-        }
-        
-        return await this.estimatePriceFromBothApis(
-            record.discogs_id, conditionForEstimate, record.artist, record.title, record.format || ''
-        );
-    }
-
     async handleSleeveConditionChange(event, isEditMode = false) {
         const selectElement = event.target;
         const card = selectElement.closest('.record-card');
@@ -1956,9 +1370,6 @@ class AddEditDeleteManager {
         
         if (!record) return;
         
-        const artist = card.getAttribute('data-artist') || record.artist;
-        await this.loadGenreForRecord(card, artist);
-        
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
         }
@@ -1984,9 +1395,6 @@ class AddEditDeleteManager {
         }
         
         if (!record) return;
-        
-        const artist = card.getAttribute('data-artist') || record.artist;
-        await this.loadGenreForRecord(card, artist);
         
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
@@ -2245,7 +1653,6 @@ class AddEditDeleteManager {
     }
 
     async addRecordFromDiscogs(card, discogsRecord) {
-        const genreSelect = card.querySelector('.genre-select');
         const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
         const discConditionSelect = card.querySelector('.disc-condition-select');
         const priceInput = card.querySelector('.price-input');
@@ -2253,7 +1660,6 @@ class AddEditDeleteManager {
         const notesInput = card.querySelector('.notes-input');
         const noSleeveCheckbox = card.querySelector('.no-original-sleeve-checkbox');
         
-        const genreId = genreSelect.value;
         const sleeveConditionId = sleeveConditionSelect.value;
         const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
@@ -2269,7 +1675,6 @@ class AddEditDeleteManager {
         }
         
         const errors = [];
-        if (!genreId) errors.push('Please select a genre');
         if (!sleeveConditionId) errors.push('Please select a sleeve condition');
         if (!discConditionId) errors.push('Please select a disc condition');
         if (!price || price < this.minimumPrice) errors.push(`Price must be at least $${this.minimumPrice.toFixed(2)}`);
@@ -2279,9 +1684,6 @@ class AddEditDeleteManager {
             return;
         }
         
-        const genre = this.genres.find(g => g.id == genreId);
-        const genreName = genre ? genre.genre_name : '';
-        
         const formatFromDiscogs = discogsRecord.format || '';
         const pigstyleBarcode = this.barcodeGenerator.generateBarcode(formatFromDiscogs);
         
@@ -2290,15 +1692,16 @@ class AddEditDeleteManager {
             return;
         }
         
+        // Get raw Discogs genre
+        const discogsGenreRaw = discogsRecord.genre_raw || '';
+        
         const recordData = {
             artist: discogsRecord.artist,
             title: discogsRecord.title,
             barcode: pigstyleBarcode,
-            genre_id: parseInt(genreId),
-            genre_name: genreName,
+            discogs_genre_raw: discogsGenreRaw,
             image_url: discogsRecord.image_url || '',
             catalog_number: discogsRecord.catalog_number || '',
-            format: discogsRecord.format || 'Vinyl',
             condition_sleeve_id: parseInt(sleeveConditionId),
             condition_disc_id: parseInt(discConditionId),
             store_price: price,
@@ -2318,10 +1721,6 @@ class AddEditDeleteManager {
                 }
                 
                 showMessage(`Record added successfully! Barcode: ${pigstyleBarcode}. Price: $${price.toFixed(2)}${batchMessage}`, 'success');
-                
-                if (discogsRecord.artist && genreId) {
-                    await this.genrePredictor.saveArtistGenre(discogsRecord.artist, genreId, genreName);
-                }
                 
                 await this.loadStats();
                 await this.loadNewRecordsCount();
@@ -2347,7 +1746,6 @@ class AddEditDeleteManager {
         const card = document.querySelector(`[data-record-id="${recordId}"]`);
         if (!card) return;
         
-        const genreSelect = card.querySelector('.edit-genre-select');
         const sleeveConditionSelect = card.querySelector('.edit-sleeve-condition-select');
         const discConditionSelect = card.querySelector('.edit-disc-condition-select');
         const locationInput = card.querySelector('.edit-location-input');
@@ -2358,9 +1756,6 @@ class AddEditDeleteManager {
         const consignorSelect = card.querySelector('.edit-consignor-select');
         
         const updates = {};
-        let genreChanged = false;
-        let newGenreId = null;
-        let newGenreName = null;
         
         const currentRecord = this.currentResults.find(r => r.id == recordId);
         
@@ -2374,16 +1769,6 @@ class AddEditDeleteManager {
         } else if (notes) {
             // Remove the tag if it exists and checkbox is unchecked
             notes = notes.replace('[NO ORIGINAL SLEEVE]', '').replace(/^\n+/, '').replace(/\n+$/, '');
-        }
-        
-        if (genreSelect && genreSelect.value) {
-            newGenreId = parseInt(genreSelect.value);
-            updates.genre_id = newGenreId;
-            if (currentRecord && currentRecord.genre_id != newGenreId) {
-                genreChanged = true;
-                const genre = this.genres.find(g => g.id == newGenreId);
-                newGenreName = genre ? genre.genre_name : '';
-            }
         }
         
         if (sleeveConditionSelect && sleeveConditionSelect.value) updates.condition_sleeve_id = parseInt(sleeveConditionSelect.value);
@@ -2420,10 +1805,6 @@ class AddEditDeleteManager {
             
             if (response.status === 'success') {
                 showMessage(`Record updated successfully!`, 'success');
-                
-                if (genreChanged && currentRecord && currentRecord.artist && newGenreId) {
-                    await this.genrePredictor.updateArtistGenre(currentRecord.artist, newGenreId, newGenreName);
-                }
                 
                 const currentSearch = document.getElementById('searchInput').value;
                 if (currentSearch) await this.performSearch(currentSearch);
@@ -2465,6 +1846,400 @@ class AddEditDeleteManager {
                 <p><small>Enter a search term above</small></p>
             </div>
         `;
+    }
+
+    // ============================================================================
+    // PRICE ESTIMATION METHODS
+    // ============================================================================
+
+    async estimatePriceForRecord(record, sleeveConditionId, discConditionId) {
+        let conditionForEstimate = '';
+        
+        if (sleeveConditionId && discConditionId) {
+            const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
+            const discCond = this.conditions.find(c => c.id == discConditionId);
+            
+            if (sleeveCond && discCond) {
+                if (sleeveCond.quality_index >= discCond.quality_index) {
+                    conditionForEstimate = sleeveCond.display_name || sleeveCond.condition_name;
+                } else {
+                    conditionForEstimate = discCond.display_name || discCond.condition_name;
+                }
+            }
+        }
+        
+        if (!conditionForEstimate) {
+            return { success: false, final_price: null, calculation_steps: ['No condition selected'], error: 'Please select sleeve and disc conditions first.' };
+        }
+        
+        return await this.estimatePriceFromBothApis(
+            record.discogs_id, conditionForEstimate, record.artist, record.title, record.format || ''
+        );
+    }
+
+    async fetchDiscogsPriceSuggestions(discogsId) {
+        try {
+            console.log(`📀 Fetching Discogs price suggestions for release ID: ${discogsId}`);
+            
+            const url = `${AppConfig.baseUrl}/api/discogs/price-suggestions/${discogsId}`;
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            return {
+                success: true,
+                data: data,
+                request: { url: url, method: 'GET' }
+            };
+        } catch (error) {
+            console.error('Error fetching Discogs price suggestions:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async searchEbayListings(query, limit = 50) {
+        try {
+            console.log(`🛒 Searching eBay for: ${query}`);
+            
+            const url = `${AppConfig.baseUrl}/api/ebay/search`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query, limit: limit })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            return {
+                success: true,
+                data: data,
+                request: { url: url, method: 'POST', body: { query: query, limit: limit } }
+            };
+        } catch (error) {
+            console.error('Error searching eBay:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    mapConditionToDiscogs(conditionName) {
+        const mapping = {
+            'Mint': 'Mint (M)',
+            'Mint (M)': 'Mint (M)',
+            'Near Mint': 'Near Mint (NM or M-)',
+            'Near Mint (NM or M-)': 'Near Mint (NM or M-)',
+            'Very Good Plus': 'Very Good Plus (VG+)',
+            'Very Good Plus (VG+)': 'Very Good Plus (VG+)',
+            'Very Good': 'Very Good (VG)',
+            'Very Good (VG)': 'Very Good (VG)',
+            'Good Plus': 'Good Plus (G+)',
+            'Good Plus (G+)': 'Good Plus (G+)',
+            'Good': 'Good (G)',
+            'Good (G)': 'Good (G)',
+            'Fair': 'Fair (F)',
+            'Fair (F)': 'Fair (F)',
+            'Poor': 'Poor (P)',
+            'Poor (P)': 'Poor (P)'
+        };
+        return mapping[conditionName] || conditionName;
+    }
+
+    extractDiscogsPrice(suggestions, conditionName) {
+        if (!suggestions) return null;
+        
+        const discogsCondition = this.mapConditionToDiscogs(conditionName);
+        
+        if (suggestions[discogsCondition] && suggestions[discogsCondition].value) {
+            return parseFloat(suggestions[discogsCondition].value);
+        }
+        
+        const firstKey = Object.keys(suggestions)[0];
+        if (firstKey && suggestions[firstKey].value) {
+            return parseFloat(suggestions[firstKey].value);
+        }
+        
+        return null;
+    }
+
+    getFormatKeyword(formatType) {
+        if (!formatType) return 'vinyl';
+        const formatLower = formatType.toLowerCase();
+        if (formatLower.includes('cd')) return 'cd';
+        if (formatLower.includes('cassette')) return 'cassette';
+        return 'vinyl';
+    }
+
+    extractEbayPriceAndListings(ebayData, condition, formatType = '') {
+        const items = ebayData.itemSummaries || [];
+        
+        if (items.length === 0) {
+            return { estimated_price: null, listings: [], summary: {} };
+        }
+        
+        const getMediaKeywords = (format) => {
+            const formatLower = format.toLowerCase();
+            if (formatLower.includes('cd')) return ['cd', 'compact disc'];
+            if (formatLower.includes('cassette')) return ['cassette', 'tape'];
+            return ['vinyl', 'lp', 'record', '12"', '7"'];
+        };
+        
+        const mediaKeywords = getMediaKeywords(formatType);
+        
+        const getConditionTerms = (cond) => {
+            const condLower = cond.toLowerCase();
+            const mapping = {
+                'mint': ['mint', 'new', 'sealed', 'brand new'],
+                'near mint': ['near mint', 'nm', 'm-', 'near-mint'],
+                'very good plus': ['very good plus', 'vg+', 'vg plus'],
+                'very good': ['very good', 'vg'],
+                'good plus': ['good plus', 'g+', 'g plus'],
+                'good': ['good', 'g'],
+                'fair': ['fair', 'f'],
+                'poor': ['poor', 'p']
+            };
+            for (const [key, terms] of Object.entries(mapping)) {
+                if (condLower.includes(key)) return terms;
+            }
+            return [];
+        };
+        
+        const conditionTerms = getConditionTerms(condition);
+        
+        const processedListings = [];
+        for (const item of items) {
+            const title = item.title || '';
+            const titleLower = title.toLowerCase();
+            
+            const isCorrectMedia = mediaKeywords.some(keyword => titleLower.includes(keyword));
+            if (!isCorrectMedia) continue;
+            
+            let price = 0;
+            if (item.price && item.price.value) price = parseFloat(item.price.value);
+            if (price <= 0) continue;
+            
+            let shippingCost = 0;
+            if (item.shippingOptions && item.shippingOptions.length > 0) {
+                const shipping = item.shippingOptions[0].shippingCost;
+                if (shipping && shipping.value) shippingCost = parseFloat(shipping.value);
+            }
+            
+            const totalPrice = price + shippingCost;
+            const itemCondition = (item.condition || '').toLowerCase();
+            const matchesCondition = conditionTerms.some(term => itemCondition.includes(term));
+            
+            processedListings.push({
+                title: title,
+                price: price,
+                shipping: shippingCost,
+                total: totalPrice,
+                condition: item.condition || 'Unknown',
+                url: item.itemWebUrl || '',
+                matches_condition: matchesCondition
+            });
+        }
+        
+        if (processedListings.length === 0) {
+            return { estimated_price: null, listings: [], summary: {} };
+        }
+        
+        processedListings.sort((a, b) => a.total - b.total);
+        
+        const allTotals = processedListings.map(l => l.total);
+        const genericMedian = this.calculateMedian(allTotals);
+        
+        const conditionListings = processedListings.filter(l => l.matches_condition);
+        let conditionMedian = null;
+        if (conditionListings.length > 0) {
+            const conditionTotals = conditionListings.map(l => l.total);
+            conditionMedian = this.calculateMedian(conditionTotals);
+        }
+        
+        const estimatedPrice = conditionMedian !== null ? conditionMedian : genericMedian;
+        
+        return {
+            estimated_price: estimatedPrice,
+            listings: processedListings.slice(0, 20),
+            summary: {
+                total_listings: processedListings.length,
+                condition_listings: conditionListings.length,
+                generic_median: genericMedian,
+                condition_median: conditionMedian,
+                price_range: { min: Math.min(...allTotals), max: Math.max(...allTotals) },
+                average_price: allTotals.reduce((a, b) => a + b, 0) / allTotals.length
+            }
+        };
+    }
+
+    calculateMedian(numbers) {
+        if (numbers.length === 0) return null;
+        const sorted = [...numbers].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
+        return sorted[mid];
+    }
+
+    roundDownTo99(price) {
+        const dollars = Math.floor(price);
+        if (dollars === 0) return 0.99;
+        return (dollars - 1) + 0.99;
+    }
+
+    // ⚠️ CRITICAL: NO FALLBACK PRICES ⚠️
+    async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
+        const result = {
+            success: false,
+            discogs_price: null,
+            ebay_price: null,
+            final_price: null,
+            price_source: null,
+            calculation_steps: [],
+            discogs_request: null,
+            discogs_response: null,
+            ebay_request: null,
+            ebay_response: null,
+            ebay_listings: [],
+            ebay_summary: {},
+            error: null
+        };
+
+        // Use the current multiplier
+        const multiplier = this.storePriceMultiplier;
+        result.calculation_steps.push(`💰 Store Price Ratio: ${(multiplier * 100).toFixed(0)}%`);
+
+        // Discogs
+        if (discogsId) {
+            result.calculation_steps.push(`📀 Fetching Discogs price suggestions for release ID: ${discogsId}`);
+            result.calculation_steps.push(`🎚️ Selected condition: ${conditionName}`);
+
+            const discogsResult = await this.fetchDiscogsPriceSuggestions(discogsId);
+            
+            if (discogsResult.request) result.discogs_request = discogsResult.request;
+            
+            if (discogsResult.success && discogsResult.data) {
+                result.discogs_response = discogsResult.data;
+                result.calculation_steps.push('✅ Discogs API call successful');
+                
+                const discogsPrice = this.extractDiscogsPrice(discogsResult.data, conditionName);
+                if (discogsPrice) {
+                    result.discogs_price = discogsPrice;
+                    result.calculation_steps.push(`💰 Discogs advised price for "${conditionName}": $${discogsPrice.toFixed(2)}`);
+                } else {
+                    result.calculation_steps.push(`⚠️ No price found for condition "${conditionName}" in Discogs suggestions`);
+                }
+            } else {
+                result.calculation_steps.push(`❌ Discogs API call failed: ${discogsResult.error || 'Unknown error'}`);
+            }
+        } else {
+            result.calculation_steps.push(`⚠️ No Discogs ID available - skipping Discogs`);
+        }
+        
+        // eBay
+        const searchQuery = `${artist} ${title} ${this.getFormatKeyword(formatType)}`;
+        result.calculation_steps.push(`🛒 Searching eBay for: "${searchQuery}"`);
+        
+        const ebayResult = await this.searchEbayListings(searchQuery, 50);
+        
+        if (ebayResult.request) result.ebay_request = ebayResult.request;
+        
+        if (ebayResult.success && ebayResult.data) {
+            result.ebay_response = ebayResult.data;
+            result.calculation_steps.push('✅ eBay API call successful');
+            
+            const ebayAnalysis = this.extractEbayPriceAndListings(ebayResult.data, conditionName, formatType);
+            
+            if (ebayAnalysis.estimated_price) {
+                result.ebay_price = ebayAnalysis.estimated_price;
+                result.ebay_listings = ebayAnalysis.listings;
+                result.ebay_summary = ebayAnalysis.summary;
+                
+                if (ebayAnalysis.summary.condition_median) {
+                    result.calculation_steps.push(`💰 eBay condition-matched median: $${ebayAnalysis.summary.condition_median.toFixed(2)} (${ebayAnalysis.summary.condition_listings} listings)`);
+                } else {
+                    result.calculation_steps.push(`💰 eBay generic median: $${ebayAnalysis.summary.generic_median.toFixed(2)} (${ebayAnalysis.summary.total_listings} total listings)`);
+                }
+            } else {
+                result.calculation_steps.push(`⚠️ No valid eBay listings found`);
+            }
+        } else {
+            result.calculation_steps.push(`❌ eBay API call failed: ${ebayResult.error || 'Unknown error'}`);
+        }
+        
+        // Calculate market price (minimum of Discogs and eBay)
+        let marketPrice = null;
+        let priceSource = null;
+        
+        if (result.discogs_price !== null && result.ebay_price !== null) {
+            marketPrice = Math.min(result.discogs_price, result.ebay_price);
+            priceSource = result.discogs_price <= result.ebay_price ? 'discogs' : 'ebay';
+            
+            const maxPrice = Math.max(result.discogs_price, result.ebay_price);
+            const minPrice = Math.min(result.discogs_price, result.ebay_price);
+            
+            if (minPrice > 0 && (maxPrice / minPrice) > 2.0) {
+                result.calculation_steps.push(`⚠️ Price discrepancy warning: ${(maxPrice/minPrice).toFixed(1)}x difference between sources`);
+            }
+            
+            result.calculation_steps.push(`📊 Price comparison: Discogs $${result.discogs_price.toFixed(2)} vs eBay $${result.ebay_price.toFixed(2)}`);
+            result.calculation_steps.push(`  → Market price (minimum): $${marketPrice.toFixed(2)} (from ${priceSource})`);
+            
+        } else if (result.discogs_price !== null) {
+            marketPrice = result.discogs_price;
+            priceSource = 'discogs';
+            result.calculation_steps.push(`📊 Using only Discogs price: $${marketPrice.toFixed(2)}`);
+            
+        } else if (result.ebay_price !== null) {
+            marketPrice = result.ebay_price;
+            priceSource = 'ebay';
+            result.calculation_steps.push(`📊 Using only eBay price: $${marketPrice.toFixed(2)}`);
+            
+        } else {
+            // ⚠️ NO PRICE DATA AVAILABLE - DO NOT USE FALLBACK ⚠️
+            result.success = false;
+            result.error = 'No price data available from Discogs or eBay. Please enter price manually.';
+            result.calculation_steps.push(`❌ NO PRICE DATA: Discogs price: ${result.discogs_price}, eBay price: ${result.ebay_price}`);
+            result.calculation_steps.push(`❌ NO FALLBACK PRICE WILL BE SET - User must enter manually.`);
+            return result;
+        }
+        
+        // Apply store price multiplier
+        result.calculation_steps.push(``);
+        result.calculation_steps.push(`💰 Applying store price ratio:`);
+        result.calculation_steps.push(`  → Market price: $${marketPrice.toFixed(2)}`);
+        result.calculation_steps.push(`  → Ratio: ${multiplier.toFixed(2)} (${(multiplier * 100).toFixed(0)}%)`);
+        
+        const multipliedPrice = marketPrice * multiplier;
+        result.calculation_steps.push(`  → Ratio price: $${multipliedPrice.toFixed(2)}`);
+        
+        // Apply rounding to .99
+        const roundedPrice = this.roundDownTo99(multipliedPrice);
+        result.calculation_steps.push(`  → Rounded down to .99: $${roundedPrice.toFixed(2)}`);
+        
+        // Apply minimum price
+        let finalPrice = roundedPrice;
+        if (finalPrice < this.minimumPrice) {
+            finalPrice = this.minimumPrice;
+            result.calculation_steps.push(`  → Minimum store price applied ($${this.minimumPrice.toFixed(2)})`);
+        }
+        
+        result.calculation_steps.push(`✨ FINAL ADVISED PRICE: $${finalPrice.toFixed(2)}`);
+        
+        result.final_price = finalPrice;
+        result.price_source = priceSource;
+        result.success = true;
+        
+        return result;
     }
 }
 
