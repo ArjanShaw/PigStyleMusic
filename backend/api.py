@@ -1819,7 +1819,7 @@ def process_checkout():
         }
         
         env = os.getenv("ENV", "production")
-        redirect_path = '/merchandise' if item_type == 'accessory' else '/shop'
+        redirect_path = '/merchandise' if item_type == 'accessory' else '/browse'
         
         if env == "development":
             redirect_url = f"http://localhost:8000{redirect_path}?status=completed&order_id={order_id}"
@@ -2684,6 +2684,8 @@ def get_records():
     limit = request.args.get('limit', type=int)
     has_youtube = request.args.get('has_youtube', 'false').lower() == 'true'
     status_id = request.args.get('status_id', type=int)
+    created_after = request.args.get('created_after')
+    search = request.args.get('search', '').strip()
     
     query = '''
         SELECT r.*, s.status_name,
@@ -2699,13 +2701,34 @@ def get_records():
     '''
     
     params = []
+    
+    # Apply search filter if provided
+    if search:
+        query += ' AND (r.artist LIKE ? OR r.title LIKE ?)'
+        search_term = f'%{search}%'
+        params.extend([search_term, search_term])
+    else:
+        # NO SEARCH: Default to last 7 days of additions
+        if not created_after:
+            # Calculate date 7 days ago
+            seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            query += ' AND date(r.created_at) >= ?'
+            params.append(seven_days_ago)
+        else:
+            # Explicit date filter provided
+            query += ' AND date(r.created_at) >= ?'
+            params.append(created_after)
+    
     if has_youtube:
         query += ' AND (r.youtube_url LIKE "%youtube.com%" OR r.youtube_url LIKE "%youtu.be%")'
+    
     if status_id is not None:
         query += ' AND r.status_id = ?'
         params.append(status_id)
     
-    query += ' ORDER BY RANDOM()' if random_order else ' ORDER BY r.id DESC'
+    # Order by newest first (most recent additions at top)
+    query += ' ORDER BY r.created_at DESC'
+    
     if limit:
         query += ' LIMIT ?'
         params.append(limit)
@@ -3205,6 +3228,47 @@ def add_consignor_record():
         'commission_rate': commission_rate
     })
 
+
+@app.route('/api/genres', methods=['GET'])
+def get_genres():
+    """Get unique genres from record locations (first part before ' - ')"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT location FROM records 
+            WHERE location IS NOT NULL AND location != ''
+        ''')
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        genres = set()
+        
+        for record in records:
+            location = record['location']
+            if location and ' - ' in location:
+                # Extract genre (everything before " - ")
+                genre = location.split(' - ')[0].strip()
+                if genre:
+                    genres.add(genre)
+            elif location and not location.startswith(('bin', 'shelf', 'rack', 'row', 'box', 'drawer')):
+                # If no separator and not obviously a location prefix, treat as genre
+                genres.add(location.strip())
+        
+        # Sort alphabetically
+        genres_list = sorted(list(genres))
+        
+        return jsonify({
+            'status': 'success',
+            'genres': genres_list,
+            'count': len(genres_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting genres: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/consignment/records', methods=['GET'])
 def get_consignment_records():
