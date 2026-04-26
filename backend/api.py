@@ -2675,6 +2675,7 @@ def create_record():
     finally:
         conn.close()
 
+
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()
@@ -2697,7 +2698,9 @@ def get_records():
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        WHERE r.artist IS NOT NULL AND r.title IS NOT NULL AND r.artist != '' AND r.title != ''
+        WHERE r.artist IS NOT NULL AND r.title IS NOT NULL 
+        AND r.artist != '' AND r.title != ''
+        AND r.status_id = 2
     '''
     
     params = []
@@ -2722,10 +2725,6 @@ def get_records():
     if has_youtube:
         query += ' AND (r.youtube_url LIKE "%youtube.com%" OR r.youtube_url LIKE "%youtu.be%")'
     
-    if status_id is not None:
-        query += ' AND r.status_id = ?'
-        params.append(status_id)
-    
     # Order by newest first (most recent additions at top)
     query += ' ORDER BY r.created_at DESC'
     
@@ -2745,7 +2744,6 @@ def get_records():
         records_list.append(record_dict)
     
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
-
 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
