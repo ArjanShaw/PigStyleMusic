@@ -8,11 +8,20 @@ let locationCounters = {};
 // Current location prefix
 let currentLocationPrefix = 'bin 1';
 
+// Current genre
+let currentGenre = '';
+
+// Available genres (loaded from API)
+let availableGenres = [];
+
 // DOM Elements
 let barcodeInput = null;
 let locationPrefixInput = null;
+let genreSelect = null;
 let counterDisplay = null;
 let scanResultDiv = null;
+let addGenreInput = null;
+let addGenreBtn = null;
 
 // ============================================================================
 // Initialization
@@ -36,6 +45,9 @@ function initInventoryTab() {
     currentLocationPrefix = locationPrefixInput.value.trim() || 'bin 1';
     updateCounterDisplay();
     
+    // Load available genres from API
+    loadGenres();
+    
     // Add event listeners
     locationPrefixInput.addEventListener('change', onLocationPrefixChange);
     barcodeInput.addEventListener('keypress', onBarcodeEnter);
@@ -47,13 +59,225 @@ function initInventoryTab() {
 }
 
 // ============================================================================
+// Genre Management
+// ============================================================================
+
+async function loadGenres() {
+    console.log('📀 Loading genres from API...');
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/genres`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to load genres: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            availableGenres = data.genres || [];
+            console.log(`📀 Loaded ${availableGenres.length} genres from API:`, availableGenres);
+            renderGenreSelect();
+        } else {
+            throw new Error(data.error || 'Failed to load genres');
+        }
+    } catch (error) {
+        console.error('Error loading genres:', error);
+        availableGenres = [];
+        renderGenreSelect();
+        showScanResult(`Warning: Could not load genres - ${error.message}`, 'warning');
+    }
+}
+
+function renderGenreSelect() {
+    const genreSelectContainer = document.getElementById('genre-select-container');
+    if (!genreSelectContainer) {
+        // Create the container if it doesn't exist
+        createGenreUI();
+        return;
+    }
+    
+    const select = genreSelectContainer.querySelector('select');
+    if (select) {
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">-- No Genre --</option>';
+        
+        availableGenres.forEach(genre => {
+            const option = document.createElement('option');
+            option.value = genre;
+            option.textContent = genre;
+            if (currentValue === genre) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+    }
+}
+
+function createGenreUI() {
+    const scannerSection = document.querySelector('.inventory-scanner-section');
+    if (!scannerSection) return;
+    
+    // Find the grid div
+    const gridDiv = scannerSection.querySelector('div[style*="display: grid"]');
+    if (!gridDiv) return;
+    
+    // Create genre select container
+    const genreContainer = document.createElement('div');
+    genreContainer.id = 'genre-select-container';
+    genreContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+    
+    const genreLabel = document.createElement('label');
+    genreLabel.style.cssText = 'display: block; margin-bottom: 8px; font-size: 0.9rem;';
+    genreLabel.innerHTML = '<i class="fas fa-music"></i> Genre Section';
+    
+    const selectWrapper = document.createElement('div');
+    selectWrapper.style.cssText = 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;';
+    
+    const select = document.createElement('select');
+    select.id = 'genre-select';
+    select.style.cssText = 'flex: 2; min-width: 150px; background: rgba(255,255,255,0.95); color: #333; padding: 10px; border-radius: 6px; border: none;';
+    select.innerHTML = '<option value="">-- No Genre --</option>';
+    
+    // Populate genres
+    availableGenres.forEach(genre => {
+        const option = document.createElement('option');
+        option.value = genre;
+        option.textContent = genre;
+        select.appendChild(option);
+    });
+    
+    // Add custom genre input
+    const addGenreInputEl = document.createElement('input');
+    addGenreInputEl.type = 'text';
+    addGenreInputEl.id = 'add-genre-input';
+    addGenreInputEl.placeholder = 'New genre...';
+    addGenreInputEl.style.cssText = 'flex: 1; min-width: 100px; background: rgba(255,255,255,0.95); color: #333; padding: 10px; border-radius: 6px; border: none;';
+    
+    const addGenreBtnEl = document.createElement('button');
+    addGenreBtnEl.type = 'button';
+    addGenreBtnEl.id = 'add-genre-btn';
+    addGenreBtnEl.className = 'btn btn-small btn-info';
+    addGenreBtnEl.innerHTML = '<i class="fas fa-plus"></i> Add';
+    addGenreBtnEl.style.cssText = 'padding: 8px 15px; white-space: nowrap;';
+    
+    selectWrapper.appendChild(select);
+    selectWrapper.appendChild(addGenreInputEl);
+    selectWrapper.appendChild(addGenreBtnEl);
+    
+    genreContainer.appendChild(genreLabel);
+    genreContainer.appendChild(selectWrapper);
+    
+    // Insert genre container before the location prefix input's parent
+    const locationContainer = gridDiv.querySelector('div:first-child');
+    if (locationContainer) {
+        locationContainer.before(genreContainer);
+    } else {
+        gridDiv.prepend(genreContainer);
+    }
+    
+    // Store references
+    genreSelect = select;
+    addGenreInput = addGenreInputEl;
+    addGenreBtn = addGenreBtnEl;
+    
+    // Add event listeners
+    select.addEventListener('change', onGenreChange);
+    addGenreBtnEl.addEventListener('click', () => addCustomGenre(addGenreInputEl.value.trim()));
+    addGenreInputEl.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            addCustomGenre(addGenreInputEl.value.trim());
+        }
+    });
+}
+
+function onGenreChange(event) {
+    currentGenre = event.target.value;
+    console.log(`🎵 Genre changed to: ${currentGenre || 'none'}`);
+    
+    // Update the location prefix display to show genre
+    if (locationPrefixInput) {
+        const basePrefix = locationPrefixInput.value.split('|')[0].trim() || 'bin 1';
+        if (currentGenre) {
+            locationPrefixInput.value = `${currentGenre} | ${basePrefix}`;
+        } else {
+            locationPrefixInput.value = basePrefix;
+        }
+        onLocationPrefixChange({ target: locationPrefixInput });
+    }
+}
+
+async function addCustomGenre(genreName) {
+    if (!genreName) {
+        showScanResult('Please enter a genre name', 'warning');
+        return;
+    }
+    
+    // Capitalize first letter of each word
+    genreName = genreName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+    
+    if (availableGenres.includes(genreName)) {
+        showScanResult(`Genre "${genreName}" already exists`, 'warning');
+        const select = document.getElementById('genre-select');
+        if (select) {
+            select.value = genreName;
+            currentGenre = genreName;
+        }
+        return;
+    }
+    
+    // Add to available genres (client-side only for now)
+    availableGenres.push(genreName);
+    availableGenres.sort();
+    
+    // Re-render select
+    renderGenreSelect();
+    
+    // Select the new genre
+    const select = document.getElementById('genre-select');
+    if (select) {
+        select.value = genreName;
+        currentGenre = genreName;
+    }
+    
+    // Clear input
+    const addInput = document.getElementById('add-genre-input');
+    if (addInput) addInput.value = '';
+    
+    // Update location prefix
+    if (locationPrefixInput) {
+        const basePrefix = locationPrefixInput.value.split('|')[0].trim() || 'bin 1';
+        locationPrefixInput.value = `${currentGenre} | ${basePrefix}`;
+        onLocationPrefixChange({ target: locationPrefixInput });
+    }
+    
+    showScanResult(`✅ Genre "${genreName}" added (will appear in dropdown for this session)`, 'success');
+    
+    // Note: This doesn't save to database yet. The genre will be saved when a record is scanned with it.
+}
+
+// ============================================================================
 // Event Handlers
 // ============================================================================
 
 function onLocationPrefixChange(event) {
-    const newPrefix = event.target.value.trim();
-    if (newPrefix && newPrefix !== currentLocationPrefix) {
-        currentLocationPrefix = newPrefix;
+    let newPrefix = event.target.value.trim();
+    
+    // Extract the base prefix (after genre)
+    let basePrefix = newPrefix;
+    if (newPrefix.includes('|')) {
+        basePrefix = newPrefix.split('|')[1].trim();
+    } else {
+        basePrefix = newPrefix;
+    }
+    
+    if (basePrefix && basePrefix !== currentLocationPrefix) {
+        currentLocationPrefix = basePrefix;
         // Counter for new prefix starts at 1 (if not already in memory, it will be created)
         if (!locationCounters[currentLocationPrefix]) {
             locationCounters[currentLocationPrefix] = 1;
@@ -148,9 +372,15 @@ async function processScan(barcode) {
             throw new Error(`Record #${exactMatch.id} - "${exactMatch.artist} - ${exactMatch.title}" is already SOLD. Cannot update location.`);
         }
         
-        // Generate location string
+        // Generate location string with genre prefix
         const currentCounter = getCurrentCounter();
-        const locationString = `${currentLocationPrefix}/${currentCounter}`;
+        let locationString = `${currentLocationPrefix}/${currentCounter}`;
+        
+        // Add genre prefix if selected
+        if (currentGenre) {
+            locationString = `${currentGenre} - ${locationString}`;
+        }
+        
         const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         
         console.log(`📝 Updating record #${exactMatch.id}: location="${locationString}", last_seen="${todayDate}"`);
@@ -263,5 +493,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Also expose init function globally as a backup
 window.initInventoryTab = initInventoryTab;
+window.addCustomGenre = addCustomGenre;
 
 console.log('✅ inventory.js loaded');

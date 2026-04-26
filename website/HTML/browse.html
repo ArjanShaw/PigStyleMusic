@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <link rel="icon" href="/static/images/PigStyle.ico">
+    <title>Browse Records - PigStyle Music</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- External CSS -->
+    <link rel="stylesheet" href="/static/css/browse.css">
+    
+    <!-- JavaScript files -->
+    <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/config-value-manager.js"></script>
+    
+    <style>
+        /* Active filter header - white background for readability */
+        .active-filter-header {
+            background: white;
+            border-left: 4px solid #ff6b6b;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        
+        .active-filter-header i {
+            font-size: 18px;
+            color: #ff6b6b;
+        }
+        
+        .active-filter-header .filter-text {
+            flex: 1;
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .active-filter-header .clear-filter {
+            background: #f0f0f0;
+            border: none;
+            color: #666;
+            padding: 6px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .active-filter-header .clear-filter:hover {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .result-count-badge {
+            background: #ff6b6b;
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-left: 10px;
+            color: white;
+        }
+        
+        /* Genre filter - same width as others */
+        .filter-group {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .filter-section {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .filter-controls {
+            display: inline-block;
+        }
+        
+        .filter-checkbox-container {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav>
+        <a href="/">
+            <img src="/static/images/PigStyle.ico" alt="PigStyle">
+        </a>
+        <div>
+            <a href="/browse" style="color: #ff6b6b; text-decoration: none;">Browse</a>
+            <a href="/misc" style="color: white; text-decoration: none; font-weight: bold;">Misc</a>
+            <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
+            <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
+            <div id="auth-section"></div>
+            
+            <!-- Cart drawer toggle button -->
+            <div id="cartToggleContainer" style="display: none;">
+                <div class="cart-icon-wrapper" id="cartToggle">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span id="cartBadge" class="cart-badge">0</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Add padding to account for fixed navbar -->
+    <div style="padding-top: 60px;"></div>
+
+    <!-- Background Image -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+
+    <div class="header-section">
+        <div class='search-wrapper'>
+            <input type='text' id='searchBox' placeholder='Search by artist or record title...'>
+        </div>
+        
+        <div class="filter-section">
+            <!-- Genre Filter from Location -->
+            <div class="filter-group">
+                <button id="genreFilterBtn" class="filter-toggle-btn">
+                    <i class="fas fa-filter"></i> Filter by Genre
+                </button>
+                <div id="genreDropdown" class="filter-checkbox-container">
+                    <div class="filter-checkbox-group" id="genreList">
+                        <div style="color: #999; text-align: center; padding: 20px;">Loading genres...</div>
+                    </div>
+                    <div class="filter-actions">
+                        <button id="selectAllGenres" class="filter-action-btn filter-select-all">Select All</button>
+                        <button id="clearAllGenres" class="filter-action-btn filter-deselect-all">Clear All</button>
+                        <button id="applyGenres" class="filter-action-btn filter-apply">Apply</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Filter Header -->
+        <div id="activeFilterHeader" class="active-filter-header" style="display: none;">
+            <i class="fas fa-info-circle"></i>
+            <span class="filter-text" id="filterText">Loading...</span>
+            <button class="clear-filter" id="clearFilterBtn">
+                <i class="fas fa-times"></i> Clear
+            </button>
+        </div>
+    </div>
+    
+    <div class='catalog-container' id='catalogContainer'>
+        <div id='loading'>
+            <div class="loading-dots">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <p>Loading recent additions...</p>
+        </div>
+    </div>
+
+    <!-- Cart Drawer -->
+    <div class="cart-drawer" id="cartDrawer">
+        <div class="cart-drawer-header">
+            <h3><i class="fas fa-shopping-cart"></i> Your Cart</h3>
+            <button class="cart-drawer-close" id="closeCartDrawer">&times;</button>
+        </div>
+        <div class="cart-drawer-items" id="cartItems">
+            <div class="empty-cart-message">
+                <i class="fas fa-shopping-bag"></i>
+                <p>Your cart is empty</p>
+            </div>
+        </div>
+        <div class="cart-drawer-footer" id="cartFooter" style="display: none;"></div>
+    </div>
+
+    <!-- Cart Overlay -->
+    <div class="cart-overlay" id="cartOverlay"></div>
+
+    <script>
+        // Store all records
+        let allRecords = [];
+        let groupedReleases = [];
+        let availableGenres = [];
+        let selectedGenres = [];
+        let currentSearchTerm = '';
+        let currentFilterDescription = '';
+        
+        // Cart state
+        let cart = { items: [], total: 0 };
+        let currentOrder = null;
+        let shippingCost = 0;
+        let taxRate = 0;
+        let debugMode = false;
+
+        function addDebug(msg) { if (debugMode) console.log(msg); }
+
+        // Extract genre from location (first part before " - ")
+        function extractGenreFromLocation(location) {
+            if (!location) return null;
+            if (location.includes(' - ')) {
+                const genre = location.split(' - ')[0].trim();
+                if (genre && genre !== 'n/a') return genre;
+            }
+            return null;
+        }
+
+        // Get format from barcode
+        function getFormatFromBarcode(barcode) {
+            if (!barcode || typeof barcode !== 'string') return 'unknown';
+            const prefix = barcode.substring(0, 2);
+            switch(prefix) {
+                case '22': return '33';
+                case '55': return '45';
+                case '66': return '78';
+                case '33': return 'cd';
+                case '44': return 'cassette';
+                default: return 'unknown';
+            }
+        }
+
+        function getFormatDisplayName(barcode) {
+            const code = getFormatFromBarcode(barcode);
+            switch(code) {
+                case '33': return '33⅓ RPM';
+                case '45': return '45 RPM';
+                case '78': return '78 RPM';
+                case 'cd': return 'CD';
+                case 'cassette': return 'Cassette';
+                default: return 'Vinyl';
+            }
+        }
+
+        // Group records by release
+        function groupRecordsByRelease(records) {
+            const groups = new Map();
+            records.forEach(record => {
+                const key = `${record.title}|${record.artist}`;
+                if (!groups.has(key)) {
+                    groups.set(key, {
+                        id: record.id,
+                        title: record.title,
+                        artist: record.artist,
+                        image_url: record.image_url,
+                        genre_name: extractGenreFromLocation(record.location) || 'Uncategorized',
+                        created_at: record.created_at,
+                        copies: [],
+                        price_min: Infinity,
+                        price_max: -Infinity,
+                        conditions_disc: new Set(),
+                        conditions_sleeve: new Set(),
+                        formats: new Set(),
+                        youtube_url: record.youtube_url
+                    });
+                }
+                const group = groups.get(key);
+                group.copies.push(record);
+                if (record.store_price) {
+                    group.price_min = Math.min(group.price_min, record.store_price);
+                    group.price_max = Math.max(group.price_max, record.store_price);
+                }
+                if (record.condition_disc) group.conditions_disc.add(record.condition_disc);
+                if (record.condition_sleeve) group.conditions_sleeve.add(record.condition_sleeve);
+                group.formats.add(getFormatDisplayName(record.barcode));
+                if (record.youtube_url && !group.youtube_url) group.youtube_url = record.youtube_url;
+            });
+            return Array.from(groups.values()).map(group => ({
+                ...group,
+                price_min: group.price_min === Infinity ? 0 : group.price_min,
+                price_max: group.price_max === -Infinity ? 0 : group.price_max,
+                conditions_disc: Array.from(group.conditions_disc),
+                conditions_sleeve: Array.from(group.conditions_sleeve),
+                formats: Array.from(group.formats),
+                total_copies: group.copies.length
+            }));
+        }
+
+        // Update active filter header
+        function updateActiveFilterHeader() {
+            const header = document.getElementById('activeFilterHeader');
+            const filterText = document.getElementById('filterText');
+            
+            if (currentSearchTerm || selectedGenres.length > 0) {
+                let description = '';
+                if (currentSearchTerm) {
+                    description = `Search results for "${currentSearchTerm}"`;
+                }
+                if (selectedGenres.length > 0) {
+                    if (description) description += ' • ';
+                    description += `Genre${selectedGenres.length > 1 ? 's' : ''}: ${selectedGenres.join(', ')}`;
+                }
+                filterText.innerHTML = `${description} <span class="result-count-badge">${groupedReleases.length} results</span>`;
+                header.style.display = 'flex';
+            } else {
+                if (currentFilterDescription) {
+                    filterText.innerHTML = `${currentFilterDescription} <span class="result-count-badge">${groupedReleases.length} results</span>`;
+                    header.style.display = 'flex';
+                } else {
+                    header.style.display = 'none';
+                }
+            }
+        }
+
+        // Load data from API
+        async function loadCatalogData() {
+            const searchBox = document.getElementById('searchBox');
+            currentSearchTerm = searchBox ? searchBox.value.trim() : '';
+            
+            let url;
+            if (currentSearchTerm) {
+                url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
+                currentFilterDescription = '';
+            } else {
+                url = `${AppConfig.baseUrl}/records?status_id=2`;
+                currentFilterDescription = 'Recent Additions (Last 7 Days)';
+            }
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    let records = data.records || [];
+                    
+                    // Apply genre filter client-side
+                    if (selectedGenres.length > 0) {
+                        records = records.filter(record => {
+                            const genre = extractGenreFromLocation(record.location);
+                            return genre && selectedGenres.includes(genre);
+                        });
+                    }
+                    
+                    allRecords = records;
+                    groupedReleases = groupRecordsByRelease(allRecords);
+                    
+                    // Extract unique genres from ALL records (for dropdown)
+                    const genreSet = new Set();
+                    data.records.forEach(record => {
+                        const genre = extractGenreFromLocation(record.location);
+                        if (genre && genre !== 'n/a') genreSet.add(genre);
+                    });
+                    availableGenres = Array.from(genreSet).sort();
+                    
+                    populateGenreDropdown();
+                    displayReleases(groupedReleases);
+                    updateActiveFilterHeader();
+                }
+            } catch (error) {
+                console.error('Failed to load:', error);
+                document.getElementById('catalogContainer').innerHTML = `
+                    <div class="error-message">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h2>Failed to Load Catalog</h2>
+                        <p>${error.message}</p>
+                        <button class="retry-btn" onclick="location.reload()">Retry</button>
+                    </div>
+                `;
+            }
+        }
+
+        // Populate genre dropdown
+        function populateGenreDropdown() {
+            const genreList = document.getElementById('genreList');
+            if (!genreList) return;
+            
+            if (availableGenres.length === 0) {
+                genreList.innerHTML = '<div style="color: #999; text-align: center;">No genres available</div>';
+                return;
+            }
+            
+            genreList.innerHTML = availableGenres.map(genre => `
+                <div class="filter-checkbox-item">
+                    <input type="checkbox" id="genre_${escapeHtml(genre)}" value="${escapeHtml(genre)}">
+                    <label for="genre_${escapeHtml(genre)}">${escapeHtml(genre)}</label>
+                </div>
+            `).join('');
+        }
+
+        // Clear all filters
+        function clearAllFilters() {
+            selectedGenres = [];
+            currentSearchTerm = '';
+            const searchBox = document.getElementById('searchBox');
+            if (searchBox) searchBox.value = '';
+            loadCatalogData();
+        }
+
+        // Display releases as simple grid (no date cards)
+        function displayReleases(releases) {
+            const container = document.getElementById('catalogContainer');
+            container.innerHTML = '';
+            
+            if (!releases || releases.length === 0) {
+                container.innerHTML = '<div class="no-records-message"><i class="fas fa-search"></i><p>No records found.</p></div>';
+                return;
+            }
+            
+            const sortedReleases = [...releases].sort((a, b) => {
+                const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+                const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+                return dateB - dateA;
+            });
+            
+            const grid = document.createElement('div');
+            grid.className = 'group-gallery';
+            
+            sortedReleases.forEach(release => {
+                grid.appendChild(createRecordCard(release));
+            });
+            
+            container.appendChild(grid);
+        }
+
+        function getConditionClass(condition) {
+            if (!condition) return '';
+            const cond = condition.toLowerCase();
+            if (cond.includes('mint') && !cond.includes('near')) return 'condition-mint';
+            if (cond.includes('near mint')) return 'condition-near-mint';
+            if (cond.includes('very good plus')) return 'condition-very-good-plus';
+            if (cond.includes('very good')) return 'condition-very-good';
+            if (cond.includes('good plus')) return 'condition-good-plus';
+            if (cond.includes('good')) return 'condition-good';
+            if (cond.includes('fair')) return 'condition-fair';
+            if (cond.includes('poor')) return 'condition-poor';
+            return '';
+        }
+
+        function createRecordCard(release) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            
+            const genre = release.genre_name || 'Unknown';
+            let priceDisplay = '';
+            if (release.price_min > 0 && release.price_max > 0) {
+                if (release.price_min === release.price_max) {
+                    priceDisplay = `$${release.price_min.toFixed(2)}`;
+                } else {
+                    priceDisplay = `$${release.price_min.toFixed(2)} - $${release.price_max.toFixed(2)}`;
+                }
+            } else if (release.price_min > 0) {
+                priceDisplay = `$${release.price_min.toFixed(2)}`;
+            } else {
+                priceDisplay = 'Price varies';
+            }
+            
+            let formatsHtml = '';
+            if (release.formats && release.formats.length > 0) {
+                formatsHtml = '<div class="formats-list">';
+                release.formats.forEach(format => {
+                    let formatClass = '';
+                    let formatIcon = '';
+                    if (format === '33⅓ RPM') { formatClass = 'vinyl-33'; formatIcon = 'fa-record-vinyl'; }
+                    else if (format === '45 RPM') { formatClass = 'vinyl-45'; formatIcon = 'fa-record-vinyl'; }
+                    else if (format === '78 RPM') { formatClass = 'vinyl-78'; formatIcon = 'fa-record-vinyl'; }
+                    else if (format === 'CD') { formatClass = 'cd'; formatIcon = 'fa-compact-disc'; }
+                    else if (format === 'Cassette') { formatClass = 'cassette'; formatIcon = 'fa-tape'; }
+                    formatsHtml += `<span class="format-indicator ${formatClass}"><i class="fas ${formatIcon}"></i> ${format}</span>`;
+                });
+                formatsHtml += '</div>';
+            }
+            
+            let conditionsHtml = '';
+            const allConditions = [...release.conditions_disc, ...release.conditions_sleeve];
+            const uniqueConditions = [...new Set(allConditions)];
+            const conditionOrder = { 'Mint (M)': 1, 'Near Mint (NM or M-)': 2, 'Very Good Plus (VG+)': 3, 'Very Good (VG)': 4, 'Good Plus (G+)': 5, 'Good (G)': 6, 'Fair (F)': 7, 'Poor (P)': 8 };
+            const sortedConditions = uniqueConditions.sort((a, b) => (conditionOrder[a] || 99) - (conditionOrder[b] || 99));
+            if (sortedConditions.length > 0) {
+                conditionsHtml = '<div class="conditions-list">';
+                sortedConditions.slice(0, 3).forEach(condition => {
+                    if (condition) {
+                        conditionsHtml += `<span class="condition-indicator ${getConditionClass(condition)}">${condition}</span>`;
+                    }
+                });
+                if (sortedConditions.length > 3) conditionsHtml += `<span class="more-copies">+${sortedConditions.length - 3} more</span>`;
+                conditionsHtml += '</div>';
+            }
+            
+            let copyCountHtml = '';
+            if (release.total_copies > 1) copyCountHtml = `<span class="copy-count">${release.total_copies} copies</span>`;
+            
+            const imageHtml = release.image_url ? 
+                `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : '';
+            
+            card.innerHTML = `
+                <div class="card-image ${!release.image_url ? 'default-record-bg' : ''}">${imageHtml}</div>
+                <div class="card-info">
+                    <h3 title="${escapeHtml(release.title)}">${escapeHtml(release.title)}</h3>
+                    <p class="artist" title="${escapeHtml(release.artist)}">${escapeHtml(release.artist)}</p>
+                    <div class="copy-info">${copyCountHtml}<span class="price-range">${priceDisplay}</span></div>
+                    ${formatsHtml}
+                    <p class="genre" title="${escapeHtml(genre)}">${escapeHtml(genre)}</p>
+                    ${conditionsHtml}
+                    ${release.youtube_url ? `<a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.youtube_url}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">🎵 Watch Video</a>` : ''}
+                </div>
+            `;
+            
+            card.addEventListener('click', function(e) {
+                if (e.target.closest('.youtube-link')) return;
+                showCopiesPopup(release);
+            });
+            
+            return card;
+        }
+
+        function showCopiesPopup(release) {
+            const modal = document.createElement('div');
+            modal.className = 'copies-modal-overlay';
+            const imageHtml = release.image_url ? 
+                `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : '';
+            
+            const copies = allRecords.filter(record => record.title === release.title && record.artist === release.artist);
+            const copiesByFormat = new Map();
+            copies.forEach(copy => {
+                const format = getFormatDisplayName(copy.barcode);
+                if (!copiesByFormat.has(format)) copiesByFormat.set(format, []);
+                copiesByFormat.get(format).push(copy);
+            });
+            
+            let formatsHtml = '';
+            for (const [format, formatCopies] of copiesByFormat) {
+                let formatIcon = 'fa-record-vinyl', formatClass = '';
+                if (format === '33⅓ RPM') { formatIcon = 'fa-record-vinyl'; formatClass = 'vinyl-33'; }
+                else if (format === '45 RPM') { formatIcon = 'fa-record-vinyl'; formatClass = 'vinyl-45'; }
+                else if (format === '78 RPM') { formatIcon = 'fa-record-vinyl'; formatClass = 'vinyl-78'; }
+                else if (format === 'CD') { formatIcon = 'fa-compact-disc'; formatClass = 'cd'; }
+                else if (format === 'Cassette') { formatIcon = 'fa-tape'; formatClass = 'cassette'; }
+                
+                let copiesHtml = '';
+                formatCopies.forEach(copy => {
+                    const conditionClass = getConditionClass(copy.condition_disc || copy.condition_sleeve);
+                    const alreadyInCart = cart.items.some(item => item.copyId === copy.id);
+                    const displayCondition = copy.condition_disc || copy.condition_sleeve || 'Unknown';
+                    copiesHtml += `
+                        <div class="copy-item">
+                            <div class="copy-item-content">
+                                <span class="copy-condition"><span class="condition-indicator ${conditionClass}">${displayCondition}</span></span>
+                                <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+                            </div>
+                            <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" data-copy-id="${copy.id}" data-format="${format}" ${alreadyInCart ? 'disabled' : ''}>
+                                <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
+                            </button>
+                        </div>
+                    `;
+                });
+                formatsHtml += `
+                    <div class="modal-format-section">
+                        <div class="modal-format-title ${formatClass}"><i class="fas ${formatIcon}"></i> ${format}<span style="margin-left:auto;">${formatCopies.length} copy${formatCopies.length !== 1 ? 's' : ''}</span></div>
+                        <div class="copies-list-with-format">${copiesHtml}</div>
+                    </div>
+                `;
+            }
+            
+            modal.innerHTML = `
+                <div class="copies-modal">
+                    <div class="copies-modal-header"><h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3><button class="copies-modal-close">&times;</button></div>
+                    <div class="copies-modal-content"><div class="modal-album-image ${!release.image_url ? 'default-record-bg' : ''}">${imageHtml}</div>${formatsHtml}</div>
+                    ${release.total_copies > 1 ? `<div class="copies-modal-footer"><span class="footer-total">Total Copies: ${release.total_copies}</span></div>` : ''}
+                </div>
+            `;
+            
+            modal.querySelector('.copies-modal-close').addEventListener('click', () => modal.remove());
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+            modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const copyId = parseInt(btn.dataset.copyId);
+                    const format = btn.dataset.format;
+                    const copy = allRecords.find(r => r.id === copyId);
+                    if (copy) {
+                        const releaseForCopy = { title: copy.title, artist: copy.artist, image_url: copy.image_url };
+                        addToCart(copy, releaseForCopy, format);
+                        modal.remove();
+                    }
+                });
+            });
+            document.body.appendChild(modal);
+        }
+
+        // Cart functions
+        function addToCart(copy, release, format) {
+            if (cart.items.some(item => item.copyId === copy.id)) {
+                showNotification('This item is already in your cart!', 'error');
+                return false;
+            }
+            cart.items.push({
+                copyId: copy.id, title: release.title, artist: release.artist,
+                condition: copy.condition_disc || copy.condition_sleeve || 'Unknown',
+                price: copy.store_price, image_url: release.image_url, format: format, quantity: 1
+            });
+            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            saveCart();
+            showNotification(`Added ${format} - ${release.title} to cart!`, 'success');
+            return true;
+        }
+
+        function removeFromCart(index) {
+            cart.items.splice(index, 1);
+            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            saveCart();
+            showNotification('Item removed from cart', 'success');
+            if (cart.items.length === 0) closeCartDrawer();
+        }
+
+        function saveCart() { localStorage.setItem('pigstyle_cart', JSON.stringify(cart)); updateCartDisplay(); }
+        
+        function loadCart() {
+            const saved = localStorage.getItem('pigstyle_cart');
+            if (saved) { cart = JSON.parse(saved); updateCartDisplay(); }
+        }
+
+        function updateCartDisplay() {
+            const container = document.getElementById('cartToggleContainer');
+            const badge = document.getElementById('cartBadge');
+            const count = cart.items.reduce((sum, item) => sum + item.quantity, 1);
+            badge.textContent = count;
+            container.style.display = count > 0 ? 'block' : 'none';
+            updateCartDrawer();
+        }
+
+        async function updateCartDrawer() {
+            const itemsDiv = document.getElementById('cartItems');
+            const footer = document.getElementById('cartFooter');
+            if (cart.items.length === 0) {
+                itemsDiv.innerHTML = `<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>`;
+                footer.style.display = 'none';
+            } else {
+                const subtotal = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                let currentTax = taxRate;
+                if (currentTax === 0) { currentTax = await getConfigValue('TAX_RATE') || 0; taxRate = currentTax; }
+                const taxAmount = subtotal * (currentTax / 100);
+                const total = subtotal + taxAmount;
+                
+                let html = `<table class="cart-items-table"><thead><tr><th>Item</th><th class="price-column">Price</th><th class="action-column"></th></tr></thead><tbody>`;
+                cart.items.forEach((item, idx) => {
+                    const imgHtml = item.image_url ? `<img src="${item.image_url}" class="cart-item-image" onerror="this.parentElement.innerHTML='<div class=\'cart-item-image default-record-bg\'></div>'">` : `<div class="cart-item-image default-record-bg"></div>`;
+                    html += `<tr class="cart-item-row"><td class="item-info-cell"><div class="cart-item-info">${imgHtml}<div class="cart-item-details"><div class="cart-item-title">${escapeHtml(item.title)}</div><div class="cart-item-artist">${escapeHtml(item.artist)}</div></div></div></td><td class="item-price-cell">$${item.price.toFixed(2)}</td><td class="item-action-cell"><button class="cart-item-remove-btn" onclick="removeFromCart(${idx})"><i class="fas fa-times"></i></button></td></tr>`;
+                });
+                html += `</tbody></table><table class="cart-totals-table"><tbody><tr><td class="label">Subtotal:</td><td class="amount">$${subtotal.toFixed(2)}</td></tr><tr><td class="label">Tax (${currentTax}%):</td><td class="amount">$${taxAmount.toFixed(2)}</td></tr><tr><td class="label total">Total:</td><td class="amount total-amount">$${total.toFixed(2)}</td></tr></tbody></table><button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button>`;
+                itemsDiv.innerHTML = html;
+                footer.style.display = 'block';
+                document.getElementById('checkoutBtn')?.addEventListener('click', () => { if (cart.items.length) showShippingOptions(); });
+            }
+        }
+
+        function showNotification(msg, type) {
+            const n = document.createElement('div');
+            n.className = `notification ${type === 'error' ? 'error' : ''}`;
+            n.textContent = msg;
+            document.body.appendChild(n);
+            setTimeout(() => { n.style.animation = 'slideOut 0.3s ease'; setTimeout(() => n.remove(), 300); }, 3000);
+        }
+
+        function openCartDrawer() { document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('active'); updateCartDrawer(); }
+        function closeCartDrawer() { document.getElementById('cartDrawer').classList.remove('open'); document.getElementById('cartOverlay').classList.remove('active'); }
+
+        // Checkout functions
+        async function showShippingOptions() {
+            return new Promise((resolve) => {
+                const modal = document.createElement('div');
+                modal.className = 'payment-modal-overlay';
+                modal.innerHTML = `
+                    <div class="payment-modal shipping-modal">
+                        <h2>Shipping Options</h2>
+                        <div class="shipping-option"><input type="radio" name="shipping" id="pickupRadio" value="pickup" checked><label for="pickupRadio">Pick up in store</label><p>Free</p></div>
+                        <div class="shipping-option"><input type="radio" name="shipping" id="shipRadio" value="ship"><label for="shipRadio">Ship my order</label><p>+ $${shippingCost.toFixed(2)}</p></div>
+                        <div id="shippingForm" style="display:none;"><h4>Shipping Info</h4><input type="text" id="shipName" placeholder="Full Name"><input type="text" id="shipAddress" placeholder="Address"><input type="text" id="shipCity" placeholder="City"><input type="text" id="shipState" placeholder="State"><input type="text" id="shipZip" placeholder="ZIP"><input type="email" id="shipEmail" placeholder="Email"></div>
+                        <div class="modal-actions"><button id="cancelShipBtn">Cancel</button><button id="continueShipBtn">Continue</button></div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                const shipRadio = document.getElementById('shipRadio');
+                const form = document.getElementById('shippingForm');
+                document.getElementById('pickupRadio').onclick = () => form.style.display = 'none';
+                shipRadio.onclick = () => form.style.display = 'block';
+                document.getElementById('continueShipBtn').onclick = async () => {
+                    const isShip = shipRadio.checked;
+                    if (isShip) {
+                        const name = document.getElementById('shipName')?.value.trim();
+                        const addr = document.getElementById('shipAddress')?.value.trim();
+                        const city = document.getElementById('shipCity')?.value.trim();
+                        const state = document.getElementById('shipState')?.value.trim();
+                        const zip = document.getElementById('shipZip')?.value.trim();
+                        const email = document.getElementById('shipEmail')?.value.trim();
+                        if (!name || !addr || !city || !state || !zip || !email) { showNotification('Please fill all fields', 'error'); return; }
+                        if (!email.includes('@')) { showNotification('Invalid email', 'error'); return; }
+                    }
+                    const data = { method: isShip ? 'ship' : 'pickup', cost: isShip ? shippingCost : 0 };
+                    if (isShip) {
+                        data.fullName = document.getElementById('shipName')?.value.trim();
+                        data.email = document.getElementById('shipEmail')?.value.trim();
+                        data.address = document.getElementById('shipAddress')?.value.trim();
+                        data.city = document.getElementById('shipCity')?.value.trim();
+                        data.state = document.getElementById('shipState')?.value.trim();
+                        data.zip = document.getElementById('shipZip')?.value.trim();
+                    }
+                    modal.remove();
+                    await processCheckout(data);
+                    resolve();
+                };
+                document.getElementById('cancelShipBtn').onclick = () => { modal.remove(); resolve(); };
+            });
+        }
+
+        async function processCheckout(shippingData) {
+            closeCartDrawer();
+            const modal = document.createElement('div');
+            modal.className = 'payment-modal-overlay';
+            modal.innerHTML = `<div class="payment-modal"><div class="loading-spinner"></div><h2>Processing...</h2></div>`;
+            document.body.appendChild(modal);
+            try {
+                const subtotal = cart.items.reduce((s, i) => s + (i.price * i.quantity), 0);
+                const taxAmount = subtotal * (taxRate / 100);
+                const items = cart.items.map(i => ({ copy_id: i.copyId, title: i.title, artist: i.artist, condition: i.condition, price: i.price, format: i.format, quantity: i.quantity }));
+                const reqData = { items, shipping: shippingData.method === 'ship' ? { amount: shippingData.cost, name: 'Shipping' } : null, subtotal, tax: taxAmount, total: subtotal + taxAmount + (shippingData.cost || 0), currency: 'USD' };
+                if (shippingData.method === 'ship') Object.assign(reqData, { customer_name: shippingData.fullName, customer_email: shippingData.email, address: shippingData.address, city: shippingData.city, state: shippingData.state, zip: shippingData.zip });
+                const res = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reqData) });
+                const data = await res.json();
+                if (data.status === 'success' && data.checkout_url) window.location.href = data.checkout_url;
+                else { modal.remove(); showNotification('Checkout failed', 'error'); openCartDrawer(); }
+            } catch (err) { modal.remove(); showNotification('Error: ' + err.message, 'error'); openCartDrawer(); }
+        }
+
+        async function checkReturnStatus() {
+            const params = new URLSearchParams(window.location.search);
+            const tid = params.get('transactionId');
+            const status = params.get('status');
+            const oid = params.get('order_id');
+            if (tid && status === 'completed' && oid) {
+                await fetch(`${AppConfig.baseUrl}/api/order/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transaction_id: tid, order_id: oid }) });
+                cart.items = []; saveCart();
+                setTimeout(() => showNotification('Payment successful! Thank you.', 'success'), 500);
+                window.history.replaceState({}, document.title, '/browse');
+                loadCatalogData();
+            } else if (status === 'canceled') { showNotification('Checkout canceled.', 'error'); window.history.replaceState({}, document.title, '/browse'); }
+        }
+
+        function handleYouTubeClick(url, title) {
+            const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+            if (!match) { alert('Invalid YouTube URL'); return; }
+            const modal = document.createElement('div');
+            modal.className = 'youtube-modal-overlay';
+            modal.innerHTML = `<div class="youtube-modal"><div class="youtube-modal-header"><h3>${title}</h3><button class="youtube-modal-close" onclick="this.closest('.youtube-modal-overlay').remove()">×</button></div><div class="youtube-video-container"><iframe src="https://www.youtube.com/embed/${match[1]}?autoplay=1" frameborder="0" allowfullscreen></iframe></div></div>`;
+            document.body.appendChild(modal);
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+        }
+
+        function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+        function debounce(fn, delay) { let t; return function(...a) { clearTimeout(t); t = setTimeout(() => fn(...a), delay); }; }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            shippingCost = parseFloat(await getConfigValue('SHIPPING_COST')) || 0;
+            taxRate = await getConfigValue('TAX_RATE') || 0;
+            loadCart();
+            await loadCatalogData();
+            checkReturnStatus();
+            
+            document.getElementById('cartToggle')?.addEventListener('click', openCartDrawer);
+            document.getElementById('closeCartDrawer')?.addEventListener('click', closeCartDrawer);
+            document.getElementById('cartOverlay')?.addEventListener('click', closeCartDrawer);
+            document.getElementById('clearFilterBtn')?.addEventListener('click', clearAllFilters);
+            
+            const searchBox = document.getElementById('searchBox');
+            searchBox?.addEventListener('input', debounce(() => loadCatalogData(), 500));
+            
+            const genreBtn = document.getElementById('genreFilterBtn');
+            const genreDropdown = document.getElementById('genreDropdown');
+            genreBtn?.addEventListener('click', (e) => { e.stopPropagation(); genreDropdown.classList.toggle('show'); });
+            document.addEventListener('click', (e) => { if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) genreDropdown?.classList.remove('show'); });
+            
+            document.getElementById('selectAllGenres')?.addEventListener('click', () => { document.querySelectorAll('#genreList input').forEach(cb => cb.checked = true); });
+            document.getElementById('clearAllGenres')?.addEventListener('click', () => { document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); });
+            document.getElementById('applyGenres')?.addEventListener('click', () => {
+                selectedGenres = Array.from(document.querySelectorAll('#genreList input:checked')).map(cb => cb.value);
+                genreDropdown.classList.remove('show');
+                loadCatalogData();
+            });
+            
+            window.removeFromCart = removeFromCart;
+        });
+    </script>
+</body>
+</html>
