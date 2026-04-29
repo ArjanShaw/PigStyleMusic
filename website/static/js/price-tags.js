@@ -5,11 +5,6 @@
 // Use window object to avoid redeclaration errors
 window.priceTagsModule = window.priceTagsModule || {};
 
-// Cache for consignor information
-if (typeof window.consignorCache === 'undefined') {
-    window.consignorCache = {};
-}
-
 // State variables
 if (typeof window.allRecords === 'undefined') {
     window.allRecords = [];
@@ -142,103 +137,15 @@ function updatePrintStartPosition() {
     showStatus(`Price tags will start at position (${window.printStartRow}, ${window.printStartCol})`, 'info');
 }
 
-// Load consignors for filter
-async function loadConsignorsForPriceTags() {
-    try {
-        const url = `${AppConfig.baseUrl}/users`;
-        const response = await fetch(url, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            const users = data.users || [];
-            const userSelect = document.getElementById('user-select');
-            
-            if (!userSelect) {
-                console.error('User select element not found');
-                return;
-            }
-            
-            // Clear existing options
-            userSelect.innerHTML = '';
-            
-            // Add "All Users" option
-            const allOption = document.createElement('option');
-            allOption.value = 'all';
-            allOption.textContent = 'All Users';
-            userSelect.appendChild(allOption);
-            
-            // Add user options
-            users.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user.id;
-                option.textContent = `${user.username} (ID: ${user.id})`;
-                userSelect.appendChild(option);
-                
-                // Cache user info
-                window.consignorCache[user.id] = {
-                    username: user.username || `User ${user.id}`,
-                    initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
-                };
-            });
-            
-            console.log(`Loaded ${users.length} users for filter`);
-            
-            // Add event listener for user select change
-            const oldUserSelect = userSelect;
-            const newUserSelect = oldUserSelect.cloneNode(true);
-            oldUserSelect.parentNode.replaceChild(newUserSelect, oldUserSelect);
-            
-            newUserSelect.addEventListener('change', function() {
-                console.log('User selected changed to:', this.value);
-                // Clear queue when changing users
-                clearQueue();
-                cancelRangeSelection();
-                // Load records for the selected user
-                loadRecordsForPriceTags();
-            });
-            
-        } else {
-            console.error('Failed to load users:', data.message);
-            showStatus('Failed to load users: ' + (data.message || 'Unknown error'), 'error');
-        }
-    } catch (error) {
-        console.error('Error loading users:', error);
-        showStatus('Failed to load users: ' + error.message, 'error');
-    }
-}
-
-// Load records
+// Load records with NO user dependencies
 async function loadRecordsForPriceTags() {
+    console.log('================== LOADING RECORDS FOR PRICE TAGS ==================');
     showLoading(true);
     
     try {
-        const userSelect = document.getElementById('user-select');
-        if (!userSelect) {
-            console.error('User select element not found');
-            showLoading(false);
-            return;
-        }
-        
-        const selectedUserId = userSelect.value === 'all' ? null : userSelect.value;
-        console.log('Loading records for user:', selectedUserId);
-        
-        let url;
-        if (selectedUserId) {
-            url = `${AppConfig.baseUrl}/records/user/${selectedUserId}`;
-        } else {
-            url = `${AppConfig.baseUrl}/records`;
-        }
+        // ALWAYS fetch ALL records - no user filter
+        const url = `${AppConfig.baseUrl}/records`;
+        console.log('📡 API Call:', url);
         
         const response = await fetch(url, {
             credentials: 'include',
@@ -248,17 +155,47 @@ async function loadRecordsForPriceTags() {
             }
         });
         
+        console.log('📡 Response Status:', response.status);
+        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const data = await response.json();
+        console.log('📡 Response Status from API:', data.status);
+        console.log('📡 Total records from API:', data.records ? data.records.length : 0);
         
         if (data.status === 'success') {
             window.allRecords = data.records || [];
             
+            console.log('✅ Loaded', window.allRecords.length, 'total records into window.allRecords');
+            
+            // LOG SPECIFIC RECORD 8508
+            const record8508 = window.allRecords.find(r => r.id === 8508 || r.id == 8508);
+            if (record8508) {
+                console.log('🎯 RECORD 8508 FOUND in API response!');
+                console.log('   ID:', record8508.id);
+                console.log('   Artist:', record8508.artist);
+                console.log('   Title:', record8508.title);
+                console.log('   Status ID:', record8508.status_id);
+                console.log('   Created At:', record8508.created_at);
+                console.log('   Full record:', record8508);
+            } else {
+                console.error('❌ RECORD 8508 NOT FOUND in API response!');
+                console.log('First 5 records from API:', window.allRecords.slice(0, 5).map(r => ({ id: r.id, artist: r.artist, status_id: r.status_id })));
+            }
+            
             // Sort by created date descending (newest first)
             window.allRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            console.log('📅 Records sorted by created_at (newest first)');
+            
+            // Log date range
+            if (window.allRecords.length > 0) {
+                const newest = window.allRecords[0];
+                const oldest = window.allRecords[window.allRecords.length - 1];
+                console.log('📅 Newest record date:', newest.created_at, '- ID:', newest.id);
+                console.log('📅 Oldest record date:', oldest.created_at, '- ID:', oldest.id);
+            }
             
             // Update stats
             const totalRecordsEl = document.getElementById('total-records-print');
@@ -269,6 +206,8 @@ async function loadRecordsForPriceTags() {
             const soldCount = window.allRecords.filter(r => r.status_id === 3).length;
             const removedCount = window.allRecords.filter(r => r.status_id === 4).length;
             
+            console.log('📊 Status Counts:', { newCount, activeCount, soldCount, removedCount });
+            
             const newEl = document.getElementById('inactive-records');
             const activeEl = document.getElementById('active-records');
             const soldEl = document.getElementById('sold-records');
@@ -277,17 +216,11 @@ async function loadRecordsForPriceTags() {
             if (activeEl) activeEl.textContent = activeCount;
             if (soldEl) soldEl.textContent = soldCount;
             
-            // Fetch any missing consignor info
-            const consignorIds = new Set();
-            window.allRecords.forEach(r => { if (r.consignor_id) consignorIds.add(r.consignor_id); });
-            
-            const fetchPromises = Array.from(consignorIds).map(id => getConsignorInfo(id));
-            await Promise.all(fetchPromises);
-            
             filterRecords();
             
             showStatus(`Loaded ${window.allRecords.length} records (${newCount} new, ${activeCount} active, ${soldCount} sold, ${removedCount} removed)`, 'success');
         } else {
+            console.error('API returned error status:', data);
             showStatus('Failed to load records: ' + (data.message || 'Unknown error'), 'error');
         }
     } catch (error) {
@@ -296,58 +229,65 @@ async function loadRecordsForPriceTags() {
     }
     
     showLoading(false);
+    console.log('================== LOAD COMPLETE ==================');
 }
 
-// Get consignor info
-async function getConsignorInfo(consignorId) {
-    if (!consignorId) return { username: 'None', initials: '' };
-    
-    if (window.consignorCache[consignorId]) {
-        return window.consignorCache[consignorId];
-    }
-    
-    try {
-        const url = `${AppConfig.baseUrl}/users/${consignorId}`;
-        const response = await fetch(url, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.status === 'success') {
-                const user = data.user || {};
-                const consignorInfo = {
-                    username: user.username || `User ${consignorId}`,
-                    initials: user.initials || (user.username ? user.username.substring(0, 2).toUpperCase() : '')
-                };
-                window.consignorCache[consignorId] = consignorInfo;
-                return consignorInfo;
-            }
-        }
-    } catch (error) {
-        console.log('Error fetching consignor:', error);
-    }
-    
-    return { username: `User ${consignorId}`, initials: '' };
-}
-
-// Filter records
+// Filter records with extensive logging
 function filterRecords() {
-    const statusFilter = document.getElementById('status-filter').value;
+    console.log('================== FILTERING RECORDS ==================');
+    const currentFilter = document.getElementById('status-filter');
+    const statusFilter = currentFilter ? currentFilter.value : 'all';
     const statusId = getStatusIdFromFilter(statusFilter);
+    
+    console.log('Current filter:', statusFilter);
+    console.log('Status ID mapping:', statusId);
+    console.log('Total records before filter:', window.allRecords.length);
+    
+    // Log status distribution before filter
+    const statusDist = {};
+    window.allRecords.forEach(r => {
+        statusDist[r.status_id] = (statusDist[r.status_id] || 0) + 1;
+    });
+    console.log('Status distribution in allRecords:', statusDist);
+    
+    // Check for record 8508 specifically
+    const record8508 = window.allRecords.find(r => r.id === 8508 || r.id == 8508);
+    if (record8508) {
+        console.log('🎯 RECORD 8508 status_id =', record8508.status_id);
+        console.log('🎯 RECORD 8508 will be included?', statusId ? record8508.status_id === statusId : true);
+    }
     
     if (statusId) {
         window.filteredRecords = window.allRecords.filter(r => r.status_id === statusId);
+        console.log(`Filtered by status_id = ${statusId}: ${window.filteredRecords.length} records`);
     } else {
         window.filteredRecords = [...window.allRecords];
+        console.log(`No status filter, all ${window.filteredRecords.length} records`);
+    }
+    
+    // Check if record 8508 made it into filteredRecords
+    const filtered8508 = window.filteredRecords.find(r => r.id === 8508 || r.id == 8508);
+    if (filtered8508) {
+        console.log('✅ RECORD 8508 IS in filteredRecords!');
+    } else {
+        console.error('❌ RECORD 8508 is NOT in filteredRecords!');
+        if (record8508) {
+            console.log('   It was in allRecords but filtered out. Status mismatch?');
+            console.log(`   Record status: ${record8508.status_id}, Filter looking for: ${statusId || 'all'}`);
+        } else {
+            console.log('   Record was not in allRecords at all!');
+        }
     }
     
     // Keep the sort order (newest first)
     window.filteredRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    console.log('Filtered records sorted by created_at (newest first)');
+    
+    // Log first 5 filtered records to see newest
+    console.log('First 5 filtered records (newest):');
+    window.filteredRecords.slice(0, 5).forEach((r, i) => {
+        console.log(`  ${i+1}. ID:${r.id} - ${r.artist} - ${r.title} - status:${r.status_id} - created:${r.created_at}`);
+    });
     
     window.currentPage = 1;
     updatePagination();
@@ -363,6 +303,7 @@ function filterRecords() {
                       statusFilter === 'sold' ? 'Sold records' : 'Removed records';
     
     showStatus(`Showing ${window.filteredRecords.length} ${statusText}`, 'info');
+    console.log('================== FILTER COMPLETE ==================');
 }
 
 // Update pagination
@@ -400,55 +341,179 @@ function updatePagination() {
     if (showingEndEl) showingEndEl.textContent = window.filteredRecords.length > 0 ? endIndex : 0;
 }
 
-// Update queue display
+// Render current page with logging
+function renderCurrentPage() {
+    const tbody = document.getElementById('records-body');
+    if (!tbody) return;
+    
+    console.log('================== RENDERING PAGE ==================');
+    console.log('Current page:', window.currentPage);
+    console.log('Page size:', window.pageSize);
+    console.log('Total filtered records:', window.filteredRecords.length);
+    
+    tbody.innerHTML = '';
+    
+    if (window.filteredRecords.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 20px; color: #666;">No records found</td></tr>`;
+        updatePagination();
+        console.log('No records to render');
+        return;
+    }
+    
+    const startIndex = (window.currentPage - 1) * window.pageSize;
+    const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
+    const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
+    
+    console.log(`Rendering records ${startIndex + 1} to ${endIndex} (${pageRecords.length} records on this page)`);
+    
+    // Check if record 8508 should be on this page
+    const record8508Index = window.filteredRecords.findIndex(r => r.id === 8508 || r.id == 8508);
+    if (record8508Index !== -1) {
+        console.log(`🎯 RECORD 8508 is at index ${record8508Index} in filteredRecords`);
+        const pageOf8508 = Math.floor(record8508Index / window.pageSize) + 1;
+        console.log(`🎯 RECORD 8508 should be on page ${pageOf8508}`);
+        if (pageOf8508 === window.currentPage) {
+            console.log('✅ RECORD 8508 SHOULD be visible on CURRENT page');
+        } else {
+            console.log(`⚠️ RECORD 8508 is on page ${pageOf8508}, but you're on page ${window.currentPage}`);
+        }
+    } else {
+        console.log('❌ RECORD 8508 not found in filteredRecords');
+    }
+    
+    pageRecords.forEach((record, index) => {
+        const globalIndex = startIndex + index;
+        const isInQueue = window.printQueue.includes(record.id.toString());
+        const isSold = record.status_id === 3;
+        
+        // Log if this is record 8508
+        if (record.id == 8508) {
+            console.log('🎯 RENDERING RECORD 8508 on page!');
+            console.log('   Row index:', index);
+            console.log('   Global index:', globalIndex);
+        }
+        
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-record-id', record.id);
+        
+        if (isInQueue) {
+            tr.classList.add('record-in-queue');
+        }
+        
+        const queuePosition = isInQueue ? window.printQueue.indexOf(record.id.toString()) + 1 : null;
+        
+        // Determine button state
+        let buttonHtml = '';
+        if (isInQueue) {
+            buttonHtml = `<span class="record-queue-position" title="Position in queue">#${queuePosition}</span>`;
+        } else if (isSold) {
+            buttonHtml = `<span style="color: #999; font-size: 11px;">sold</span>`;
+        } else {
+            const fromBtnClass = window.rangeMode && window.rangeFromId === record.id.toString() ? 'selected-from' : '';
+            buttonHtml = `
+                <div style="display: flex; gap: 3px;">
+                    <button class="btn btn-small from-btn ${fromBtnClass}" 
+                            onclick="event.stopPropagation(); startRangeFrom('${record.id}', this)" 
+                            style="padding: 3px 6px; font-size: 11px;">
+                        ${window.rangeMode && window.rangeFromId === record.id.toString() ? 'from' : 'from'}
+                    </button>
+                    <button class="btn btn-small to-btn" 
+                            onclick="event.stopPropagation(); completeRangeTo('${record.id}', this)" 
+                            style="padding: 3px 6px; font-size: 11px; background-color: #6c757d; color: white;">
+                        to
+                    </button>
+                </div>
+            `;
+        }
+        
+        tr.innerHTML = `
+            <td>${buttonHtml}</td>
+            <td>${globalIndex + 1}</td>
+            <td><strong>${formatDate(record.created_at)}</strong></td>
+            <td>${truncateText(escapeHtml(record.artist) || 'Unknown', 25)}</td>
+            <td>${truncateText(escapeHtml(record.title) || 'Unknown', 30)}</td>
+            <td>$${(record.store_price || 0).toFixed(2)}</td>
+            <td>${truncateText(escapeHtml(record.catalog_number) || 'N/A', 15)}</td>
+            <td>${truncateText(escapeHtml(record.genre_name || record.genre || record.discogs_genre_raw) || 'Unknown', 20)}</td>
+            <td>${record.barcode || 'N/A'}</td>
+            <td>${record.consignor_id || 'None'}</td>
+            <td><span>${record.status_id}</span></td>
+        `;
+        tbody.appendChild(tr);
+    });
+    
+    updatePagination();
+    console.log('================== RENDER COMPLETE ==================');
+}
+
+// Pagination functions
+function goToPage(page) {
+    if (page < 1) page = 1;
+    if (page > window.totalPages) page = window.totalPages;
+    
+    console.log(`Going to page ${page}`);
+    window.currentPage = page;
+    cancelRangeSelection();
+    renderCurrentPage();
+    updatePagination();
+}
+
+function goToFirstPage() {
+    goToPage(1);
+}
+
+function goToPreviousPage() {
+    goToPage(window.currentPage - 1);
+}
+
+function goToNextPage() {
+    goToPage(window.currentPage + 1);
+}
+
+function goToLastPage() {
+    goToPage(window.totalPages);
+}
+
+function changePageSize(newSize) {
+    window.pageSize = newSize;
+    window.currentPage = 1;
+    cancelRangeSelection();
+    updatePagination();
+    renderCurrentPage();
+}
+
+// Update queue display (simplified)
 function updateQueueDisplay() {
     const queueContent = document.getElementById('queue-content');
     const queueEmpty = document.getElementById('queue-empty');
     const queueCount = document.getElementById('queue-count');
     const printQueueBtn = document.getElementById('print-queue-btn');
-    const markActiveQueueBtn = document.getElementById('mark-active-queue-btn');
     const clearQueueBtn = document.getElementById('clear-queue-btn');
     const printQueueCount = document.getElementById('print-queue-count');
     
     if (!queueContent) return;
     
-    // Update queue count
     if (queueCount) queueCount.textContent = window.printQueue.length;
     if (printQueueCount) printQueueCount.textContent = window.printQueue.length;
     
-    // Update button states
     const hasItems = window.printQueue.length > 0;
     if (printQueueBtn) printQueueBtn.disabled = !hasItems;
-    if (markActiveQueueBtn) markActiveQueueBtn.disabled = !hasItems;
     if (clearQueueBtn) clearQueueBtn.disabled = !hasItems;
     
-    // Clear queue content
     queueContent.innerHTML = '';
     
     if (window.printQueue.length === 0) {
         if (queueEmpty) {
             queueEmpty.style.display = 'block';
-        } else {
-            const emptyDiv = document.createElement('div');
-            emptyDiv.className = 'queue-empty';
-            emptyDiv.innerHTML = `
-                <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 10px; opacity: 0.5;"></i>
-                <p>No records in print queue</p>
-                <p style="font-size: 12px;">Click 'from' on a record to start a range selection</p>
-            `;
-            queueContent.appendChild(emptyDiv);
         }
         return;
     }
     
     if (queueEmpty) queueEmpty.style.display = 'none';
     
-    // Render each item in the queue
     window.printQueue.forEach((recordId, index) => {
         const record = window.allRecords.find(r => r.id.toString() === recordId);
         if (!record) return;
-        
-        const consignorInfo = window.consignorCache[record.consignor_id] || { username: 'None', initials: '' };
         
         const queueItem = document.createElement('div');
         queueItem.className = 'queue-item';
@@ -459,7 +524,6 @@ function updateQueueDisplay() {
                 <div class="queue-item-details">
                     <span>$${(record.store_price || 0).toFixed(2)}</span>
                     <span>${escapeHtml(record.genre_name || record.genre || 'Unknown')}</span>
-                    <span>${consignorInfo.initials ? `(${escapeHtml(consignorInfo.initials)})` : ''}</span>
                 </div>
             </div>
             <div style="display: flex; gap: 5px;">
@@ -477,11 +541,9 @@ function updateQueueDisplay() {
         queueContent.appendChild(queueItem);
     });
     
-    // Re-render current page to update row highlighting
     renderCurrentPage();
 }
 
-// Move queue item up or down
 function moveQueueItem(index, direction) {
     if (direction === 'up' && index > 0) {
         [window.printQueue[index - 1], window.printQueue[index]] = [window.printQueue[index], window.printQueue[index - 1]];
@@ -495,18 +557,15 @@ function moveQueueItem(index, direction) {
     showStatus('Queue order updated', 'success');
 }
 
-// Add to queue
 function addToQueue(recordId) {
     const recordIdStr = recordId.toString();
     
-    // Don't add sold records
     const record = window.allRecords.find(r => r.id.toString() === recordIdStr);
     if (record && record.status_id === 3) {
         showStatus('Sold records cannot be added to queue', 'warning');
         return;
     }
     
-    // Check if already in queue
     if (window.printQueue.includes(recordIdStr)) {
         showStatus('Record already in queue', 'info');
         return;
@@ -517,7 +576,6 @@ function addToQueue(recordId) {
     showStatus('Record added to queue', 'success');
 }
 
-// Remove from queue
 function removeFromQueue(recordId) {
     const recordIdStr = recordId.toString();
     const index = window.printQueue.indexOf(recordIdStr);
@@ -529,7 +587,6 @@ function removeFromQueue(recordId) {
     }
 }
 
-// Clear queue
 function clearQueue() {
     if (window.printQueue.length === 0) return;
     
@@ -541,13 +598,11 @@ function clearQueue() {
     }
 }
 
-// Add all records on current page to queue
 function addAllOnPageToQueue() {
     const startIndex = (window.currentPage - 1) * window.pageSize;
     const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
     const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
     
-    // Filter out sold records and records already in queue
     const recordsToAdd = pageRecords.filter(r => 
         r.status_id !== 3 && !window.printQueue.includes(r.id.toString())
     );
@@ -569,13 +624,11 @@ function addAllOnPageToQueue() {
 function startRangeFrom(recordId, button) {
     const recordIdStr = recordId.toString();
     
-    // Check if we're clicking the same from button
     if (window.rangeMode && window.rangeFromId === recordIdStr) {
         cancelRangeSelection();
         return;
     }
     
-    // Find the record's index in the filtered list
     const recordIndex = window.filteredRecords.findIndex(r => r.id.toString() === recordIdStr);
     if (recordIndex === -1) return;
     
@@ -583,7 +636,6 @@ function startRangeFrom(recordId, button) {
     window.rangeFromIndex = recordIndex;
     window.rangeFromId = recordIdStr;
     
-    // Update UI
     document.querySelectorAll('.from-btn').forEach(btn => {
         btn.classList.remove('selected-from');
         btn.textContent = 'from';
@@ -597,7 +649,6 @@ function startRangeFrom(recordId, button) {
         btn.classList.remove('selected-to');
     });
     
-    // Show cancel range button
     const cancelBtn = document.getElementById('cancel-range-btn');
     if (cancelBtn) cancelBtn.style.display = 'inline-flex';
     
@@ -609,18 +660,14 @@ function completeRangeTo(recordId, button) {
     
     const recordIdStr = recordId.toString();
     
-    // Find the record's index in the filtered list
     const recordIndex = window.filteredRecords.findIndex(r => r.id.toString() === recordIdStr);
     if (recordIndex === -1) return;
     
-    // Determine range direction
     const start = Math.min(window.rangeFromIndex, recordIndex);
     const end = Math.max(window.rangeFromIndex, recordIndex);
     
-    // Get records in range
     const recordsInRange = window.filteredRecords.slice(start, end + 1);
     
-    // Filter out sold records and records already in queue
     const recordsToAdd = recordsInRange.filter(r => 
         r.status_id !== 3 && !window.printQueue.includes(r.id.toString())
     );
@@ -631,7 +678,6 @@ function completeRangeTo(recordId, button) {
         return;
     }
     
-    // Add to queue in the order they appear in the table
     recordsToAdd.forEach(record => {
         window.printQueue.push(record.id.toString());
     });
@@ -639,7 +685,6 @@ function completeRangeTo(recordId, button) {
     updateQueueDisplay();
     showStatus(`Added ${recordsToAdd.length} records from range to queue`, 'success');
     
-    // Clear range mode
     cancelRangeSelection();
 }
 
@@ -648,7 +693,6 @@ function cancelRangeSelection() {
     window.rangeFromIndex = null;
     window.rangeFromId = null;
     
-    // Reset all buttons
     document.querySelectorAll('.from-btn').forEach(btn => {
         btn.classList.remove('selected-from');
         btn.textContent = 'from';
@@ -659,12 +703,10 @@ function cancelRangeSelection() {
         btn.classList.remove('selected-to');
     });
     
-    // Hide cancel range button
     const cancelBtn = document.getElementById('cancel-range-btn');
     if (cancelBtn) cancelBtn.style.display = 'none';
 }
 
-// Clear all locator highlights
 function clearLocatorHighlight() {
     document.querySelectorAll('.record-locator-match, .record-locator-current').forEach(el => {
         el.classList.remove('record-locator-match', 'record-locator-current');
@@ -680,7 +722,6 @@ function clearLocatorHighlight() {
     if (searchInput) searchInput.value = '';
 }
 
-// Locate record function
 function locateRecord() {
     const searchTerm = document.getElementById('record-locator-search').value.trim().toLowerCase();
     
@@ -728,7 +769,6 @@ function locateRecord() {
     }
 }
 
-// Highlight a specific match by index
 function highlightMatchIndex(index) {
     if (!window.locatorMatches || window.locatorMatches.length === 0) return;
     if (index < 0 || index >= window.locatorMatches.length) return;
@@ -753,7 +793,6 @@ function highlightMatchIndex(index) {
     }
 }
 
-// Find next match
 function findNextMatch() {
     if (!window.locatorMatches || window.locatorMatches.length === 0) {
         locateRecord();
@@ -768,7 +807,6 @@ function findNextMatch() {
     highlightMatchIndex(nextIndex);
 }
 
-// Find previous match
 function findPreviousMatch() {
     if (!window.locatorMatches || window.locatorMatches.length === 0) return;
     
@@ -780,135 +818,7 @@ function findPreviousMatch() {
     highlightMatchIndex(prevIndex);
 }
 
-// Render current page
-function renderCurrentPage() {
-    const tbody = document.getElementById('records-body');
-    if (!tbody) return;
-    
-    tbody.innerHTML = '';
-    
-    if (window.filteredRecords.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 20px; color: #666;">No records found</td></tr>`;
-        updatePagination();
-        return;
-    }
-    
-    const startIndex = (window.currentPage - 1) * window.pageSize;
-    const endIndex = Math.min(startIndex + window.pageSize, window.filteredRecords.length);
-    const pageRecords = window.filteredRecords.slice(startIndex, endIndex);
-    
-    pageRecords.forEach((record, index) => {
-        const globalIndex = startIndex + index;
-        const consignorInfo = window.consignorCache[record.consignor_id] || { username: 'None', initials: '' };
-        
-        const isRecentlyPrinted = window.recentlyPrintedIds.has(record.id.toString());
-        const isInQueue = window.printQueue.includes(record.id.toString());
-        const isSold = record.status_id === 3;
-        
-        const tr = document.createElement('tr');
-        tr.setAttribute('data-record-id', record.id);
-        
-        if (isInQueue) {
-            tr.classList.add('record-in-queue');
-        } else if (isRecentlyPrinted) {
-            tr.style.backgroundColor = '#f0fff0';
-            tr.style.borderLeft = '3px solid #27ae60';
-        }
-        
-        const queuePosition = isInQueue ? window.printQueue.indexOf(record.id.toString()) + 1 : null;
-        
-        // Determine button state
-        let buttonHtml = '';
-        if (isInQueue) {
-            buttonHtml = `<span class="record-queue-position" title="Position in queue">#${queuePosition}</span>`;
-        } else if (isSold) {
-            buttonHtml = `<span style="color: #999; font-size: 11px;">sold</span>`;
-        } else {
-            const fromBtnClass = window.rangeMode && window.rangeFromId === record.id.toString() ? 'selected-from' : '';
-            buttonHtml = `
-                <div style="display: flex; gap: 3px;">
-                    <button class="btn btn-small from-btn ${fromBtnClass}" 
-                            onclick="event.stopPropagation(); startRangeFrom('${record.id}', this)" 
-                            style="padding: 3px 6px; font-size: 11px;">
-                        ${window.rangeMode && window.rangeFromId === record.id.toString() ? 'from' : 'from'}
-                    </button>
-                    <button class="btn btn-small to-btn" 
-                            onclick="event.stopPropagation(); completeRangeTo('${record.id}', this)" 
-                            style="padding: 3px 6px; font-size: 11px; background-color: #6c757d; color: white;">
-                        to
-                    </button>
-                </div>
-            `;
-        }
-        
-        tr.innerHTML = `
-            <td>${buttonHtml}</td>
-            <td>${globalIndex + 1}</td>
-            <td><strong>${formatDate(record.created_at)}</strong></td>
-            <td>${truncateText(escapeHtml(record.artist) || 'Unknown', 25)}</td>
-            <td>${truncateText(escapeHtml(record.title) || 'Unknown', 30)}</td>
-            <td>$${(record.store_price || 0).toFixed(2)}</td>
-            <td>${truncateText(escapeHtml(record.catalog_number) || 'N/A', 15)}</td>
-            <td>${truncateText(escapeHtml(record.genre_name || record.genre) || 'Unknown', 20)}</td>
-            <td>${record.barcode || 'N/A'}</td>
-            <td>
-                ${record.consignor_id ? 
-                    `<span class="consignor-badge" title="${escapeHtml(consignorInfo.username)}">${escapeHtml(consignorInfo.initials) || escapeHtml(consignorInfo.username.substring(0, 2))}</span>` : 
-                    '<span style="color: #999;">None</span>'}
-            </td>
-            <td>
-                <span>${record.status_id}</span>
-                ${isRecentlyPrinted ? '<br><small style="color: #27ae60; font-size: 10px;">(Printed)</small>' : ''}
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-    
-    // Re-apply locator highlights if there's a search term
-    const searchInput = document.getElementById('record-locator-search');
-    if (searchInput && searchInput.value.trim()) {
-        locateRecord();
-    }
-    
-    updatePagination();
-}
-
-// Pagination functions
-function goToPage(page) {
-    if (page < 1) page = 1;
-    if (page > window.totalPages) page = window.totalPages;
-    
-    window.currentPage = page;
-    cancelRangeSelection();
-    renderCurrentPage();
-    updatePagination();
-}
-
-function goToFirstPage() {
-    goToPage(1);
-}
-
-function goToPreviousPage() {
-    goToPage(window.currentPage - 1);
-}
-
-function goToNextPage() {
-    goToPage(window.currentPage + 1);
-}
-
-function goToLastPage() {
-    goToPage(window.totalPages);
-}
-
-function changePageSize(newSize) {
-    window.pageSize = newSize;
-    window.currentPage = 1;
-    cancelRangeSelection();
-    updatePagination();
-    renderCurrentPage();
-}
-
-// PDF Generation with starting position support
+// PDF Generation (simplified, removed consignor dependency)
 async function generatePDF(records) {
     const { jsPDF } = window.jspdf;
     
@@ -956,7 +866,6 @@ async function generatePDF(records) {
         const cols = 4;
         const labelsPerPage = rows * cols;
         
-        // Calculate starting index (0-indexed)
         const startIndex = ((window.printStartRow - 1) * cols) + (window.printStartCol - 1);
         let currentLabel = 0;
         let pageNumber = 0;
@@ -966,7 +875,6 @@ async function generatePDF(records) {
             if (!record) continue;
             if (record.status_id === 3) continue;
             
-            // Calculate absolute position
             const absoluteIndex = startIndex + currentLabel;
             const pageIndex = absoluteIndex % labelsPerPage;
             const pageNum = Math.floor(absoluteIndex / labelsPerPage);
@@ -988,17 +896,9 @@ async function generatePDF(records) {
                 doc.rect(x, y, labelWidthPt, labelHeightPt);
             }
             
-            // Get consignor initials
-            let consignorInitials = '';
-            if (record.consignor_id) {
-                const consignorInfo = await getConsignorInfo(record.consignor_id);
-                consignorInitials = consignorInfo.initials || '';
-            }
-            
             const artist = record.artist || 'Unknown';
-            const genre = record.genre_name || record.genre || 'Unknown';
-            const initialsText = consignorInitials ? ` (${consignorInitials})` : '';
-            const infoText = `${genre} | ${artist}${initialsText}`;
+            const genre = record.discogs_genre_raw || record.genre_name || record.genre || 'Unknown';
+            const infoText = `${genre} | ${artist}`;
             
             doc.setFontSize(parseInt(textFontSize));
             doc.setFont('helvetica', 'normal');
@@ -1128,12 +1028,9 @@ async function confirmPrint() {
         return;
     }
     
-    console.log(`Generating PDF for ${selectedRecordsList.length} records starting at (${window.printStartRow}, ${window.printStartCol})`);
-    
     try {
         const pdfBlob = await generatePDF(selectedRecordsList);
         
-        // Download the PDF
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
         a.href = url;
@@ -1143,7 +1040,6 @@ async function confirmPrint() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        // Mark as recently printed
         selectedRecordsList.forEach(record => {
             window.recentlyPrintedIds.add(record.id.toString());
         });
@@ -1188,7 +1084,7 @@ function showMarkActiveConfirmation() {
         
         const newDiv = document.createElement('div');
         newDiv.style.padding = '5px';
-        newDiv.style.color = newRecords.length > 0 ? '#28a745' : '#666';
+        newDiv.style.color = '#28a745';
         newDiv.innerHTML = `✓ New records to mark as Active: ${newRecords.length}`;
         summaryList.appendChild(newDiv);
         
@@ -1246,7 +1142,6 @@ function showMarkActiveConfirmation() {
     const modal = document.getElementById('mark-active-confirmation-modal');
     if (modal) modal.style.display = 'flex';
     
-    // Add event listener to checkbox
     if (confirmCheck) {
         const newCheck = confirmCheck.cloneNode(true);
         confirmCheck.parentNode.replaceChild(newCheck, confirmCheck);
@@ -1299,7 +1194,6 @@ async function confirmMarkActive() {
                 if (data.status === 'success') {
                     successCount++;
                     
-                    // Update local data
                     const recordIndex = window.allRecords.findIndex(r => r.id.toString() === recordId);
                     if (recordIndex !== -1) {
                         window.allRecords[recordIndex].status_id = 2;
@@ -1316,20 +1210,19 @@ async function confirmMarkActive() {
         }
     }
     
-    // Remove successfully marked records from queue
     window.printQueue = window.printQueue.filter(id => {
         const record = window.allRecords.find(r => r.id.toString() === id);
         return record && record.status_id !== 2;
     });
     
-    // Remove from recently printed
-    newRecordIds.forEach(id => {
-        window.recentlyPrintedIds.delete(id);
+    window.recentlyPrintedIds.forEach(id => {
+        const record = window.allRecords.find(r => r.id.toString() === id);
+        if (record && record.status_id === 2) {
+            window.recentlyPrintedIds.delete(id);
+        }
     });
     
     updateQueueDisplay();
-    
-    // Reload records to get fresh data
     await loadRecordsForPriceTags();
     
     if (successCount > 0) {
@@ -1341,52 +1234,45 @@ async function confirmMarkActive() {
     showLoading(false);
 }
 
-// Initialize when tab is activated
-if (!window.priceTagsModule.initialized) {
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🏷️ Price Tags tab initializing...');
+    
+    // Check if this tab is active on load
+    const activeTab = document.querySelector('.tab-content.active');
+    if (activeTab && activeTab.id === 'price-tags-tab') {
+        console.log('Price tags tab is active on load, loading records...');
+        loadRecordsForPriceTags();
+    }
+    
+    // Initialize starting position display
+    const startRowInput = document.getElementById('print-start-row');
+    const startColInput = document.getElementById('print-start-col');
+    if (startRowInput) startRowInput.value = window.printStartRow;
+    if (startColInput) startColInput.value = window.printStartCol;
+    
+    const searchInput = document.getElementById('record-locator-search');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                findNextMatch();
+            }
+        });
+    }
+    
+    // Listen for tab changes
     document.addEventListener('tabChanged', function(e) {
         if (e.detail && e.detail.tabName === 'price-tags') {
-            console.log('Price tags tab activated, loading users and records...');
-            loadConsignorsForPriceTags();
+            console.log('🔄 Price tags tab activated - reloading records...');
             loadRecordsForPriceTags();
-            
-            // Initialize starting position display
-            const startRowInput = document.getElementById('print-start-row');
-            const startColInput = document.getElementById('print-start-col');
-            if (startRowInput) startRowInput.value = window.printStartRow;
-            if (startColInput) startColInput.value = window.printStartCol;
-        }
-    });
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        const activeTab = document.querySelector('.tab-content.active');
-        if (activeTab && activeTab.id === 'price-tags-tab') {
-            console.log('Price tags tab is active on load, loading users and records...');
-            loadConsignorsForPriceTags();
-            loadRecordsForPriceTags();
-            
-            // Initialize starting position display
-            const startRowInput = document.getElementById('print-start-row');
-            const startColInput = document.getElementById('print-start-col');
-            if (startRowInput) startRowInput.value = window.printStartRow;
-            if (startColInput) startColInput.value = window.printStartCol;
-        }
-        
-        const searchInput = document.getElementById('record-locator-search');
-        if (searchInput) {
-            searchInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    findNextMatch();
-                }
-            });
         }
     });
     
     window.priceTagsModule.initialized = true;
-}
+});
 
 // Export functions for use in HTML
-window.loadConsignorsForPriceTags = loadConsignorsForPriceTags;
 window.loadRecordsForPriceTags = loadRecordsForPriceTags;
 window.filterRecords = filterRecords;
 window.goToPage = goToPage;

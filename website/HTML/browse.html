@@ -443,83 +443,49 @@
             if (cond.includes('poor')) return 'condition-poor';
             return '';
         }
-
-        function createRecordCard(release) {
-            const card = document.createElement('div');
-            card.className = 'card';
-            
-            const genre = release.genre_name || 'Unknown';
-            let priceDisplay = '';
-            if (release.price_min > 0 && release.price_max > 0) {
-                if (release.price_min === release.price_max) {
-                    priceDisplay = `$${release.price_min.toFixed(2)}`;
-                } else {
-                    priceDisplay = `$${release.price_min.toFixed(2)} - $${release.price_max.toFixed(2)}`;
-                }
-            } else if (release.price_min > 0) {
+ 
+    function createRecordCard(release) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        
+        const genre = release.genre_name || 'Unknown';
+        let priceDisplay = '';
+        if (release.price_min > 0 && release.price_max > 0) {
+            if (release.price_min === release.price_max) {
                 priceDisplay = `$${release.price_min.toFixed(2)}`;
             } else {
-                priceDisplay = 'Price varies';
+                priceDisplay = `$${release.price_min.toFixed(2)} - $${release.price_max.toFixed(2)}`;
             }
-            
-            let formatsHtml = '';
-            if (release.formats && release.formats.length > 0) {
-                formatsHtml = '<div class="formats-list">';
-                release.formats.forEach(format => {
-                    let formatClass = '';
-                    let formatIcon = '';
-                    if (format === '33⅓ RPM') { formatClass = 'vinyl-33'; formatIcon = 'fa-record-vinyl'; }
-                    else if (format === '45 RPM') { formatClass = 'vinyl-45'; formatIcon = 'fa-record-vinyl'; }
-                    else if (format === '78 RPM') { formatClass = 'vinyl-78'; formatIcon = 'fa-record-vinyl'; }
-                    else if (format === 'CD') { formatClass = 'cd'; formatIcon = 'fa-compact-disc'; }
-                    else if (format === 'Cassette') { formatClass = 'cassette'; formatIcon = 'fa-tape'; }
-                    formatsHtml += `<span class="format-indicator ${formatClass}"><i class="fas ${formatIcon}"></i> ${format}</span>`;
-                });
-                formatsHtml += '</div>';
-            }
-            
-            let conditionsHtml = '';
-            const allConditions = [...release.conditions_disc, ...release.conditions_sleeve];
-            const uniqueConditions = [...new Set(allConditions)];
-            const conditionOrder = { 'Mint (M)': 1, 'Near Mint (NM or M-)': 2, 'Very Good Plus (VG+)': 3, 'Very Good (VG)': 4, 'Good Plus (G+)': 5, 'Good (G)': 6, 'Fair (F)': 7, 'Poor (P)': 8 };
-            const sortedConditions = uniqueConditions.sort((a, b) => (conditionOrder[a] || 99) - (conditionOrder[b] || 99));
-            if (sortedConditions.length > 0) {
-                conditionsHtml = '<div class="conditions-list">';
-                sortedConditions.slice(0, 3).forEach(condition => {
-                    if (condition) {
-                        conditionsHtml += `<span class="condition-indicator ${getConditionClass(condition)}">${condition}</span>`;
-                    }
-                });
-                if (sortedConditions.length > 3) conditionsHtml += `<span class="more-copies">+${sortedConditions.length - 3} more</span>`;
-                conditionsHtml += '</div>';
-            }
-            
-            let copyCountHtml = '';
-            if (release.total_copies > 1) copyCountHtml = `<span class="copy-count">${release.total_copies} copies</span>`;
-            
-            const imageHtml = release.image_url ? 
-                `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : '';
-            
-            card.innerHTML = `
-                <div class="card-image ${!release.image_url ? 'default-record-bg' : ''}">${imageHtml}</div>
-                <div class="card-info">
-                    <h3 title="${escapeHtml(release.title)}">${escapeHtml(release.title)}</h3>
-                    <p class="artist" title="${escapeHtml(release.artist)}">${escapeHtml(release.artist)}</p>
-                    <div class="copy-info">${copyCountHtml}<span class="price-range">${priceDisplay}</span></div>
-                    ${formatsHtml}
-                    <p class="genre" title="${escapeHtml(genre)}">${escapeHtml(genre)}</p>
-                    ${conditionsHtml}
-                    ${release.youtube_url ? `<a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.youtube_url}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">🎵 Watch Video</a>` : ''}
-                </div>
-            `;
-            
-            card.addEventListener('click', function(e) {
-                if (e.target.closest('.youtube-link')) return;
-                showCopiesPopup(release);
-            });
-            
-            return card;
+        } else if (release.price_min > 0) {
+            priceDisplay = `$${release.price_min.toFixed(2)}`;
+        } else {
+            priceDisplay = 'Price varies';
         }
+        
+        let copyCountHtml = '';
+        if (release.total_copies > 1) copyCountHtml = `<span class="copy-count">${release.total_copies} copies</span>`;
+        
+        const imageHtml = release.image_url ? 
+            `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : '';
+        
+        card.innerHTML = `
+            <div class="card-image ${!release.image_url ? 'default-record-bg' : ''}">${imageHtml}</div>
+            <div class="card-info">
+                <h3 title="${escapeHtml(release.title)}">${escapeHtml(release.title)}</h3>
+                <p class="artist" title="${escapeHtml(release.artist)}">${escapeHtml(release.artist)}</p>
+                <div class="copy-info">${copyCountHtml}<span class="price-range">${priceDisplay}</span></div>
+                <p class="genre" title="${escapeHtml(genre)}"><i class="fas fa-music"></i> ${escapeHtml(genre)}</p>
+                ${release.youtube_url ? `<a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.youtube_url}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">🎵 Watch Video</a>` : ''}
+            </div>
+        `;
+        
+        card.addEventListener('click', function(e) {
+            if (e.target.closest('.youtube-link')) return;
+            showCopiesPopup(release);
+        });
+        
+        return card;
+    }
 
         function showCopiesPopup(release) {
             const modal = document.createElement('div');
