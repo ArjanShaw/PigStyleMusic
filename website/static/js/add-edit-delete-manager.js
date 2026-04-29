@@ -162,6 +162,7 @@ class AddEditDeleteManager {
         await this.checkActiveBatch();
         await this.loadNewRecordsCount();
         await this.loadStorePriceMultiplier();
+        await this.loadCommissionRate();
         this.loadSavedSettings();
         this.setupEventListeners();
         this.renderGlobalSettings();
@@ -234,6 +235,27 @@ class AddEditDeleteManager {
         } catch (error) {
             console.error('Error saving multiplier:', error);
             showMessage('Error saving ratio', 'error');
+        }
+    }
+
+    async loadCommissionRate() {
+        try {
+            const response = await APIUtils.get('/api/commission-rate');
+            if (response && response.commission_rate_percent) {
+                const commissionElement = document.getElementById('commission-rate');
+                if (commissionElement) {
+                    commissionElement.textContent = response.commission_rate_percent;
+                }
+                console.log(`💰 Commission rate loaded: ${response.commission_rate_percent} (${response.store_fill_percentage}% full)`);
+            } else {
+                throw new Error('Invalid response');
+            }
+        } catch (error) {
+            console.error('Error loading commission rate:', error);
+            const commissionElement = document.getElementById('commission-rate');
+            if (commissionElement) {
+                commissionElement.textContent = 'N/A';
+            }
         }
     }
 
@@ -1546,7 +1568,7 @@ class AddEditDeleteManager {
                                 <td style="padding: 4px; border: 1px solid #ddd;">${this.escapeHtml(listing.title.substring(0, 50))}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;"><a href="${listing.url}" target="_blank">View</a></td>
                             </tr>`).join('')}</tbody>
-                    </table>
+                     </table>
                 </div>
             </div>`;
         }
@@ -2253,6 +2275,7 @@ document.addEventListener('tabChanged', function(e) {
             window.addEditDeleteManager.renderBatchSection();
             window.addEditDeleteManager.loadNewRecordsCount();
             window.addEditDeleteManager.loadStorePriceMultiplier();
+            window.addEditDeleteManager.loadCommissionRate();
         }
     }
 });
