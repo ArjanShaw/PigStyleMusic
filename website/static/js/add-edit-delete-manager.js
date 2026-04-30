@@ -146,6 +146,8 @@ class AddEditDeleteManager {
         this.barcodeGenerator = new BarcodeGenerator();
         this.minimumPrice = 1.99;
         this.selectedConsignorId = null;
+        this.defaultSleeveConditionId = null;
+        this.defaultDiscConditionId = null;
         this.autoEstimatePrice = true;
         this.activeBatch = null;
         this.newRecordsCount = 0;
@@ -648,6 +650,18 @@ class AddEditDeleteManager {
                 this.selectedConsignorId = parseInt(savedConsignor);
             }
             
+            const savedSleeveCondition = localStorage.getItem('add_record_default_sleeve_condition_id');
+            if (savedSleeveCondition) {
+                this.defaultSleeveConditionId = parseInt(savedSleeveCondition);
+                console.log('LOAD_SETTINGS: Loaded default sleeve condition ID:', this.defaultSleeveConditionId);
+            }
+            
+            const savedDiscCondition = localStorage.getItem('add_record_default_disc_condition_id');
+            if (savedDiscCondition) {
+                this.defaultDiscConditionId = parseInt(savedDiscCondition);
+                console.log('LOAD_SETTINGS: Loaded default disc condition ID:', this.defaultDiscConditionId);
+            }
+            
             const savedAutoEstimate = localStorage.getItem('add_record_auto_estimate');
             if (savedAutoEstimate !== null) {
                 this.autoEstimatePrice = savedAutoEstimate === 'true';
@@ -668,9 +682,23 @@ class AddEditDeleteManager {
                 localStorage.removeItem('add_record_consignor_id');
             }
             
+            if (this.defaultSleeveConditionId) {
+                localStorage.setItem('add_record_default_sleeve_condition_id', this.defaultSleeveConditionId.toString());
+            } else {
+                localStorage.removeItem('add_record_default_sleeve_condition_id');
+            }
+            
+            if (this.defaultDiscConditionId) {
+                localStorage.setItem('add_record_default_disc_condition_id', this.defaultDiscConditionId.toString());
+            } else {
+                localStorage.removeItem('add_record_default_disc_condition_id');
+            }
+            
             localStorage.setItem('add_record_auto_estimate', this.autoEstimatePrice.toString());
             
             console.log('SAVE_SETTINGS: Saved consignor ID:', this.selectedConsignorId);
+            console.log('SAVE_SETTINGS: Saved sleeve condition ID:', this.defaultSleeveConditionId);
+            console.log('SAVE_SETTINGS: Saved disc condition ID:', this.defaultDiscConditionId);
             console.log('SAVE_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
         } catch (error) {
             console.error('Error saving settings:', error);
@@ -694,9 +722,22 @@ class AddEditDeleteManager {
         globalSettings.style.overflow = 'hidden';
         globalSettings.style.border = '1px solid #dee2e6';
         
+        // Build consignor options
         const consignorOptions = this.consignors.map(consignor => {
             const selected = consignor.id === this.selectedConsignorId ? 'selected' : '';
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
+        }).join('');
+        
+        // Build condition options for sleeve
+        const conditionOptions = this.conditions.map(condition => {
+            const selected = condition.id === this.defaultSleeveConditionId ? 'selected' : '';
+            return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
+        }).join('');
+        
+        // Build condition options for disc
+        const discConditionOptions = this.conditions.map(condition => {
+            const selected = condition.id === this.defaultDiscConditionId ? 'selected' : '';
+            return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
         }).join('');
         
         const header = document.createElement('div');
@@ -723,8 +764,8 @@ class AddEditDeleteManager {
             display: block;
         `;
         content.innerHTML = `
-            <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
-                <div style="flex: 1; min-width: 200px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                <div>
                     <label for="global-consignor-select" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-user"></i> Default Consignor
                     </label>
@@ -732,8 +773,38 @@ class AddEditDeleteManager {
                         <option value="">No default consignor</option>
                         ${consignorOptions}
                     </select>
+                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                        Preselected consignor for new records
+                    </div>
                 </div>
-                <div style="flex: 1; min-width: 200px;">
+                
+                <div>
+                    <label for="global-sleeve-condition-select" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-album"></i> Default Sleeve Condition
+                    </label>
+                    <select id="global-sleeve-condition-select" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                        <option value="">No default sleeve condition</option>
+                        ${conditionOptions}
+                    </select>
+                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                        Auto-selects sleeve condition and disc condition (can be changed)
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="global-disc-condition-select" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-compact-disc"></i> Default Disc Condition
+                    </label>
+                    <select id="global-disc-condition-select" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                        <option value="">Use sleeve condition</option>
+                        ${discConditionOptions}
+                    </select>
+                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                        If not set, disc condition defaults to sleeve condition
+                    </div>
+                </div>
+                
+                <div>
                     <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-calculator"></i> Price Estimation
                     </label>
@@ -743,11 +814,12 @@ class AddEditDeleteManager {
                             <span>Auto-estimate when conditions change</span>
                         </label>
                     </div>
-                    <p style="margin-top: 5px; font-size: 0.8rem; color: #666;">
-                        <i class="fas fa-info-circle"></i> When disabled, you can still click "Estimate Price" button
-                    </p>
+                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                        When disabled, you can still click "Estimate Price" button
+                    </div>
                 </div>
-                <div style="flex: 1; min-width: 150px;">
+                
+                <div>
                     <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-percent"></i> Store Price Ratio
                     </label>
@@ -767,15 +839,16 @@ class AddEditDeleteManager {
                         Market price × ratio = store price (0.70 = 70%)
                     </div>
                 </div>
-                <div style="flex: 0 0 auto;">
-                    <button class="btn btn-small" id="clear-defaults-btn" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
-                        <i class="fas fa-undo"></i> Clear Defaults
-                    </button>
-                </div>
             </div>
-            <p style="margin-top: 15px; margin-bottom: 0; font-size: 0.85rem; color: #666; border-top: 1px solid #dee2e6; padding-top: 10px;">
-                <i class="fas fa-save"></i> These settings will be automatically applied to all new records until you change them
-            </p>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0; font-size: 0.85rem; color: #666;">
+                    <i class="fas fa-save"></i> These settings will be automatically applied to all new records until you change them
+                </p>
+                <button class="btn btn-small" id="clear-defaults-btn" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
+                    <i class="fas fa-undo"></i> Clear All Defaults
+                </button>
+            </div>
         `;
         
         globalSettings.appendChild(header);
@@ -794,6 +867,7 @@ class AddEditDeleteManager {
             searchSection.appendChild(globalSettings);
         }
         
+        // Consignor change handler
         document.getElementById('global-consignor-select').addEventListener('change', (e) => {
             const value = e.target.value;
             this.selectedConsignorId = value ? parseInt(value) : null;
@@ -801,26 +875,49 @@ class AddEditDeleteManager {
             showMessage(`Default consignor updated`, 'success');
         });
         
+        // Sleeve condition change handler
+        document.getElementById('global-sleeve-condition-select').addEventListener('change', (e) => {
+            const value = e.target.value;
+            this.defaultSleeveConditionId = value ? parseInt(value) : null;
+            this.saveSettings();
+            showMessage(`Default sleeve condition updated`, 'success');
+        });
+        
+        // Disc condition change handler
+        document.getElementById('global-disc-condition-select').addEventListener('change', (e) => {
+            const value = e.target.value;
+            this.defaultDiscConditionId = value ? parseInt(value) : null;
+            this.saveSettings();
+            showMessage(`Default disc condition updated`, 'success');
+        });
+        
+        // Auto-estimate checkbox handler
         document.getElementById('auto-estimate-checkbox').addEventListener('change', (e) => {
             this.autoEstimatePrice = e.target.checked;
             this.saveSettings();
             showMessage(`Auto-estimate ${this.autoEstimatePrice ? 'enabled' : 'disabled'}`, 'success');
         });
         
+        // Save multiplier button
         const saveMultiplierBtn = document.getElementById('save-multiplier-btn');
         if (saveMultiplierBtn) {
             saveMultiplierBtn.addEventListener('click', () => this.saveStorePriceMultiplier());
         }
         
+        // Clear all defaults button
         document.getElementById('clear-defaults-btn').addEventListener('click', () => {
             this.selectedConsignorId = null;
+            this.defaultSleeveConditionId = null;
+            this.defaultDiscConditionId = null;
             this.autoEstimatePrice = true;
             this.saveSettings();
             
             document.getElementById('global-consignor-select').value = '';
+            document.getElementById('global-sleeve-condition-select').value = '';
+            document.getElementById('global-disc-condition-select').value = '';
             document.getElementById('auto-estimate-checkbox').checked = true;
             
-            showMessage('Default settings cleared', 'success');
+            showMessage('All default settings cleared', 'success');
         });
     }
 
@@ -1005,6 +1102,10 @@ class AddEditDeleteManager {
                 
                 const discogsGenreRaw = record.genre_raw || '';
                 
+                // Determine default selected condition values
+                const defaultSleeveSelected = this.defaultSleeveConditionId ? `selected="${this.defaultSleeveConditionId}"` : '';
+                const defaultDiscSelected = this.defaultDiscConditionId ? `selected="${this.defaultDiscConditionId}"` : '';
+                
                 return `
                     <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}" data-artist="${record.artist}" data-format="${record.format || ''}">
                         <div class="record-header">
@@ -1035,7 +1136,7 @@ class AddEditDeleteManager {
                                     <label class="form-label">
                                         <i class="fas fa-album"></i> Sleeve Condition *
                                     </label>
-                                    <select class="form-control sleeve-condition-select" required>
+                                    <select class="form-control sleeve-condition-select" required data-default="${this.defaultSleeveConditionId || ''}">
                                         <option value="">Select sleeve condition...</option>
                                         ${conditionOptions}
                                     </select>
@@ -1048,7 +1149,7 @@ class AddEditDeleteManager {
                                     <label class="form-label">
                                         <i class="fas fa-compact-disc"></i> Disc Condition *
                                     </label>
-                                    <select class="form-control disc-condition-select" required>
+                                    <select class="form-control disc-condition-select" required data-default="${this.defaultDiscConditionId || ''}">
                                         <option value="">Select disc condition...</option>
                                         ${conditionOptions}
                                     </select>
@@ -1374,7 +1475,8 @@ class AddEditDeleteManager {
         
         if (!sleeveConditionId) return;
         
-        if (discSelect && !discSelect.value) {
+        // Auto-set disc condition only if it's not already set or if it matches the old sleeve
+        if (discSelect && (!discSelect.value || discSelect.value === '')) {
             discSelect.value = sleeveConditionId;
             const changeEvent = new Event('change', { bubbles: true });
             discSelect.dispatchEvent(changeEvent);
@@ -1567,8 +1669,8 @@ class AddEditDeleteManager {
                                 <td style="padding: 4px; border: 1px solid #ddd;">${listing.condition}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;">${this.escapeHtml(listing.title.substring(0, 50))}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;"><a href="${listing.url}" target="_blank">View</a></td>
-                            </tr>`).join('')}</tbody>
-                     </table>
+                             </tr>`).join('')}</tbody>
+                    </table>
                 </div>
             </div>`;
         }
@@ -1582,18 +1684,34 @@ class AddEditDeleteManager {
     }
 
     addConditionChangeListeners() {
+        // Add mode condition selects
         document.querySelectorAll('.sleeve-condition-select').forEach(select => {
+            // Set default value if available
+            const defaultValue = select.getAttribute('data-default');
+            if (defaultValue && defaultValue !== '' && !select.value) {
+                select.value = defaultValue;
+            }
             select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, false));
         });
+        
         document.querySelectorAll('.disc-condition-select').forEach(select => {
+            // Set default value if available
+            const defaultValue = select.getAttribute('data-default');
+            if (defaultValue && defaultValue !== '' && !select.value) {
+                select.value = defaultValue;
+            }
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, false));
         });
+        
+        // Edit mode condition selects
         document.querySelectorAll('.edit-sleeve-condition-select').forEach(select => {
             select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, true));
         });
         document.querySelectorAll('.edit-disc-condition-select').forEach(select => {
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, true));
         });
+        
+        // Estimate buttons
         document.querySelectorAll('.estimate-now-btn, .edit-estimate-now-btn').forEach(button => {
             button.addEventListener('click', (e) => {
                 const card = e.target.closest('.record-card');
@@ -1603,7 +1721,7 @@ class AddEditDeleteManager {
             });
         });
         
-        // Add event listeners for "No Original Sleeve" checkboxes in add mode
+        // "No Original Sleeve" checkboxes in add mode
         document.querySelectorAll('.no-original-sleeve-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const card = e.target.closest('.record-card');
@@ -1625,7 +1743,7 @@ class AddEditDeleteManager {
             });
         });
         
-        // Add event listeners for "No Original Sleeve" checkboxes in edit mode
+        // "No Original Sleeve" checkboxes in edit mode
         document.querySelectorAll('.edit-no-original-sleeve-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const card = e.target.closest('.record-card');
