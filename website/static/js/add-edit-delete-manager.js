@@ -148,6 +148,7 @@ class AddEditDeleteManager {
         this.selectedConsignorId = null;
         this.defaultSleeveConditionId = null;
         this.defaultDiscConditionId = null;
+        this.defaultNotes = ''; // New: Default notes for new records
         this.autoEstimatePrice = true;
         this.activeBatch = null;
         this.newRecordsCount = 0;
@@ -662,6 +663,12 @@ class AddEditDeleteManager {
                 console.log('LOAD_SETTINGS: Loaded default disc condition ID:', this.defaultDiscConditionId);
             }
             
+            const savedDefaultNotes = localStorage.getItem('add_record_default_notes');
+            if (savedDefaultNotes !== null) {
+                this.defaultNotes = savedDefaultNotes;
+                console.log('LOAD_SETTINGS: Loaded default notes:', this.defaultNotes);
+            }
+            
             const savedAutoEstimate = localStorage.getItem('add_record_auto_estimate');
             if (savedAutoEstimate !== null) {
                 this.autoEstimatePrice = savedAutoEstimate === 'true';
@@ -669,6 +676,7 @@ class AddEditDeleteManager {
             
             console.log('LOAD_SETTINGS: Loaded consignor ID:', this.selectedConsignorId);
             console.log('LOAD_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
+            console.log('LOAD_SETTINGS: Default notes:', this.defaultNotes);
         } catch (error) {
             console.error('Error loading saved settings:', error);
         }
@@ -694,11 +702,18 @@ class AddEditDeleteManager {
                 localStorage.removeItem('add_record_default_disc_condition_id');
             }
             
+            if (this.defaultNotes) {
+                localStorage.setItem('add_record_default_notes', this.defaultNotes);
+            } else {
+                localStorage.removeItem('add_record_default_notes');
+            }
+            
             localStorage.setItem('add_record_auto_estimate', this.autoEstimatePrice.toString());
             
             console.log('SAVE_SETTINGS: Saved consignor ID:', this.selectedConsignorId);
             console.log('SAVE_SETTINGS: Saved sleeve condition ID:', this.defaultSleeveConditionId);
             console.log('SAVE_SETTINGS: Saved disc condition ID:', this.defaultDiscConditionId);
+            console.log('SAVE_SETTINGS: Saved default notes:', this.defaultNotes);
             console.log('SAVE_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
         } catch (error) {
             console.error('Error saving settings:', error);
@@ -734,7 +749,7 @@ class AddEditDeleteManager {
             return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
         }).join('');
         
-        // Build condition options for disc
+        // Build condition options for disc (no "use sleeve condition" option)
         const discConditionOptions = this.conditions.map(condition => {
             const selected = condition.id === this.defaultDiscConditionId ? 'selected' : '';
             return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
@@ -787,7 +802,7 @@ class AddEditDeleteManager {
                         ${conditionOptions}
                     </select>
                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                        Auto-selects sleeve condition and disc condition (can be changed)
+                        When changed, disc condition automatically mirrors sleeve condition
                     </div>
                 </div>
                 
@@ -796,11 +811,24 @@ class AddEditDeleteManager {
                         <i class="fas fa-compact-disc"></i> Default Disc Condition
                     </label>
                     <select id="global-disc-condition-select" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
-                        <option value="">Use sleeve condition</option>
+                        <option value="">No default disc condition</option>
                         ${discConditionOptions}
                     </select>
                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                        If not set, disc condition defaults to sleeve condition
+                        Disc condition mirrors sleeve when sleeve changes
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="global-default-notes" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-comment"></i> Default Notes / Comment
+                    </label>
+                    <textarea id="global-default-notes" 
+                              rows="2" 
+                              style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333; resize: vertical;"
+                              placeholder="Enter default notes for new records...">${this.escapeHtml(this.defaultNotes)}</textarea>
+                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                        These notes will be pre-filled for every new record
                     </div>
                 </div>
                 
@@ -891,6 +919,13 @@ class AddEditDeleteManager {
             showMessage(`Default disc condition updated`, 'success');
         });
         
+        // Default notes change handler
+        document.getElementById('global-default-notes').addEventListener('change', (e) => {
+            this.defaultNotes = e.target.value;
+            this.saveSettings();
+            showMessage(`Default notes updated`, 'success');
+        });
+        
         // Auto-estimate checkbox handler
         document.getElementById('auto-estimate-checkbox').addEventListener('change', (e) => {
             this.autoEstimatePrice = e.target.checked;
@@ -909,12 +944,14 @@ class AddEditDeleteManager {
             this.selectedConsignorId = null;
             this.defaultSleeveConditionId = null;
             this.defaultDiscConditionId = null;
+            this.defaultNotes = '';
             this.autoEstimatePrice = true;
             this.saveSettings();
             
             document.getElementById('global-consignor-select').value = '';
             document.getElementById('global-sleeve-condition-select').value = '';
             document.getElementById('global-disc-condition-select').value = '';
+            document.getElementById('global-default-notes').value = '';
             document.getElementById('auto-estimate-checkbox').checked = true;
             
             showMessage('All default settings cleared', 'success');
@@ -1087,6 +1124,9 @@ class AddEditDeleteManager {
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
         }).join('');
         
+        // Escape default notes for use in HTML
+        const escapedDefaultNotes = this.escapeHtml(this.defaultNotes);
+        
         return `
             <h3>Search Results (${resultsCount})</h3>
             
@@ -1103,8 +1143,8 @@ class AddEditDeleteManager {
                 const discogsGenreRaw = record.genre_raw || '';
                 
                 // Determine default selected condition values
-                const defaultSleeveSelected = this.defaultSleeveConditionId ? `selected="${this.defaultSleeveConditionId}"` : '';
-                const defaultDiscSelected = this.defaultDiscConditionId ? `selected="${this.defaultDiscConditionId}"` : '';
+                const defaultSleeveSelected = this.defaultSleeveConditionId ? this.defaultSleeveConditionId : '';
+                const defaultDiscSelected = this.defaultDiscConditionId ? this.defaultDiscConditionId : '';
                 
                 return `
                     <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}" data-artist="${record.artist}" data-format="${record.format || ''}">
@@ -1136,12 +1176,12 @@ class AddEditDeleteManager {
                                     <label class="form-label">
                                         <i class="fas fa-album"></i> Sleeve Condition *
                                     </label>
-                                    <select class="form-control sleeve-condition-select" required data-default="${this.defaultSleeveConditionId || ''}">
+                                    <select class="form-control sleeve-condition-select" required data-default="${defaultSleeveSelected}">
                                         <option value="">Select sleeve condition...</option>
                                         ${conditionOptions}
                                     </select>
                                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Auto-sets disc condition
+                                        Disc condition will mirror this selection
                                     </div>
                                 </div>
                                 
@@ -1149,12 +1189,12 @@ class AddEditDeleteManager {
                                     <label class="form-label">
                                         <i class="fas fa-compact-disc"></i> Disc Condition *
                                     </label>
-                                    <select class="form-control disc-condition-select" required data-default="${this.defaultDiscConditionId || ''}">
+                                    <select class="form-control disc-condition-select" required data-default="${defaultDiscSelected}">
                                         <option value="">Select disc condition...</option>
                                         ${conditionOptions}
                                     </select>
                                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Can be changed independently
+                                        Mirrors sleeve condition when changed
                                     </div>
                                 </div>
                                 
@@ -1203,8 +1243,7 @@ class AddEditDeleteManager {
                                     </label>
                                     <textarea class="form-control notes-input" 
                                               rows="2" 
-                                              placeholder="Add any notes about this record...&#10;Will be posted to Discogs if you list it later."
-                                              style="resize: vertical; font-size: 12px;"></textarea>
+                                              placeholder="Add any notes about this record...&#10;Will be posted to Discogs if you list it later.">${escapedDefaultNotes}</textarea>
                                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                                         Internal notes and visible on Discogs listing if posted
                                     </div>
@@ -1373,7 +1412,7 @@ class AddEditDeleteManager {
                                         ${getConditionOptions(record.id, 'disc')}
                                     </select>
                                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Independent from sleeve
+                                        Mirrors sleeve condition when changed
                                     </div>
                                 </div>
                                 
@@ -1473,11 +1512,10 @@ class AddEditDeleteManager {
         
         const discSelect = card.querySelector(isEditMode ? '.edit-disc-condition-select' : '.disc-condition-select');
         
-        if (!sleeveConditionId) return;
-        
-        // Auto-set disc condition only if it's not already set or if it matches the old sleeve
-        if (discSelect && (!discSelect.value || discSelect.value === '')) {
+        // Auto-set disc condition to match sleeve condition
+        if (discSelect && sleeveConditionId) {
             discSelect.value = sleeveConditionId;
+            // Trigger change event on disc select to update any listeners
             const changeEvent = new Event('change', { bubbles: true });
             discSelect.dispatchEvent(changeEvent);
         }
@@ -1500,6 +1538,8 @@ class AddEditDeleteManager {
     }
 
     async handleDiscConditionChange(event, isEditMode = false) {
+        // Disc condition can still be changed manually if needed
+        // But note: when sleeve changes, it will override disc condition
         const selectElement = event.target;
         const card = selectElement.closest('.record-card');
         const recordId = card.getAttribute('data-record-id');
@@ -1669,7 +1709,7 @@ class AddEditDeleteManager {
                                 <td style="padding: 4px; border: 1px solid #ddd;">${listing.condition}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;">${this.escapeHtml(listing.title.substring(0, 50))}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;"><a href="${listing.url}" target="_blank">View</a></td>
-                             </tr>`).join('')}</tbody>
+                              </tr>`).join('')}</tbody>
                     </table>
                 </div>
             </div>`;
@@ -1684,18 +1724,25 @@ class AddEditDeleteManager {
     }
 
     addConditionChangeListeners() {
-        // Add mode condition selects
+        // Add mode condition selects - with default value setting
         document.querySelectorAll('.sleeve-condition-select').forEach(select => {
             // Set default value if available
             const defaultValue = select.getAttribute('data-default');
             if (defaultValue && defaultValue !== '' && !select.value) {
                 select.value = defaultValue;
+                
+                // Also set disc condition to match sleeve condition for default values
+                const card = select.closest('.record-card');
+                const discSelect = card.querySelector('.disc-condition-select');
+                if (discSelect && !discSelect.value) {
+                    discSelect.value = defaultValue;
+                }
             }
             select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, false));
         });
         
         document.querySelectorAll('.disc-condition-select').forEach(select => {
-            // Set default value if available
+            // Set default value if available and not already set by sleeve sync
             const defaultValue = select.getAttribute('data-default');
             if (defaultValue && defaultValue !== '' && !select.value) {
                 select.value = defaultValue;
@@ -1805,6 +1852,11 @@ class AddEditDeleteManager {
         const price = parseFloat(priceInput.value);
         const consignorId = consignorSelect ? consignorSelect.value : this.selectedConsignorId;
         let notes = notesInput ? notesInput.value.trim() : '';
+        
+        // If notes is empty, use default notes
+        if (!notes && this.defaultNotes) {
+            notes = this.defaultNotes;
+        }
         
         // Add tag if checkbox is checked
         if (noSleeveCheckbox && noSleeveCheckbox.checked) {
