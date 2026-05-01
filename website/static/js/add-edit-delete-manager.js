@@ -148,7 +148,7 @@ class AddEditDeleteManager {
         this.selectedConsignorId = null;
         this.defaultSleeveConditionId = null;
         this.defaultDiscConditionId = null;
-        this.defaultNotes = ''; // New: Default notes for new records
+        this.defaultNotes = ''; // Default notes for new records
         this.autoEstimatePrice = true;
         this.activeBatch = null;
         this.newRecordsCount = 0;
@@ -1215,7 +1215,9 @@ class AddEditDeleteManager {
                                            step="1" 
                                            min="${this.minimumPrice}" 
                                            placeholder="Min: $${this.minimumPrice.toFixed(2)}" 
-                                           required>
+                                           required
+                                           autocomplete="off"
+                                           autocomplete="new-password">
                                     <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                                         Step: $1.00
                                     </div>
@@ -1459,7 +1461,9 @@ class AddEditDeleteManager {
                                            value="${record.store_price || ''}" 
                                            step="1" 
                                            min="${this.minimumPrice}"
-                                           placeholder="Min: $${this.minimumPrice.toFixed(2)}">
+                                           placeholder="Min: $${this.minimumPrice.toFixed(2)}"
+                                           autocomplete="off"
+                                           autocomplete="new-password">
                                     <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                                         Step: $1.00
                                     </div>
