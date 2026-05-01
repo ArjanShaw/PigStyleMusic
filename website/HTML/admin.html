@@ -4533,7 +4533,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         if (loading) loading.style.display = 'block';
         
         try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/admin/sticky-notes`, {
+            const response = await fetch(`${AppConfig.baseUrl}/api/sticky-notes`, {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
                     'Content-Type': 'application/json',
@@ -4690,8 +4690,8 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         }
         
         const url = id 
-            ? `${AppConfig.baseUrl}/api/admin/sticky-notes/${id}`
-            : `${AppConfig.baseUrl}/api/admin/sticky-notes`;
+            ? `${AppConfig.baseUrl}/api/sticky-notes/${id}`
+            : `${AppConfig.baseUrl}/api/sticky-notes`;
         
         const method = id ? 'PUT' : 'POST';
         
@@ -4732,7 +4732,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         }
         
         try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/admin/sticky-notes/${id}`, {
+            const response = await fetch(`${AppConfig.baseUrl}/api/sticky-notes/${id}`, {
                 method: 'DELETE',
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
