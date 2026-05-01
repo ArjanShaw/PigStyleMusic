@@ -4427,7 +4427,181 @@ def get_current_active_batch():
         app.logger.error(f"Error getting current active batch: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/batches/<int:batch_id>/print', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def print_batch(batch_id):
+    """Get batch data formatted for printing bill of sale"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get batch details
+        cursor.execute('SELECT * FROM batches WHERE id = ?', (batch_id,))
+        batch = cursor.fetchone()
+        
+        if not batch:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Batch not found'}), 404
+        
+        # Get all records in this batch (based on created_at timestamp)
+        cursor.execute('''
+            SELECT id, artist, title, catalog_number, store_price
+            FROM records 
+            WHERE datetime(created_at) >= datetime(?)
+            ORDER BY created_at ASC
+        ''', (batch['start_datetime'],))
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        # Calculate totals
+        total_store_value = sum(r['store_price'] for r in records) if records else 0
+        
+        # Format items for printing
+        items = []
+        for record in records:
+            items.append({
+                'artist': record['artist'],
+                'title': record['title'],
+                'catalog_number': record['catalog_number'] or '',
+                'store_price': float(record['store_price'])
+            })
+        
+        print_data = {
+            'batch_id': batch['id'],
+            'seller_name': batch['seller_name'],
+            'seller_contact': batch['seller_contact'],
+            'start_date': batch['start_datetime'],
+            'notes': batch['notes'] or '',
+            'items': items,
+            'total_store_value': float(total_store_value),
+            'item_count': len(items)
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'print_data': print_data
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error preparing batch print data: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ==================== FEEDBACK ENDPOINT ====================
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    """Submit feedback from the connect page"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        type_of_feedback = data.get('type_of_feedback', 'general')
+        content = data.get('content', '').strip()
+        contact_info = data.get('contact_info', '').strip()
+        event_name = data.get('event_name', '').strip()
+        
+        # Validate based on feedback type
+        if type_of_feedback == 'general' and not content:
+            return jsonify({'status': 'error', 'error': 'Feedback content is required'}), 400
+        
+        if type_of_feedback == 'event' and not event_name and not content:
+            return jsonify({'status': 'error', 'error': 'Event selection or description is required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO feedback (type_of_feedback, content, contact_info, event_name, status)
+            VALUES (?, ?, ?, ?, 'new')
+        ''', (type_of_feedback, content, contact_info, event_name))
+        
+        feedback_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Feedback submitted: ID={feedback_id}, Type={type_of_feedback}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Feedback submitted successfully',
+            'feedback_id': feedback_id
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error submitting feedback: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/feedback', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_feedback():
+    """Get all feedback submissions (admin only)"""
+    try:
+        status_filter = request.args.get('status', 'all')
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        if status_filter == 'all':
+            cursor.execute('SELECT * FROM feedback ORDER BY created_at DESC')
+        else:
+            cursor.execute('SELECT * FROM feedback WHERE status = ? ORDER BY created_at DESC', (status_filter,))
+        
+        feedback_list = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'feedback': [dict(f) for f in feedback_list],
+            'count': len(feedback_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting feedback: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/feedback/<int:feedback_id>/status', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_feedback_status(feedback_id):
+    """Update feedback status (admin only)"""
+    try:
+        data = request.get_json()
+        new_status = data.get('status')
+        
+        if not new_status:
+            return jsonify({'status': 'error', 'error': 'Status required'}), 400
+        
+        valid_statuses = ['new', 'read', 'responded', 'archived']
+        if new_status not in valid_statuses:
+            return jsonify({'status': 'error', 'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('UPDATE feedback SET status = ? WHERE id = ?', (new_status, feedback_id))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Feedback not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Feedback #{feedback_id} status updated to {new_status}'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error updating feedback status: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/batches', methods=['POST'])
 @login_required
