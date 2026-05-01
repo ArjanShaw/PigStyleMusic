@@ -313,9 +313,11 @@
         // Backend filter: returns true if condition_disc is "Mint" OR condition_sleeve is "Mint"
         function isMintCondition(record) {
             if (!record) return false;
-            const discCond = record.condition_disc ? record.condition_disc.toLowerCase() : '';
-            const sleeveCond = record.condition_sleeve ? record.condition_sleeve.toLowerCase() : '';
-            return discCond === 'mint' || sleeveCond === 'mint';
+            // Check the condition IDs from your database (1 = Mint)
+            // The API includes condition_disc_id and condition_sleeve_id
+            const discId = record.condition_disc_id;
+            const sleeveId = record.condition_sleeve_id;
+            return discId === 1 || sleeveId === 1;
         }
 
         // Group records by release
