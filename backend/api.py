@@ -4830,9 +4830,7 @@ def get_batches():
 
 # ==================== STICKY NOTES ENDPOINTS ====================
 
-@app.route('/api/admin/sticky-notes', methods=['GET'])
-@login_required
-@role_required(['admin'])
+@app.route('/api/sticky-notes', methods=['GET'])
 def get_sticky_notes():
     """Get all sticky notes"""
     try:
@@ -4858,7 +4856,7 @@ def get_sticky_notes():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-@app.route('/api/admin/sticky-notes', methods=['POST'])
+@app.route('/api/sticky-notes', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def create_sticky_note():
@@ -4914,7 +4912,7 @@ def create_sticky_note():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-@app.route('/api/admin/sticky-notes/<int:note_id>', methods=['PUT'])
+@app.route('/api/sticky-notes/<int:note_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
 def update_sticky_note(note_id):
@@ -5019,7 +5017,7 @@ def update_sticky_note(note_id):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-@app.route('/api/admin/sticky-notes/<int:note_id>', methods=['DELETE'])
+@app.route('/api/sticky-notes/<int:note_id>', methods=['DELETE'])
 @login_required
 @role_required(['admin'])
 def delete_sticky_note(note_id):
