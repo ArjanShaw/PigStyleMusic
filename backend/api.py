@@ -4376,11 +4376,12 @@ def merchandise_page():
 @login_required
 @role_required(['admin'])
 def get_current_active_batch():
-    """Get the currently active batch"""
+    """Get the currently active batch with record count and total value"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
+        # Get the active batch
         cursor.execute('''
             SELECT * FROM batches 
             WHERE status = 'active' 
@@ -4389,22 +4390,44 @@ def get_current_active_batch():
         ''')
         
         batch = cursor.fetchone()
-        conn.close()
         
-        if batch:
-            return jsonify({
-                'status': 'success',
-                'has_active': True,
-                'batch': dict(batch)
-            })
-        else:
+        if not batch:
+            conn.close()
             return jsonify({
                 'status': 'success',
                 'has_active': False
             })
-            
+        
+        # Calculate record count and total store value for this batch
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as record_count,
+                COALESCE(SUM(store_price), 0) as total_store_value
+            FROM records 
+            WHERE datetime(created_at) >= datetime(?)
+        ''', (batch['start_datetime'],))
+        
+        stats = cursor.fetchone()
+        conn.close()
+        
+        # Create response with calculated values
+        batch_dict = dict(batch)
+        batch_dict['record_count'] = stats['record_count'] if stats else 0
+        batch_dict['total_store_value'] = float(stats['total_store_value']) if stats else 0.0
+        
+        print(f"✅ Batch #{batch_dict['id']}: {batch_dict['record_count']} records, ${batch_dict['total_store_value']:.2f}")
+        
+        return jsonify({
+            'status': 'success',
+            'has_active': True,
+            'batch': batch_dict
+        })
+        
     except Exception as e:
+        app.logger.error(f"Error getting current active batch: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 
 @app.route('/api/batches', methods=['POST'])
 @login_required
