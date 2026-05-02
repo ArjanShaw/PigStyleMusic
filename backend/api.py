@@ -5059,6 +5059,261 @@ def delete_sticky_note(note_id):
         app.logger.error(f"Error deleting sticky note: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ==================== ADMIN DATABASE QUERY ENDPOINTS ====================
+
+@app.route('/api/admin/db-schema', methods=['GET', 'OPTIONS'])
+def admin_db_schema():
+    """Get database schema information for admin query tool"""
+    # Handle preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+    
+    try:
+        # Check login
+        if 'user_id' not in session or not session.get('logged_in'):
+            return jsonify({
+                'status': 'error',
+                'message': 'Authentication required'
+            }), 401
+        
+        # Check admin role
+        if session.get('role') != 'admin':
+            return jsonify({
+                'status': 'error',
+                'message': 'Admin access required'
+            }), 403
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all tables (exclude sqlite internal tables)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        tables = cursor.fetchall()
+        
+        schema = {'tables': {}}
+        
+        for table in tables:
+            table_name = table['name']
+            
+            # Use double quotes to handle table names with special characters
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            columns = cursor.fetchall()
+            
+            column_list = []
+            for col in columns:
+                column_list.append({
+                    'column_name': col[1],  # name is at index 1
+                    'data_type': col[2],     # type is at index 2
+                    'is_primary': col[5] == 1,  # pk is at index 5
+                    'is_nullable': 'YES' if col[3] == 0 else 'NO'  # notnull is at index 3 (0=nullable, 1=not null)
+                })
+            
+            schema['tables'][table_name] = column_list
+        
+        conn.close()
+        
+        response = jsonify({
+            'status': 'success',
+            'schema': schema
+        })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+        
+    except Exception as e:
+        app.logger.error(f"Error getting schema: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        response = jsonify({
+            'status': 'error', 
+            'message': str(e)
+        })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
+
+
+@app.route('/api/admin/execute-query', methods=['POST', 'OPTIONS'])
+def admin_execute_query():
+    """Execute SQL query (admin only)"""
+    # Handle preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+    
+    try:
+        # Check login
+        if 'user_id' not in session or not session.get('logged_in'):
+            response = jsonify({
+                'status': 'error',
+                'message': 'Authentication required'
+            })
+            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            return response, 401
+        
+        # Check admin role
+        if session.get('role') != 'admin':
+            response = jsonify({
+                'status': 'error',
+                'message': 'Admin access required'
+            })
+            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            return response, 403
+        
+        data = request.get_json()
+        query = data.get('query', '').strip()
+        
+        if not query:
+            response = jsonify({'status': 'error', 'message': 'Query is required'})
+            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            return response, 400
+        
+        # Basic security: prevent dangerous operations
+        query_upper = query.upper()
+        
+        # Block certain dangerous commands
+        dangerous_keywords = ['DROP DATABASE', 'DROP TABLE', 'TRUNCATE', 'ALTER DATABASE']
+        for keyword in dangerous_keywords:
+            if keyword in query_upper:
+                response = jsonify({
+                    'status': 'error', 
+                    'message': f'Operation not allowed: {keyword}'
+                })
+                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+                response.headers.add('Access-Control-Allow-Credentials', 'true')
+                return response, 403
+        
+        # Log the query for audit
+        app.logger.info(f"Admin user {session.get('username')} executing query: {query[:200]}")
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        start_time = datetime.now()
+        
+        # Determine query type
+        query_type = 'UNKNOWN'
+        if query_upper.startswith('SELECT'):
+            query_type = 'SELECT'
+        elif query_upper.startswith('INSERT'):
+            query_type = 'INSERT'
+        elif query_upper.startswith('UPDATE'):
+            query_type = 'UPDATE'
+        elif query_upper.startswith('DELETE'):
+            query_type = 'DELETE'
+        elif query_upper.startswith('PRAGMA'):
+            query_type = 'PRAGMA'
+        
+        try:
+            if query_type == 'SELECT':
+                cursor.execute(query)
+                results = cursor.fetchall()
+                # Convert to list of dicts
+                results_list = [dict(row) for row in results]
+                
+                execution_time = (datetime.now() - start_time).total_seconds() * 1000
+                
+                response_data = {
+                    'status': 'success',
+                    'query_type': 'SELECT',
+                    'results': results_list,
+                    'row_count': len(results_list),
+                    'execution_time': round(execution_time, 2)
+                }
+                
+                response = jsonify(response_data)
+                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+                response.headers.add('Access-Control-Allow-Credentials', 'true')
+                return response
+                
+            elif query_type in ['INSERT', 'UPDATE', 'DELETE']:
+                cursor.execute(query)
+                conn.commit()
+                affected_rows = cursor.rowcount
+                
+                execution_time = (datetime.now() - start_time).total_seconds() * 1000
+                
+                response_data = {
+                    'status': 'success',
+                    'query_type': query_type,
+                    'affected_rows': affected_rows,
+                    'execution_time': round(execution_time, 2),
+                    'message': f'{query_type} executed successfully'
+                }
+                
+                # For INSERT, also return the last insert ID if available
+                if query_type == 'INSERT' and cursor.lastrowid:
+                    response_data['last_insert_id'] = cursor.lastrowid
+                
+                response = jsonify(response_data)
+                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+                response.headers.add('Access-Control-Allow-Credentials', 'true')
+                return response
+                
+            elif query_type == 'PRAGMA':
+                cursor.execute(query)
+                results = cursor.fetchall()
+                results_list = [dict(row) for row in results]
+                
+                response = jsonify({
+                    'status': 'success',
+                    'query_type': 'PRAGMA',
+                    'results': results_list,
+                    'row_count': len(results_list)
+                })
+                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+                response.headers.add('Access-Control-Allow-Credentials', 'true')
+                return response
+                
+            else:
+                # Try to execute anyway for other query types
+                cursor.execute(query)
+                conn.commit()
+                
+                response = jsonify({
+                    'status': 'success',
+                    'query_type': 'UNKNOWN',
+                    'message': 'Query executed successfully',
+                    'affected_rows': cursor.rowcount
+                })
+                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+                response.headers.add('Access-Control-Allow-Credentials', 'true')
+                return response
+                
+        except sqlite3.Error as e:
+            conn.rollback()
+            response = jsonify({
+                'status': 'error',
+                'message': f'SQL Error: {str(e)}'
+            })
+            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            return response, 400
+            
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        app.logger.error(f"Error executing admin query: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        response = jsonify({
+            'status': 'error',
+            'message': f'Server error: {str(e)}'
+        })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
