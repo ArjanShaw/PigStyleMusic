@@ -1970,9 +1970,7 @@
             <div class="tab" data-tab="accessories">
                 <i class="fas fa-tshirt"></i> Accessories
             </div>
-            <div class="tab" data-tab="receipts">
-                <i class="fas fa-receipt"></i> Receipts
-            </div>
+             
             <div class="tab" data-tab="users">
                 <i class="fas fa-users"></i> Users
             </div>
@@ -2568,65 +2566,7 @@
             </div>
         </div>
 
-        <!-- Receipts Tab -->
-        <div id="receipts-tab" class="tab-content">
-            <h2><i class="fas fa-receipt"></i> Receipt History</h2>
-            
-            <div class="receipt-stats" id="receipt-stats">
-                <div class="receipt-stat-card">
-                    <div class="receipt-stat-number" id="total-receipts">0</div>
-                    <div class="receipt-stat-label">Total Receipts</div>
-                </div>
-                <div class="receipt-stat-card">
-                    <div class="receipt-stat-number" id="total-receipts-sales">$0.00</div>
-                    <div class="receipt-stat-label">Total Sales</div>
-                </div>
-                <div class="receipt-stat-card">
-                    <div class="receipt-stat-number" id="total-receipts-tax">$0.00</div>
-                    <div class="receipt-stat-label">Total Tax Collected</div>
-                </div>
-                <div class="receipt-stat-card">
-                    <div class="receipt-stat-number" id="total-receipts-items">0</div>
-                    <div class="receipt-stat-label">Items Sold</div>
-                </div>
-            </div>
-            
-            <div class="receipts-search">
-                <h3><i class="fas fa-search"></i> Search Receipts</h3>
-                <div class="date-range">
-                    <div class="date-field">
-                        <label for="receipt-start-date">From Date:</label>
-                        <input type="date" id="receipt-start-date" class="date-input">
-                    </div>
-                    <div class="date-field">
-                        <label for="receipt-end-date">To Date:</label>
-                        <input type="date" id="receipt-end-date" class="date-input">
-                    </div>
-                    <div class="date-field">
-                        <label for="receipt-search-query">Receipt # or Item:</label>
-                        <input type="text" id="receipt-search-query" class="filter-select" placeholder="Search by artist, title, catalog #...">
-                    </div>
-                    <div class="filter-group">
-                        <button class="btn btn-primary" onclick="searchReceipts()">
-                            <i class="fas fa-search"></i> Search
-                        </button>
-                        <button class="btn btn-secondary" onclick="resetReceiptSearch()">
-                            <i class="fas fa-undo"></i> Reset
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="receipts-grid" class="receipts-grid">
-                <!-- Receipts will be dynamically rendered here -->
-            </div>
-            
-            <div class="loading" id="receipts-loading">
-                <div class="loading-spinner"></div>
-                <p>Loading receipts...</p>
-            </div>
-        </div>
-        
+          
         <!-- Users Tab -->
         <div id="users-tab" class="tab-content">
             <h2><i class="fas fa-users"></i> User Management</h2>
@@ -3966,7 +3906,6 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     <script src="/static/js/add-edit-delete-manager.js"></script>
     <script src="/static/js/price-tags.js"></script>
     <script src="/static/js/checkout.js"></script>
-    <script src="/static/js/receipts.js"></script>
     <script src="/static/js/users.js"></script>
     <script src="/static/js/batches.js"></script>
     <script src="/static/js/admin-orders.js"></script>
