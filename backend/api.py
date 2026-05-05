@@ -5310,5 +5310,228 @@ def admin_execute_query():
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 500
 
+# ==================== STATS ENDPOINTS ====================
+
+@app.route('/api/stats/top-artists', methods=['GET'])
+def get_top_artists_stats():
+    """Get top selling artists by number of copies sold"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get top 10 artists by number of sold copies (status_id = 3)
+    cursor.execute('''
+        SELECT artist, COUNT(*) as copies_sold
+        FROM records
+        WHERE status_id = 3 AND artist IS NOT NULL AND artist != ''
+        GROUP BY artist
+        ORDER BY copies_sold DESC
+        LIMIT 10
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    artists = [row['artist'] for row in results]
+    sales = [row['copies_sold'] for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'artists': artists,
+        'sales': sales
+    })
+
+
+@app.route('/api/stats/sales-over-time', methods=['GET'])
+def get_sales_over_time_stats():
+    """Get sales revenue and units sold grouped by month"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get monthly sales data for the last 12 months
+    cursor.execute('''
+        SELECT 
+            strftime('%Y-%m', date_sold) as month,
+            COUNT(*) as units_sold,
+            SUM(store_price) as total_revenue
+        FROM records
+        WHERE status_id = 3 AND date_sold IS NOT NULL
+            AND date_sold >= date('now', '-12 months')
+        GROUP BY strftime('%Y-%m', date_sold)
+        ORDER BY month ASC
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    dates = [row['month'] for row in results]
+    revenue = [float(row['total_revenue'] or 0) for row in results]
+    units = [row['units_sold'] for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'dates': dates,
+        'revenue': revenue,
+        'units': units
+    })
+
+
+@app.route('/api/stats/status-distribution', methods=['GET'])
+def get_status_distribution_stats():
+    """Get distribution of records by status"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT 
+            CASE r.status_id
+                WHEN 1 THEN 'New'
+                WHEN 2 THEN 'Active'
+                WHEN 3 THEN 'Sold'
+                WHEN 4 THEN 'Removed'
+                ELSE 'Other'
+            END as status_name,
+            COUNT(*) as count
+        FROM records r
+        GROUP BY r.status_id
+        ORDER BY r.status_id
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    statuses = [row['status_name'] for row in results]
+    counts = [row['count'] for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'statuses': statuses,
+        'counts': counts
+    })
+
+
+@app.route('/api/stats/condition-sales', methods=['GET'])
+def get_condition_sales_stats():
+    """Get sales broken down by media condition"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT 
+            dc.condition_name as condition_name,
+            COUNT(*) as units_sold
+        FROM records r
+        JOIN d_condition dc ON r.condition_disc_id = dc.id
+        WHERE r.status_id = 3
+        GROUP BY r.condition_disc_id
+        ORDER BY units_sold DESC
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    conditions = [row['condition_name'] for row in results]
+    sales = [row['units_sold'] for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'conditions': conditions,
+        'sales': sales
+    })
+
+
+@app.route('/api/stats/top-genres', methods=['GET'])
+def get_top_genres_stats():
+    """Get top selling genres based on discogs_genre_raw"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Extract first genre from discogs_genre_raw (comma-separated list)
+    cursor.execute('''
+        SELECT 
+            CASE 
+                WHEN discogs_genre_raw IS NOT NULL AND discogs_genre_raw != '' 
+                THEN TRIM(SUBSTR(discogs_genre_raw, 1, INSTR(discogs_genre_raw || ',', ',') - 1))
+                ELSE 'Unknown'
+            END as genre,
+            COUNT(*) as units_sold
+        FROM records
+        WHERE status_id = 3
+        GROUP BY genre
+        HAVING genre != 'Unknown'
+        ORDER BY units_sold DESC
+        LIMIT 10
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    genres = [row['genre'] for row in results]
+    sales = [row['units_sold'] for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'genres': genres,
+        'sales': sales
+    })
+
+
+@app.route('/api/stats/price-trends', methods=['GET'])
+def get_price_trends_stats():
+    """Get average list price vs sold price over time"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get average list price by month for last 12 months
+    cursor.execute('''
+        SELECT 
+            strftime('%Y-%m', created_at) as month,
+            AVG(store_price) as avg_list_price
+        FROM records
+        WHERE created_at IS NOT NULL
+            AND created_at >= date('now', '-12 months')
+        GROUP BY strftime('%Y-%m', created_at)
+        ORDER BY month ASC
+    ''')
+    
+    list_price_results = cursor.fetchall()
+    
+    # Get average sold price by month for last 12 months
+    cursor.execute('''
+        SELECT 
+            strftime('%Y-%m', date_sold) as month,
+            AVG(store_price) as avg_sold_price
+        FROM records
+        WHERE status_id = 3 AND date_sold IS NOT NULL
+            AND date_sold >= date('now', '-12 months')
+        GROUP BY strftime('%Y-%m', date_sold)
+        ORDER BY month ASC
+    ''')
+    
+    sold_price_results = cursor.fetchall()
+    conn.close()
+    
+    # Create dictionaries for easy lookup
+    list_prices_dict = {}
+    for row in list_price_results:
+        list_prices_dict[row['month']] = float(row['avg_list_price'] or 0)
+    
+    sold_prices_dict = {}
+    for row in sold_price_results:
+        sold_prices_dict[row['month']] = float(row['avg_sold_price'] or 0)
+    
+    # Get all unique months
+    all_months_set = set(list_prices_dict.keys()) | set(sold_prices_dict.keys())
+    all_months = sorted(list(all_months_set))
+    
+    list_prices = [list_prices_dict.get(month, 0) for month in all_months]
+    sold_prices = [sold_prices_dict.get(month, 0) for month in all_months]
+    
+    return jsonify({
+        'status': 'success',
+        'months': all_months,
+        'list_prices': list_prices,
+        'sold_prices': sold_prices
+    })
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
