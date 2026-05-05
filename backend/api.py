@@ -16,7 +16,6 @@ import urllib.parse
 import json
 import threading
 import uuid
-import stripe
 from functools import wraps
 from discogs_handler import DiscogsHandler 
 from handlers.price_advise_handler import PriceAdviseHandler
@@ -82,11 +81,7 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "data", "records.db")
 SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID', '1a2b3c4d5e6f7g8h9i0j')
 SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', 'k1l2m3n4o5p6q7r8s9t0')
 SPOTIFY_REDIRECT_URI = '/spotify/callback'
-
-# Stripe configuration
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_4eC39HqLyjWDarjtT1zdp7dc')
-STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_TYooMQauvdEDq54NiTphI7jc')
-stripe.api_key = STRIPE_SECRET_KEY
+ 
 
 # Token storage and background job storage
 user_tokens = {}

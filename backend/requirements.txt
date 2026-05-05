@@ -1,7 +1,6 @@
 flask
 flask-cors
 requests
-stripe
 square
 python-dotenv
 squareup==37.1.0
