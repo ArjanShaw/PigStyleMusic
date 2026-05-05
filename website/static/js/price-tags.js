@@ -556,6 +556,9 @@
             const isInQueue = printQueue.some(q => q.id === record.id);
             const queuePosition = printQueue.findIndex(q => q.id === record.id);
             
+            // Use record ID as barcode if barcode column is null
+            const displayBarcode = record.barcode || record.id;
+            
             // Get consignor initials
             let consignorDisplay = '';
             if (record.consignor_id && consignorMap[record.consignor_id]) {
@@ -600,7 +603,7 @@
                     <td style="width: 80px;">${price}</td>
                     <td style="width: 100px;">${escapeHtml(record.catalog_number || '—')}</td>
                     <td style="width: 120px;">${escapeHtml(genre)}</td>
-                    <td style="width: 120px;"><span class="barcode-value">${record.barcode || '—'}</span></td>
+                    <td style="width: 120px;"><span class="barcode-value">${displayBarcode}</span></td>
                     <td style="width: 80px;">${escapeHtml(consignorDisplay) || '—'}</td>
                     <td style="width: 100px;"><span class="status-badge ${statusClass}">${statusName}</span></td>
                     <td style="width: 60px; text-align: center;">
@@ -611,7 +614,7 @@
                             </button>`
                         }
                     </td>
-                 </tr>
+                </tr>
             `;
         });
         
@@ -731,6 +734,8 @@
         printQueue.forEach((record, idx) => {
             const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
             const genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim().substring(0, 25) : '';
+            // Use record ID as barcode if barcode column is null
+            const displayBarcode = record.barcode || record.id;
             
             html += `
                 <div class="queue-item" data-queue-index="${idx}">
@@ -740,7 +745,7 @@
                         <div class="queue-item-details">
                             <span>Price: ${price}</span>
                             ${genre ? `<span>Genre: ${escapeHtml(genre)}</span>` : ''}
-                            <span>Barcode: ${record.barcode || 'N/A'}</span>
+                            <span>ID: ${displayBarcode}</span>
                         </div>
                     </div>
                     <div class="queue-item-controls">
@@ -881,11 +886,12 @@
                 const priceY = y + priceYPosPt;
                 doc.text(priceText, priceX, priceY);
                 
-                const barcodeNum = record.barcode;
+                // Use record ID as barcode if barcode column is null
+                const barcodeNum = record.barcode || record.id;
                 if (barcodeNum) {
                     try {
                         const canvas = document.createElement('canvas');
-                        JsBarcode(canvas, barcodeNum, {
+                        JsBarcode(canvas, barcodeNum.toString(), {
                             format: "CODE128",
                             displayValue: false,
                             height: 30,
@@ -1164,7 +1170,7 @@
     window.findNextMatch = findNextMatch;
     window.clearLocatorHighlight = clearLocatorHighlight;
 
-    console.log('✅ price-tags.js loaded - Range selection restored, printing always starts at top-left, user filter fully functional');
+    console.log('✅ price-tags.js loaded - Using record ID as barcode when barcode column is null');
     
     // Auto-initialize when DOM is ready
     if (document.readyState === 'loading') {
