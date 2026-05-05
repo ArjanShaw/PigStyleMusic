@@ -13,126 +13,7 @@
 // in the discogs_genre_raw field and displayed read-only on price tags.
 
 // Barcode Generator Class - Supports multiple formats
-class BarcodeGenerator {
-    constructor() {
-        this.counters = {
-            vinyl_33: 3290,
-            vinyl_45: 5000,
-            vinyl_78: 6000,
-            cd: 3290,
-            cassette: 3290
-        };
-        
-        this.prefixes = {
-            vinyl_33: '22',
-            vinyl_45: '55',
-            vinyl_78: '66',
-            cd: '33',
-            cassette: '44'
-        };
-        
-        this.loadCounters();
-    }
-    
-    loadCounters() {
-        try {
-            const savedCounters = localStorage.getItem('pigstyle_barcode_counters');
-            if (savedCounters) {
-                const parsed = JSON.parse(savedCounters);
-                this.counters = { ...this.counters, ...parsed };
-            }
-            console.log('BARCODE: Loaded counters:', this.counters);
-        } catch (error) {
-            console.warn('BARCODE: Could not load counters:', error);
-        }
-    }
-    
-    saveCounters() {
-        try {
-            localStorage.setItem('pigstyle_barcode_counters', JSON.stringify(this.counters));
-        } catch (error) {
-            console.warn('BARCODE: Could not save counters:', error);
-        }
-    }
-    
-    detectFormat(formatString) {
-        if (!formatString) return 'vinyl_33';
-        
-        const formatLower = formatString.toLowerCase();
-        
-        if (formatLower.includes('78') || formatLower.includes('shellac')) {
-            return 'vinyl_78';
-        }
-        else if (formatLower.includes('45') || formatLower.includes('single') || formatLower.includes('7"') ||
-                 (formatLower.includes('7-inch') && !formatLower.includes('33'))) {
-            return 'vinyl_45';
-        }
-        else if (formatLower.includes('33') || formatLower.includes('lp') || formatLower.includes('12"') ||
-                 (formatLower.includes('vinyl') && !formatLower.includes('45') && !formatLower.includes('78'))) {
-            return 'vinyl_33';
-        }
-        else if (formatLower.includes('cd') || formatLower === 'compact disc') {
-            return 'cd';
-        }
-        else if (formatLower.includes('cassette') || formatLower.includes('tape')) {
-            return 'cassette';
-        }
-        else {
-            return 'vinyl_33';
-        }
-    }
-    
-    generateBarcode(format = 'vinyl_33') {
-        const normalizedFormat = this.detectFormat(format);
-        const prefix = this.prefixes[normalizedFormat];
-        const currentCounter = this.counters[normalizedFormat];
-        const sequence = currentCounter.toString().padStart(4, '0');
-        const barcode = `${prefix}000000${sequence}`;
-        
-        console.log(`BARCODE_GENERATED: Format=${normalizedFormat}, Barcode=${barcode}, Sequence=${currentCounter}`);
-        
-        this.counters[normalizedFormat]++;
-        this.saveCounters();
-        
-        return barcode;
-    }
-    
-    validateBarcode(barcode) {
-        if (!barcode || typeof barcode !== 'string') {
-            return false;
-        }
-        return /^\d+$/.test(barcode);
-    }
-    
-    getCurrentCounter(format = 'vinyl_33') {
-        const normalizedFormat = this.detectFormat(format);
-        return this.counters[normalizedFormat];
-    }
-    
-    resetCounter(format = 'vinyl_33', startFrom = 3290) {
-        const normalizedFormat = this.detectFormat(format);
-        this.counters[normalizedFormat] = startFrom;
-        this.saveCounters();
-        console.log(`BARCODE: ${normalizedFormat} counter reset to:`, startFrom);
-    }
-    
-    getFormatFromBarcode(barcode) {
-        if (!barcode || typeof barcode !== 'string') {
-            return 'Unknown';
-        }
-        
-        const prefix = barcode.substring(0, 2);
-        
-        switch(prefix) {
-            case '22': return '33⅓ RPM Vinyl';
-            case '55': return '45 RPM Vinyl';
-            case '66': return '78 RPM Vinyl';
-            case '33': return 'CD';
-            case '44': return 'Cassette';
-            default: return 'Vinyl';
-        }
-    }
-}
+
 
 // Add/Edit/Delete Manager Class
 class AddEditDeleteManager {
@@ -143,7 +24,6 @@ class AddEditDeleteManager {
         this.conditions = [];
         this.statuses = ['new', 'active', 'sold', 'removed'];
         this.consignors = [];
-        this.barcodeGenerator = new BarcodeGenerator();
         this.minimumPrice = 1.99;
         this.selectedConsignorId = null;
         this.defaultSleeveConditionId = null;
@@ -1023,12 +903,7 @@ class AddEditDeleteManager {
 
     async performSearch(searchTerm) {
         const resultsContainer = document.getElementById('results-container');
-        resultsContainer.innerHTML = `
-            <div class="loading">
-                <i class="fas fa-spinner fa-spin"></i>
-                <p>Searching...</p>
-            </div>
-        `;
+        resultsContainer.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i><p>Searching...</p></div>';
 
         if (this.currentSearchType === 'add') {
             this.currentResults = await this.searchDiscogs(searchTerm);
@@ -1072,20 +947,52 @@ class AddEditDeleteManager {
 
     async searchDatabase(searchTerm) {
         try {
-            let params = { 
-                q: searchTerm,
-                search_field: this.currentSearchField
-            };
+            // First, check if the search term is a number (could be ID or barcode)
+            const isNumeric = /^\d+$/.test(searchTerm);
             
-            const response = await APIUtils.get('/records/search', params);
+            let params = { q: searchTerm };
             
-            if (response.status === 'success' && response.records) {
-                return response.records;
+            if (this.currentSearchField !== 'all') {
+                params.search_field = this.currentSearchField;
             }
+            
+            // If searching by barcode field specifically
+            if (this.currentSearchField === 'barcode') {
+                params.search_field = 'barcode';
+                const response = await APIUtils.get('/records/search', params);
+                return (response.status === 'success' && response.records) ? response.records : [];
+            }
+            
+            // For 'all' search or numeric search, search both barcode and ID
+            if (isNumeric && this.currentSearchField === 'all') {
+                // Search by ID first (exact match)
+                try {
+                    const idResponse = await APIUtils.get(`/records/${parseInt(searchTerm)}`);
+                    if (idResponse && idResponse.id) {
+                        // Found by ID, return as single record array
+                        return [idResponse];
+                    }
+                } catch (error) {
+                    // Not found by ID, continue to barcode search
+                    console.log('Not found by ID, trying barcode...');
+                }
+                
+                // Then search by barcode
+                const barcodeParams = { q: searchTerm, search_field: 'barcode' };
+                const barcodeResponse = await APIUtils.get('/records/search', barcodeParams);
+                if (barcodeResponse.status === 'success' && barcodeResponse.records && barcodeResponse.records.length > 0) {
+                    return barcodeResponse.records;
+                }
+            }
+            
+            // Fall back to regular search
+            const response = await APIUtils.get('/records/search', params);
+            return (response.status === 'success' && response.records) ? response.records : [];
+            
         } catch (error) {
             console.error('Error searching database:', error);
+            return [];
         }
-        return [];
     }
 
     displayResults() {
@@ -1843,6 +1750,7 @@ class AddEditDeleteManager {
         this.addConditionChangeListeners();
     }
 
+
     async addRecordFromDiscogs(card, discogsRecord) {
         const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
         const discConditionSelect = card.querySelector('.disc-condition-select');
@@ -1857,12 +1765,10 @@ class AddEditDeleteManager {
         const consignorId = consignorSelect ? consignorSelect.value : this.selectedConsignorId;
         let notes = notesInput ? notesInput.value.trim() : '';
         
-        // If notes is empty, use default notes
-        if (!notes && this.defaultNotes) {
+        if (this.defaultNotes && (!notes || notes === '')) {
             notes = this.defaultNotes;
         }
         
-        // Add tag if checkbox is checked
         if (noSleeveCheckbox && noSleeveCheckbox.checked) {
             const tag = '[NO ORIGINAL SLEEVE]';
             if (!notes.includes(tag)) {
@@ -1873,28 +1779,22 @@ class AddEditDeleteManager {
         const errors = [];
         if (!sleeveConditionId) errors.push('Please select a sleeve condition');
         if (!discConditionId) errors.push('Please select a disc condition');
-        if (!price || price < this.minimumPrice) errors.push(`Price must be at least $${this.minimumPrice.toFixed(2)}`);
+        if (isNaN(price)) errors.push('Please enter a price');
+        if (this.minimumPrice !== null && price < this.minimumPrice) {
+            errors.push(`Price must be at least $${this.minimumPrice.toFixed(2)}`);
+        }
         
         if (errors.length > 0) {
             showMessage(errors.join('. '), 'error');
             return;
         }
         
-        const formatFromDiscogs = discogsRecord.format || '';
-        const pigstyleBarcode = this.barcodeGenerator.generateBarcode(formatFromDiscogs);
-        
-        if (!this.barcodeGenerator.validateBarcode(pigstyleBarcode)) {
-            showMessage('Error: Generated barcode is not valid numeric format', 'error');
-            return;
-        }
-        
-        // Get raw Discogs genre
         const discogsGenreRaw = discogsRecord.genre_raw || '';
         
+        // Create record WITHOUT any barcode - the record ID will be used as identifier
         const recordData = {
             artist: discogsRecord.artist,
             title: discogsRecord.title,
-            barcode: pigstyleBarcode,
             discogs_genre_raw: discogsGenreRaw,
             image_url: discogsRecord.image_url || '',
             catalog_number: discogsRecord.catalog_number || '',
@@ -1904,19 +1804,22 @@ class AddEditDeleteManager {
             youtube_url: '',
             consignor_id: consignorId ? parseInt(consignorId) : null,
             status_id: 1,
-            notes: notes
+            notes: notes || null
         };
         
         try {
             const response = await APIUtils.post('/records', recordData);
             
-            if (response.status === 'success') {
+            if (response.status === 'success' && response.record) {
+                const recordId = response.record.id;
+                
                 let batchMessage = '';
                 if (this.activeBatch) {
                     batchMessage = ` (added to active batch #${this.activeBatch.id})`;
                 }
                 
-                showMessage(`Record added successfully! Barcode: ${pigstyleBarcode}. Price: $${price.toFixed(2)}${batchMessage}`, 'success');
+                // Show success with the record ID (will be used as barcode on price tags)
+                showMessage(`Record added successfully! Record ID: ${recordId}. Price: $${price.toFixed(2)}${batchMessage}`, 'success');
                 
                 await this.loadStats();
                 await this.loadNewRecordsCount();

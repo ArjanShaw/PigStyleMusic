@@ -2753,15 +2753,13 @@ def get_records():
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
 
 
-
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
-        cs.display_name as sleeve_display, cs.abbreviation as sleeve_abbr,
-        cd.condition_name as disc_condition_name, cd.display_name as disc_display, cd.abbreviation as disc_abbr
+        cd.condition_name as disc_condition_name 
         FROM records r
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -2772,11 +2770,7 @@ def get_record(record_id):
     conn.close()
     if not record:
         return jsonify({'status': 'error', 'error': 'Record not found'}), 404
-    record_dict = dict(record)
-    if record_dict.get('sleeve_condition_name'):
-        record_dict['condition'] = record_dict['sleeve_condition_name']
-    return jsonify(record_dict)
-
+    return jsonify(dict(record))
 
 @app.route('/records/<int:record_id>', methods=['PUT'])
 def update_record(record_id):
