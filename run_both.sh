@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Get the full path to your project directory
-PROJECT_DIR="/home/arjan-ubuntu/Documents/PigStyleMusic"
-VENV_PATH="$PROJECT_DIR/venv"
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+VENV_PATH="$SCRIPT_DIR/venv"
 
 # Check if virtual environment exists
 if [ ! -d "$VENV_PATH" ]; then
     echo "ERROR: Virtual environment not found at $VENV_PATH"
     echo "Please create a virtual environment first:"
-    echo "  cd $PROJECT_DIR && python3 -m venv venv"
+    echo "  cd $SCRIPT_DIR && python3 -m venv venv"
     exit 1
 fi
 
@@ -22,7 +22,7 @@ echo "Flask version: $(python3 -c "import flask; print(flask.__version__)" 2>/de
 # Start backend API
 echo ""
 echo "Starting backend API on port 5000..."
-cd "$PROJECT_DIR/backend"
+cd "$SCRIPT_DIR/backend"
 python3 api.py &
 BACKEND_PID=$!
 
@@ -31,7 +31,7 @@ sleep 3
 
 # Start frontend website
 echo "Starting frontend website on port 8000..."
-cd "$PROJECT_DIR/website"
+cd "$SCRIPT_DIR/website"
 python3 website_routes.py &
 FRONTEND_PID=$!
 
