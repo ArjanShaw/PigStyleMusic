@@ -1,4 +1,4 @@
-// Stats Dashboard JavaScript - Only Active Charts
+// Stats Dashboard JavaScript
 
 let charts = {};
 
@@ -12,13 +12,13 @@ async function loadStatsData() {
             throw new Error('AppConfig not loaded');
         }
         
-        // Fetch only the 3 working stats
+        // Fetch all stats
         const [topArtistsRes, salesOverTimeRes, topGenresRes] = await Promise.all([
             fetch(AppConfig.baseUrl + '/api/stats/top-artists', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
             }),
-            fetch(AppConfig.baseUrl + '/api/stats/sales-over-time', {
+            fetch(AppConfig.baseUrl + '/api/stats/sales-over-time-daily', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
             }),
@@ -32,20 +32,40 @@ async function loadStatsData() {
         const salesOverTime = await salesOverTimeRes.json();
         const topGenres = await topGenresRes.json();
         
+        console.log('📊 Top Artists:', topArtists);
+        console.log('📊 Sales Over Time:', salesOverTime);
+        console.log('📊 Top Genres:', topGenres);
+        
         if (topArtists.status !== 'success') {
             throw new Error('Top artists: ' + (topArtists.error || 'Unknown error'));
         }
         if (salesOverTime.status !== 'success') {
             throw new Error('Sales over time: ' + (salesOverTime.error || 'Unknown error'));
         }
-        if (topGenres.status !== 'success') {
-            throw new Error('Top genres: ' + (topGenres.error || 'Unknown error'));
-        }
         
-        // Render only the 3 active charts
+        // Render charts
         renderTopArtistsChart(topArtists);
         renderSalesOverTimeChart(salesOverTime);
-        renderTopGenresChart(topGenres);
+        
+        // Handle genre chart - filter out Unknown
+        if (topGenres.status === 'success' && topGenres.genres && topGenres.genres.length > 0) {
+            renderTopGenresChart(topGenres);
+        } else {
+            console.log('No genre data to display');
+            const genreCanvas = document.getElementById('topGenresChart');
+            if (genreCanvas && genreCanvas.parentElement) {
+                const container = genreCanvas.parentElement;
+                if (container && !container.querySelector('.no-genre-data')) {
+                    const msg = document.createElement('p');
+                    msg.className = 'no-genre-data';
+                    msg.style.textAlign = 'center';
+                    msg.style.color = '#999';
+                    msg.style.padding = '40px';
+                    msg.innerHTML = 'No genre data available. Genres are pulled from Discogs when adding records.';
+                    container.appendChild(msg);
+                }
+            }
+        }
         
         console.log('✅ Charts rendered successfully');
         
@@ -140,29 +160,18 @@ function renderSalesOverTimeChart(data) {
                     label: 'Sales Revenue ($)',
                     data: data.revenue,
                     borderColor: 'rgba(75, 192, 192, 1)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
                     fill: true,
-                    tension: 0.4,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Units Sold',
-                    data: data.units,
-                    borderColor: 'rgba(255, 99, 132, 1)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    fill: true,
-                    tension: 0.4,
-                    yAxisID: 'y1'
+                    tension: 0,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: 'rgba(75, 192, 192, 1)'
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            interaction: {
-                mode: 'index',
-                intersect: false
-            },
             scales: {
                 y: {
                     beginAtZero: true,
@@ -172,25 +181,27 @@ function renderSalesOverTimeChart(data) {
                     },
                     ticks: {
                         callback: function(value) {
-                            return '$' + value.toFixed(0);
+                            return '$' + value.toFixed(2);
                         }
                     }
                 },
-                y1: {
-                    beginAtZero: true,
-                    position: 'right',
+                x: {
                     title: {
                         display: true,
-                        text: 'Units Sold'
-                    },
-                    grid: {
-                        drawOnChartArea: false
+                        text: 'Date'
                     }
                 }
             },
             plugins: {
                 legend: {
                     position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return 'Revenue: $' + context.raw.toFixed(2);
+                        }
+                    }
                 }
             }
         }
@@ -210,13 +221,48 @@ function renderTopGenresChart(data) {
         return;
     }
     
+    // Filter out "Unknown" genre
+    const filteredGenres = [];
+    const filteredSales = [];
+    
+    for (let i = 0; i < data.genres.length; i++) {
+        if (data.genres[i] !== 'Unknown') {
+            filteredGenres.push(data.genres[i]);
+            filteredSales.push(data.sales[i]);
+        }
+    }
+    
+    // If after filtering there are no genres, show a message
+    if (filteredGenres.length === 0) {
+        canvas.style.display = 'none';
+        const container = canvas.parentElement;
+        const existingMsg = container.querySelector('.no-genre-data');
+        if (!existingMsg) {
+            const msg = document.createElement('p');
+            msg.className = 'no-genre-data';
+            msg.style.textAlign = 'center';
+            msg.style.color = '#999';
+            msg.style.padding = '40px';
+            msg.innerHTML = 'No genre data available. Add Discogs genres when adding records.';
+            container.appendChild(msg);
+        }
+        return;
+    }
+    
+    // Remove any "no data" message if it exists
+    const container = canvas.parentElement;
+    const existingMsg = container.querySelector('.no-genre-data');
+    if (existingMsg) existingMsg.remove();
+    
+    canvas.style.display = 'block';
+    
     charts.topGenres = new Chart(canvas, {
         type: 'bar',
         data: {
-            labels: data.genres,
+            labels: filteredGenres,
             datasets: [{
                 label: 'Units Sold',
-                data: data.sales,
+                data: filteredSales,
                 backgroundColor: 'rgba(255, 159, 64, 0.6)',
                 borderColor: 'rgba(255, 159, 64, 1)',
                 borderWidth: 1
@@ -238,6 +284,13 @@ function renderTopGenresChart(data) {
             plugins: {
                 legend: {
                     position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return 'Units Sold: ' + context.raw;
+                        }
+                    }
                 }
             }
         }

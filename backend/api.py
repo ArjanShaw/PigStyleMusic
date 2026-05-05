@@ -5445,19 +5445,23 @@ def get_top_genres_stats():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Extract first genre from discogs_genre_raw (comma-separated list)
+    # Get genres from sold records
     cursor.execute('''
         SELECT 
             CASE 
                 WHEN discogs_genre_raw IS NOT NULL AND discogs_genre_raw != '' 
-                THEN TRIM(SUBSTR(discogs_genre_raw, 1, INSTR(discogs_genre_raw || ',', ',') - 1))
+                THEN discogs_genre_raw
                 ELSE 'Unknown'
             END as genre,
             COUNT(*) as units_sold
         FROM records
         WHERE status_id = 3
-        GROUP BY genre
-        HAVING genre != 'Unknown'
+        GROUP BY 
+            CASE 
+                WHEN discogs_genre_raw IS NOT NULL AND discogs_genre_raw != '' 
+                THEN discogs_genre_raw
+                ELSE 'Unknown'
+            END
         ORDER BY units_sold DESC
         LIMIT 10
     ''')
@@ -5473,7 +5477,6 @@ def get_top_genres_stats():
         'genres': genres,
         'sales': sales
     })
-
 
 @app.route('/api/stats/price-trends', methods=['GET'])
 def get_price_trends_stats():
@@ -5531,6 +5534,35 @@ def get_price_trends_stats():
         'months': all_months,
         'list_prices': list_prices,
         'sold_prices': sold_prices
+    })
+
+@app.route('/api/stats/sales-over-time-daily', methods=['GET'])
+def get_sales_over_time_daily_stats():
+    """Get daily sales revenue for all time (no smoothing)"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get daily sales data for ALL available dates
+    cursor.execute('''
+        SELECT 
+            date_sold as date,
+            SUM(store_price) as total_revenue
+        FROM records
+        WHERE status_id = 3 AND date_sold IS NOT NULL
+        GROUP BY date_sold
+        ORDER BY date_sold ASC
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    dates = [row['date'] for row in results]
+    revenue = [float(row['total_revenue'] or 0) for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'dates': dates,
+        'revenue': revenue
     })
 
 if __name__ == '__main__':
