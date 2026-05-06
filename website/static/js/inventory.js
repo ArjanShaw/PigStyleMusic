@@ -1,5 +1,5 @@
 // ============================================================================
-// inventory.js - Inventory Management Tab with Table Layout
+// inventory.js - Inventory Management Tab with Table Layout & Auto-Select Countdown
 // ============================================================================
 
 // State management for location counters
@@ -16,6 +16,9 @@ let currentCounter = 1;
 // Available genres
 let availableGenres = [];
 
+// Countdown timer setting (in seconds, saved to localStorage)
+let countdownSeconds = 3;
+
 // DOM Elements
 let barcodeInput = null;
 let genreSelect = null;
@@ -28,6 +31,7 @@ let scanResultDiv = null;
 let locationPreview = null;
 let addGenreInput = null;
 let addGenreBtn = null;
+let countdownInput = null;
 
 // Audio context
 let audioContext = null;
@@ -37,6 +41,10 @@ let pendingAmbiguousScans = [];
 let scannerBlocked = false;
 let pendingResolveFunction = null;
 let currentModalBarcode = null;
+
+// Countdown timer
+let countdownInterval = null;
+let currentCountdown = 3;
 
 // Sublocation display names
 const SUBLOCATION_NAMES = {
@@ -58,6 +66,34 @@ const SUBLOCATION_ICONS = {
 // ============================================================================
 
 /**
+ * Load countdown setting from localStorage
+ */
+function loadCountdownSetting() {
+    const saved = localStorage.getItem('inventory_countdown_seconds');
+    if (saved && !isNaN(parseInt(saved))) {
+        countdownSeconds = Math.max(1, Math.min(10, parseInt(saved))); // Limit 1-10 seconds
+    } else {
+        countdownSeconds = 3;
+    }
+    if (countdownInput) {
+        countdownInput.value = countdownSeconds;
+    }
+    console.log(`⏱️ Countdown setting loaded: ${countdownSeconds} seconds`);
+}
+
+/**
+ * Save countdown setting to localStorage
+ */
+function saveCountdownSetting(seconds) {
+    countdownSeconds = Math.max(1, Math.min(10, seconds));
+    localStorage.setItem('inventory_countdown_seconds', countdownSeconds);
+    if (countdownInput) {
+        countdownInput.value = countdownSeconds;
+    }
+    showScanResult(`⏱️ Auto-select countdown set to ${countdownSeconds} seconds`, 'info');
+}
+
+/**
  * Gets the main location string based on selected type
  */
 function getMainLocationString() {
@@ -76,8 +112,8 @@ function getMainLocationString() {
 function buildLocationString() {
     const parts = [];
     
-    // Add genre if selected
-    if (currentGenre) {
+    // Add genre if selected (only the genre name, not the whole location)
+    if (currentGenre && currentGenre !== '') {
         parts.push(currentGenre);
     }
     
@@ -274,7 +310,9 @@ function renderGenreSelect() {
 }
 
 function onGenreChange() {
+    // Only store the genre name, not the full location string
     currentGenre = genreSelect ? genreSelect.value : '';
+    console.log(`🎵 Genre changed to: "${currentGenre}"`);
     updateLocationPreview();
 }
 
@@ -341,10 +379,16 @@ function onSublocationChange() {
 }
 
 // ============================================================================
-// Duplicate Record Modal Functions
+// Duplicate Record Modal Functions with Countdown
 // ============================================================================
 
 window.closeDuplicateRecordModal = function(isCancel = true) {
+    // Clear countdown if running
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    
     const modal = document.getElementById('duplicate-record-modal');
     if (modal) {
         modal.style.display = 'none';
@@ -374,6 +418,12 @@ function showDuplicateRecordModal(records, barcode, resolveFn) {
         console.error('Duplicate record modal not found!');
         resolveFn(null);
         return;
+    }
+    
+    // Clear any existing countdown
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
     }
     
     pendingResolveFunction = resolveFn;
@@ -408,6 +458,7 @@ function showDuplicateRecordModal(records, barcode, resolveFn) {
     });
     
     const sortedRecords = [...sortedActiveRecords, ...sortedNonActiveRecords];
+    const suggestedRecord = sortedActiveRecords.length > 0 ? sortedActiveRecords[0] : null;
     
     const barcodeDisplay = document.getElementById('dup-barcode-display');
     const countDisplay = document.getElementById('dup-count-display');
@@ -420,12 +471,43 @@ function showDuplicateRecordModal(records, barcode, resolveFn) {
     
     listContainer.innerHTML = '';
     
+    // Add countdown banner at the top
+    const countdownBanner = document.createElement('div');
+    countdownBanner.id = 'countdown-banner';
+    countdownBanner.style.cssText = `
+        margin-bottom: 15px;
+        padding: 10px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 8px;
+        text-align: center;
+        color: white;
+        font-weight: bold;
+        animation: pulse 1s infinite;
+    `;
+    
+    if (suggestedRecord) {
+        countdownBanner.innerHTML = `
+            <i class="fas fa-hourglass-half"></i> 
+            Auto-selecting "<strong>${escapeHtml(suggestedRecord.artist || 'Unknown')} - ${escapeHtml(suggestedRecord.title || 'Unknown')}</strong>" in 
+            <span id="countdown-timer" style="font-size: 20px; font-weight: bold;">${countdownSeconds}</span> seconds...
+            <br><small style="opacity: 0.8;">Click any record to select manually</small>
+        `;
+    } else {
+        countdownBanner.innerHTML = `
+            <i class="fas fa-exclamation-triangle"></i> 
+            No active records found. Please select a record manually.
+        `;
+        countdownBanner.style.background = '#dc3545';
+    }
+    listContainer.appendChild(countdownBanner);
+    
     sortedRecords.forEach((record, idx) => {
         const isActive = record.status_id === 2;
         const isSuggested = isActive && idx === 0;
         const artistSortKey = getArtistSortKey(record.artist);
         
         const itemDiv = document.createElement('div');
+        itemDiv.id = `record-option-${record.id}`;
         itemDiv.style.cssText = `
             padding: 15px;
             margin-bottom: 10px;
@@ -437,6 +519,11 @@ function showDuplicateRecordModal(records, barcode, resolveFn) {
             ${!isActive ? 'opacity: 0.85;' : ''}
         `;
         itemDiv.onclick = () => {
+            // User manually selected - cancel countdown
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
             if (pendingResolveFunction) {
                 pendingResolveFunction(record);
                 pendingResolveFunction = null;
@@ -540,6 +627,51 @@ function showDuplicateRecordModal(records, barcode, resolveFn) {
     modal.style.display = 'flex';
     scannerBlocked = true;
     playBeep(1000, 400, 'sine');
+    
+    // Start countdown if there's a suggested record
+    if (suggestedRecord) {
+        currentCountdown = countdownSeconds;
+        const timerSpan = document.getElementById('countdown-timer');
+        
+        // Play a subtle tick sound at start
+        playBeep(600, 80, 'sine');
+        
+        countdownInterval = setInterval(() => {
+            currentCountdown--;
+            
+            if (timerSpan) {
+                timerSpan.textContent = currentCountdown;
+                // Change color as it gets closer
+                if (currentCountdown === 1) {
+                    timerSpan.style.color = '#ff4444';
+                }
+            }
+            
+            // Play tick sound on each second (except last)
+            if (currentCountdown > 0 && currentCountdown <= 2) {
+                playBeep(800, 60, 'sine');
+            }
+            
+            if (currentCountdown <= 0) {
+                // Countdown finished - auto-select suggested record
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                
+                // Play completion sound
+                playBeep(880, 150, 'sine');
+                playBeep(440, 150, 'sine');
+                
+                if (pendingResolveFunction) {
+                    pendingResolveFunction(suggestedRecord);
+                    pendingResolveFunction = null;
+                    currentModalBarcode = null;
+                }
+                modal.style.display = 'none';
+                scannerBlocked = false;
+                setTimeout(() => processAmbiguousScanQueue(), 100);
+            }
+        }, 1000);
+    }
 }
 
 function processAmbiguousScanQueue() {
@@ -592,7 +724,7 @@ async function processScan(barcode, fromQueue = false) {
         
         if (exactMatches.length > 1) {
             playBeep(1000, 400, 'sine');
-            showScanResult(`⚠️ ${exactMatches.length} records found. Please select the correct record.`, 'warning');
+            showScanResult(`⚠️ ${exactMatches.length} records found. Auto-selecting in ${countdownSeconds} seconds...`, 'warning');
             
             return new Promise((resolve) => {
                 showDuplicateRecordModal(exactMatches, barcode, async (selectedRecord) => {
@@ -732,10 +864,23 @@ function initInventoryTab() {
     locationPreview = document.getElementById('location-preview');
     addGenreInput = document.getElementById('add-genre-input');
     addGenreBtn = document.getElementById('add-genre-btn');
+    countdownInput = document.getElementById('countdown-seconds');
     
     if (!barcodeInput) {
         console.error('Inventory tab elements not found');
         return;
+    }
+    
+    // Load countdown setting from localStorage
+    loadCountdownSetting();
+    
+    // Add countdown input listener
+    if (countdownInput) {
+        countdownInput.addEventListener('change', function() {
+            let val = parseInt(this.value);
+            if (isNaN(val)) val = 3;
+            saveCountdownSetting(val);
+        });
     }
     
     // Load genres
@@ -803,6 +948,10 @@ document.addEventListener('tabChanged', function(e) {
         scannerBlocked = false;
         pendingAmbiguousScans = [];
         pendingResolveFunction = null;
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
         setTimeout(initInventoryTab, 100);
     }
 });
@@ -814,4 +963,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ inventory.js loaded with table layout');
+console.log('✅ inventory.js loaded with table layout and customizable countdown');
