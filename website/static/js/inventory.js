@@ -1,5 +1,5 @@
 // ============================================================================
-// inventory.js - Inventory Management Tab with Table Layout & Auto-Select Countdown
+// inventory.js - Inventory Management Tab with Keyboard Selection
 // ============================================================================
 
 // State management for location counters
@@ -16,9 +16,6 @@ let currentCounter = 1;
 // Available genres
 let availableGenres = [];
 
-// Countdown timer setting (in seconds, saved to localStorage)
-let countdownSeconds = 3;
-
 // DOM Elements
 let barcodeInput = null;
 let genreSelect = null;
@@ -31,20 +28,15 @@ let scanResultDiv = null;
 let locationPreview = null;
 let addGenreInput = null;
 let addGenreBtn = null;
-let countdownInput = null;
 
 // Audio context
 let audioContext = null;
 
 // Scanner state
-let pendingAmbiguousScans = [];
-let scannerBlocked = false;
-let pendingResolveFunction = null;
-let currentModalBarcode = null;
-
-// Countdown timer
-let countdownInterval = null;
-let currentCountdown = 3;
+let modalElement = null;
+let currentModalRecords = [];
+let isModalActive = false;
+let modalKeyHandler = null;
 
 // Sublocation display names
 const SUBLOCATION_NAMES = {
@@ -65,37 +57,6 @@ const SUBLOCATION_ICONS = {
 // Helper Functions
 // ============================================================================
 
-/**
- * Load countdown setting from localStorage
- */
-function loadCountdownSetting() {
-    const saved = localStorage.getItem('inventory_countdown_seconds');
-    if (saved && !isNaN(parseInt(saved))) {
-        countdownSeconds = Math.max(1, Math.min(10, parseInt(saved))); // Limit 1-10 seconds
-    } else {
-        countdownSeconds = 3;
-    }
-    if (countdownInput) {
-        countdownInput.value = countdownSeconds;
-    }
-    console.log(`⏱️ Countdown setting loaded: ${countdownSeconds} seconds`);
-}
-
-/**
- * Save countdown setting to localStorage
- */
-function saveCountdownSetting(seconds) {
-    countdownSeconds = Math.max(1, Math.min(10, seconds));
-    localStorage.setItem('inventory_countdown_seconds', countdownSeconds);
-    if (countdownInput) {
-        countdownInput.value = countdownSeconds;
-    }
-    showScanResult(`⏱️ Auto-select countdown set to ${countdownSeconds} seconds`, 'info');
-}
-
-/**
- * Gets the main location string based on selected type
- */
 function getMainLocationString() {
     if (mainLocationType && mainLocationType.value === 'Custom') {
         return customLocationInput ? customLocationInput.value.trim() : '';
@@ -105,38 +66,27 @@ function getMainLocationString() {
     return `${locationType} ${number}`;
 }
 
-/**
- * Gets the full location string based on current settings
- * Format: "Genre | Main Location | Sublocation | Counter"
- */
 function buildLocationString() {
     const parts = [];
     
-    // Add genre if selected (only the genre name, not the whole location)
     if (currentGenre && currentGenre !== '') {
         parts.push(currentGenre);
     }
     
-    // Add main location
     const mainLocation = getMainLocationString();
     if (mainLocation) {
         parts.push(mainLocation);
     }
     
-    // Add sublocation if selected
     if (currentSublocation && SUBLOCATION_NAMES[currentSublocation]) {
         parts.push(`${SUBLOCATION_ICONS[currentSublocation]} ${SUBLOCATION_NAMES[currentSublocation]}`);
     }
     
-    // Add counter
     parts.push(String(currentCounter));
     
     return parts.join(' | ');
 }
 
-/**
- * Updates the location preview display
- */
 function updateLocationPreview() {
     if (locationPreview) {
         const previewString = buildLocationString();
@@ -144,24 +94,15 @@ function updateLocationPreview() {
     }
 }
 
-/**
- * Gets the target letter for suggestions from main location
- */
 function getTargetArtistLetter() {
     const mainLocation = getMainLocationString().toLowerCase();
-    
-    // Check for letter in main location (e.g., "Bin 2 J", "Display A")
     const letterMatch = mainLocation.match(/\b([a-z])\b/);
     if (letterMatch) {
         return letterMatch[1].toUpperCase();
     }
-    
     return null;
 }
 
-/**
- * Extracts the significant letter for alphabetical sorting
- */
 function getArtistSortKey(artistName) {
     if (!artistName) return '';
     
@@ -172,15 +113,7 @@ function getArtistSortKey(artistName) {
         '10,000': 'ten thousand',
         '10000': 'ten thousand',
         '1000': 'one thousand',
-        '100': 'one hundred',
-        '20': 'twenty',
-        '30': 'thirty',
-        '40': 'forty',
-        '50': 'fifty',
-        '60': 'sixty',
-        '70': 'seventy',
-        '80': 'eighty',
-        '90': 'ninety'
+        '100': 'one hundred'
     };
     
     const numberMatch = name.match(/^(\d{1,5}(?:,\d{3})?)\s+/);
@@ -310,7 +243,6 @@ function renderGenreSelect() {
 }
 
 function onGenreChange() {
-    // Only store the genre name, not the full location string
     currentGenre = genreSelect ? genreSelect.value : '';
     console.log(`🎵 Genre changed to: "${currentGenre}"`);
     updateLocationPreview();
@@ -379,55 +311,44 @@ function onSublocationChange() {
 }
 
 // ============================================================================
-// Duplicate Record Modal Functions with Countdown
+// Duplicate Record Modal Functions
 // ============================================================================
 
-window.closeDuplicateRecordModal = function(isCancel = true) {
-    // Clear countdown if running
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
+function closeDuplicateRecordModal() {
+    // Remove keyboard handler
+    if (modalKeyHandler) {
+        document.removeEventListener('keydown', modalKeyHandler);
+        modalKeyHandler = null;
     }
     
-    const modal = document.getElementById('duplicate-record-modal');
-    if (modal) {
-        modal.style.display = 'none';
+    if (modalElement) {
+        modalElement.style.display = 'none';
     }
     
-    if (pendingResolveFunction) {
-        if (isCancel) {
-            pendingResolveFunction(null);
-            showScanResult(`❌ Scan cancelled for barcode: ${currentModalBarcode}`, 'warning');
-        }
-        pendingResolveFunction = null;
-        currentModalBarcode = null;
+    isModalActive = false;
+    currentModalRecords = [];
+    
+    if (barcodeInput) {
+        barcodeInput.disabled = false;
+        barcodeInput.focus();
     }
-    
-    scannerBlocked = false;
-    
-    setTimeout(() => {
-        processAmbiguousScanQueue();
-    }, 100);
-    
-    if (barcodeInput) barcodeInput.focus();
-};
+}
 
-function showDuplicateRecordModal(records, barcode, resolveFn) {
-    const modal = document.getElementById('duplicate-record-modal');
-    if (!modal) {
+function showDuplicateRecordModal(records, originalBarcode) {
+    modalElement = document.getElementById('duplicate-record-modal');
+    if (!modalElement) {
         console.error('Duplicate record modal not found!');
-        resolveFn(null);
         return;
     }
     
-    // Clear any existing countdown
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
+    // Remove any existing keyboard handler
+    if (modalKeyHandler) {
+        document.removeEventListener('keydown', modalKeyHandler);
+        modalKeyHandler = null;
     }
     
-    pendingResolveFunction = resolveFn;
-    currentModalBarcode = barcode;
+    isModalActive = true;
+    currentModalRecords = records;
     
     const targetLetter = getTargetArtistLetter();
     console.log('Target letter for suggestions:', targetLetter);
@@ -463,7 +384,7 @@ function showDuplicateRecordModal(records, barcode, resolveFn) {
     const barcodeDisplay = document.getElementById('dup-barcode-display');
     const countDisplay = document.getElementById('dup-count-display');
     
-    if (barcodeDisplay) barcodeDisplay.textContent = barcode;
+    if (barcodeDisplay) barcodeDisplay.textContent = originalBarcode;
     if (countDisplay) countDisplay.textContent = records.length;
     
     const listContainer = document.getElementById('duplicate-records-list');
@@ -471,214 +392,285 @@ function showDuplicateRecordModal(records, barcode, resolveFn) {
     
     listContainer.innerHTML = '';
     
-    // Add countdown banner at the top
-    const countdownBanner = document.createElement('div');
-    countdownBanner.id = 'countdown-banner';
-    countdownBanner.style.cssText = `
+    // Add instruction banner with keyboard shortcuts
+    const instructionBanner = document.createElement('div');
+    instructionBanner.style.cssText = `
         margin-bottom: 15px;
-        padding: 10px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 12px;
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
         border-radius: 8px;
         text-align: center;
         color: white;
         font-weight: bold;
-        animation: pulse 1s infinite;
     `;
+    instructionBanner.innerHTML = `
+        <i class="fas fa-keyboard"></i> 
+        <strong>Press 1, 2, or 3 on your keyboard</strong> to select the corresponding record
+        <br><small>Or click the image with your mouse</small>
+    `;
+    listContainer.appendChild(instructionBanner);
     
-    if (suggestedRecord) {
-        countdownBanner.innerHTML = `
-            <i class="fas fa-hourglass-half"></i> 
-            Auto-selecting "<strong>${escapeHtml(suggestedRecord.artist || 'Unknown')} - ${escapeHtml(suggestedRecord.title || 'Unknown')}</strong>" in 
-            <span id="countdown-timer" style="font-size: 20px; font-weight: bold;">${countdownSeconds}</span> seconds...
-            <br><small style="opacity: 0.8;">Click any record to select manually</small>
-        `;
-    } else {
-        countdownBanner.innerHTML = `
-            <i class="fas fa-exclamation-triangle"></i> 
-            No active records found. Please select a record manually.
-        `;
-        countdownBanner.style.background = '#dc3545';
-    }
-    listContainer.appendChild(countdownBanner);
+    // Create card grid
+    const gridContainer = document.createElement('div');
+    gridContainer.style.cssText = `
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 15px;
+        margin-top: 10px;
+        max-height: 450px;
+        overflow-y: auto;
+        padding: 5px;
+    `;
     
     sortedRecords.forEach((record, idx) => {
         const isActive = record.status_id === 2;
-        const isSuggested = isActive && idx === 0;
         const artistSortKey = getArtistSortKey(record.artist);
+        const recordNumber = idx + 1;
         
-        const itemDiv = document.createElement('div');
-        itemDiv.id = `record-option-${record.id}`;
-        itemDiv.style.cssText = `
-            padding: 15px;
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+        // Get image URL safely
+        let imageUrl = null;
+        if (record.image_url && record.image_url !== '' && record.image_url !== 'None') {
+            imageUrl = record.image_url;
+        }
+        
+        const card = document.createElement('div');
+        card.className = 'record-selection-card';
+        card.setAttribute('data-record-id', record.id);
+        card.setAttribute('data-record-number', recordNumber);
+        card.style.cssText = `
+            background: white;
+            border: 2px solid ${suggestedRecord && suggestedRecord.id === record.id ? '#2196f3' : '#ddd'};
+            border-radius: 10px;
+            padding: 12px;
+            transition: all 0.2s ease;
             cursor: pointer;
-            transition: all 0.2s;
-            background: ${isSuggested ? '#e3f2fd' : 'white'};
-            ${!isActive ? 'opacity: 0.85;' : ''}
+            ${!isActive ? 'opacity: 0.6;' : ''}
         `;
-        itemDiv.onclick = () => {
-            // User manually selected - cancel countdown
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-                countdownInterval = null;
-            }
-            if (pendingResolveFunction) {
-                pendingResolveFunction(record);
-                pendingResolveFunction = null;
-                currentModalBarcode = null;
-            }
-            modal.style.display = 'none';
-            scannerBlocked = false;
-            setTimeout(() => processAmbiguousScanQueue(), 100);
+        
+        // Click handler for mouse
+        card.onclick = () => {
+            console.log(`Clicked record ${record.id}`);
+            processSelectedRecord(record, originalBarcode).then(() => {
+                closeDuplicateRecordModal();
+            }).catch(error => {
+                console.error('Error processing record:', error);
+                showScanResult(`❌ Error: ${error.message}`, 'error');
+            });
         };
         
-        let statusText = '';
-        let statusClass = '';
-        if (record.status_id === 1) {
-            statusText = 'New (Inactive)';
-            statusClass = 'new';
-        } else if (record.status_id === 2) {
-            statusText = 'Active';
-            statusClass = 'active';
-        } else if (record.status_id === 3) {
-            statusText = 'Sold';
-            statusClass = 'sold';
+        // Hover effect
+        card.onmouseenter = () => {
+            card.style.borderColor = '#999';
+            card.style.transform = 'translateY(-2px)';
+            card.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+        };
+        card.onmouseleave = () => {
+            card.style.borderColor = suggestedRecord && suggestedRecord.id === record.id ? '#2196f3' : '#ddd';
+            card.style.transform = 'translateY(0)';
+            card.style.boxShadow = 'none';
+        };
+        
+        // Number badge
+        const numberBadge = document.createElement('div');
+        numberBadge.style.cssText = `
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            background: ${suggestedRecord && suggestedRecord.id === record.id ? '#2196f3' : '#6c757d'};
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        `;
+        numberBadge.textContent = recordNumber;
+        card.style.position = 'relative';
+        card.appendChild(numberBadge);
+        
+        // Suggested badge
+        if (suggestedRecord && suggestedRecord.id === record.id) {
+            const suggestBadge = document.createElement('div');
+            suggestBadge.style.cssText = `
+                position: absolute;
+                top: -8px;
+                right: -8px;
+                background: #ffc107;
+                color: #333;
+                padding: 4px 8px;
+                border-radius: 20px;
+                font-size: 10px;
+                font-weight: bold;
+            `;
+            suggestBadge.innerHTML = '⭐ SUGGESTED';
+            card.appendChild(suggestBadge);
+        }
+        
+        // Image section
+        if (imageUrl) {
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = `${record.artist || 'Unknown'} - ${record.title || 'Unknown'}`;
+            img.style.cssText = `
+                width: 100%;
+                height: 160px;
+                object-fit: cover;
+                border-radius: 6px;
+                background: #f0f0f0;
+                margin-bottom: 10px;
+            `;
+            img.onerror = () => {
+                img.style.display = 'none';
+                const noImg = document.createElement('div');
+                noImg.style.cssText = `
+                    width: 100%;
+                    height: 160px;
+                    background: #f0f0f0;
+                    border-radius: 6px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 10px;
+                    color: #999;
+                `;
+                noImg.innerHTML = '<i class="fas fa-record-vinyl" style="font-size: 50px;"></i>';
+                card.insertBefore(noImg, img);
+                img.remove();
+            };
+            card.appendChild(img);
         } else {
-            statusText = 'Unknown';
-            statusClass = '';
+            const noImg = document.createElement('div');
+            noImg.style.cssText = `
+                width: 100%;
+                height: 160px;
+                background: #f0f0f0;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-bottom: 10px;
+                color: #999;
+            `;
+            noImg.innerHTML = '<i class="fas fa-record-vinyl" style="font-size: 50px;"></i>';
+            card.appendChild(noImg);
         }
         
-        let conditionText = '';
-        if (record.sleeve_condition_name && record.disc_condition_name) {
-            if (record.sleeve_condition_name === record.disc_condition_name) {
-                conditionText = record.sleeve_condition_name;
-            } else {
-                conditionText = `Sleeve: ${record.sleeve_condition_name || '?'} / Disc: ${record.disc_condition_name || '?'}`;
-            }
-        } else if (record.sleeve_condition_name) {
-            conditionText = record.sleeve_condition_name;
-        } else if (record.disc_condition_name) {
-            conditionText = record.disc_condition_name;
-        } else {
-            conditionText = 'Unknown';
-        }
+        // Title
+        const title = document.createElement('div');
+        title.style.cssText = `
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 5px;
+            color: #333;
+            line-height: 1.3;
+        `;
+        title.textContent = `${record.artist || 'Unknown'} - ${(record.title || 'Unknown').substring(0, 45)}${(record.title || '').length > 45 ? '...' : ''}`;
+        card.appendChild(title);
         
-        let suggestionReason = '';
-        if (isSuggested && targetLetter && artistSortKey === targetLetter) {
-            suggestionReason = `<div style="font-size: 11px; color: #28a745; margin-top: 5px;">
-                <i class="fas fa-check-circle"></i> Active record in "${targetLetter}" section
-            </div>`;
-        } else if (isSuggested) {
-            suggestionReason = `<div style="font-size: 11px; color: #28a745; margin-top: 5px;">
-                <i class="fas fa-check-circle"></i> Active record
-            </div>`;
-        } else if (!isActive) {
-            suggestionReason = `<div style="font-size: 11px; color: #dc3545; margin-top: 5px;">
-                <i class="fas fa-exclamation-triangle"></i> ${statusText} - not suggested
-            </div>`;
-        }
-        
-        itemDiv.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: start;">
-                <div style="flex: 1;">
-                    <div style="font-weight: bold; margin-bottom: 5px;">
-                        ${escapeHtml(record.artist || 'Unknown Artist')} - ${escapeHtml(record.title || 'Unknown Title')}
-                        <span style="font-size: 10px; color: #666; margin-left: 8px;">[${artistSortKey}]</span>
-                    </div>
-                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                        <strong>ID:</strong> #${record.id} | 
-                        <strong>Status:</strong> <span class="status-badge ${statusClass}">${statusText}</span> |
-                        <strong>Condition:</strong> ${escapeHtml(conditionText)}
-                    </div>
-                    <div style="font-size: 12px; color: #666;">
-                        <strong>Location:</strong> ${record.location || 'No location'} |
-                        <strong>Last Seen:</strong> ${record.last_seen || 'Never'}
-                    </div>
-                    ${record.store_price ? `<div style="font-size: 13px; margin-top: 5px; font-weight: bold; color: #28a745;">Price: $${parseFloat(record.store_price).toFixed(2)}</div>` : ''}
-                    ${suggestionReason}
-                </div>
-                <div>
-                    <span style="
-                        background: ${isSuggested ? '#28a745' : '#6c757d'};
-                        color: white;
-                        padding: 4px 8px;
-                        border-radius: 4px;
-                        font-size: 12px;
-                    ">
-                        <i class="fas ${isSuggested ? 'fa-star' : 'fa-arrow-right'}"></i> 
-                        ${isSuggested ? 'Suggested' : 'Select'}
-                    </span>
-                </div>
-            </div>
+        // Details
+        const details = document.createElement('div');
+        details.style.cssText = `
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
         `;
         
-        listContainer.appendChild(itemDiv);
+        let statusText = '';
+        if (record.status_id === 1) statusText = '📋 New';
+        else if (record.status_id === 2) statusText = '✅ Active';
+        else if (record.status_id === 3) statusText = '💰 Sold';
+        else statusText = '❓ Unknown';
+        
+        details.innerHTML = `
+            <span>ID: #${record.id}</span>
+            <span>${statusText}</span>
+            <span>${record.store_price ? `$${parseFloat(record.store_price).toFixed(2)}` : 'Price N/A'}</span>
+            <span>Section: ${artistSortKey}</span>
+        `;
+        card.appendChild(details);
+        
+        // Keyboard shortcut hint
+        const kbHint = document.createElement('div');
+        kbHint.style.cssText = `
+            margin-top: 10px;
+            background: #f8f9fa;
+            padding: 5px;
+            border-radius: 6px;
+            font-size: 11px;
+            text-align: center;
+            color: #666;
+        `;
+        kbHint.innerHTML = `<i class="fas fa-keyboard"></i> Press <strong>${recordNumber}</strong> on keyboard`;
+        card.appendChild(kbHint);
+        
+        gridContainer.appendChild(card);
     });
     
-    if (activeRecords.length === 0) {
-        const warningDiv = document.createElement('div');
-        warningDiv.style.cssText = 'margin-top: 10px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; color: #856404; font-size: 13px;';
-        warningDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> No active records found with this barcode. All copies are either sold or inactive.';
-        listContainer.appendChild(warningDiv);
+    listContainer.appendChild(gridContainer);
+    
+    // Footer instruction
+    const footerInstruction = document.createElement('div');
+    footerInstruction.style.cssText = `
+        margin-top: 15px;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 12px;
+        color: #666;
+        border-left: 3px solid #ffc107;
+    `;
+    footerInstruction.innerHTML = `
+        <i class="fas fa-info-circle"></i> 
+        <strong>Press the number key (1-${sortedRecords.length})</strong> or click the image to select
+    `;
+    listContainer.appendChild(footerInstruction);
+    
+    // Show modal
+    modalElement.style.display = 'flex';
+    
+    // Add keyboard handler
+    modalKeyHandler = (e) => {
+        // Only handle if modal is active
+        if (!isModalActive) return;
+        
+        const key = parseInt(e.key);
+        if (!isNaN(key) && key >= 1 && key <= sortedRecords.length) {
+            e.preventDefault();
+            const selectedRecord = sortedRecords[key - 1];
+            if (selectedRecord) {
+                console.log(`Key ${key} pressed, selecting record ${selectedRecord.id}`);
+                // Play selection sound
+                playBeep(600, 100, 'sine');
+                // Process the record
+                processSelectedRecord(selectedRecord, originalBarcode).then(() => {
+                    closeDuplicateRecordModal();
+                }).catch(error => {
+                    console.error('Error processing record:', error);
+                    showScanResult(`❌ Error: ${error.message}`, 'error');
+                });
+            }
+        }
+    };
+    
+    document.addEventListener('keydown', modalKeyHandler);
+    
+    // Keep barcode input focused for scanning
+    if (barcodeInput) {
+        barcodeInput.disabled = false;
+        setTimeout(() => {
+            barcodeInput.focus();
+        }, 100);
     }
     
-    modal.style.display = 'flex';
-    scannerBlocked = true;
     playBeep(1000, 400, 'sine');
-    
-    // Start countdown if there's a suggested record
-    if (suggestedRecord) {
-        currentCountdown = countdownSeconds;
-        const timerSpan = document.getElementById('countdown-timer');
-        
-        // Play a subtle tick sound at start
-        playBeep(600, 80, 'sine');
-        
-        countdownInterval = setInterval(() => {
-            currentCountdown--;
-            
-            if (timerSpan) {
-                timerSpan.textContent = currentCountdown;
-                // Change color as it gets closer
-                if (currentCountdown === 1) {
-                    timerSpan.style.color = '#ff4444';
-                }
-            }
-            
-            // Play tick sound on each second (except last)
-            if (currentCountdown > 0 && currentCountdown <= 2) {
-                playBeep(800, 60, 'sine');
-            }
-            
-            if (currentCountdown <= 0) {
-                // Countdown finished - auto-select suggested record
-                clearInterval(countdownInterval);
-                countdownInterval = null;
-                
-                // Play completion sound
-                playBeep(880, 150, 'sine');
-                playBeep(440, 150, 'sine');
-                
-                if (pendingResolveFunction) {
-                    pendingResolveFunction(suggestedRecord);
-                    pendingResolveFunction = null;
-                    currentModalBarcode = null;
-                }
-                modal.style.display = 'none';
-                scannerBlocked = false;
-                setTimeout(() => processAmbiguousScanQueue(), 100);
-            }
-        }, 1000);
-    }
-}
-
-function processAmbiguousScanQueue() {
-    if (pendingAmbiguousScans.length > 0 && !scannerBlocked) {
-        const nextScan = pendingAmbiguousScans.shift();
-        processScan(nextScan.barcode, true);
-    }
 }
 
 // ============================================================================
@@ -686,10 +678,13 @@ function processAmbiguousScanQueue() {
 // ============================================================================
 
 async function processScan(barcode, fromQueue = false) {
-    if (scannerBlocked && !fromQueue) {
-        pendingAmbiguousScans.push({ barcode });
+    console.log(`Processing scan: ${barcode}, modalActive: ${isModalActive}`);
+    
+    // If modal is active, don't process new scans - keyboard shortcuts only
+    if (isModalActive) {
         playBeep(600, 150, 'sine');
-        showScanResult(`⚠️ Please complete current selection first.`, 'warning');
+        showScanResult(`⚠️ Multiple records found. Press 1, 2, or 3 on keyboard to select the correct record.`, 'warning');
+        if (barcodeInput) barcodeInput.value = '';
         return;
     }
     
@@ -724,16 +719,10 @@ async function processScan(barcode, fromQueue = false) {
         
         if (exactMatches.length > 1) {
             playBeep(1000, 400, 'sine');
-            showScanResult(`⚠️ ${exactMatches.length} records found. Auto-selecting in ${countdownSeconds} seconds...`, 'warning');
+            showScanResult(`⚠️ ${exactMatches.length} records found. Press 1-${Math.min(exactMatches.length, 9)} on keyboard to select.`, 'warning');
             
-            return new Promise((resolve) => {
-                showDuplicateRecordModal(exactMatches, barcode, async (selectedRecord) => {
-                    if (selectedRecord) {
-                        await processSelectedRecord(selectedRecord, barcode);
-                    }
-                    resolve();
-                });
-            });
+            showDuplicateRecordModal(exactMatches, barcode);
+            return;
         }
         
         await processSelectedRecord(exactMatches[0], barcode);
@@ -834,15 +823,8 @@ function showScanResult(message, type = 'info') {
             if (scanResultDiv && scanResultDiv.style.display === 'block') {
                 scanResultDiv.style.display = 'none';
             }
-        }, 8000);
+        }, 5000);
     }
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 // ============================================================================
@@ -852,7 +834,6 @@ function escapeHtml(text) {
 function initInventoryTab() {
     console.log('📦 Initializing Inventory Tab...');
     
-    // Get DOM elements
     barcodeInput = document.getElementById('inventory-barcode-input');
     genreSelect = document.getElementById('genre-select');
     mainLocationType = document.getElementById('main-location-type');
@@ -864,33 +845,18 @@ function initInventoryTab() {
     locationPreview = document.getElementById('location-preview');
     addGenreInput = document.getElementById('add-genre-input');
     addGenreBtn = document.getElementById('add-genre-btn');
-    countdownInput = document.getElementById('countdown-seconds');
+    modalElement = document.getElementById('duplicate-record-modal');
     
     if (!barcodeInput) {
         console.error('Inventory tab elements not found');
         return;
     }
     
-    // Load countdown setting from localStorage
-    loadCountdownSetting();
-    
-    // Add countdown input listener
-    if (countdownInput) {
-        countdownInput.addEventListener('change', function() {
-            let val = parseInt(this.value);
-            if (isNaN(val)) val = 3;
-            saveCountdownSetting(val);
-        });
-    }
-    
-    // Load genres
     loadGenres();
     
-    // Set initial values
     currentCounter = 1;
     if (counterDisplay) counterDisplay.textContent = currentCounter;
     
-    // Add event listeners
     if (genreSelect) genreSelect.addEventListener('change', onGenreChange);
     if (mainLocationType) mainLocationType.addEventListener('change', onMainLocationTypeChange);
     if (mainLocationNumber) mainLocationNumber.addEventListener('input', onMainLocationNumberChange);
@@ -905,16 +871,12 @@ function initInventoryTab() {
         barcodeInput.addEventListener('keypress', onBarcodeEnter);
     }
     
-    // Initialize location type visibility
     onMainLocationTypeChange();
-    
-    // Update preview
     updateLocationPreview();
     
-    // Reset scanner state
-    scannerBlocked = false;
-    pendingAmbiguousScans = [];
-    pendingResolveFunction = null;
+    // Reset modal state
+    isModalActive = false;
+    currentModalRecords = [];
     
     barcodeInput.focus();
     
@@ -945,12 +907,15 @@ window.closeDuplicateRecordModal = closeDuplicateRecordModal;
 
 document.addEventListener('tabChanged', function(e) {
     if (e.detail && e.detail.tabName === 'inventory') {
-        scannerBlocked = false;
-        pendingAmbiguousScans = [];
-        pendingResolveFunction = null;
-        if (countdownInterval) {
-            clearInterval(countdownInterval);
-            countdownInterval = null;
+        // Close modal if open
+        if (modalKeyHandler) {
+            document.removeEventListener('keydown', modalKeyHandler);
+            modalKeyHandler = null;
+        }
+        isModalActive = false;
+        currentModalRecords = [];
+        if (modalElement) {
+            modalElement.style.display = 'none';
         }
         setTimeout(initInventoryTab, 100);
     }
@@ -963,4 +928,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ inventory.js loaded with table layout and customizable countdown');
+console.log('✅ inventory.js loaded with keyboard selection (1, 2, 3 keys)');
