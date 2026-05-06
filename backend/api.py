@@ -5566,5 +5566,123 @@ def get_sales_over_time_daily_stats():
         'revenue': revenue
     })
 
+# ==================== LOCATION-BASED ENDPOINTS FOR DISCOGS TAB ====================
+@app.route('/api/locations', methods=['GET'])
+def get_unique_locations():
+    """Get all unique locations from records, stripping the counter number"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT DISTINCT location 
+            FROM records 
+            WHERE location IS NOT NULL AND location != ''
+        ''')
+        
+        locations = cursor.fetchall()
+        conn.close()
+        
+        unique_locations = set()
+        
+        for row in locations:
+            location = row['location']
+            # Split by " | " and remove the last part (the counter number)
+            if ' | ' in location:
+                parts = location.split(' | ')
+                if len(parts) >= 2:
+                    # Remove the last part (counter number)
+                    location_without_counter = ' | '.join(parts[:-1])
+                    unique_locations.add(location_without_counter)
+            else:
+                unique_locations.add(location)
+        
+        # Sort alphabetically
+        location_list = sorted(list(unique_locations))
+        
+        print(f"📍 Found {len(location_list)} unique locations (without counters)")
+        
+        return jsonify({
+            'status': 'success',
+            'locations': location_list,
+            'count': len(location_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting locations: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/records/by-location', methods=['GET'])
+def get_records_by_location():
+    """Get all records with a location matching the pattern (ignoring counter)"""
+    try:
+        location_pattern = request.args.get('location', '').strip()
+        
+        if not location_pattern:
+            return jsonify({'status': 'error', 'error': 'Location parameter required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Match locations that START with the pattern (ignoring the counter at the end)
+        # Example: "Rock & Pop | Bin 1 | ↗️ Right Top" matches "Rock & Pop | Bin 1 | ↗️ Right Top | 62"
+        search_pattern = location_pattern + ' | %'
+        
+        cursor.execute('''
+            SELECT 
+                r.id, r.artist, r.title, r.barcode, r.image_url, 
+                r.catalog_number, r.store_price, r.location, 
+                r.status_id, r.discogs_listing_id, r.notes,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name,
+                s.status_name
+            FROM records r
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN d_status s ON r.status_id = s.id
+            WHERE r.location LIKE ?
+            ORDER BY r.location, r.created_at DESC
+        ''', (search_pattern,))
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        records_list = []
+        for record in records:
+            records_list.append({
+                'id': record['id'],
+                'artist': record['artist'],
+                'title': record['title'],
+                'barcode': record['barcode'],
+                'image_url': record['image_url'],
+                'catalog_number': record['catalog_number'],
+                'store_price': float(record['store_price']) if record['store_price'] else 0,
+                'location': record['location'],
+                'status_id': record['status_id'],
+                'status_name': record['status_name'],
+                'discogs_listing_id': record['discogs_listing_id'],
+                'notes': record['notes'],
+                'sleeve_condition_name': record['sleeve_condition_name'],
+                'disc_condition_name': record['disc_condition_name']
+            })
+        
+        print(f"📍 Pattern '{location_pattern}' matched {len(records_list)} records")
+        
+        return jsonify({
+            'status': 'success',
+            'records': records_list,
+            'count': len(records_list),
+            'location_pattern': location_pattern
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting records by location: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

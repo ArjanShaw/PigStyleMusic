@@ -1,344 +1,493 @@
 // ============================================================================
-// tab-manager.js - SINGLE SOURCE OF TRUTH for tab management
+// tab-manager.js - Centralized Tab Management System
 // ============================================================================
 
-const TabManager = {
-    // Registry of tab initialization functions
-    tabInitializers: {
-        'add-edit-delete': () => {
+// Tab Manager Module
+const TabManager = (function() {
+    // Private variables
+    let currentTab = null;
+    let tabs = {};
+    let initializers = {};
+    let cleanupFunctions = {};
+    
+    // Get active tab from sessionStorage
+    function getStoredTab() {
+        try {
+            return sessionStorage.getItem('activeTab');
+        } catch (e) {
+            console.warn('Could not read from sessionStorage:', e);
+            return null;
+        }
+    }
+    
+    // Save active tab to sessionStorage
+    function saveStoredTab(tabName) {
+        try {
+            sessionStorage.setItem('activeTab', tabName);
+        } catch (e) {
+            console.warn('Could not save to sessionStorage:', e);
+        }
+    }
+    
+    // Register tab initializers
+    function registerInitializers() {
+        // Add-Edit-Delete Tab
+        initializers['add-edit-delete'] = () => {
             console.log('🔵 TabManager: Initializing Add/Edit/Delete tab');
-            if (typeof window.addEditDeleteManager !== 'undefined') {
-                // Add/Edit/Delete tab has no specific init function
-            }
-        },
-        
-        'check-out': () => {
-            console.log('🔵 TabManager: Initializing Check Out tab');
-            
-            // Reset search results if empty
-            const searchResults = document.getElementById('search-results');
-            if (searchResults && (!window.currentSearchResults || window.currentSearchResults.length === 0)) {
-                searchResults.innerHTML = `
-                    <div style="text-align: center; padding: 40px; color: #666;">
-                        <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
-                        <p>Enter a search term to find records or accessories</p>
-                    </div>
-                `;
-            }
-            
-            // Refresh terminals if function exists
-            if (typeof window.refreshTerminals === 'function') {
-                console.log('🔄 TabManager: Refreshing terminals');
-                window.refreshTerminals();
+            if (typeof window.initAddEditDeleteTab === 'function') {
+                window.initAddEditDeleteTab();
             } else {
-                console.warn('⚠️ TabManager: refreshTerminals function not found');
-            }
-        },
-        
-        'inventory': () => {
-            console.log('🔵 TabManager: Initializing Inventory tab');
-            if (typeof initInventoryTab === 'function') {
-                console.log('🔄 TabManager: Calling initInventoryTab()');
-                initInventoryTab();
-            } else {
-                console.error('❌ TabManager: initInventoryTab function not found - check if inventory.js is loaded');
-                // Try to load it from window if needed
-                if (typeof window.initInventoryTab === 'function') {
-                    console.log('🔄 TabManager: Found window.initInventoryTab, calling it');
-                    window.initInventoryTab();
-                } else {
-                    console.error('❌ TabManager: initInventoryTab not available anywhere');
-                }
-            }
-        },
-        
-        'receipts': () => {
-            console.log('🔵 TabManager: Initializing Receipts tab');
-            
-            if (typeof window.initializeReceiptsTab === 'function') {
-                console.log('🔄 TabManager: Calling initializeReceiptsTab()');
-                window.initializeReceiptsTab();
-            } else {
-                console.warn('⚠️ TabManager: initializeReceiptsTab function not found');
-                // Fallback to search receipts
-                if (typeof window.searchReceipts === 'function') {
-                    window.searchReceipts(1);
-                }
-            }
-        },
-        
-        'users': () => {
-            console.log('🔵 TabManager: Initializing Users tab');
-            
-            if (typeof window.loadUsers === 'function') {
-                console.log('🔄 TabManager: Calling loadUsers()');
-                window.loadUsers();
-            } else {
-                console.error('❌ TabManager: loadUsers function not found!');
-                
-                // Show error in users table
-                const usersBody = document.getElementById('users-body');
-                if (usersBody) {
-                    usersBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #dc3545; padding: 40px;">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i><br>
-                        <strong>ERROR: loadUsers function not found</strong><br>
-                        <small>Check browser console for details</small>
-                    </td></tr>`;
-                }
-            }
-        },
-        
-        'artists': () => {
-            console.log('🔵 TabManager: Initializing Artists tab');
-            
-            if (typeof window.loadArtists === 'function') {
-                console.log('🔄 TabManager: Calling loadArtists()');
-                window.loadArtists();
-            } else {
-                console.error('❌ TabManager: loadArtists function not found');
-            }
-        },
-        
-        'accessories': () => {
-            console.log('🔵 TabManager: Initializing Accessories tab');
-            
-            if (typeof window.loadAccessories === 'function') {
-                console.log('🔄 TabManager: Calling loadAccessories()');
-                window.loadAccessories();
-            } else {
-                console.error('❌ TabManager: loadAccessories function not found');
-            }
-        },
-        
-        'price-checker': () => {
-            console.log('🔵 TabManager: Initializing Price Checker tab');
-            // Price checker initializes on its own
-        },
-        
-        'admin-config': () => {
-            console.log('🔵 TabManager: Initializing Admin Config tab');
-            
-            if (typeof window.loadConfigTables === 'function') {
-                console.log('🔄 TabManager: Calling loadConfigTables()');
-                window.loadConfigTables();
-            } else {
-                console.error('❌ TabManager: loadConfigTables function not found');
-            }
-        },
-        
-        'price-tags': () => {
-            console.log('🔵 TabManager: Initializing Price Tags tab');
-            
-            if (typeof window.loadConsignorsForPriceTags === 'function') {
-                console.log('🔄 TabManager: Calling loadConsignorsForPriceTags()');
-                window.loadConsignorsForPriceTags();
-            } else {
-                console.warn('⚠️ TabManager: loadConsignorsForPriceTags not found');
-            }
-            
-            if (typeof window.loadRecordsForPriceTags === 'function') {
-                console.log('🔄 TabManager: Calling loadRecordsForPriceTags()');
-                window.loadRecordsForPriceTags();
-            } else {
-                console.warn('⚠️ TabManager: loadRecordsForPriceTags not found');
-            }
-        },
-        
-        'orders': () => {
-            console.log('🔵 TabManager: Initializing Orders tab');
-            
-            if (typeof window.loadOrders === 'function') {
-                console.log('🔄 TabManager: Calling loadOrders()');
-                window.loadOrders();
-            } else {
-                console.error('❌ TabManager: loadOrders function not found');
-                
-                // Show error in orders table
-                const ordersBody = document.getElementById('orders-body');
-                if (ordersBody) {
-                    ordersBody.innerHTML = `<tr><td colspan="9" style="text-align:center; color: #dc3545; padding: 40px;">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i><br>
-                        <strong>ERROR: loadOrders function not found</strong><br>
-                        <small>Check if admin-orders.js is loaded correctly</small>
-                    </td></tr>`;
-                }
-            }
-        },
-        
-        'db-query': () => {
-            console.log('🔵 TabManager: Initializing Database Query tab');
-            
-            if (typeof window.loadSchema === 'function') {
-                console.log('🔄 TabManager: Calling loadSchema()');
-                window.loadSchema();
-            } else {
-                console.log('ℹ️ TabManager: loadSchema will be called by db-query.js');
-            }
-        },
-        
-        'discogs': () => {
-            console.log('🔵 TabManager: Initializing Discogs tab');
-            
-            if (typeof window.loadDiscogsInventory === 'function') {
-                console.log('🔄 TabManager: Calling loadDiscogsInventory()');
-                window.loadDiscogsInventory();
-            } else {
-                console.error('❌ TabManager: loadDiscogsInventory function not found');
-                
-                // Show error in discogs table
-                const discogsBody = document.getElementById('discogs-inventory-body');
-                if (discogsBody) {
-                    discogsBody.innerHTML = `<tr><td colspan="12" style="text-align:center; color: #dc3545; padding: 40px;">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i><br>
-                        <strong>ERROR: loadDiscogsInventory function not found</strong><br>
-                        <small>Check if discogs.js is loaded correctly</small>
-                    </td></tr>`;
-                }
-            }
-        }
-    },
-    
-    // Single function to switch tabs
-    switchTab(tabName) {
-        console.log(`🟡 TabManager: Switching to tab: ${tabName}`);
-        
-        // Update UI - remove active class from all tabs and content
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.classList.remove('active');
-        });
-        
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.remove('active');
-        });
-        
-        // Find and activate the clicked tab (using data-tab attribute)
-        const tab = document.querySelector(`.tab[data-tab="${tabName}"]`);
-        if (tab) {
-            tab.classList.add('active');
-            console.log(`✅ TabManager: Activated tab element for ${tabName}`);
-        } else {
-            console.warn(`⚠️ TabManager: No tab element found with data-tab="${tabName}"`);
-        }
-        
-        // Find and activate the content
-        const content = document.getElementById(`${tabName}-tab`);
-        if (content) {
-            content.classList.add('active');
-            console.log(`✅ TabManager: Activated content for ${tabName}-tab`);
-        } else {
-            console.warn(`⚠️ TabManager: No content element found with id="${tabName}-tab"`);
-        }
-        
-        // Run initializer if it exists
-        const initializer = this.tabInitializers[tabName];
-        if (initializer) {
-            console.log(`🟢 TabManager: Found initializer for ${tabName}, executing...`);
-            initializer();
-        } else {
-            console.warn(`⚠️ TabManager: No initializer found for tab: ${tabName}`);
-        }
-        
-        // Store current tab in sessionStorage
-        sessionStorage.setItem('currentTab', tabName);
-        console.log(`💾 TabManager: Saved tab ${tabName} to sessionStorage`);
-        
-        // Update URL hash (optional)
-        window.location.hash = tabName;
-        
-        // Dispatch event for any modules that need to know about tab changes
-        const event = new CustomEvent('tabChanged', { 
-            detail: { tabName: tabName } 
-        });
-        document.dispatchEvent(event);
-        console.log(`📢 TabManager: Dispatched tabChanged event for ${tabName}`);
-    },
-    
-    // Attach click handlers to all tabs
-    attachClickHandlers() {
-        console.log('🔵 TabManager: Attaching click handlers to tabs');
-        
-        const tabs = document.querySelectorAll('.tab');
-        console.log(`Found ${tabs.length} tabs to attach handlers to`);
-        
-        // Use bind to ensure 'this' context in handler
-        const handleTabClick = (event) => {
-            const tab = event.currentTarget;
-            const tabName = tab.getAttribute('data-tab');
-            
-            if (tabName) {
-                console.log(`👆 Tab clicked: ${tabName}`);
-                this.switchTab(tabName);
-            } else {
-                console.error('❌ Tab clicked but has no data-tab attribute');
+                console.warn('⚠️ initAddEditDeleteTab not found');
             }
         };
         
-        tabs.forEach((tab, index) => {
-            // Remove any existing click handlers (to prevent duplicates)
-            tab.removeEventListener('click', handleTabClick);
-            
-            // Add new click handler
-            tab.addEventListener('click', handleTabClick);
-            
-            console.log(`✅ Attached click handler to tab ${index + 1}:`, tab.getAttribute('data-tab'));
-        });
+        // Check Out Tab
+        initializers['check-out'] = () => {
+            console.log('🔵 TabManager: Initializing Check Out tab');
+            if (typeof window.initCheckout === 'function') {
+                window.initCheckout();
+            } else if (typeof window.initCheckoutTab === 'function') {
+                window.initCheckoutTab();
+            } else {
+                console.warn('⚠️ initCheckout not found');
+            }
+        };
         
-        // Store the handler for potential cleanup (optional)
-        this.clickHandler = handleTabClick;
-    },
+        // Inventory Tab
+        initializers['inventory'] = () => {
+            console.log('🔵 TabManager: Initializing Inventory tab');
+            if (typeof window.initInventoryTab === 'function') {
+                window.initInventoryTab();
+            } else {
+                console.warn('⚠️ initInventoryTab not found');
+            }
+        };
+        
+        // Discogs Tab - FIXED: Use initDiscogsTab
+        initializers['discogs'] = () => {
+            console.log('🔵 TabManager: Initializing Discogs tab');
+            if (typeof window.initDiscogsTab === 'function') {
+                console.log('✅ Found initDiscogsTab function, calling it...');
+                window.initDiscogsTab();
+            } else {
+                console.error('❌ initDiscogsTab function not found!');
+                console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
+            }
+        };
+        
+        // Accessories Tab
+        initializers['accessories'] = () => {
+            console.log('🔵 TabManager: Initializing Accessories tab');
+            if (typeof window.initAccessoriesTab === 'function') {
+                window.initAccessoriesTab();
+            } else if (typeof window.loadAccessories === 'function') {
+                window.loadAccessories();
+            } else {
+                console.warn('⚠️ initAccessoriesTab not found');
+            }
+        };
+        
+        // Users Tab
+        initializers['users'] = () => {
+            console.log('🔵 TabManager: Initializing Users tab');
+            if (typeof window.initUsersTab === 'function') {
+                window.initUsersTab();
+            } else if (typeof window.loadUsers === 'function') {
+                window.loadUsers();
+            } else {
+                console.warn('⚠️ initUsersTab not found');
+            }
+        };
+        
+        // Batches Tab
+        initializers['batches'] = () => {
+            console.log('🔵 TabManager: Initializing Batches tab');
+            if (typeof window.initBatchesTab === 'function') {
+                window.initBatchesTab();
+            } else if (typeof window.loadBatches === 'function') {
+                window.loadBatches();
+            } else {
+                console.warn('⚠️ initBatchesTab not found');
+            }
+        };
+        
+        // Admin Config Tab
+        initializers['admin-config'] = () => {
+            console.log('🔵 TabManager: Initializing Admin Config tab');
+            if (typeof window.initAdminConfigTab === 'function') {
+                window.initAdminConfigTab();
+            } else if (typeof window.loadConfigTables === 'function') {
+                window.loadConfigTables();
+            } else {
+                console.warn('⚠️ initAdminConfigTab not found');
+            }
+        };
+        
+        // Price Tags Tab
+        initializers['price-tags'] = () => {
+            console.log('🔵 TabManager: Initializing Price Tags tab');
+            if (typeof window.initPriceTagsTab === 'function') {
+                window.initPriceTagsTab();
+            } else if (typeof window.loadRecordsForPriceTags === 'function') {
+                window.loadRecordsForPriceTags();
+            } else {
+                console.warn('⚠️ initPriceTagsTab not found');
+            }
+        };
+        
+        // Custom Labels Tab
+        initializers['custom-labels'] = () => {
+            console.log('🔵 TabManager: Initializing Custom Labels tab');
+            if (typeof window.initCustomLabelsTab === 'function') {
+                window.initCustomLabelsTab();
+            } else if (typeof window.customLabelsGeneratePDF === 'function') {
+                console.log('✅ Custom labels functions available');
+            } else {
+                console.warn('⚠️ Custom labels functions not found');
+            }
+        };
+        
+        // Orders Tab
+        initializers['orders'] = () => {
+            console.log('🔵 TabManager: Initializing Orders tab');
+            if (typeof window.initOrdersTab === 'function') {
+                window.initOrdersTab();
+            } else if (typeof window.loadOrders === 'function') {
+                window.loadOrders();
+            } else {
+                console.warn('⚠️ initOrdersTab not found');
+            }
+        };
+        
+        // Database Query Tab
+        initializers['db-query'] = () => {
+            console.log('🔵 TabManager: Initializing Database Query tab');
+            if (typeof window.initDbQueryTab === 'function') {
+                window.initDbQueryTab();
+            } else {
+                console.warn('⚠️ initDbQueryTab not found');
+            }
+        };
+        
+        // Sticky Notes Tab
+        initializers['sticky-notes'] = () => {
+            console.log('🔵 TabManager: Initializing Sticky Notes tab');
+            if (typeof window.initStickyNotesTab === 'function') {
+                window.initStickyNotesTab();
+            } else if (typeof window.loadStickyNotes === 'function') {
+                window.loadStickyNotes();
+            } else {
+                console.warn('⚠️ Sticky Notes functions not found');
+            }
+        };
+        
+        // Stats Tab
+        initializers['stats'] = () => {
+            console.log('🔵 TabManager: Initializing Stats tab');
+            if (typeof window.initStatsTab === 'function') {
+                window.initStatsTab();
+            } else {
+                console.warn('⚠️ initStatsTab not found');
+            }
+        };
+    }
     
-    // Initialize based on saved preference or default
-    init() {
-        console.log('🟢 TabManager: Initializing...');
-        
-        // First, attach click handlers to all tabs
-        this.attachClickHandlers();
-        
-        // Determine which tab to show initially
-        
-        // 1. Check URL hash first (highest priority)
-        const hash = window.location.hash.substring(1);
-        if (hash) {
-            console.log(`🔗 TabManager: Found URL hash: ${hash}`);
-            
-            const tabElement = document.querySelector(`.tab[data-tab="${hash}"]`);
-            if (tabElement) {
-                console.log(`✅ TabManager: URL hash matches a tab, switching to ${hash}`);
-                this.switchTab(hash);
-                return;
-            } else {
-                console.warn(`⚠️ TabManager: URL hash "${hash}" doesn't match any tab`);
+    // Register cleanup functions
+    function registerCleanupFunctions() {
+        cleanupFunctions = {
+            'discogs': () => {
+                if (window.closeProgressModal) {
+                    window.closeProgressModal();
+                }
+            },
+            'inventory': () => {
+                if (window.closeDuplicateRecordModal) {
+                    window.closeDuplicateRecordModal();
+                }
             }
-        }
-        
-        // 2. Check saved tab in sessionStorage
-        const savedTab = sessionStorage.getItem('currentTab');
-        if (savedTab) {
-            console.log(`🔄 TabManager: Found saved tab: ${savedTab}`);
-            
-            const tabElement = document.querySelector(`.tab[data-tab="${savedTab}"]`);
-            if (tabElement) {
-                console.log(`✅ TabManager: Saved tab matches, switching to ${savedTab}`);
-                this.switchTab(savedTab);
-                return;
-            } else {
-                console.warn(`⚠️ TabManager: Saved tab "${savedTab}" not found`);
+        };
+    }
+    
+    // Clean up current tab before switching
+    function cleanupCurrentTab() {
+        if (currentTab && cleanupFunctions[currentTab]) {
+            try {
+                cleanupFunctions[currentTab]();
+                console.log(`🧹 TabManager: Cleaned up ${currentTab}`);
+            } catch (error) {
+                console.error(`Error cleaning up ${currentTab}:`, error);
             }
-        }
-        
-        // 3. Default to first tab
-        const firstTab = document.querySelector('.tab');
-        if (firstTab) {
-            const tabName = firstTab.getAttribute('data-tab');
-            console.log(`📌 TabManager: Defaulting to first tab: ${tabName}`);
-            this.switchTab(tabName);
-        } else {
-            console.error('❌ TabManager: No tabs found in document');
         }
     }
-};
+    
+    // Initialize a specific tab
+    function initializeTab(tabName) {
+        if (initializers[tabName]) {
+            try {
+                initializers[tabName]();
+                return true;
+            } catch (error) {
+                console.error(`❌ TabManager: Error initializing ${tabName}:`, error);
+                return false;
+            }
+        } else {
+            console.warn(`⚠️ TabManager: No initializer found for ${tabName}`);
+            return false;
+        }
+    }
+    
+    // Activate a specific tab
+    function activateTab(tabName) {
+        if (!tabName) return false;
+        
+        console.log(`🟡 TabManager: Switching to tab: ${tabName}`);
+        
+        // Find all tab elements and contents
+        const tabElements = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        // Update tab elements active state
+        let tabFound = false;
+        tabElements.forEach(tab => {
+            const tabId = tab.getAttribute('data-tab');
+            if (tabId === tabName) {
+                tab.classList.add('active');
+                tabFound = true;
+                console.log(`✅ TabManager: Activated tab element for ${tabName}`);
+            } else {
+                tab.classList.remove('active');
+            }
+        });
+        
+        if (!tabFound) {
+            console.warn(`⚠️ TabManager: Tab element not found for ${tabName}`);
+        }
+        
+        // Update tab contents active state
+        let contentFound = false;
+        tabContents.forEach(content => {
+            const contentId = content.id;
+            const expectedId = `${tabName}-tab`;
+            if (contentId === expectedId) {
+                content.classList.add('active');
+                contentFound = true;
+                console.log(`✅ TabManager: Activated content for ${expectedId}`);
+            } else {
+                content.classList.remove('active');
+            }
+        });
+        
+        if (!contentFound) {
+            console.warn(`⚠️ TabManager: Content element not found for ${tabName}-tab`);
+        }
+        
+        // Clean up previous tab
+        cleanupCurrentTab();
+        
+        // Initialize new tab
+        const initSuccess = initializeTab(tabName);
+        
+        if (initSuccess) {
+            currentTab = tabName;
+            saveStoredTab(tabName);
+            
+            // Dispatch custom event for tab change
+            const event = new CustomEvent('tabChanged', {
+                detail: { tabName: tabName, timestamp: Date.now() }
+            });
+            document.dispatchEvent(event);
+            console.log(`📢 TabManager: Dispatched tabChanged event for ${tabName}`);
+        }
+        
+        return initSuccess;
+    }
+    
+    // Set up tab click handlers
+    function setupTabClickHandlers() {
+        const tabElements = document.querySelectorAll('.tab');
+        
+        tabElements.forEach(tab => {
+            tab.addEventListener('click', function(e) {
+                e.preventDefault();
+                const tabName = this.getAttribute('data-tab');
+                console.log(`👆 Tab clicked: ${tabName}`);
+                if (tabName && tabName !== currentTab) {
+                    activateTab(tabName);
+                }
+            });
+        });
+        
+        console.log(`✅ TabManager: Set up ${tabElements.length} tab click handlers`);
+    }
+    
+    // Handle hash changes (for deep linking)
+    function handleHashChange() {
+        const hash = window.location.hash.substring(1);
+        if (hash && tabs[hash]) {
+            activateTab(hash);
+        }
+    }
+    
+    // Get all available tabs
+    function getAvailableTabs() {
+        const tabElements = document.querySelectorAll('.tab');
+        return Array.from(tabElements).map(tab => tab.getAttribute('data-tab'));
+    }
+    
+    // Get current active tab
+    function getCurrentTab() {
+        return currentTab;
+    }
+    
+    // Check if tab exists
+    function tabExists(tabName) {
+        const tabsList = getAvailableTabs();
+        return tabsList.includes(tabName);
+    }
+    
+    // Public API
+    return {
+        // Initialize the tab manager
+        init: function() {
+            console.log('🚀 TabManager: Initializing...');
+            
+            // Register all initializers
+            registerInitializers();
+            registerCleanupFunctions();
+            
+            // Get available tabs
+            const availableTabs = getAvailableTabs();
+            console.log(`📑 TabManager: Available tabs: ${availableTabs.join(', ')}`);
+            
+            // Set up click handlers
+            setupTabClickHandlers();
+            
+            // Determine which tab to activate
+            let initialTab = null;
+            
+            // Check for stored tab preference
+            const storedTab = getStoredTab();
+            if (storedTab && tabExists(storedTab)) {
+                initialTab = storedTab;
+                console.log(`💾 TabManager: Restoring stored tab: ${initialTab}`);
+            }
+            
+            // Check for hash in URL
+            const hash = window.location.hash.substring(1);
+            if (hash && tabExists(hash)) {
+                initialTab = hash;
+                console.log(`🔗 TabManager: Using hash from URL: ${initialTab}`);
+            }
+            
+            // Check for active tab in DOM
+            if (!initialTab) {
+                const activeTabElement = document.querySelector('.tab.active');
+                if (activeTabElement) {
+                    initialTab = activeTabElement.getAttribute('data-tab');
+                    console.log(`📌 TabManager: Found active tab in DOM: ${initialTab}`);
+                }
+            }
+            
+            // Default to first tab if none found
+            if (!initialTab && availableTabs.length > 0) {
+                initialTab = availableTabs[0];
+                console.log(`🎯 TabManager: Using default tab: ${initialTab}`);
+            }
+            
+            // Activate the initial tab
+            if (initialTab) {
+                activateTab(initialTab);
+            } else {
+                console.error('❌ TabManager: No tabs available to activate!');
+            }
+            
+            // Set up hash change listener
+            window.addEventListener('hashchange', handleHashChange);
+            
+            console.log('✅ TabManager: Initialization complete');
+        },
+        
+        // Switch to a specific tab
+        switchToTab: function(tabName) {
+            if (tabExists(tabName)) {
+                return activateTab(tabName);
+            } else {
+                console.error(`❌ TabManager: Tab "${tabName}" does not exist`);
+                return false;
+            }
+        },
+        
+        // Get current tab
+        getCurrentTab: getCurrentTab,
+        
+        // Get all tabs
+        getTabs: getAvailableTabs,
+        
+        // Check if tab exists
+        tabExists: tabExists,
+        
+        // Refresh current tab
+        refreshCurrentTab: function() {
+            if (currentTab) {
+                initializeTab(currentTab);
+            }
+        },
+        
+        // Register a custom initializer for a tab
+        registerInitializer: function(tabName, initFunction) {
+            if (typeof initFunction === 'function') {
+                initializers[tabName] = initFunction;
+                console.log(`✅ TabManager: Registered initializer for ${tabName}`);
+                return true;
+            } else {
+                console.error(`❌ TabManager: Invalid initializer for ${tabName}`);
+                return false;
+            }
+        },
+        
+        // Register a cleanup function for a tab
+        registerCleanup: function(tabName, cleanupFunction) {
+            if (typeof cleanupFunction === 'function') {
+                cleanupFunctions[tabName] = cleanupFunction;
+                console.log(`✅ TabManager: Registered cleanup for ${tabName}`);
+                return true;
+            } else {
+                console.error(`❌ TabManager: Invalid cleanup for ${tabName}`);
+                return false;
+            }
+        }
+    };
+})();
+
+// Auto-initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🟢 DOM fully loaded, initializing TabManager...');
+    setTimeout(function() {
+        if (window.TabManager) {
+            window.TabManager.init();
+        } else {
+            console.error('❌ TabManager not found!');
+        }
+    }, 100);
+});
+
+// Also try to initialize if DOMContentLoaded already fired
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        if (window.TabManager && !window.TabManager._initialized) {
+            window.TabManager.init();
+        }
+    });
+} else {
+    // DOM already loaded
+    setTimeout(function() {
+        if (window.TabManager && !window.TabManager._initialized) {
+            window.TabManager.init();
+        }
+    }, 100);
+}
 
 // Make TabManager globally available
 window.TabManager = TabManager;
 
-console.log('✅ tab-manager.js loaded successfully');
+console.log('✅ tab-manager.js loaded');
