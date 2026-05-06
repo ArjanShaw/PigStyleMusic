@@ -1,5 +1,5 @@
 // ============================================================================
-// inventory.js - Inventory Management Tab with Keyboard Selection
+// inventory.js - Inventory Management Tab with Enter to Confirm
 // ============================================================================
 
 // State management for location counters
@@ -36,6 +36,7 @@ let audioContext = null;
 let modalElement = null;
 let currentModalRecords = [];
 let isModalActive = false;
+let currentSelectedRecord = null;
 let modalKeyHandler = null;
 
 // Sublocation display names
@@ -327,10 +328,60 @@ function closeDuplicateRecordModal() {
     
     isModalActive = false;
     currentModalRecords = [];
+    currentSelectedRecord = null;
     
     if (barcodeInput) {
         barcodeInput.disabled = false;
         barcodeInput.focus();
+    }
+}
+
+function selectRecord(record) {
+    // Update visual selection on all cards
+    document.querySelectorAll('.record-selection-card').forEach(card => {
+        const cardRecordId = parseInt(card.getAttribute('data-record-id'));
+        if (cardRecordId === record.id) {
+            card.classList.add('selected');
+            card.style.border = '2px solid #2196f3';
+            card.style.background = '#e3f2fd';
+            
+            // Update badge
+            const badge = card.querySelector('.selection-badge');
+            if (badge) {
+                badge.innerHTML = '<i class="fas fa-check-circle"></i> SELECTED - Press ENTER to confirm';
+                badge.style.background = '#2196f3';
+                badge.style.color = 'white';
+            }
+        } else {
+            card.classList.remove('selected');
+            card.style.border = '2px solid #ddd';
+            card.style.background = 'white';
+            
+            const badge = card.querySelector('.selection-badge');
+            if (badge) {
+                badge.innerHTML = 'Click to select';
+                badge.style.background = '#e0e0e0';
+                badge.style.color = '#666';
+            }
+        }
+    });
+    
+    currentSelectedRecord = record;
+    playBeep(600, 100, 'sine');
+}
+
+function confirmAndProcess() {
+    if (currentSelectedRecord) {
+        console.log('Confirming selection:', currentSelectedRecord.id);
+        processSelectedRecord(currentSelectedRecord, currentModalRecords[0]?.barcode || '').then(() => {
+            closeDuplicateRecordModal();
+        }).catch(error => {
+            console.error('Error processing record:', error);
+            showScanResult(`❌ Error: ${error.message}`, 'error');
+        });
+    } else {
+        playBeep(400, 300, 'sawtooth');
+        showScanResult(`⚠️ No record selected. Click on a record to select it, then press ENTER.`, 'warning');
     }
 }
 
@@ -349,6 +400,7 @@ function showDuplicateRecordModal(records, originalBarcode) {
     
     isModalActive = true;
     currentModalRecords = records;
+    currentSelectedRecord = null;
     
     const targetLetter = getTargetArtistLetter();
     console.log('Target letter for suggestions:', targetLetter);
@@ -381,6 +433,11 @@ function showDuplicateRecordModal(records, originalBarcode) {
     const sortedRecords = [...sortedActiveRecords, ...sortedNonActiveRecords];
     const suggestedRecord = sortedActiveRecords.length > 0 ? sortedActiveRecords[0] : null;
     
+    // Set suggested record as initially selected
+    if (suggestedRecord) {
+        currentSelectedRecord = suggestedRecord;
+    }
+    
     const barcodeDisplay = document.getElementById('dup-barcode-display');
     const countDisplay = document.getElementById('dup-count-display');
     
@@ -392,7 +449,7 @@ function showDuplicateRecordModal(records, originalBarcode) {
     
     listContainer.innerHTML = '';
     
-    // Add instruction banner with keyboard shortcuts
+    // Add instruction banner
     const instructionBanner = document.createElement('div');
     instructionBanner.style.cssText = `
         margin-bottom: 15px;
@@ -404,9 +461,9 @@ function showDuplicateRecordModal(records, originalBarcode) {
         font-weight: bold;
     `;
     instructionBanner.innerHTML = `
-        <i class="fas fa-keyboard"></i> 
-        <strong>Press 1, 2, or 3 on your keyboard</strong> to select the corresponding record
-        <br><small>Or click the image with your mouse</small>
+        <i class="fas fa-info-circle"></i> 
+        <strong>Click on a record to select it, then press ENTER to confirm</strong>
+        <br><small>The suggested record is pre-selected - just press ENTER if correct</small>
     `;
     listContainer.appendChild(instructionBanner);
     
@@ -425,7 +482,8 @@ function showDuplicateRecordModal(records, originalBarcode) {
     sortedRecords.forEach((record, idx) => {
         const isActive = record.status_id === 2;
         const artistSortKey = getArtistSortKey(record.artist);
-        const recordNumber = idx + 1;
+        const isSelected = currentSelectedRecord && currentSelectedRecord.id === record.id;
+        const isSuggested = suggestedRecord && suggestedRecord.id === record.id;
         
         // Get image URL safely
         let imageUrl = null;
@@ -435,65 +493,42 @@ function showDuplicateRecordModal(records, originalBarcode) {
         
         const card = document.createElement('div');
         card.className = 'record-selection-card';
+        if (isSelected) card.classList.add('selected');
         card.setAttribute('data-record-id', record.id);
-        card.setAttribute('data-record-number', recordNumber);
         card.style.cssText = `
-            background: white;
-            border: 2px solid ${suggestedRecord && suggestedRecord.id === record.id ? '#2196f3' : '#ddd'};
+            background: ${isSelected ? '#e3f2fd' : 'white'};
+            border: 2px solid ${isSelected ? '#2196f3' : (isSuggested ? '#ffc107' : '#ddd')};
             border-radius: 10px;
             padding: 12px;
             transition: all 0.2s ease;
             cursor: pointer;
+            position: relative;
             ${!isActive ? 'opacity: 0.6;' : ''}
         `;
         
-        // Click handler for mouse
+        // Click handler
         card.onclick = () => {
-            console.log(`Clicked record ${record.id}`);
-            processSelectedRecord(record, originalBarcode).then(() => {
-                closeDuplicateRecordModal();
-            }).catch(error => {
-                console.error('Error processing record:', error);
-                showScanResult(`❌ Error: ${error.message}`, 'error');
-            });
+            selectRecord(record);
         };
         
         // Hover effect
         card.onmouseenter = () => {
-            card.style.borderColor = '#999';
-            card.style.transform = 'translateY(-2px)';
-            card.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+            if (!isSelected) {
+                card.style.borderColor = '#999';
+                card.style.transform = 'translateY(-2px)';
+                card.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+            }
         };
         card.onmouseleave = () => {
-            card.style.borderColor = suggestedRecord && suggestedRecord.id === record.id ? '#2196f3' : '#ddd';
-            card.style.transform = 'translateY(0)';
-            card.style.boxShadow = 'none';
+            if (!isSelected) {
+                card.style.borderColor = isSuggested ? '#ffc107' : '#ddd';
+                card.style.transform = 'translateY(0)';
+                card.style.boxShadow = 'none';
+            }
         };
         
-        // Number badge
-        const numberBadge = document.createElement('div');
-        numberBadge.style.cssText = `
-            position: absolute;
-            top: -8px;
-            left: -8px;
-            background: ${suggestedRecord && suggestedRecord.id === record.id ? '#2196f3' : '#6c757d'};
-            color: white;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 16px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        `;
-        numberBadge.textContent = recordNumber;
-        card.style.position = 'relative';
-        card.appendChild(numberBadge);
-        
         // Suggested badge
-        if (suggestedRecord && suggestedRecord.id === record.id) {
+        if (isSuggested && !isSelected) {
             const suggestBadge = document.createElement('div');
             suggestBadge.style.cssText = `
                 position: absolute;
@@ -505,6 +540,7 @@ function showDuplicateRecordModal(records, originalBarcode) {
                 border-radius: 20px;
                 font-size: 10px;
                 font-weight: bold;
+                z-index: 1;
             `;
             suggestBadge.innerHTML = '⭐ SUGGESTED';
             card.appendChild(suggestBadge);
@@ -596,19 +632,21 @@ function showDuplicateRecordModal(records, originalBarcode) {
         `;
         card.appendChild(details);
         
-        // Keyboard shortcut hint
-        const kbHint = document.createElement('div');
-        kbHint.style.cssText = `
+        // Selection badge
+        const badge = document.createElement('div');
+        badge.className = 'selection-badge';
+        badge.style.cssText = `
             margin-top: 10px;
-            background: #f8f9fa;
+            background: ${isSelected ? '#2196f3' : '#e0e0e0'};
+            color: ${isSelected ? 'white' : '#666'};
             padding: 5px;
             border-radius: 6px;
             font-size: 11px;
+            font-weight: bold;
             text-align: center;
-            color: #666;
         `;
-        kbHint.innerHTML = `<i class="fas fa-keyboard"></i> Press <strong>${recordNumber}</strong> on keyboard`;
-        card.appendChild(kbHint);
+        badge.innerHTML = isSelected ? '<i class="fas fa-check-circle"></i> SELECTED - Press ENTER to confirm' : 'Click to select';
+        card.appendChild(badge);
         
         gridContainer.appendChild(card);
     });
@@ -628,35 +666,22 @@ function showDuplicateRecordModal(records, originalBarcode) {
         border-left: 3px solid #ffc107;
     `;
     footerInstruction.innerHTML = `
-        <i class="fas fa-info-circle"></i> 
-        <strong>Press the number key (1-${sortedRecords.length})</strong> or click the image to select
+        <i class="fas fa-keyboard"></i> 
+        <strong>Press ENTER</strong> to confirm the selected record
     `;
     listContainer.appendChild(footerInstruction);
     
     // Show modal
     modalElement.style.display = 'flex';
     
-    // Add keyboard handler
+    // Add keyboard handler for Enter key
     modalKeyHandler = (e) => {
-        // Only handle if modal is active
         if (!isModalActive) return;
         
-        const key = parseInt(e.key);
-        if (!isNaN(key) && key >= 1 && key <= sortedRecords.length) {
+        if (e.key === 'Enter') {
             e.preventDefault();
-            const selectedRecord = sortedRecords[key - 1];
-            if (selectedRecord) {
-                console.log(`Key ${key} pressed, selecting record ${selectedRecord.id}`);
-                // Play selection sound
-                playBeep(600, 100, 'sine');
-                // Process the record
-                processSelectedRecord(selectedRecord, originalBarcode).then(() => {
-                    closeDuplicateRecordModal();
-                }).catch(error => {
-                    console.error('Error processing record:', error);
-                    showScanResult(`❌ Error: ${error.message}`, 'error');
-                });
-            }
+            console.log('Enter pressed, confirming selection');
+            confirmAndProcess();
         }
     };
     
@@ -680,10 +705,10 @@ function showDuplicateRecordModal(records, originalBarcode) {
 async function processScan(barcode, fromQueue = false) {
     console.log(`Processing scan: ${barcode}, modalActive: ${isModalActive}`);
     
-    // If modal is active, don't process new scans - keyboard shortcuts only
+    // If modal is active, don't process new scans - use keyboard only
     if (isModalActive) {
         playBeep(600, 150, 'sine');
-        showScanResult(`⚠️ Multiple records found. Press 1, 2, or 3 on keyboard to select the correct record.`, 'warning');
+        showScanResult(`⚠️ Multiple records found. Click on the correct record, then press ENTER.`, 'warning');
         if (barcodeInput) barcodeInput.value = '';
         return;
     }
@@ -719,7 +744,7 @@ async function processScan(barcode, fromQueue = false) {
         
         if (exactMatches.length > 1) {
             playBeep(1000, 400, 'sine');
-            showScanResult(`⚠️ ${exactMatches.length} records found. Press 1-${Math.min(exactMatches.length, 9)} on keyboard to select.`, 'warning');
+            showScanResult(`⚠️ ${exactMatches.length} records found. Click the correct one, then press ENTER.`, 'warning');
             
             showDuplicateRecordModal(exactMatches, barcode);
             return;
@@ -877,6 +902,7 @@ function initInventoryTab() {
     // Reset modal state
     isModalActive = false;
     currentModalRecords = [];
+    currentSelectedRecord = null;
     
     barcodeInput.focus();
     
@@ -914,6 +940,7 @@ document.addEventListener('tabChanged', function(e) {
         }
         isModalActive = false;
         currentModalRecords = [];
+        currentSelectedRecord = null;
         if (modalElement) {
             modalElement.style.display = 'none';
         }
@@ -928,4 +955,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ inventory.js loaded with keyboard selection (1, 2, 3 keys)');
+console.log('✅ inventory.js loaded with click + ENTER to confirm');
