@@ -1,5 +1,5 @@
 // ============================================================================
-// inventory.js - Inventory Management Tab with Smart Auto-Selection
+// inventory.js - Inventory Management Tab with Collapsible Builder & Scan History
 // ============================================================================
 
 // State management for location counters
@@ -28,6 +28,9 @@ let scanResultDiv = null;
 let locationPreview = null;
 let addGenreInput = null;
 let addGenreBtn = null;
+let toggleBuilderBtn = null;
+let locationBuilderSection = null;
+let scanHistoryContainer = null;
 
 // Audio context
 let audioContext = null;
@@ -39,9 +42,11 @@ let isModalActive = false;
 let currentSelectedRecord = null;
 let modalKeyHandler = null;
 
-// Recent scan history for smart suggestions
-let recentScans = []; // Stores { artist, sortKey, timestamp }
-const MAX_RECENT_SCANS = 5;
+// Recent scan history for display and suggestions
+let recentScans = []; // Stores { record, timestamp, location }
+const MAX_RECENT_SCANS = 10;
+let currentDisplayIndex = 0;
+let historyScrollInterval = null;
 
 // Sublocation display names
 const SUBLOCATION_NAMES = {
@@ -132,19 +137,76 @@ function getArtistSortKey(artistName) {
     return name.charAt(0).toUpperCase();
 }
 
-function addToRecentScans(record) {
-    const sortKey = getArtistSortKey(record.artist);
+function addToRecentScans(record, locationString) {
+    // Don't add duplicates in a row
+    if (recentScans.length > 0 && recentScans[0].record.id === record.id) {
+        return;
+    }
+    
     recentScans.unshift({ 
-        artist: record.artist, 
-        sortKey: sortKey, 
-        id: record.id,
-        timestamp: Date.now() 
+        record: record,
+        location: locationString,
+        timestamp: Date.now()
     });
-    // Keep only last 5
+    
+    // Keep only last MAX_RECENT_SCANS
     if (recentScans.length > MAX_RECENT_SCANS) {
         recentScans.pop();
     }
-    console.log('Recent scans:', recentScans.map(s => `${s.sortKey}:${s.artist}`));
+    
+    renderScanHistory();
+    console.log('Recent scans:', recentScans.map(s => `${s.record.artist} - ${s.record.title}`));
+}
+
+function renderScanHistory() {
+    if (!scanHistoryContainer) return;
+    
+    if (recentScans.length === 0) {
+        scanHistoryContainer.innerHTML = `
+            <div style="text-align: center; padding: 30px; color: #999;">
+                <i class="fas fa-camera" style="font-size: 48px; margin-bottom: 10px; display: block;"></i>
+                <p>No scans yet. Scan barcodes to see history.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '<div style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">';
+    
+    recentScans.forEach((scan, idx) => {
+        const record = scan.record;
+        const imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' 
+            ? record.image_url 
+            : null;
+        
+        html += `
+            <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: ${idx === 0 ? '#e3f2fd' : '#f8f9fa'}; border-radius: 8px; border-left: 3px solid ${idx === 0 ? '#2196f3' : '#ddd'};">
+                <div style="flex-shrink: 0;">
+                    ${imageUrl ? 
+                        `<img src="${imageUrl}" alt="${record.artist}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;">` :
+                        `<div style="width: 50px; height: 50px; background: #e0e0e0; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #999;"><i class="fas fa-record-vinyl"></i></div>`
+                    }
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: bold; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        ${escapeHtml(record.artist)} - ${escapeHtml(record.title)}
+                    </div>
+                    <div style="font-size: 11px; color: #666; margin-top: 2px;">
+                        <i class="fas fa-map-marker-alt"></i> ${escapeHtml(scan.location)}
+                    </div>
+                    <div style="font-size: 10px; color: #999;">
+                        ${new Date(scan.timestamp).toLocaleTimeString()}
+                    </div>
+                </div>
+                <div style="flex-shrink: 0; font-size: 20px; color: #28a745;">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    scanHistoryContainer.innerHTML = html;
 }
 
 function calculateMatchScore(record, recentScansList) {
@@ -248,6 +310,24 @@ function resetCounter() {
     updateLocationPreview();
     showScanResult(`Counter reset to 1`, 'info');
     if (barcodeInput) barcodeInput.focus();
+}
+
+// ============================================================================
+// Collapsible Builder Toggle
+// ============================================================================
+
+function toggleLocationBuilder() {
+    if (locationBuilderSection) {
+        const isVisible = locationBuilderSection.style.display !== 'none';
+        locationBuilderSection.style.display = isVisible ? 'none' : 'block';
+        if (toggleBuilderBtn) {
+            const icon = toggleBuilderBtn.querySelector('i');
+            if (icon) {
+                icon.className = isVisible ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
+            }
+            toggleBuilderBtn.querySelector('span').textContent = isVisible ? 'Show Location Builder' : 'Hide Location Builder';
+        }
+    }
 }
 
 // ============================================================================
@@ -454,10 +534,13 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
     isModalActive = true;
     currentModalRecords = records;
     
+    // Create recentScansList for scoring
+    const recentScansList = recentScans.map(s => ({ artist: s.record.artist, sortKey: getArtistSortKey(s.record.artist) }));
+    
     // Sort records by match score with recent scans
     const scoredRecords = records.map(record => ({
         record: record,
-        score: calculateMatchScore(record, recentScans)
+        score: calculateMatchScore(record, recentScansList)
     }));
     
     scoredRecords.sort((a, b) => b.score - a.score);
@@ -474,7 +557,6 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
         selectedRecord = autoSelectedRecord;
         autoSelected = true;
     } else if (bestScore > 80 && (bestScore - secondScore) > 30) {
-        // High confidence: best match score > 80 and at least 30 points ahead of second
         selectedRecord = bestMatch;
         autoSelected = true;
         console.log('Auto-selected record due to high confidence:', selectedRecord.id, 'score:', bestScore);
@@ -482,7 +564,7 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
         selectedRecord = sortedRecords[0];
         autoSelected = true;
     } else {
-        selectedRecord = bestMatch; // Pre-select best match but show modal
+        selectedRecord = bestMatch;
     }
     
     currentSelectedRecord = selectedRecord;
@@ -504,7 +586,6 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
         playBeep(880, 150, 'sine');
         showScanResult(`🎯 Auto-selected: ${selectedRecord.artist} - ${selectedRecord.title} (matches recent pattern)`, 'success');
         
-        // Process immediately
         processSelectedRecord(selectedRecord, originalBarcode).then(() => {
             isModalActive = false;
             currentModalRecords = [];
@@ -512,7 +593,6 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
         }).catch(error => {
             console.error('Error processing auto-selected record:', error);
             showScanResult(`❌ Error: ${error.message}`, 'error');
-            // Fall back to showing modal
             showDuplicateRecordModal(records, originalBarcode, null);
         });
         return;
@@ -619,7 +699,6 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
             card.appendChild(matchBadge);
         }
         
-        // Image section
         if (imageUrl) {
             const img = document.createElement('img');
             img.src = imageUrl;
@@ -668,7 +747,6 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
             card.appendChild(noImg);
         }
         
-        // Title
         const title = document.createElement('div');
         title.style.cssText = `
             font-weight: bold;
@@ -680,7 +758,6 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
         title.textContent = `${record.artist || 'Unknown'} - ${(record.title || 'Unknown').substring(0, 45)}${(record.title || '').length > 45 ? '...' : ''}`;
         card.appendChild(title);
         
-        // Details
         const details = document.createElement('div');
         details.style.cssText = `
             font-size: 11px;
@@ -705,7 +782,6 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
         `;
         card.appendChild(details);
         
-        // Selection badge
         const badge = document.createElement('div');
         badge.className = 'selection-badge';
         badge.style.cssText = `
@@ -813,10 +889,11 @@ async function processScan(barcode, fromQueue = false) {
         if (exactMatches.length > 1) {
             console.log(`Found ${exactMatches.length} duplicates, checking for auto-selection...`);
             
-            // Calculate scores for all matches
+            const recentScansList = recentScans.map(s => ({ artist: s.record.artist, sortKey: getArtistSortKey(s.record.artist) }));
+            
             const scoredMatches = exactMatches.map(record => ({
                 record: record,
-                score: calculateMatchScore(record, recentScans)
+                score: calculateMatchScore(record, recentScansList)
             }));
             scoredMatches.sort((a, b) => b.score - a.score);
             
@@ -824,7 +901,6 @@ async function processScan(barcode, fromQueue = false) {
             const bestScore = bestMatch.score;
             const secondScore = scoredMatches.length > 1 ? scoredMatches[1].score : 0;
             
-            // Auto-select if confidence is very high
             if (bestScore > 100 && (bestScore - secondScore) > 40) {
                 console.log('🚀 HIGH CONFIDENCE - auto-selecting without modal');
                 playBeep(880, 150, 'sine');
@@ -833,7 +909,6 @@ async function processScan(barcode, fromQueue = false) {
                 return;
             }
             
-            // Otherwise show modal with pre-selected best match
             playBeep(1000, 400, 'sine');
             showScanResult(`⚠️ ${exactMatches.length} records found. Select one, then press ENTER.`, 'warning');
             showDuplicateRecordModal(exactMatches, barcode, bestMatch.record);
@@ -897,8 +972,8 @@ async function processSelectedRecord(record, barcode) {
         throw new Error(updateData.error || 'Update failed');
     }
     
-    // Add to recent scans for future smart suggestions
-    addToRecentScans(record);
+    // Add to recent scans with the location that was just applied
+    addToRecentScans(record, locationString);
     
     incrementCounter();
     playBeep(880, 100, 'sine');
@@ -945,6 +1020,13 @@ function showScanResult(message, type = 'info') {
     }
 }
 
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // ============================================================================
 // Initialization
 // ============================================================================
@@ -963,6 +1045,9 @@ function initInventoryTab() {
     locationPreview = document.getElementById('location-preview');
     addGenreInput = document.getElementById('add-genre-input');
     addGenreBtn = document.getElementById('add-genre-btn');
+    toggleBuilderBtn = document.getElementById('toggle-builder-btn');
+    locationBuilderSection = document.getElementById('location-builder-section');
+    scanHistoryContainer = document.getElementById('scan-history-container');
     modalElement = document.getElementById('duplicate-record-modal');
     
     if (!barcodeInput) {
@@ -984,6 +1069,7 @@ function initInventoryTab() {
     if (addGenreInput) addGenreInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') addCustomGenre();
     });
+    if (toggleBuilderBtn) toggleBuilderBtn.addEventListener('click', toggleLocationBuilder);
     
     if (barcodeInput) {
         barcodeInput.addEventListener('keypress', onBarcodeEnter);
@@ -998,9 +1084,21 @@ function initInventoryTab() {
     currentSelectedRecord = null;
     recentScans = [];
     
+    renderScanHistory();
+    
+    // Default: location builder visible
+    if (locationBuilderSection) {
+        locationBuilderSection.style.display = 'block';
+    }
+    if (toggleBuilderBtn) {
+        const icon = toggleBuilderBtn.querySelector('i');
+        if (icon) icon.className = 'fas fa-chevron-up';
+        toggleBuilderBtn.querySelector('span').textContent = 'Hide Location Builder';
+    }
+    
     barcodeInput.focus();
     
-    console.log('✅ Inventory Tab initialized with smart auto-selection');
+    console.log('✅ Inventory Tab initialized with collapsible builder and scan history');
 }
 
 function onBarcodeEnter(event) {
@@ -1020,6 +1118,7 @@ function onBarcodeEnter(event) {
 window.initInventoryTab = initInventoryTab;
 window.resetCounter = resetCounter;
 window.closeDuplicateRecordModal = closeDuplicateRecordModal;
+window.toggleLocationBuilder = toggleLocationBuilder;
 
 // ============================================================================
 // Tab Activation
@@ -1048,4 +1147,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ inventory.js loaded with smart auto-selection based on recent scans');
+console.log('✅ inventory.js loaded with collapsible builder and scan history');
