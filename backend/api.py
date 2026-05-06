@@ -3232,7 +3232,7 @@ def add_consignor_record():
 
 @app.route('/api/genres', methods=['GET'])
 def get_genres():
-    """Get unique genres from record locations (first part before ' - ')"""
+    """Get unique genres from record locations (first part before ' | ')"""
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -3249,14 +3249,21 @@ def get_genres():
         
         for record in records:
             location = record['location']
-            if location and ' - ' in location:
-                # Extract genre (everything before " - ")
-                genre = location.split(' - ')[0].strip()
-                if genre:
-                    genres.add(genre)
-            elif location and not location.startswith(('bin', 'shelf', 'rack', 'row', 'box', 'drawer')):
+            if location:
+                # New format: split on " | " (space pipe space)
+                if ' | ' in location:
+                    # Extract genre (everything before first " | ")
+                    genre = location.split(' | ')[0].strip()
+                    if genre:
+                        genres.add(genre)
+                # Legacy format: split on " - " (space dash space) for backward compatibility
+                elif ' - ' in location:
+                    genre = location.split(' - ')[0].strip()
+                    if genre:
+                        genres.add(genre)
                 # If no separator and not obviously a location prefix, treat as genre
-                genres.add(location.strip())
+                elif not location.startswith(('bin', 'shelf', 'rack', 'row', 'box', 'drawer', 'Bin', 'Shelf', 'Rack', 'Display', 'Wall')):
+                    genres.add(location.strip())
         
         # Sort alphabetically
         genres_list = sorted(list(genres))
