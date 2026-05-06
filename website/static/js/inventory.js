@@ -1,5 +1,5 @@
 // ============================================================================
-// inventory.js - Inventory Management Tab with Enter to Confirm
+// inventory.js - Inventory Management Tab with Smart Auto-Selection
 // ============================================================================
 
 // State management for location counters
@@ -38,6 +38,10 @@ let currentModalRecords = [];
 let isModalActive = false;
 let currentSelectedRecord = null;
 let modalKeyHandler = null;
+
+// Recent scan history for smart suggestions
+let recentScans = []; // Stores { artist, sortKey, timestamp }
+const MAX_RECENT_SCANS = 5;
 
 // Sublocation display names
 const SUBLOCATION_NAMES = {
@@ -126,6 +130,62 @@ function getArtistSortKey(artistName) {
     }
     
     return name.charAt(0).toUpperCase();
+}
+
+function addToRecentScans(record) {
+    const sortKey = getArtistSortKey(record.artist);
+    recentScans.unshift({ 
+        artist: record.artist, 
+        sortKey: sortKey, 
+        id: record.id,
+        timestamp: Date.now() 
+    });
+    // Keep only last 5
+    if (recentScans.length > MAX_RECENT_SCANS) {
+        recentScans.pop();
+    }
+    console.log('Recent scans:', recentScans.map(s => `${s.sortKey}:${s.artist}`));
+}
+
+function calculateMatchScore(record, recentScansList) {
+    if (recentScansList.length === 0) return 0;
+    
+    const recordSortKey = getArtistSortKey(record.artist);
+    let score = 0;
+    
+    // Weight more recent scans higher
+    for (let i = 0; i < recentScansList.length; i++) {
+        const recent = recentScansList[i];
+        const weight = Math.pow(0.5, i); // 1.0, 0.5, 0.25, 0.125, 0.0625
+        
+        if (recent.sortKey === recordSortKey) {
+            score += 100 * weight; // Same letter = high score
+        }
+        
+        // Partial match bonus: if artist name contains similar words
+        const recentArtistLower = recent.artist.toLowerCase();
+        const recordArtistLower = record.artist.toLowerCase();
+        
+        // Check for same first word (common for bands like "The Beatles" -> "beatles")
+        const recentFirstWord = recentArtistLower.replace(/^the\s+/, '').split(' ')[0];
+        const recordFirstWord = recordArtistLower.replace(/^the\s+/, '').split(' ')[0];
+        
+        if (recentFirstWord === recordFirstWord && recentFirstWord.length > 2) {
+            score += 30 * weight;
+        }
+    }
+    
+    // Bonus for active status
+    if (record.status_id === 2) {
+        score += 50;
+    }
+    
+    // Penalty for sold status
+    if (record.status_id === 3) {
+        score -= 100;
+    }
+    
+    return score;
 }
 
 // ============================================================================
@@ -316,7 +376,6 @@ function onSublocationChange() {
 // ============================================================================
 
 function closeDuplicateRecordModal() {
-    // Remove keyboard handler
     if (modalKeyHandler) {
         document.removeEventListener('keydown', modalKeyHandler);
         modalKeyHandler = null;
@@ -337,7 +396,6 @@ function closeDuplicateRecordModal() {
 }
 
 function selectRecord(record) {
-    // Update visual selection on all cards
     document.querySelectorAll('.record-selection-card').forEach(card => {
         const cardRecordId = parseInt(card.getAttribute('data-record-id'));
         if (cardRecordId === record.id) {
@@ -345,7 +403,6 @@ function selectRecord(record) {
             card.style.border = '2px solid #2196f3';
             card.style.background = '#e3f2fd';
             
-            // Update badge
             const badge = card.querySelector('.selection-badge');
             if (badge) {
                 badge.innerHTML = '<i class="fas fa-check-circle"></i> SELECTED - Press ENTER to confirm';
@@ -379,20 +436,16 @@ function confirmAndProcess() {
             console.error('Error processing record:', error);
             showScanResult(`❌ Error: ${error.message}`, 'error');
         });
-    } else {
-        playBeep(400, 300, 'sawtooth');
-        showScanResult(`⚠️ No record selected. Click on a record to select it, then press ENTER.`, 'warning');
     }
 }
 
-function showDuplicateRecordModal(records, originalBarcode) {
+function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord = null) {
     modalElement = document.getElementById('duplicate-record-modal');
     if (!modalElement) {
         console.error('Duplicate record modal not found!');
         return;
     }
     
-    // Remove any existing keyboard handler
     if (modalKeyHandler) {
         document.removeEventListener('keydown', modalKeyHandler);
         modalKeyHandler = null;
@@ -400,43 +453,39 @@ function showDuplicateRecordModal(records, originalBarcode) {
     
     isModalActive = true;
     currentModalRecords = records;
-    currentSelectedRecord = null;
     
-    const targetLetter = getTargetArtistLetter();
-    console.log('Target letter for suggestions:', targetLetter);
+    // Sort records by match score with recent scans
+    const scoredRecords = records.map(record => ({
+        record: record,
+        score: calculateMatchScore(record, recentScans)
+    }));
     
-    // Split records into active and non-active
-    const activeRecords = records.filter(r => r.status_id === 2);
-    const nonActiveRecords = records.filter(r => r.status_id !== 2);
+    scoredRecords.sort((a, b) => b.score - a.score);
+    const sortedRecords = scoredRecords.map(s => s.record);
+    const bestMatch = sortedRecords[0];
+    const bestScore = scoredRecords[0].score;
+    const secondScore = scoredRecords.length > 1 ? scoredRecords[1].score : 0;
     
-    // Sort active records by artist letter matching target
-    const sortedActiveRecords = [...activeRecords].sort((a, b) => {
-        const aLetter = getArtistSortKey(a.artist);
-        const bLetter = getArtistSortKey(b.artist);
-        
-        if (targetLetter) {
-            const aMatches = aLetter === targetLetter;
-            const bMatches = bLetter === targetLetter;
-            if (aMatches && !bMatches) return -1;
-            if (bMatches && !aMatches) return 1;
-        }
-        
-        return aLetter.localeCompare(bLetter);
-    });
+    // Auto-select if confidence is high enough
+    let selectedRecord = null;
+    let autoSelected = false;
     
-    const sortedNonActiveRecords = [...nonActiveRecords].sort((a, b) => {
-        const aLetter = getArtistSortKey(a.artist);
-        const bLetter = getArtistSortKey(b.artist);
-        return aLetter.localeCompare(bLetter);
-    });
-    
-    const sortedRecords = [...sortedActiveRecords, ...sortedNonActiveRecords];
-    const suggestedRecord = sortedActiveRecords.length > 0 ? sortedActiveRecords[0] : null;
-    
-    // Set suggested record as initially selected
-    if (suggestedRecord) {
-        currentSelectedRecord = suggestedRecord;
+    if (autoSelectedRecord) {
+        selectedRecord = autoSelectedRecord;
+        autoSelected = true;
+    } else if (bestScore > 80 && (bestScore - secondScore) > 30) {
+        // High confidence: best match score > 80 and at least 30 points ahead of second
+        selectedRecord = bestMatch;
+        autoSelected = true;
+        console.log('Auto-selected record due to high confidence:', selectedRecord.id, 'score:', bestScore);
+    } else if (sortedRecords.length === 1) {
+        selectedRecord = sortedRecords[0];
+        autoSelected = true;
+    } else {
+        selectedRecord = bestMatch; // Pre-select best match but show modal
     }
+    
+    currentSelectedRecord = selectedRecord;
     
     const barcodeDisplay = document.getElementById('dup-barcode-display');
     const countDisplay = document.getElementById('dup-count-display');
@@ -448,6 +497,34 @@ function showDuplicateRecordModal(records, originalBarcode) {
     if (!listContainer) return;
     
     listContainer.innerHTML = '';
+    
+    // If auto-selected with high confidence, process immediately without modal
+    if (autoSelected && bestScore > 80 && records.length > 1) {
+        console.log('🚀 Auto-selecting with high confidence, skipping modal');
+        playBeep(880, 150, 'sine');
+        showScanResult(`🎯 Auto-selected: ${selectedRecord.artist} - ${selectedRecord.title} (matches recent pattern)`, 'success');
+        
+        // Process immediately
+        processSelectedRecord(selectedRecord, originalBarcode).then(() => {
+            isModalActive = false;
+            currentModalRecords = [];
+            currentSelectedRecord = null;
+        }).catch(error => {
+            console.error('Error processing auto-selected record:', error);
+            showScanResult(`❌ Error: ${error.message}`, 'error');
+            // Fall back to showing modal
+            showDuplicateRecordModal(records, originalBarcode, null);
+        });
+        return;
+    }
+    
+    // Show modal for manual selection
+    let instructionText = '';
+    if (autoSelected) {
+        instructionText = `<strong>Suggested record pre-selected</strong> - Press ENTER to confirm, or click another record`;
+    } else {
+        instructionText = `<strong>Multiple matches found</strong> - Click a record, then press ENTER`;
+    }
     
     // Add instruction banner
     const instructionBanner = document.createElement('div');
@@ -462,8 +539,7 @@ function showDuplicateRecordModal(records, originalBarcode) {
     `;
     instructionBanner.innerHTML = `
         <i class="fas fa-info-circle"></i> 
-        <strong>Click on a record to select it, then press ENTER to confirm</strong>
-        <br><small>The suggested record is pre-selected - just press ENTER if correct</small>
+        ${instructionText}
     `;
     listContainer.appendChild(instructionBanner);
     
@@ -483,9 +559,8 @@ function showDuplicateRecordModal(records, originalBarcode) {
         const isActive = record.status_id === 2;
         const artistSortKey = getArtistSortKey(record.artist);
         const isSelected = currentSelectedRecord && currentSelectedRecord.id === record.id;
-        const isSuggested = suggestedRecord && suggestedRecord.id === record.id;
+        const matchScore = scoredRecords.find(s => s.record.id === record.id)?.score || 0;
         
-        // Get image URL safely
         let imageUrl = null;
         if (record.image_url && record.image_url !== '' && record.image_url !== 'None') {
             imageUrl = record.image_url;
@@ -497,7 +572,7 @@ function showDuplicateRecordModal(records, originalBarcode) {
         card.setAttribute('data-record-id', record.id);
         card.style.cssText = `
             background: ${isSelected ? '#e3f2fd' : 'white'};
-            border: 2px solid ${isSelected ? '#2196f3' : (isSuggested ? '#ffc107' : '#ddd')};
+            border: 2px solid ${isSelected ? '#2196f3' : '#ddd'};
             border-radius: 10px;
             padding: 12px;
             transition: all 0.2s ease;
@@ -506,12 +581,10 @@ function showDuplicateRecordModal(records, originalBarcode) {
             ${!isActive ? 'opacity: 0.6;' : ''}
         `;
         
-        // Click handler
         card.onclick = () => {
             selectRecord(record);
         };
         
-        // Hover effect
         card.onmouseenter = () => {
             if (!isSelected) {
                 card.style.borderColor = '#999';
@@ -521,29 +594,29 @@ function showDuplicateRecordModal(records, originalBarcode) {
         };
         card.onmouseleave = () => {
             if (!isSelected) {
-                card.style.borderColor = isSuggested ? '#ffc107' : '#ddd';
+                card.style.borderColor = '#ddd';
                 card.style.transform = 'translateY(0)';
                 card.style.boxShadow = 'none';
             }
         };
         
-        // Suggested badge
-        if (isSuggested && !isSelected) {
-            const suggestBadge = document.createElement('div');
-            suggestBadge.style.cssText = `
+        // Match confidence badge
+        if (matchScore > 50) {
+            const matchBadge = document.createElement('div');
+            matchBadge.style.cssText = `
                 position: absolute;
                 top: -8px;
                 right: -8px;
-                background: #ffc107;
-                color: #333;
+                background: ${matchScore > 80 ? '#28a745' : '#ffc107'};
+                color: ${matchScore > 80 ? 'white' : '#333'};
                 padding: 4px 8px;
                 border-radius: 20px;
                 font-size: 10px;
                 font-weight: bold;
                 z-index: 1;
             `;
-            suggestBadge.innerHTML = '⭐ SUGGESTED';
-            card.appendChild(suggestBadge);
+            matchBadge.innerHTML = matchScore > 80 ? '🎯 HIGH MATCH' : '👍 MATCH';
+            card.appendChild(matchBadge);
         }
         
         // Image section
@@ -645,7 +718,7 @@ function showDuplicateRecordModal(records, originalBarcode) {
             font-weight: bold;
             text-align: center;
         `;
-        badge.innerHTML = isSelected ? '<i class="fas fa-check-circle"></i> SELECTED - Press ENTER to confirm' : 'Click to select';
+        badge.innerHTML = isSelected ? '<i class="fas fa-check-circle"></i> SELECTED - Press ENTER' : 'Click to select';
         card.appendChild(badge);
         
         gridContainer.appendChild(card);
@@ -653,7 +726,6 @@ function showDuplicateRecordModal(records, originalBarcode) {
     
     listContainer.appendChild(gridContainer);
     
-    // Footer instruction
     const footerInstruction = document.createElement('div');
     footerInstruction.style.cssText = `
         margin-top: 15px;
@@ -671,10 +743,8 @@ function showDuplicateRecordModal(records, originalBarcode) {
     `;
     listContainer.appendChild(footerInstruction);
     
-    // Show modal
     modalElement.style.display = 'flex';
     
-    // Add keyboard handler for Enter key
     modalKeyHandler = (e) => {
         if (!isModalActive) return;
         
@@ -687,7 +757,6 @@ function showDuplicateRecordModal(records, originalBarcode) {
     
     document.addEventListener('keydown', modalKeyHandler);
     
-    // Keep barcode input focused for scanning
     if (barcodeInput) {
         barcodeInput.disabled = false;
         setTimeout(() => {
@@ -705,10 +774,9 @@ function showDuplicateRecordModal(records, originalBarcode) {
 async function processScan(barcode, fromQueue = false) {
     console.log(`Processing scan: ${barcode}, modalActive: ${isModalActive}`);
     
-    // If modal is active, don't process new scans - use keyboard only
     if (isModalActive) {
         playBeep(600, 150, 'sine');
-        showScanResult(`⚠️ Multiple records found. Click on the correct record, then press ENTER.`, 'warning');
+        showScanResult(`⚠️ Multiple records found. Select one, then press ENTER.`, 'warning');
         if (barcodeInput) barcodeInput.value = '';
         return;
     }
@@ -743,10 +811,32 @@ async function processScan(barcode, fromQueue = false) {
         }
         
         if (exactMatches.length > 1) {
-            playBeep(1000, 400, 'sine');
-            showScanResult(`⚠️ ${exactMatches.length} records found. Click the correct one, then press ENTER.`, 'warning');
+            console.log(`Found ${exactMatches.length} duplicates, checking for auto-selection...`);
             
-            showDuplicateRecordModal(exactMatches, barcode);
+            // Calculate scores for all matches
+            const scoredMatches = exactMatches.map(record => ({
+                record: record,
+                score: calculateMatchScore(record, recentScans)
+            }));
+            scoredMatches.sort((a, b) => b.score - a.score);
+            
+            const bestMatch = scoredMatches[0];
+            const bestScore = bestMatch.score;
+            const secondScore = scoredMatches.length > 1 ? scoredMatches[1].score : 0;
+            
+            // Auto-select if confidence is very high
+            if (bestScore > 100 && (bestScore - secondScore) > 40) {
+                console.log('🚀 HIGH CONFIDENCE - auto-selecting without modal');
+                playBeep(880, 150, 'sine');
+                showScanResult(`🎯 Auto-selected: ${bestMatch.record.artist} - ${bestMatch.record.title} (matches recent pattern)`, 'success');
+                await processSelectedRecord(bestMatch.record, barcode);
+                return;
+            }
+            
+            // Otherwise show modal with pre-selected best match
+            playBeep(1000, 400, 'sine');
+            showScanResult(`⚠️ ${exactMatches.length} records found. Select one, then press ENTER.`, 'warning');
+            showDuplicateRecordModal(exactMatches, barcode, bestMatch.record);
             return;
         }
         
@@ -806,6 +896,9 @@ async function processSelectedRecord(record, barcode) {
     if (updateData.status !== 'success') {
         throw new Error(updateData.error || 'Update failed');
     }
+    
+    // Add to recent scans for future smart suggestions
+    addToRecentScans(record);
     
     incrementCounter();
     playBeep(880, 100, 'sine');
@@ -899,14 +992,15 @@ function initInventoryTab() {
     onMainLocationTypeChange();
     updateLocationPreview();
     
-    // Reset modal state
+    // Reset state
     isModalActive = false;
     currentModalRecords = [];
     currentSelectedRecord = null;
+    recentScans = [];
     
     barcodeInput.focus();
     
-    console.log('✅ Inventory Tab initialized');
+    console.log('✅ Inventory Tab initialized with smart auto-selection');
 }
 
 function onBarcodeEnter(event) {
@@ -933,7 +1027,6 @@ window.closeDuplicateRecordModal = closeDuplicateRecordModal;
 
 document.addEventListener('tabChanged', function(e) {
     if (e.detail && e.detail.tabName === 'inventory') {
-        // Close modal if open
         if (modalKeyHandler) {
             document.removeEventListener('keydown', modalKeyHandler);
             modalKeyHandler = null;
@@ -955,4 +1048,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ inventory.js loaded with click + ENTER to confirm');
+console.log('✅ inventory.js loaded with smart auto-selection based on recent scans');
