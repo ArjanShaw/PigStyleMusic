@@ -1,4 +1,8 @@
-import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 import requests
 import base64
 from flask import Flask, jsonify, request, session, redirect, send_from_directory
@@ -56,6 +60,9 @@ SQUARE_TERMINAL_DEVICE_ID = os.environ.get('SQUARE_TERMINAL_DEVICE_ID', '0446')
 SQUARE_WEBHOOK_SIGNATURE_KEY = os.environ.get('SQUARE_WEBHOOK_SIGNATURE_KEY')
 SQUARE_APPLICATION_ID = os.environ.get('SQUARE_APPLICATION_ID')
 SQUARE_ACCESS_TOKEN = os.environ.get('SQUARE_ACCESS_TOKEN')
+DISCOGS_USER_TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+DISCOGS_USER_AGENT = os.environ.get('DISCOGS_USER_AGENT')
+
 
 # CORS Configuration
 CORS(app, 
