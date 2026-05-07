@@ -1533,6 +1533,8 @@ async function processSquarePaymentSuccess() {
             }
         } else {
             try {
+                // Get current date for date_sold
+                const today = new Date().toISOString().split('T')[0];
                 
                 const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                     method: 'PUT',
@@ -1541,7 +1543,8 @@ async function processSquarePaymentSuccess() {
                     },
                     credentials: 'include',
                     body: JSON.stringify({
-                        status_id: 3
+                        status_id: 3,
+                        date_sold: today
                     })
                 });
                 
@@ -1875,6 +1878,9 @@ window.processCashPayment = async function() {
                     // Validate commission rate for consignor items
                     validateConsignorCommission(item);
                     
+                    // Get current date for date_sold
+                    const today = new Date().toISOString().split('T')[0];
+                    
                     const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                         method: 'PUT',
                         headers: {
@@ -1882,7 +1888,8 @@ window.processCashPayment = async function() {
                         },
                         credentials: 'include',
                         body: JSON.stringify({
-                            status_id: 3
+                            status_id: 3,
+                            date_sold: today
                         })
                     });
                     
@@ -2383,11 +2390,17 @@ async function completeCheckoutWithGiftCard(amountPaid) {
                 }
             } else {
                 try {
+                    // Get current date for date_sold
+                    const today = new Date().toISOString().split('T')[0];
+                    
                     await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'include',
-                        body: JSON.stringify({ status_id: 3 })
+                        body: JSON.stringify({ 
+                            status_id: 3,
+                            date_sold: today
+                        })
                     });
                     
                     successCount++;
@@ -2510,4 +2523,4 @@ document.addEventListener('keypress', function(e) {
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
-console.log('✅ checkout.js loaded with VCP-8370 printer support, auto-add barcode, BERN IT checkbox, and auto-close modal');
+console.log('✅ checkout.js loaded with VCP-8370 printer support, auto-add barcode, BERN IT checkbox, and date_sold fix');
