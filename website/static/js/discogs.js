@@ -249,7 +249,6 @@ async function loadLocationRecords() {
             currentLocationRecords = data.records || [];
             console.log('✅ Loaded ' + currentLocationRecords.length + ' records from location');
             
-            // Debug: Log first record to see if created_at exists
             if (currentLocationRecords.length > 0) {
                 console.log('Sample record from API:', currentLocationRecords[0]);
                 console.log('created_at value:', currentLocationRecords[0].created_at);
@@ -484,7 +483,7 @@ async function renderDiscogsTable() {
 }
 
 // ============================================================================
-// Post Single Record to Discogs
+// Post Single Record to Discogs - WITH RETRIES
 // ============================================================================
 
 window.postSingleRecordToDiscogs = async function(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
@@ -508,58 +507,88 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
     if (location) appendToModalLog('📍 Location: ' + location, 'info');
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     
-    const listingData = {
-        record: {
-            id: recordId,
-            artist: artist,
-            title: title,
-            catalog_number: catalogNumber || '',
-            media_condition: mediaCondition,
-            sleeve_condition: sleeveCondition,
-            price: discogsPrice,
-            notes: notes || '',
-            location: location || ''
-        }
-    };
+    // RETRY LOGIC: Try up to 5 times for single post
+    let success = false;
+    let lastError = null;
+    const maxRetries = 5;
     
-    try {
-        const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
-            method: 'POST',
-            credentials: 'include',
-            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(listingData)
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            let discogsUrl = result.listing_url;
-            if (!discogsUrl && result.listing_id) {
-                discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
-            }
-            
-            appendToModalLog('✅ SUCCESS! Record posted to Discogs!', 'success');
-            appendToModalLog('🔗 Discogs URL: ' + discogsUrl, 'success');
-            appendToModalLog('🆔 Listing ID: ' + result.listing_id, 'info');
-            appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'success');
-            
-            showDiscogsStatusWithLink('✅ Successfully posted "' + artist + ' - ' + title + '" to Discogs!', discogsUrl, 'success');
-            await loadLocationRecords();
-        } else {
-            throw new Error(result.error || 'Failed to create listing');
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        if (attempt > 1) {
+            appendToModalLog('🔄 Retry attempt ' + attempt + ' of ' + maxRetries + '...', 'warning');
+            const waitTime = 3000 * Math.pow(2, attempt - 1);
+            appendToModalLog('   Waiting ' + (waitTime / 1000) + ' seconds before retry...', 'info');
+            await new Promise(resolve => setTimeout(resolve, waitTime));
         }
-    } catch (error) {
-        appendToModalLog('❌ FAILED: ' + error.message, 'error');
-        showDiscogsStatus('Error: ' + error.message, 'error');
-    } finally {
-        setTimeout(function() { closeProgressModal(); }, 2000);
+        
+        const listingData = {
+            record: {
+                id: recordId,
+                artist: artist,
+                title: title,
+                catalog_number: catalogNumber || '',
+                media_condition: mediaCondition,
+                sleeve_condition: sleeveCondition,
+                price: discogsPrice,
+                notes: notes || '',
+                location: location || ''
+            }
+        };
+        
+        try {
+            appendToModalLog('📤 Sending to Discogs API (attempt ' + attempt + ')...', 'info');
+            
+            const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(listingData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                success = true;
+                let discogsUrl = result.listing_url;
+                if (!discogsUrl && result.listing_id) {
+                    discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
+                }
+                
+                appendToModalLog('✅ SUCCESS! Record posted to Discogs!', 'success');
+                appendToModalLog('🔗 Discogs URL: ' + discogsUrl, 'success');
+                appendToModalLog('🆔 Listing ID: ' + result.listing_id, 'info');
+                appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'success');
+                
+                showDiscogsStatusWithLink('✅ Successfully posted "' + artist + ' - ' + title + '" to Discogs!', discogsUrl, 'success');
+                await loadLocationRecords();
+                break;
+            } else {
+                lastError = result.error || 'Unknown error';
+                appendToModalLog('❌ Attempt ' + attempt + ' failed: ' + lastError, 'error');
+                
+                if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate') && !result.error.includes('timeout'))) {
+                    appendToModalLog('   ⚠️ Non-retryable error, stopping attempts', 'warning');
+                    break;
+                }
+            }
+        } catch (error) {
+            lastError = error.message;
+            appendToModalLog('❌ Attempt ' + attempt + ' failed: ' + error.message, 'error');
+            console.error('Fetch error:', error);
+        }
     }
+    
+    if (!success) {
+        appendToModalLog('❌ PERMANENT FAILURE after ' + maxRetries + ' attempts: ' + lastError, 'error');
+        showDiscogsStatus('Error: ' + lastError, 'error');
+    }
+    
+    setTimeout(function() { closeProgressModal(); }, 2000);
 };
 
 // ============================================================================
-// Bulk Post All Records in Current Location
+// Bulk Post All Records in Current Location - WITH 3-SECOND DELAYS & RETRIES
 // ============================================================================
 
 async function bulkPostToDiscogs() {
@@ -595,6 +624,7 @@ async function bulkPostToDiscogs() {
                 notes: record.notes,
                 location: record.location
             });
+            appendToModalLog('✅ Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') - will post at $' + markupInfo.discogs_price.toFixed(2) + ' (+' + markupInfo.markup_percent + '%)', 'success');
         } else {
             appendToModalLog('❌ Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') cannot be posted: ' + markupInfo.error, 'error');
         }
@@ -615,17 +645,25 @@ async function bulkPostToDiscogs() {
     
     closeProgressModal();
     
-    if (!confirm('📋 Post ' + validatedRecords.length + ' record(s) from location "' + currentLocation + '" to Discogs?\n\nThis will create new Discogs listings for each record.\n\nRate limited to 1 request per second.')) {
+    const totalTimeMinutes = Math.ceil(validatedRecords.length * 3 / 60);
+    if (!confirm('📋 Post ' + validatedRecords.length + ' record(s) from location "' + currentLocation + '" to Discogs?\n\n' +
+        'This will create new Discogs listings for each record.\n\n' +
+        '⚠️ Each record will take approximately 3-5 seconds\n' +
+        '⏱️ Estimated total time: ~' + totalTimeMinutes + ' minute(s)\n\n' +
+        'The process will automatically retry failed listings.')) {
         return;
     }
     
     openProgressModal('Posting ' + validatedRecords.length + ' Records to Discogs');
     appendToModalLog('🚀 Starting bulk post for ' + validatedRecords.length + ' records from "' + currentLocation + '"...', 'info');
-    appendToModalLog('⏱️ Rate limited to 1 request per second. Estimated time: ~' + Math.ceil(validatedRecords.length / 60) + ' minutes', 'warning');
+    appendToModalLog('⏱️ 3-second delay between requests for reliability', 'warning');
+    appendToModalLog('🔄 Automatic retries: up to 3 attempts per record', 'info');
+    appendToModalLog('⏱️ Estimated total time: ~' + totalTimeMinutes + ' minutes', 'info');
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     
     let posted = 0;
     let failed = 0;
+    const failedRecords = [];
     
     for (let i = 0; i < validatedRecords.length; i++) {
         if (cancelResolve) {
@@ -636,68 +674,122 @@ async function bulkPostToDiscogs() {
         const record = validatedRecords[i];
         updateModalProgress(i + 1, validatedRecords.length);
         
-        appendToModalLog('[' + (i+1) + '/' + validatedRecords.length + '] Processing: ' + record.artist + ' - ' + record.title, 'info');
+        appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        appendToModalLog('[' + (i+1) + '/' + validatedRecords.length + '] 📀 ' + record.artist + ' - ' + record.title, 'info');
         appendToModalLog('   Store: $' + record.store_price.toFixed(2) + ' → Discogs: $' + record.discogs_price.toFixed(2) + ' (' + (record.markup_percent > 0 ? '+' : '') + record.markup_percent + '%)', 'info');
         
-        const listingData = {
-            record: {
-                id: record.id,
-                artist: record.artist,
-                title: record.title,
-                catalog_number: record.catalog_number || '',
-                media_condition: record.disc_condition_name || record.sleeve_condition_name || '',
-                sleeve_condition: record.sleeve_condition_name || '',
-                price: record.discogs_price,
-                notes: record.notes || '',
-                location: record.location || ''
-            }
-        };
+        // RETRY LOGIC: Try up to 3 times
+        let success = false;
+        let lastError = null;
+        const maxRetries = 3;
         
-        try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(listingData)
-            });
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            if (cancelResolve) break;
             
-            const result = await response.json();
-            
-            if (result.success) {
-                posted++;
-                let discogsUrl = result.listing_url;
-                if (!discogsUrl && result.listing_id) {
-                    discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
-                }
-                appendToModalLog('   ✅ POSTED: ' + record.artist + ' - ' + record.title + ' (ID: ' + result.listing_id + ')', 'success');
-                if (discogsUrl) {
-                    appendToModalLog('   🔗 ' + discogsUrl, 'info');
-                }
-            } else {
-                failed++;
-                appendToModalLog('   ❌ FAILED: ' + record.artist + ' - ' + record.title + ' - ' + result.error, 'error');
+            if (attempt > 1) {
+                appendToModalLog('   🔄 RETRY ' + attempt + ' of ' + maxRetries + '...', 'warning');
+                const waitTime = 5000 * attempt;
+                appendToModalLog('   ⏳ Waiting ' + (waitTime/1000) + ' seconds before retry...', 'info');
+                await new Promise(resolve => setTimeout(resolve, waitTime));
             }
-        } catch (error) {
-            failed++;
-            appendToModalLog('   ❌ FAILED: ' + record.artist + ' - ' + record.title + ' - ' + error.message, 'error');
+            
+            const listingData = {
+                record: {
+                    id: record.id,
+                    artist: record.artist,
+                    title: record.title,
+                    catalog_number: record.catalog_number || '',
+                    media_condition: record.disc_condition_name || record.sleeve_condition_name || '',
+                    sleeve_condition: record.sleeve_condition_name || '',
+                    price: record.discogs_price,
+                    notes: record.notes || '',
+                    location: record.location || ''
+                }
+            };
+            
+            try {
+                appendToModalLog('   📤 Sending to Discogs API...', 'info');
+                
+                const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(listingData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    success = true;
+                    posted++;
+                    let discogsUrl = result.listing_url;
+                    if (!discogsUrl && result.listing_id) {
+                        discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
+                    }
+                    appendToModalLog('   ✅ SUCCESS! Posted to Discogs', 'success');
+                    appendToModalLog('   🔗 Listing ID: ' + result.listing_id, 'info');
+                    if (discogsUrl) {
+                        appendToModalLog('   🔗 ' + discogsUrl, 'info');
+                    }
+                    break;
+                } else {
+                    lastError = result.error || 'Unknown error';
+                    appendToModalLog('   ❌ Attempt ' + attempt + ' failed: ' + lastError, 'error');
+                    
+                    if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate') && !result.error.includes('timeout'))) {
+                        appendToModalLog('   ⚠️ Non-retryable error, stopping attempts for this record', 'warning');
+                        break;
+                    }
+                }
+            } catch (error) {
+                lastError = error.message;
+                appendToModalLog('   ❌ Attempt ' + attempt + ' failed: ' + error.message, 'error');
+                console.error('Fetch error:', error);
+            }
         }
         
+        if (!success) {
+            failed++;
+            failedRecords.push(record.artist + ' - ' + record.title + ': ' + lastError);
+            appendToModalLog('   ❌ PERMANENT FAILURE after ' + maxRetries + ' attempts: ' + lastError, 'error');
+        }
+        
+        // CRITICAL: Wait 3 seconds between requests
         if (i < validatedRecords.length - 1 && !cancelResolve) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            appendToModalLog('   ⏳ Waiting 3 seconds before next record...', 'info');
+            await new Promise(resolve => setTimeout(resolve, 3000));
         }
     }
     
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-    appendToModalLog('📊 RESULTS:', 'info');
-    appendToModalLog('   ✅ Posted: ' + posted, 'success');
+    appendToModalLog('📊 FINAL RESULTS:', 'info');
+    appendToModalLog('   ✅ Successfully posted: ' + posted, 'success');
     appendToModalLog('   ❌ Failed: ' + failed, failed > 0 ? 'error' : 'info');
+    
+    if (failedRecords.length > 0) {
+        appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+        appendToModalLog('❌ FAILED RECORDS:', 'warning');
+        for (const failedRecord of failedRecords) {
+            appendToModalLog('   • ' + failedRecord, 'error');
+        }
+    }
+    
+    appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     
     if (posted > 0) {
         appendToModalLog('🔄 Reloading location data...', 'info');
         await loadLocationRecords();
         appendToModalLog('✅ Data refreshed', 'success');
+    }
+    
+    if (posted > 0 && failed === 0) {
+        showDiscogsStatus('✅ Successfully posted all ' + posted + ' records to Discogs!', 'success');
+    } else if (posted > 0 && failed > 0) {
+        showDiscogsStatus('⚠️ Posted ' + posted + ' records, ' + failed + ' failed. Check log for details.', 'warning');
+    } else {
+        showDiscogsStatus('❌ Failed to post any records. Check log for details.', 'error');
     }
 }
 
@@ -1024,4 +1116,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - Location-based bulk posting with markup rules');
+console.log('✅ discogs.js loaded - Location-based bulk posting with 3-second delays and retries');
