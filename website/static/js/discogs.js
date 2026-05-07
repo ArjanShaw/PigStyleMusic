@@ -1,5 +1,5 @@
 // ============================================================================
-// discogs.js - Location-based bulk posting to Discogs
+// discogs.js - Location-based bulk posting to Discogs (No listing ID tracking)
 // ============================================================================
 
 let currentLocationRecords = [];
@@ -237,10 +237,9 @@ function renderLocationSelect(locations) {
     locations.forEach(location => {
         const option = document.createElement('option');
         option.value = location;
-        // Truncate long location names for display
         const displayText = location.length > 100 ? location.substring(0, 97) + '...' : location;
         option.textContent = displayText;
-        option.title = location; // Show full location on hover
+        option.title = location;
         locationSelect.appendChild(option);
     });
     
@@ -256,7 +255,7 @@ async function loadLocationRecords() {
     
     if (!selectedLocation) {
         if (tableBody) {
-            tableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
         }
         if (postButton) {
             postButton.disabled = true;
@@ -269,7 +268,7 @@ async function loadLocationRecords() {
     isLoading = true;
     
     if (tableBody) {
-        tableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading records...</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading records...</td></tr>';
     }
     
     try {
@@ -304,7 +303,7 @@ async function loadLocationRecords() {
     } catch (error) {
         console.error('Error loading location records:', error);
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 40px; color: #dc3545;">
+            tableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 40px; color: #dc3545;">
                 <i class="fas fa-exclamation-triangle"></i> Error: ${error.message}
             </td></tr>`;
         }
@@ -338,7 +337,7 @@ function applySearchFilter() {
     renderTable();
     
     if (postButton) {
-        const eligibleCount = filteredRecords.filter(r => !r.discogs_listing_id && r.status_id === 2).length;
+        const eligibleCount = filteredRecords.filter(r => r.status_id === 2).length;
         postButton.innerHTML = `<i class="fab fa-discogs"></i> Post ${eligibleCount} of ${filteredRecords.length} Record(s) to Discogs`;
         postButton.disabled = eligibleCount === 0;
         postButton.style.opacity = eligibleCount === 0 ? '0.5' : '1';
@@ -375,7 +374,7 @@ function renderTable() {
     }
     
     if (filteredRecords.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 40px;">
+        tableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 40px;">
             ${currentLocation ? 'No records found in this location.' : 'Select a location above'}
         </td></tr>`;
         return;
@@ -391,16 +390,7 @@ function renderTable() {
         else if (record.status_id === 3) statusBadge = '<span class="status-badge sold">💰 Sold</span>';
         else statusBadge = '<span class="status-badge">❓ Unknown</span>';
         
-        let discogsStatus = '';
-        const canPost = !record.discogs_listing_id && record.status_id === 2;
-        
-        if (record.discogs_listing_id) {
-            discogsStatus = '<span class="status-badge" style="background: #28a745; color: white;"><i class="fab fa-discogs"></i> Listed</span>';
-        } else if (record.status_id === 2) {
-            discogsStatus = '<span class="status-badge" style="background: #ffc107; color: #333;"><i class="fab fa-discogs"></i> Ready to List</span>';
-        } else {
-            discogsStatus = '<span class="status-badge" style="background: #6c757d; color: white;">Not Available</span>';
-        }
+        const canPost = record.status_id === 2;
         
         html += `
             <tr>
@@ -419,14 +409,11 @@ function renderTable() {
                 <td>${record.store_price ? `$${parseFloat(record.store_price).toFixed(2)}` : '—'}</td>
                 <td title="${escapeHtml(record.location || '')}">${escapeHtml(record.location ? record.location.substring(0, 50) : '—')}</td>
                 <td>${statusBadge}</td>
-                <td>${discogsStatus}</td>
                 <td style="text-align: center;">
                     ${canPost ? 
                         `<button class="post-single-btn" data-record-id="${record.id}" data-artist="${escapeHtml(record.artist)}" data-title="${escapeHtml(record.title)}" data-price="${record.store_price}" data-media-condition="${record.disc_condition_name || ''}" data-sleeve-condition="${record.sleeve_condition_name || ''}" data-catalog="${escapeHtml(record.catalog_number || '')}" data-location="${escapeHtml(record.location || '')}" data-notes="${escapeHtml(record.notes || '')}">
                             <i class="fab fa-discogs"></i> Post
                          </button>` :
-                        record.discogs_listing_id ? 
-                        `<span style="color: #28a745;"><i class="fas fa-check-circle"></i> Listed</span>` :
                         `<span style="color: #999;">—</span>`
                     }
                 </td>
@@ -551,7 +538,7 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
             
             showStatusWithLink(`✅ Successfully posted "${artist} - ${title}" to Discogs!`, discogsUrl, 'success');
             
-            // Reload the current location to update the listing status
+            // Reload the current location to refresh the list
             await loadLocationRecords();
             
         } else {
@@ -571,11 +558,11 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
 // ============================================================================
 
 async function bulkPostToDiscogs() {
-    // Get eligible records (active and not already listed)
-    const eligibleRecords = filteredRecords.filter(r => !r.discogs_listing_id && r.status_id === 2);
+    // Get eligible records (active status)
+    const eligibleRecords = filteredRecords.filter(r => r.status_id === 2);
     
     if (eligibleRecords.length === 0) {
-        showStatus('No eligible records to post (all already listed or not active)', 'warning');
+        showStatus('No eligible records to post (only Active records can be posted)', 'warning');
         return;
     }
     
@@ -715,7 +702,7 @@ window.refreshDiscogsLocations = loadLocations;
 // ============================================================================
 
 function initDiscogsTab() {
-    console.log('🎵 Initializing Discogs Tab (Simplified - Location-based only)...');
+    console.log('🎵 Initializing Discogs Tab (Location-based only)...');
     
     tableBody = document.getElementById('combined-inventory-body');
     locationSelect = document.getElementById('discogs-location-select');
@@ -767,7 +754,7 @@ function initDiscogsTab() {
     loadDiscogsConfig();
     loadLocations();
     
-    tableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
     
     console.log('✅ Discogs Tab initialized');
 }
@@ -793,4 +780,4 @@ document.addEventListener('DOMContentLoaded', function() {
 // Make initDiscogsTab globally available
 window.initDiscogsTab = initDiscogsTab;
 
-console.log('✅ discogs.js loaded - Location-based bulk posting only');
+console.log('✅ discogs.js loaded - Location-based bulk posting only (no listing ID tracking)');
