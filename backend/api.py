@@ -703,7 +703,207 @@ def create_discogs_listing_single():
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
  
- 
+ # ==================== ADMIN ORDERS ENDPOINTS ====================
+
+@app.route('/api/admin/orders', methods=['GET', 'OPTIONS'])
+def get_admin_orders():
+    """Get all orders for admin panel"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+    
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        status = request.args.get('status', 'all')
+        search = request.args.get('search', '').strip()
+        
+        offset = (page - 1) * per_page
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # FIXED: Removed the problematic GROUP BY - get item_count separately if needed
+        query = '''
+            SELECT o.*
+            FROM orders o
+            WHERE 1=1
+        '''
+        params = []
+        
+        if status != 'all':
+            query += ' AND o.order_status = ?'
+            params.append(status)
+        
+        if search:
+            query += ' AND (o.order_number LIKE ? OR o.customer_name LIKE ? OR o.customer_email LIKE ?)'
+            search_term = f'%{search}%'
+            params.extend([search_term, search_term, search_term])
+        
+        query += ' ORDER BY o.created_at DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        
+        cursor.execute(query, params)
+        orders = cursor.fetchall()
+        
+        # Get total count separately
+        count_query = 'SELECT COUNT(*) as total FROM orders WHERE 1=1'
+        count_params = []
+        if status != 'all':
+            count_query += ' AND order_status = ?'
+            count_params.append(status)
+        
+        cursor.execute(count_query, count_params)
+        total = cursor.fetchone()['total']
+        
+        conn.close()
+        
+        orders_list = []
+        for order in orders:
+            order_dict = dict(order)
+            # Get item count for each order
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute('SELECT COUNT(*) as item_count FROM order_items WHERE order_id = ?', (order_dict['id'],))
+            item_count = cur2.fetchone()['item_count']
+            conn2.close()
+            order_dict['item_count'] = item_count
+            orders_list.append(order_dict)
+        
+        return jsonify({
+            'status': 'success',
+            'orders': orders_list,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page if total > 0 else 1
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting admin orders: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== ADMIN ORDERS DETAIL ENDPOINTS ====================
+
+@app.route('/api/admin/orders/<order_id>', methods=['GET', 'OPTIONS'])
+@login_required
+@role_required(['admin'])
+def get_admin_order_detail(order_id):
+    """Get detailed order information"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM orders WHERE id = ?', (order_id,))
+        order = cursor.fetchone()
+        
+        if not order:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        cursor.execute('SELECT * FROM order_items WHERE order_id = ?', (order_id,))
+        items = cursor.fetchall()
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'order': dict(order),
+            'items': [dict(item) for item in items]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting order detail: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/admin/orders/<order_id>/status', methods=['PUT', 'OPTIONS'])
+@login_required
+@role_required(['admin'])
+def update_order_status(order_id):
+    """Update order status"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+    
+    try:
+        data = request.json
+        new_status = data.get('status')
+        
+        if not new_status:
+            return jsonify({'status': 'error', 'error': 'Status required'}), 400
+        
+        valid_statuses = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
+        if new_status not in valid_statuses:
+            return jsonify({'status': 'error', 'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('UPDATE orders SET order_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', (new_status, order_id))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success', 'message': f'Order status updated to {new_status}'})
+        
+    except Exception as e:
+        app.logger.error(f"Error updating order status: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/admin/orders/stats', methods=['GET', 'OPTIONS'])
+def get_admin_orders_stats():
+    """Get order statistics for admin panel"""
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Total orders
+        cursor.execute('SELECT COUNT(*) as total FROM orders')
+        total = cursor.fetchone()['total']
+        
+        # Total revenue from paid orders
+        cursor.execute("SELECT COALESCE(SUM(total), 0) as revenue FROM orders WHERE payment_status = 'paid'")
+        revenue = cursor.fetchone()['revenue']
+        
+        # Pending orders
+        cursor.execute("SELECT COUNT(*) as pending FROM orders WHERE order_status = 'pending'")
+        pending = cursor.fetchone()['pending']
+        
+        # Paid orders
+        cursor.execute("SELECT COUNT(*) as paid FROM orders WHERE payment_status = 'paid'")
+        paid = cursor.fetchone()['paid']
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'stats': {
+                'total_orders': total,
+                'total_revenue': float(revenue),
+                'pending_orders': pending,
+                'paid_orders': paid
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting order stats: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/discogs/stats', methods=['GET'])
 def get_discogs_stats():
@@ -4989,38 +5189,7 @@ def interpolate_markup(days_old, rules):
             return y1 + t * (y2 - y1)
     
     return rules_list[-1][1]
-
-def interpolate_markup(days_old, rules):
-    """Interpolate markup percentage between rule points"""
-    if not rules:
-        return 0
-    
-    rules_list = [(r['days_old'], r['markup_percent']) for r in rules]
-    rules_list.sort()
-    
-    # If days_old is less than first rule, use first rule
-    if days_old <= rules_list[0][0]:
-        return rules_list[0][1]
-    
-    # If days_old is greater than last rule, use last rule
-    if days_old >= rules_list[-1][0]:
-        return rules_list[-1][1]
-    
-    # Find the two rules to interpolate between
-    for i in range(len(rules_list) - 1):
-        if rules_list[i][0] <= days_old <= rules_list[i+1][0]:
-            x1, y1 = rules_list[i]
-            x2, y2 = rules_list[i+1]
-            
-            # Linear interpolation
-            if x2 == x1:
-                return y1
-            
-            t = (days_old - x1) / (x2 - x1)
-            return y1 + t * (y2 - y1)
-    
-    return rules_list[-1][1]
-
+  
 @app.route('/api/discogs/calculate-markup', methods=['POST'])
 def calculate_markup():
     """Calculate Discogs price based on record age and markup rules (NO FALLBACK)"""
