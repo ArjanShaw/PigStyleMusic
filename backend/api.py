@@ -35,6 +35,17 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
 
+
+# Session configuration - CRITICAL FOR PRODUCTION
+app.config.update(
+    SESSION_COOKIE_SECURE=True,  # REQUIRED for HTTPS
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',  # or 'None' if cross-domain
+    SESSION_COOKIE_DOMAIN=None,  # Auto-detect domain
+    SESSION_COOKIE_PATH='/',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24)
+)
+
 # Configure upload settings for accessories
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'images', 'merch')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
