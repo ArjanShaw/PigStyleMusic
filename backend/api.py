@@ -656,7 +656,7 @@ def create_discogs_listing_single():
         # Create listing on Discogs
         listing_url_endpoint = "https://api.discogs.com/marketplace/listings"
         
-        comments = f"[PIGSTYLE ID: {record['id']}] | Age: {days_old} days | Markup: {markup_percent}%"
+        comments = f"[PIGSTYLE ID: {record['id']}]"
         if record.get('location'):
             comments += f" | Location: {record.get('location')}"
         if record.get('notes'):
@@ -4751,7 +4751,7 @@ def get_records_by_location():
             SELECT 
                 r.id, r.artist, r.title, r.barcode, r.image_url, 
                 r.catalog_number, r.store_price, r.location, 
-                r.status_id, r.notes,
+                r.status_id, r.notes, r.created_at,
                 cs.condition_name as sleeve_condition_name,
                 cd.condition_name as disc_condition_name,
                 s.status_name
@@ -4780,6 +4780,7 @@ def get_records_by_location():
                 'status_id': record['status_id'],
                 'status_name': record['status_name'],
                 'notes': record['notes'],
+                'created_at': record['created_at'],  # ADD THIS LINE
                 'sleeve_condition_name': record['sleeve_condition_name'],
                 'disc_condition_name': record['disc_condition_name']
             })
@@ -4795,7 +4796,7 @@ def get_records_by_location():
         
     except Exception as e:
         app.logger.error(f"Error getting records by location: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500 
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== MARKUP RULES ENDPOINTS ====================
 
@@ -4900,26 +4901,22 @@ def delete_markup_rule(rule_id):
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 def calculate_markup_for_record(created_at_date, store_price):
     """Calculate the Discogs price based on record age and markup rules"""
     from datetime import datetime, date
     
     # Parse created_at - handle both date and datetime strings
     if isinstance(created_at_date, str):
-        # Try different formats
         try:
-            # Try date only format
             created_date = datetime.strptime(created_at_date.split('T')[0], '%Y-%m-%d').date()
         except:
             try:
-                # Try full datetime format
                 created_date = datetime.strptime(created_at_date, '%Y-%m-%d %H:%M:%S').date()
             except:
                 try:
-                    # Try another common format
                     created_date = datetime.strptime(created_at_date, '%Y-%m-%d').date()
                 except:
-                    # Fallback: use today - 0 days
                     print(f"⚠️ Could not parse date: {created_at_date}, using today")
                     created_date = date.today()
     else:
@@ -4936,12 +4933,18 @@ def calculate_markup_for_record(created_at_date, store_price):
     rules = cursor.fetchall()
     conn.close()
     
-    if not rules:
-        # Default if no rules
-        markup_percent = 20
-    else:
-        # Interpolate between rules
-        markup_percent = interpolate_markup(days_old, rules)
+    if not rules or len(rules) == 0:
+        # No rules found - return store price with 0% markup
+        print(f"⚠️ No markup rules found! Using 0% markup for record {days_old} days old")
+        return {
+            'days_old': days_old,
+            'markup_percent': 0,
+            'store_price': store_price,
+            'discogs_price': store_price
+        }
+    
+    # Interpolate markup based on days old
+    markup_percent = interpolate_markup(days_old, rules)
     
     # Calculate Discogs price
     discogs_price = store_price * (1 + markup_percent / 100)
@@ -4987,6 +4990,99 @@ def interpolate_markup(days_old, rules):
     
     return rules_list[-1][1]
 
+def interpolate_markup(days_old, rules):
+    """Interpolate markup percentage between rule points"""
+    if not rules:
+        return 0
+    
+    rules_list = [(r['days_old'], r['markup_percent']) for r in rules]
+    rules_list.sort()
+    
+    # If days_old is less than first rule, use first rule
+    if days_old <= rules_list[0][0]:
+        return rules_list[0][1]
+    
+    # If days_old is greater than last rule, use last rule
+    if days_old >= rules_list[-1][0]:
+        return rules_list[-1][1]
+    
+    # Find the two rules to interpolate between
+    for i in range(len(rules_list) - 1):
+        if rules_list[i][0] <= days_old <= rules_list[i+1][0]:
+            x1, y1 = rules_list[i]
+            x2, y2 = rules_list[i+1]
+            
+            # Linear interpolation
+            if x2 == x1:
+                return y1
+            
+            t = (days_old - x1) / (x2 - x1)
+            return y1 + t * (y2 - y1)
+    
+    return rules_list[-1][1]
+
+@app.route('/api/discogs/calculate-markup', methods=['POST'])
+def calculate_markup():
+    """Calculate Discogs price based on record age and markup rules (NO FALLBACK)"""
+    try:
+        data = request.json
+        created_at = data.get('created_at')
+        store_price = float(data.get('store_price', 0))
+        
+        if not created_at:
+            return jsonify({'success': False, 'error': 'created_at required'}), 400
+        
+        # Get markup rules from database
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
+        rules = cursor.fetchall()
+        conn.close()
+        
+        # NO FALLBACK - if no rules, return error
+        if not rules or len(rules) == 0:
+            return jsonify({
+                'success': False, 
+                'error': 'No markup rules configured. Please add markup rules in the Discogs tab.'
+            }), 400
+        
+        # Parse created_at date
+        from datetime import datetime, date
+        if isinstance(created_at, str):
+            try:
+                created_date = datetime.strptime(created_at.split('T')[0], '%Y-%m-%d').date()
+            except:
+                try:
+                    created_date = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S').date()
+                except:
+                    try:
+                        created_date = datetime.strptime(created_at, '%Y-%m-%d').date()
+                    except:
+                        return jsonify({'success': False, 'error': f'Could not parse date: {created_at}'}), 400
+        else:
+            created_date = created_at
+        
+        # Calculate days old
+        today = date.today()
+        days_old = (today - created_date).days
+        
+        # Calculate markup percentage
+        markup_percent = interpolate_markup(days_old, rules)
+        
+        # Calculate Discogs price
+        discogs_price = round(store_price * (1 + markup_percent / 100), 2)
+        
+        return jsonify({
+            'success': True,
+            'days_old': days_old,
+            'markup_percent': round(markup_percent, 1),
+            'store_price': store_price,
+            'discogs_price': discogs_price
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error calculating markup: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
