@@ -3,7 +3,7 @@
 // ============================================================================
 
 let currentLocationRecords = [];
-let filteredRecords = [];
+let discogsFilteredRecords = [];  // Renamed to avoid conflict
 let currentLocation = null;
 let isLoading = false;
 let cancelResolve = false;
@@ -81,7 +81,7 @@ function openProgressModal(title) {
     if (modalCancelBtn) {
         modalCancelBtn.onclick = () => {
             cancelResolve = true;
-            appendToModalLog('Cancelling... Please wait for current item to complete.', 'warning');
+            appendToModalLog('⚠️ Cancelling... Please wait for current item to complete.', 'warning');
             modalCancelBtn.disabled = true;
             modalCancelBtn.textContent = 'Cancelling...';
         };
@@ -129,18 +129,41 @@ function appendToModalLog(message, type) {
 }
 
 // ============================================================================
+// Toggle Markup Rules Collapsible Section
+// ============================================================================
+
+window.toggleMarkupRules = function() {
+    const content = document.getElementById('markup-rules-content');
+    const icon = document.getElementById('markup-rules-toggle-icon');
+    
+    if (!content || !icon) {
+        console.error('Markup rules elements not found');
+        return;
+    }
+    
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+        loadMarkupRules();
+    } else {
+        content.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+};
+
+// ============================================================================
 // Load unique locations from records
 // ============================================================================
 
 async function loadLocations() {
-    console.log('Loading locations from API...');
+    console.log('📍 Loading locations from API...');
     
     try {
-        const url = AppConfig.baseUrl + '/api/locations';
+        const url = window.AppConfig.baseUrl + '/api/locations';
         
         const response = await fetch(url, {
             credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
         
         if (!response.ok) {
@@ -151,27 +174,27 @@ async function loadLocations() {
         
         if (data.status === 'success') {
             renderLocationSelect(data.locations);
-            console.log('Loaded ' + data.locations.length + ' locations');
+            console.log('✅ Loaded ' + data.locations.length + ' locations');
         } else {
             throw new Error(data.error || 'Failed to load locations');
         }
     } catch (error) {
         console.error('Error loading locations:', error);
         renderLocationSelect([]);
-        showStatus('Warning: Could not load locations - ' + error.message, 'warning');
+        showDiscogsStatus('Warning: Could not load locations - ' + error.message, 'warning');
     }
 }
 
 function renderLocationSelect(locations) {
-    if (!locationSelect) {
+    if (!discogsLocationSelect) {
         console.error('locationSelect element not found!');
         return;
     }
     
-    locationSelect.innerHTML = '<option value="">-- Select a location --</option>';
+    discogsLocationSelect.innerHTML = '<option value="">-- Select a location --</option>';
     
     if (!locations || locations.length === 0) {
-        locationSelect.innerHTML = '<option value="">-- No locations found --</option>';
+        discogsLocationSelect.innerHTML = '<option value="">-- No locations found --</option>';
         return;
     }
     
@@ -179,7 +202,7 @@ function renderLocationSelect(locations) {
         const option = document.createElement('option');
         option.value = location;
         option.textContent = location;
-        locationSelect.appendChild(option);
+        discogsLocationSelect.appendChild(option);
     });
 }
 
@@ -188,15 +211,15 @@ function renderLocationSelect(locations) {
 // ============================================================================
 
 async function loadLocationRecords() {
-    const selectedLocation = locationSelect ? locationSelect.value : null;
+    const selectedLocation = discogsLocationSelect ? discogsLocationSelect.value : null;
     
     if (!selectedLocation) {
-        if (tableBody) {
-            tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
+        if (discogsTableBody) {
+            discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
         }
-        if (postButton) {
-            postButton.disabled = true;
-            postButton.style.opacity = '0.5';
+        if (discogsPostButton) {
+            discogsPostButton.disabled = true;
+            discogsPostButton.style.opacity = '0.5';
         }
         return;
     }
@@ -204,16 +227,16 @@ async function loadLocationRecords() {
     currentLocation = selectedLocation;
     isLoading = true;
     
-    if (tableBody) {
-        tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading records...</td></tr>';
+    if (discogsTableBody) {
+        discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading records...</td></tr>';
     }
     
     try {
-        const url = AppConfig.baseUrl + '/api/records/by-location?location=' + encodeURIComponent(selectedLocation);
+        const url = window.AppConfig.baseUrl + '/api/records/by-location?location=' + encodeURIComponent(selectedLocation);
         
         const response = await fetch(url, {
             credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
         
         if (!response.ok) {
@@ -224,13 +247,21 @@ async function loadLocationRecords() {
         
         if (data.status === 'success') {
             currentLocationRecords = data.records || [];
-            applySearchFilter();
+            console.log('✅ Loaded ' + currentLocationRecords.length + ' records from location');
             
-            if (postButton) {
-                postButton.disabled = false;
-                postButton.style.opacity = '1';
-                var eligibleCount = filteredRecords.filter(function(r) { return r.status_id === 2; }).length;
-                postButton.innerHTML = '<i class="fab fa-discogs"></i> Post ' + eligibleCount + ' of ' + filteredRecords.length + ' Record(s) to Discogs';
+            // Debug: Log first record to see if created_at exists
+            if (currentLocationRecords.length > 0) {
+                console.log('Sample record from API:', currentLocationRecords[0]);
+                console.log('created_at value:', currentLocationRecords[0].created_at);
+            }
+            
+            applyDiscogsSearchFilter();
+            
+            if (discogsPostButton) {
+                discogsPostButton.disabled = false;
+                discogsPostButton.style.opacity = '1';
+                const eligibleCount = discogsFilteredRecords.filter(function(r) { return r.status_id === 2; }).length;
+                discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post ' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' Record(s) to Discogs';
             }
         } else {
             throw new Error(data.error || 'Failed to load records');
@@ -238,12 +269,12 @@ async function loadLocationRecords() {
         
     } catch (error) {
         console.error('Error loading location records:', error);
-        if (tableBody) {
-            tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + error.message + '</td></tr>';
+        if (discogsTableBody) {
+            discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + error.message + '</td></tr>';
         }
-        if (postButton) {
-            postButton.disabled = true;
-            postButton.style.opacity = '0.5';
+        if (discogsPostButton) {
+            discogsPostButton.disabled = true;
+            discogsPostButton.style.opacity = '0.5';
         }
     } finally {
         isLoading = false;
@@ -251,30 +282,38 @@ async function loadLocationRecords() {
 }
 
 // ============================================================================
-// Apply search filter
+// Apply search filter to current location records
 // ============================================================================
 
-function applySearchFilter() {
-    var searchTerm = (searchInput && searchInput.value) ? searchInput.value.trim().toLowerCase() : '';
+function applyDiscogsSearchFilter() {
+    const searchTerm = (discogsSearchInput && discogsSearchInput.value) ? discogsSearchInput.value.trim().toLowerCase() : '';
     
     if (searchTerm) {
-        filteredRecords = currentLocationRecords.filter(function(record) {
-            var matchesArtist = record.artist && record.artist.toLowerCase().indexOf(searchTerm) !== -1;
-            var matchesTitle = record.title && record.title.toLowerCase().indexOf(searchTerm) !== -1;
-            var matchesCatalog = record.catalog_number && record.catalog_number.toLowerCase().indexOf(searchTerm) !== -1;
+        discogsFilteredRecords = currentLocationRecords.filter(function(record) {
+            const matchesArtist = record.artist && record.artist.toLowerCase().indexOf(searchTerm) !== -1;
+            const matchesTitle = record.title && record.title.toLowerCase().indexOf(searchTerm) !== -1;
+            const matchesCatalog = record.catalog_number && record.catalog_number.toLowerCase().indexOf(searchTerm) !== -1;
             return matchesArtist || matchesTitle || matchesCatalog;
         });
     } else {
-        filteredRecords = currentLocationRecords.slice();
+        discogsFilteredRecords = currentLocationRecords.slice();
     }
     
-    renderTable();
+    renderDiscogsTable();
     
-    if (postButton) {
-        var eligibleCount = filteredRecords.filter(function(r) { return r.status_id === 2; }).length;
-        postButton.innerHTML = '<i class="fab fa-discogs"></i> Post ' + eligibleCount + ' of ' + filteredRecords.length + ' Record(s) to Discogs';
-        postButton.disabled = (eligibleCount === 0);
-        postButton.style.opacity = (eligibleCount === 0) ? '0.5' : '1';
+    if (discogsPostButton) {
+        const eligibleCount = discogsFilteredRecords.filter(function(r) { return r.status_id === 2; }).length;
+        discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post ' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' Record(s) to Discogs';
+        discogsPostButton.disabled = (eligibleCount === 0);
+        discogsPostButton.style.opacity = (eligibleCount === 0) ? '0.5' : '1';
+    }
+    
+    if (discogsStatusMessage && currentLocation) {
+        const searchInfo = searchTerm ? ' (matching "' + searchTerm + '")' : '';
+        discogsStatusMessage.innerHTML = '📍 Location: ' + currentLocation + ' | ' + discogsFilteredRecords.length + ' record(s) found' + searchInfo;
+        discogsStatusMessage.className = 'status-message status-info';
+        discogsStatusMessage.style.display = 'block';
+        setTimeout(function() { if (discogsStatusMessage) discogsStatusMessage.style.display = 'none'; }, 3000);
     }
 }
 
@@ -282,35 +321,15 @@ function applySearchFilter() {
 // Clear search filter
 // ============================================================================
 
-function clearDiscogsSearch() {
-    if (searchInput) {
-        searchInput.value = '';
+window.clearDiscogsSearch = function() {
+    if (discogsSearchInput) {
+        discogsSearchInput.value = '';
     }
-    applySearchFilter();
-}
+    applyDiscogsSearchFilter();
+};
 
 // ============================================================================
-// Toggle Markup Rules
-// ============================================================================
-
-function toggleMarkupRules() {
-    var content = document.getElementById('markup-rules-content');
-    var icon = document.getElementById('markup-rules-toggle-icon');
-    
-    if (!content || !icon) return;
-    
-    if (content.style.display === 'none' || content.style.display === '') {
-        content.style.display = 'block';
-        icon.style.transform = 'rotate(180deg)';
-        loadMarkupRules();
-    } else {
-        content.style.display = 'none';
-        icon.style.transform = 'rotate(0deg)';
-    }
-}
-
-// ============================================================================
-// Calculate markup for record
+// Calculate markup based on record age using API
 // ============================================================================
 
 async function calculateMarkupForRecord(createdAt, storePrice) {
@@ -322,10 +341,10 @@ async function calculateMarkupForRecord(createdAt, storePrice) {
     }
     
     try {
-        const response = await fetch(AppConfig.baseUrl + '/api/discogs/calculate-markup', {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/calculate-markup', {
             method: 'POST',
             credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -350,6 +369,7 @@ async function calculateMarkupForRecord(createdAt, storePrice) {
             };
         }
     } catch (error) {
+        console.error('Error in calculateMarkupForRecord:', error);
         return {
             success: false,
             error: error.message
@@ -358,52 +378,61 @@ async function calculateMarkupForRecord(createdAt, storePrice) {
 }
 
 // ============================================================================
-// Render table
+// Render table from discogsFilteredRecords
 // ============================================================================
 
-async function renderTable() {
-    if (!tableBody) return;
+async function renderDiscogsTable() {
+    if (!discogsTableBody) return;
     
-    if (filteredRecords.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this location.' : 'Select a location above') + '</td></tr>';
+    if (discogsFilteredRecords.length === 0) {
+        discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this location.' : 'Select a location above') + '</td></tr>';
         return;
     }
     
-    var html = '';
+    let html = '';
+    let processedCount = 0;
     
-    for (var i = 0; i < filteredRecords.length; i++) {
-        var record = filteredRecords[i];
-        var imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
+    for (const record of discogsFilteredRecords) {
+        let imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
         
-        var statusBadge = '';
-        if (record.status_id === 1) statusBadge = '<span class="status-badge new">New</span>';
-        else if (record.status_id === 2) statusBadge = '<span class="status-badge active">Active</span>';
-        else if (record.status_id === 3) statusBadge = '<span class="status-badge sold">Sold</span>';
-        else statusBadge = '<span class="status-badge">Unknown</span>';
+        let statusBadge = '';
+        if (record.status_id === 1) statusBadge = '<span class="status-badge new">📋 New</span>';
+        else if (record.status_id === 2) statusBadge = '<span class="status-badge active">✅ Active</span>';
+        else if (record.status_id === 3) statusBadge = '<span class="status-badge sold">💰 Sold</span>';
+        else statusBadge = '<span class="status-badge">❓ Unknown</span>';
         
-        var canPost = (record.status_id === 2);
-        var discogsPrice = null;
-        var markupPercent = null;
-        var priceError = null;
+        const canPost = (record.status_id === 2);
+        let discogsPrice = null;
+        let markupPercent = null;
+        let priceError = null;
         
-        if (canPost && record.created_at) {
-            var markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
-            if (markupInfo.success) {
-                discogsPrice = markupInfo.discogs_price;
-                markupPercent = markupInfo.markup_percent;
+        if (canPost) {
+            if (!record.created_at) {
+                priceError = 'Missing creation date';
+                console.warn('Record ' + record.id + ' has no created_at');
             } else {
-                priceError = markupInfo.error;
+                try {
+                    console.log('Calculating markup for record ' + record.id + ', created_at: ' + record.created_at);
+                    const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
+                    if (markupInfo.success) {
+                        discogsPrice = markupInfo.discogs_price;
+                        markupPercent = markupInfo.markup_percent;
+                    } else {
+                        priceError = markupInfo.error;
+                    }
+                } catch (err) {
+                    priceError = err.message;
+                    console.error('Error calculating markup for record ' + record.id + ':', err);
+                }
             }
-        } else if (canPost && !record.created_at) {
-            priceError = 'Missing creation date';
         }
         
-        var displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
-        var markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
-        var displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
+        const displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
+        const markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
+        const displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
         
         html += '<tr>';
-        html += '<td style="text-align: center;">' + (imageUrl ? '<img src="' + escapeHtml(imageUrl) + '" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">' : '<div style="width: 40px; height: 40px; background: #e0e0e0; border-radius: 4px; display: inline-block;"></div>') + '</td>';
+        html += '<td style="text-align: center;">' + (imageUrl ? '<img src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(record.artist) + '" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">' : '<div style="width: 40px; height: 40px; background: #e0e0e0; border-radius: 4px; display: inline-block;"></div>') + '</td>';
         html += '<td>' + (record.id || '—') + '</td>';
         html += '<td><strong>' + escapeHtml(record.artist) + '</strong></td>';
         html += '<td>' + escapeHtml(record.title) + '</td>';
@@ -411,7 +440,7 @@ async function renderTable() {
         html += '<td>' + (record.disc_condition_name || record.sleeve_condition_name || '—') + '</td>';
         html += '<td>' + (record.sleeve_condition_name || '—') + '</td>';
         html += '<td>' + (record.store_price ? '$' + parseFloat(record.store_price).toFixed(2) : '—') + '</td>';
-        html += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + (priceError ? '<div style="font-size: 10px; color: #dc3545;">' + priceError + '</div>' : '') + '</td>';
+        html += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + (priceError ? '<div style="font-size: 10px; color: #dc3545;">⚠️ ' + priceError + '</div>' : '') + '</td>';
         html += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
         html += '<td title="' + escapeHtml(record.location || '') + '">' + (record.location ? record.location.substring(0, 50) : '—') + '</td>';
         html += '<td>' + statusBadge + '</td>';
@@ -419,58 +448,67 @@ async function renderTable() {
         if (canPost && discogsPrice) {
             html += '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(record.artist) + '" data-title="' + escapeHtml(record.title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + (record.disc_condition_name || '') + '" data-sleeve-condition="' + (record.sleeve_condition_name || '') + '" data-catalog="' + escapeHtml(record.catalog_number || '') + '" data-location="' + escapeHtml(record.location || '') + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>';
         } else if (canPost && !discogsPrice) {
-            html += '<span style="color: #dc3545; font-size: 11px;">Cannot post</span>';
+            html += '<span style="color: #dc3545; font-size: 11px;" title="' + (priceError || 'Cannot post') + '">⚠️ Cannot post</span>';
         } else {
             html += '<span style="color: #999;">—</span>';
         }
         html += '</td></tr>';
+        
+        processedCount++;
+        if (processedCount % 10 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
     }
     
-    tableBody.innerHTML = html;
+    discogsTableBody.innerHTML = html;
     
-    // Attach event listeners
-    var buttons = document.querySelectorAll('.post-single-btn');
-    for (var j = 0; j < buttons.length; j++) {
-        buttons[j].addEventListener('click', function(e) {
+    // Attach event listeners to post buttons
+    document.querySelectorAll('.post-single-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
             e.preventDefault();
-            var btn = this;
             postSingleRecordToDiscogs(
-                parseInt(btn.dataset.recordId),
-                btn.dataset.artist,
-                btn.dataset.title,
-                parseFloat(btn.dataset.price),
-                parseFloat(btn.dataset.discogsPrice),
-                parseFloat(btn.dataset.markupPercent),
-                btn.dataset.mediaCondition,
-                btn.dataset.sleeveCondition,
-                btn.dataset.catalog,
-                btn.dataset.location,
-                btn.dataset.notes
+                parseInt(this.dataset.recordId),
+                this.dataset.artist,
+                this.dataset.title,
+                parseFloat(this.dataset.price),
+                parseFloat(this.dataset.discogsPrice),
+                parseFloat(this.dataset.markupPercent),
+                this.dataset.mediaCondition,
+                this.dataset.sleeveCondition,
+                this.dataset.catalog,
+                this.dataset.location,
+                this.dataset.notes
             );
         });
-    }
+    });
 }
 
 // ============================================================================
-// Post Single Record
+// Post Single Record to Discogs
 // ============================================================================
 
-async function postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
+window.postSingleRecordToDiscogs = async function(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
+    console.log('postSingleRecordToDiscogs called', { recordId, artist, title, price, discogsPrice });
+    
     if (!recordId || !mediaCondition || !sleeveCondition || !price || !discogsPrice) {
-        showStatus('Missing required information', 'error');
+        showDiscogsStatus('Missing required information', 'error');
         return;
     }
     
-    if (!confirm('Post "' + artist + ' - ' + title + '" to Discogs?\n\nStore Price: $' + price + '\nDiscogs Price: $' + discogsPrice + ' (' + (markupPercent > 0 ? '+' : '') + markupPercent + '%)\nMedia: ' + mediaCondition + '\nSleeve: ' + sleeveCondition)) {
+    if (!confirm('📋 Post "' + artist + ' - ' + title + '" to Discogs?\n\nStore Price: $' + price + '\nDiscogs Price: $' + discogsPrice + ' (' + (markupPercent > 0 ? '+' : '') + markupPercent + '%)\nMedia: ' + mediaCondition + '\nSleeve: ' + sleeveCondition)) {
         return;
     }
     
     openProgressModal('Posting to Discogs: ' + artist + ' - ' + title);
-    appendToModalLog('Starting to post "' + artist + ' - ' + title + '" to Discogs...', 'info');
-    appendToModalLog('Store Price: $' + price, 'info');
-    appendToModalLog('Discogs Price: $' + discogsPrice + ' (' + (markupPercent > 0 ? '+' : '') + markupPercent + '%)', 'info');
+    appendToModalLog('🚀 Starting to post "' + artist + ' - ' + title + '" to Discogs...', 'info');
+    appendToModalLog('💰 Store Price: $' + price, 'info');
+    appendToModalLog('💰 Discogs Price: $' + discogsPrice + ' (' + (markupPercent > 0 ? '+' : '') + markupPercent + '%)', 'info');
+    appendToModalLog('📀 Media Condition: ' + mediaCondition, 'info');
+    appendToModalLog('📀 Sleeve Condition: ' + sleeveCondition, 'info');
+    if (location) appendToModalLog('📍 Location: ' + location, 'info');
+    appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     
-    var listingData = {
+    const listingData = {
         record: {
             id: recordId,
             artist: artist,
@@ -485,62 +523,64 @@ async function postSingleRecordToDiscogs(recordId, artist, title, price, discogs
     };
     
     try {
-        var response = await fetch(AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
             method: 'POST',
             credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(listingData)
         });
         
-        var result = await response.json();
+        const result = await response.json();
         
         if (result.success) {
-            var discogsUrl = result.listing_url;
+            let discogsUrl = result.listing_url;
             if (!discogsUrl && result.listing_id) {
                 discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
             }
             
-            appendToModalLog('SUCCESS! Record posted to Discogs!', 'success');
-            appendToModalLog('Discogs URL: ' + discogsUrl, 'success');
-            showStatusWithLink('Successfully posted "' + artist + ' - ' + title + '" to Discogs!', discogsUrl, 'success');
+            appendToModalLog('✅ SUCCESS! Record posted to Discogs!', 'success');
+            appendToModalLog('🔗 Discogs URL: ' + discogsUrl, 'success');
+            appendToModalLog('🆔 Listing ID: ' + result.listing_id, 'info');
+            appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'success');
+            
+            showDiscogsStatusWithLink('✅ Successfully posted "' + artist + ' - ' + title + '" to Discogs!', discogsUrl, 'success');
             await loadLocationRecords();
         } else {
             throw new Error(result.error || 'Failed to create listing');
         }
     } catch (error) {
-        appendToModalLog('FAILED: ' + error.message, 'error');
-        showStatus('Error: ' + error.message, 'error');
+        appendToModalLog('❌ FAILED: ' + error.message, 'error');
+        showDiscogsStatus('Error: ' + error.message, 'error');
     } finally {
         setTimeout(function() { closeProgressModal(); }, 2000);
     }
-}
+};
 
 // ============================================================================
-// Bulk Post
+// Bulk Post All Records in Current Location
 // ============================================================================
 
 async function bulkPostToDiscogs() {
-    var eligibleRecords = filteredRecords.filter(function(r) { return r.status_id === 2; });
+    const eligibleRecords = discogsFilteredRecords.filter(function(r) { return r.status_id === 2; });
     
     if (eligibleRecords.length === 0) {
-        showStatus('No eligible records to post', 'warning');
+        showDiscogsStatus('No eligible records to post (only Active records can be posted)', 'warning');
         return;
     }
     
     openProgressModal('Validating ' + eligibleRecords.length + ' records...');
-    appendToModalLog('Validating markup rules for ' + eligibleRecords.length + ' records...', 'info');
+    appendToModalLog('🔍 Validating markup rules for ' + eligibleRecords.length + ' records...', 'info');
     
-    var validatedRecords = [];
-    for (var i = 0; i < eligibleRecords.length; i++) {
-        var record = eligibleRecords[i];
+    const validatedRecords = [];
+    for (const record of eligibleRecords) {
         if (!record.created_at) {
-            appendToModalLog('Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') cannot be posted: Missing creation date', 'error');
+            appendToModalLog('❌ Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') cannot be posted: Missing creation date', 'error');
             continue;
         }
         
-        var markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
+        const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
         if (markupInfo.success) {
             validatedRecords.push({
                 id: record.id,
@@ -556,91 +596,108 @@ async function bulkPostToDiscogs() {
                 location: record.location
             });
         } else {
-            appendToModalLog('Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') cannot be posted: ' + markupInfo.error, 'error');
+            appendToModalLog('❌ Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') cannot be posted: ' + markupInfo.error, 'error');
         }
     }
     
     if (validatedRecords.length === 0) {
-        appendToModalLog('No records can be posted. Please configure markup rules first.', 'error');
-        showStatus('No records can be posted. Please configure markup rules.', 'error');
+        appendToModalLog('❌ No records can be posted. Please configure markup rules first.', 'error');
+        showDiscogsStatus('No records can be posted. Please configure markup rules in the Discogs tab.', 'error');
         setTimeout(function() { closeProgressModal(); }, 3000);
         return;
     }
     
+    if (validatedRecords.length < eligibleRecords.length) {
+        const skipped = eligibleRecords.length - validatedRecords.length;
+        appendToModalLog('⚠️ ' + skipped + ' record(s) skipped due to missing markup rules or creation dates', 'warning');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
     closeProgressModal();
     
-    if (!confirm('Post ' + validatedRecords.length + ' record(s) to Discogs?\n\nThis will create new Discogs listings for each record.')) {
+    if (!confirm('📋 Post ' + validatedRecords.length + ' record(s) from location "' + currentLocation + '" to Discogs?\n\nThis will create new Discogs listings for each record.\n\nRate limited to 1 request per second.')) {
         return;
     }
     
     openProgressModal('Posting ' + validatedRecords.length + ' Records to Discogs');
-    appendToModalLog('Starting bulk post for ' + validatedRecords.length + ' records...', 'info');
+    appendToModalLog('🚀 Starting bulk post for ' + validatedRecords.length + ' records from "' + currentLocation + '"...', 'info');
+    appendToModalLog('⏱️ Rate limited to 1 request per second. Estimated time: ~' + Math.ceil(validatedRecords.length / 60) + ' minutes', 'warning');
+    appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     
-    var posted = 0;
-    var failed = 0;
+    let posted = 0;
+    let failed = 0;
     
-    for (var j = 0; j < validatedRecords.length; j++) {
+    for (let i = 0; i < validatedRecords.length; i++) {
         if (cancelResolve) {
-            appendToModalLog('Operation cancelled by user.', 'warning');
+            appendToModalLog('⏹️ Operation cancelled by user.', 'warning');
             break;
         }
         
-        var rec = validatedRecords[j];
-        updateModalProgress(j + 1, validatedRecords.length);
+        const record = validatedRecords[i];
+        updateModalProgress(i + 1, validatedRecords.length);
         
-        appendToModalLog('[' + (j+1) + '/' + validatedRecords.length + '] Processing: ' + rec.artist + ' - ' + rec.title, 'info');
-        appendToModalLog('   Store: $' + rec.store_price.toFixed(2) + ' → Discogs: $' + rec.discogs_price.toFixed(2) + ' (' + (rec.markup_percent > 0 ? '+' : '') + rec.markup_percent + '%)', 'info');
+        appendToModalLog('[' + (i+1) + '/' + validatedRecords.length + '] Processing: ' + record.artist + ' - ' + record.title, 'info');
+        appendToModalLog('   Store: $' + record.store_price.toFixed(2) + ' → Discogs: $' + record.discogs_price.toFixed(2) + ' (' + (record.markup_percent > 0 ? '+' : '') + record.markup_percent + '%)', 'info');
         
-        var listingData = {
+        const listingData = {
             record: {
-                id: rec.id,
-                artist: rec.artist,
-                title: rec.title,
-                catalog_number: rec.catalog_number || '',
-                media_condition: rec.disc_condition_name || rec.sleeve_condition_name || '',
-                sleeve_condition: rec.sleeve_condition_name || '',
-                price: rec.discogs_price,
-                notes: rec.notes || '',
-                location: rec.location || ''
+                id: record.id,
+                artist: record.artist,
+                title: record.title,
+                catalog_number: record.catalog_number || '',
+                media_condition: record.disc_condition_name || record.sleeve_condition_name || '',
+                sleeve_condition: record.sleeve_condition_name || '',
+                price: record.discogs_price,
+                notes: record.notes || '',
+                location: record.location || ''
             }
         };
         
         try {
-            var response = await fetch(AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
                 method: 'POST',
                 credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(listingData)
             });
             
-            var result = await response.json();
+            const result = await response.json();
             
             if (result.success) {
                 posted++;
-                appendToModalLog('   POSTED: ' + rec.artist + ' - ' + rec.title, 'success');
+                let discogsUrl = result.listing_url;
+                if (!discogsUrl && result.listing_id) {
+                    discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
+                }
+                appendToModalLog('   ✅ POSTED: ' + record.artist + ' - ' + record.title + ' (ID: ' + result.listing_id + ')', 'success');
+                if (discogsUrl) {
+                    appendToModalLog('   🔗 ' + discogsUrl, 'info');
+                }
             } else {
                 failed++;
-                appendToModalLog('   FAILED: ' + rec.artist + ' - ' + rec.title + ' - ' + result.error, 'error');
+                appendToModalLog('   ❌ FAILED: ' + record.artist + ' - ' + record.title + ' - ' + result.error, 'error');
             }
         } catch (error) {
             failed++;
-            appendToModalLog('   FAILED: ' + rec.artist + ' - ' + rec.title + ' - ' + error.message, 'error');
+            appendToModalLog('   ❌ FAILED: ' + record.artist + ' - ' + record.title + ' - ' + error.message, 'error');
         }
         
-        if (j < validatedRecords.length - 1 && !cancelResolve) {
-            await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+        if (i < validatedRecords.length - 1 && !cancelResolve) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
     }
     
-    appendToModalLog('RESULTS:', 'info');
-    appendToModalLog('   Posted: ' + posted, 'success');
-    appendToModalLog('   Failed: ' + failed, failed > 0 ? 'error' : 'info');
+    appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+    appendToModalLog('📊 RESULTS:', 'info');
+    appendToModalLog('   ✅ Posted: ' + posted, 'success');
+    appendToModalLog('   ❌ Failed: ' + failed, failed > 0 ? 'error' : 'info');
     
     if (posted > 0) {
-        appendToModalLog('Reloading location data...', 'info');
+        appendToModalLog('🔄 Reloading location data...', 'info');
         await loadLocationRecords();
+        appendToModalLog('✅ Data refreshed', 'success');
     }
 }
 
@@ -648,205 +705,25 @@ async function bulkPostToDiscogs() {
 // Show status messages
 // ============================================================================
 
-function showStatusWithLink(message, url, type) {
-    if (!statusMessage) return;
+function showDiscogsStatusWithLink(message, url, type) {
+    if (!discogsStatusMessage) return;
     type = type || 'success';
-    var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-    var linkHtml = url ? '<br><a href="' + url + '" target="_blank" style="color: #007bff;">View on Discogs</a>' : '';
-    statusMessage.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message) + linkHtml;
-    statusMessage.className = 'status-message status-' + type;
-    statusMessage.style.display = 'block';
-    setTimeout(function() { if (statusMessage) statusMessage.style.display = 'none'; }, 15000);
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    const linkHtml = url ? '<br><a href="' + url + '" target="_blank" style="color: #007bff; text-decoration: underline;"><i class="fab fa-discogs"></i> View on Discogs</a>' : '';
+    discogsStatusMessage.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message) + linkHtml;
+    discogsStatusMessage.className = 'status-message status-' + type;
+    discogsStatusMessage.style.display = 'block';
+    setTimeout(function() { if (discogsStatusMessage) discogsStatusMessage.style.display = 'none'; }, 15000);
 }
 
-function showStatus(message, type) {
-    if (!statusMessage) return;
+function showDiscogsStatus(message, type) {
+    if (!discogsStatusMessage) return;
     type = type || 'info';
-    var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-    statusMessage.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-    statusMessage.className = 'status-message status-' + type;
-    statusMessage.style.display = 'block';
-    setTimeout(function() { if (statusMessage) statusMessage.style.display = 'none'; }, 8000);
-}
-
-// ============================================================================
-// Markup Rules Management
-// ============================================================================
-
-async function loadMarkupRules() {
-    try {
-        var response = await fetch(AppConfig.baseUrl + '/api/markup-rules', {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        
-        if (response.ok) {
-            var data = await response.json();
-            if (data.status === 'success') {
-                renderMarkupRules(data.rules);
-            }
-        }
-    } catch (error) {
-        console.error('Error loading markup rules:', error);
-    }
-}
-
-function renderMarkupRules(rules) {
-    var tbody = document.getElementById('markup-rules-body');
-    var warning = document.getElementById('no-rules-warning');
-    
-    if (!tbody) return;
-    
-    if (!rules || rules.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="padding: 30px; text-align: center;">No rules configured. Add your first rule above.</td></tr>';
-        if (warning) warning.style.display = 'block';
-        return;
-    }
-    
-    if (warning) warning.style.display = 'none';
-    
-    rules.sort(function(a, b) { return a.days_old - b.days_old; });
-    
-    var html = '';
-    for (var i = 0; i < rules.length; i++) {
-        var rule = rules[i];
-        html += '<tr style="border-bottom: 1px solid #dee2e6;">';
-        html += '<td style="padding: 12px;">' + rule.days_old + '+ days</td>';
-        html += '<td style="padding: 12px;"><input type="number" id="rule-percent-' + rule.id + '" value="' + rule.markup_percent + '" step="1" style="width: 80px; padding: 6px;"><span>%</span></td>';
-        html += '<td style="padding: 12px;"><input type="text" id="rule-desc-' + rule.id + '" value="' + escapeHtml(rule.description || '') + '" style="width: 100%; padding: 6px;"></td>';
-        html += '<td style="padding: 12px;">';
-        html += '<button class="btn btn-sm btn-info" onclick="updateMarkupRule(' + rule.id + ')">Save</button> ';
-        html += '<button class="btn btn-sm btn-danger" onclick="deleteMarkupRule(' + rule.id + ')">Delete</button>';
-        html += '</td></tr>';
-    }
-    tbody.innerHTML = html;
-}
-
-async function addMarkupRule() {
-    var days_old = parseInt(document.getElementById('new-rule-days').value);
-    var markup_percent = parseFloat(document.getElementById('new-rule-percent').value);
-    var description = document.getElementById('new-rule-desc').value;
-    
-    if (isNaN(days_old) || isNaN(markup_percent)) {
-        showStatus('Please enter valid days and percentage', 'error');
-        return;
-    }
-    
-    try {
-        var response = await fetch(AppConfig.baseUrl + '/api/markup-rules', {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ days_old: days_old, markup_percent: markup_percent, description: description })
-        });
-        
-        if (response.ok) {
-            showStatus('Markup rule added successfully', 'success');
-            document.getElementById('new-rule-days').value = '';
-            document.getElementById('new-rule-percent').value = '';
-            document.getElementById('new-rule-desc').value = '';
-            loadMarkupRules();
-            if (currentLocation) await loadLocationRecords();
-        } else {
-            var error = await response.json();
-            showStatus('Error: ' + error.error, 'error');
-        }
-    } catch (error) {
-        showStatus('Error: ' + error.message, 'error');
-    }
-}
-
-async function updateMarkupRule(ruleId) {
-    var markup_percent = parseFloat(document.getElementById('rule-percent-' + ruleId).value);
-    var description = document.getElementById('rule-desc-' + ruleId).value;
-    
-    if (isNaN(markup_percent)) {
-        showStatus('Please enter a valid percentage', 'error');
-        return;
-    }
-    
-    try {
-        var response = await fetch(AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ markup_percent: markup_percent, description: description })
-        });
-        
-        if (response.ok) {
-            showStatus('Markup rule updated successfully', 'success');
-            loadMarkupRules();
-            if (currentLocation) await loadLocationRecords();
-        } else {
-            var error = await response.json();
-            showStatus('Error: ' + error.error, 'error');
-        }
-    } catch (error) {
-        showStatus('Error: ' + error.message, 'error');
-    }
-}
-
-async function deleteMarkupRule(ruleId) {
-    if (!confirm('Are you sure you want to delete this markup rule?')) return;
-    
-    try {
-        var response = await fetch(AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
-            method: 'DELETE',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        
-        if (response.ok) {
-            showStatus('Markup rule deleted successfully', 'success');
-            loadMarkupRules();
-            if (currentLocation) await loadLocationRecords();
-        } else {
-            var error = await response.json();
-            showStatus('Error: ' + error.error, 'error');
-        }
-    } catch (error) {
-        showStatus('Error: ' + error.message, 'error');
-    }
-}
-
-// ============================================================================
-// Config Management
-// ============================================================================
-
-async function saveDiscogsConfig() {
-    var markupInput = document.getElementById('discogs-markup');
-    var configStatus = document.getElementById('config-status');
-    
-    if (!markupInput) return;
-    
-    configStatus.innerHTML = 'Saving...';
-    
-    try {
-        var response = await fetch(AppConfig.baseUrl + '/config/DISCOGS_MARKUP_PERCENT', {
-            method: 'PUT',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ config_value: markupInput.value })
-        });
-        
-        if (response.ok) {
-            configStatus.innerHTML = 'Saved!';
-            configStatus.style.color = '#28a745';
-            setTimeout(function() { configStatus.innerHTML = ''; }, 3000);
-        } else {
-            throw new Error('Save failed');
-        }
-    } catch (error) {
-        configStatus.innerHTML = 'Save failed';
-        configStatus.style.color = '#dc3545';
-        setTimeout(function() { configStatus.innerHTML = ''; }, 3000);
-    }
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    discogsStatusMessage.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+    discogsStatusMessage.className = 'status-message status-' + type;
+    discogsStatusMessage.style.display = 'block';
+    setTimeout(function() { if (discogsStatusMessage) discogsStatusMessage.style.display = 'none'; }, 8000);
 }
 
 // ============================================================================
@@ -864,68 +741,270 @@ function escapeHtml(text) {
 }
 
 // ============================================================================
+// Config Management
+// ============================================================================
+
+async function loadDiscogsConfig() {
+    try {
+        const markupInput = document.getElementById('discogs-markup');
+        if (!markupInput) return;
+        
+        const response = await fetch(window.AppConfig.baseUrl + '/config/DISCOGS_MARKUP_PERCENT', {
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.config_value) markupInput.value = data.config_value;
+        }
+    } catch (error) {
+        console.error('Error loading Discogs config:', error);
+    }
+}
+
+window.saveDiscogsConfig = async function() {
+    const markupInput = document.getElementById('discogs-markup');
+    const configStatus = document.getElementById('config-status');
+    
+    if (!markupInput) return;
+    
+    configStatus.innerHTML = 'Saving...';
+    configStatus.style.color = '#ffc107';
+    
+    try {
+        const response = await fetch(window.AppConfig.baseUrl + '/config/DISCOGS_MARKUP_PERCENT', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ config_value: markupInput.value })
+        });
+        
+        if (response.ok) {
+            configStatus.innerHTML = '✅ Saved!';
+            configStatus.style.color = '#28a745';
+            setTimeout(function() { configStatus.innerHTML = ''; }, 3000);
+        } else {
+            throw new Error('Save failed');
+        }
+    } catch (error) {
+        configStatus.innerHTML = '❌ Save failed';
+        configStatus.style.color = '#dc3545';
+        setTimeout(function() { configStatus.innerHTML = ''; }, 3000);
+    }
+};
+
+// ============================================================================
+// Markup Rules Management
+// ============================================================================
+
+async function loadMarkupRules() {
+    try {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules', {
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'success') {
+                renderMarkupRules(data.rules);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading markup rules:', error);
+    }
+}
+
+function renderMarkupRules(rules) {
+    const tbody = document.getElementById('markup-rules-body');
+    const warning = document.getElementById('no-rules-warning');
+    
+    if (!tbody) return;
+    
+    if (!rules || rules.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="padding: 30px; text-align: center; color: #999;">⚠️ No rules configured. Add your first rule above.</td></tr>';
+        if (warning) warning.style.display = 'block';
+        return;
+    }
+    
+    if (warning) warning.style.display = 'none';
+    
+    rules.sort(function(a, b) { return a.days_old - b.days_old; });
+    
+    let html = '';
+    for (let i = 0; i < rules.length; i++) {
+        const rule = rules[i];
+        html += '<tr style="border-bottom: 1px solid #dee2e6;">';
+        html += '<td style="padding: 12px;">' + rule.days_old + '+ days</td>';
+        html += '<td style="padding: 12px;"><input type="number" id="rule-percent-' + rule.id + '" value="' + rule.markup_percent + '" step="1" style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;"><span>%</span></td>';
+        html += '<td style="padding: 12px;"><input type="text" id="rule-desc-' + rule.id + '" value="' + escapeHtml(rule.description || '') + '" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;"></td>';
+        html += '<td style="padding: 12px;">';
+        html += '<button class="btn btn-sm btn-info" onclick="updateMarkupRule(' + rule.id + ')" style="padding: 4px 8px; margin-right: 5px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-save"></i></button> ';
+        html += '<button class="btn btn-sm btn-danger" onclick="deleteMarkupRule(' + rule.id + ')" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-trash"></i></button>';
+        html += '</td></tr>';
+    }
+    tbody.innerHTML = html;
+}
+
+window.addMarkupRule = async function() {
+    const days_old = parseInt(document.getElementById('new-rule-days').value);
+    const markup_percent = parseFloat(document.getElementById('new-rule-percent').value);
+    const description = document.getElementById('new-rule-desc').value;
+    
+    if (isNaN(days_old) || isNaN(markup_percent)) {
+        showDiscogsStatus('Please enter valid days and percentage', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules', {
+            method: 'POST',
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ days_old: days_old, markup_percent: markup_percent, description: description })
+        });
+        
+        if (response.ok) {
+            showDiscogsStatus('Markup rule added successfully', 'success');
+            document.getElementById('new-rule-days').value = '';
+            document.getElementById('new-rule-percent').value = '';
+            document.getElementById('new-rule-desc').value = '';
+            loadMarkupRules();
+            if (currentLocation) {
+                await loadLocationRecords();
+            }
+        } else {
+            const error = await response.json();
+            showDiscogsStatus('Error: ' + error.error, 'error');
+        }
+    } catch (error) {
+        showDiscogsStatus('Error: ' + error.message, 'error');
+    }
+};
+
+window.updateMarkupRule = async function(ruleId) {
+    const markup_percent = parseFloat(document.getElementById('rule-percent-' + ruleId).value);
+    const description = document.getElementById('rule-desc-' + ruleId).value;
+    
+    if (isNaN(markup_percent)) {
+        showDiscogsStatus('Please enter a valid percentage', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ markup_percent: markup_percent, description: description })
+        });
+        
+        if (response.ok) {
+            showDiscogsStatus('Markup rule updated successfully', 'success');
+            loadMarkupRules();
+            if (currentLocation) {
+                await loadLocationRecords();
+            }
+        } else {
+            const error = await response.json();
+            showDiscogsStatus('Error: ' + error.error, 'error');
+        }
+    } catch (error) {
+        showDiscogsStatus('Error: ' + error.message, 'error');
+    }
+};
+
+window.deleteMarkupRule = async function(ruleId) {
+    if (!confirm('Are you sure you want to delete this markup rule?')) return;
+    
+    try {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+        });
+        
+        if (response.ok) {
+            showDiscogsStatus('Markup rule deleted successfully', 'success');
+            loadMarkupRules();
+            if (currentLocation) {
+                await loadLocationRecords();
+            }
+        } else {
+            const error = await response.json();
+            showDiscogsStatus('Error: ' + error.error, 'error');
+        }
+    } catch (error) {
+        showDiscogsStatus('Error: ' + error.message, 'error');
+    }
+};
+
+window.closeProgressModal = closeProgressModal;
+window.refreshDiscogsLocations = loadLocations;
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
-function initDiscogsTab() {
-    console.log('Initializing Discogs Tab...');
+window.initDiscogsTab = function() {
+    console.log('🎵 Initializing Discogs Tab...');
     
-    tableBody = document.getElementById('combined-inventory-body');
-    locationSelect = document.getElementById('discogs-location-select');
-    postButton = document.getElementById('post-location-button');
-    statusMessage = document.getElementById('discogs-status-message');
-    searchInput = document.getElementById('discogs-search-input');
-    searchButton = document.getElementById('discogs-search-button');
+    discogsTableBody = document.getElementById('combined-inventory-body');
+    discogsLocationSelect = document.getElementById('discogs-location-select');
+    discogsPostButton = document.getElementById('post-location-button');
+    discogsStatusMessage = document.getElementById('discogs-status-message');
+    discogsSearchInput = document.getElementById('discogs-search-input');
+    discogsSearchButton = document.getElementById('discogs-search-button');
     
-    if (locationSelect) {
-        locationSelect.onchange = function() {
-            loadLocationRecords();
-        };
+    if (!discogsTableBody) {
+        console.error('Table body element not found!');
+        return;
     }
     
-    if (searchButton) {
-        searchButton.onclick = function() {
-            applySearchFilter();
-        };
+    if (!discogsLocationSelect) {
+        console.error('Location select element not found!');
+        return;
     }
     
-    if (searchInput) {
-        searchInput.onkeyup = function(e) {
+    discogsLocationSelect.onchange = function() {
+        console.log('Location changed to:', discogsLocationSelect.value);
+        loadLocationRecords();
+    };
+    
+    if (discogsSearchButton) {
+        discogsSearchButton.onclick = function() {
+            applyDiscogsSearchFilter();
+        };
+    }
+    if (discogsSearchInput) {
+        discogsSearchInput.onkeyup = function(e) {
             if (e.key === 'Enter') {
-                applySearchFilter();
+                applyDiscogsSearchFilter();
             }
         };
     }
     
-    if (postButton) {
-        postButton.onclick = function() {
+    if (discogsPostButton) {
+        discogsPostButton.onclick = function() {
             bulkPostToDiscogs();
         };
-        postButton.disabled = true;
-        postButton.style.opacity = '0.5';
+        discogsPostButton.disabled = true;
+        discogsPostButton.style.opacity = '0.5';
     }
     
     loadLocations();
+    loadMarkupRules();
     
-    if (tableBody) {
-        tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
-    }
-}
-
-// ============================================================================
-// Make functions globally available
-// ============================================================================
-
-window.initDiscogsTab = initDiscogsTab;
-window.clearDiscogsSearch = clearDiscogsSearch;
-window.toggleMarkupRules = toggleMarkupRules;
-window.addMarkupRule = addMarkupRule;
-window.updateMarkupRule = updateMarkupRule;
-window.deleteMarkupRule = deleteMarkupRule;
-window.saveDiscogsConfig = saveDiscogsConfig;
-window.postSingleRecordToDiscogs = postSingleRecordToDiscogs;
-window.closeProgressModal = closeProgressModal;
-window.refreshDiscogsLocations = loadLocations;
+    discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
+    
+    console.log('✅ Discogs Tab initialized');
+};
 
 // ============================================================================
 // Tab Activation Handler
@@ -933,15 +1012,16 @@ window.refreshDiscogsLocations = loadLocations;
 
 document.addEventListener('tabChanged', function(e) {
     if (e.detail && e.detail.tabName === 'discogs') {
-        setTimeout(initDiscogsTab, 100);
+        console.log('🎵 Discogs tab activated, initializing...');
+        setTimeout(window.initDiscogsTab, 100);
     }
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-    var discogsTab = document.querySelector('.tab[data-tab="discogs"]');
+    const discogsTab = document.querySelector('.tab[data-tab="discogs"]');
     if (discogsTab && discogsTab.classList.contains('active')) {
-        setTimeout(initDiscogsTab, 200);
+        setTimeout(window.initDiscogsTab, 200);
     }
 });
 
-console.log('discogs.js loaded');
+console.log('✅ discogs.js loaded - Location-based bulk posting with markup rules');

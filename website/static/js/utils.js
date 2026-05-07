@@ -2,9 +2,9 @@
 // utils.js - Shared Utilities and Core Functions (UPDATED - NO fetchAllConfigValues)
 // ============================================================================
 
-// API Utility
-const APIUtils = {
-    baseUrl: window.AppConfig ? AppConfig.baseUrl : 'http://localhost:5000',
+// API Utility - Make globally available
+window.APIUtils = {
+    baseUrl: window.AppConfig ? window.AppConfig.baseUrl : 'http://localhost:5000',
     
     getHeaders() {
         const headers = {
@@ -70,8 +70,8 @@ const APIUtils = {
     }
 };
 
-// UI Helper Functions
-function showMessage(message, type = 'info') {
+// UI Helper Functions - Make globally available
+window.showMessage = function(message, type = 'info') {
     document.querySelectorAll('.message-popup').forEach(el => el.remove());
     
     const messageDiv = document.createElement('div');
@@ -107,9 +107,9 @@ function showMessage(message, type = 'info') {
             messageDiv.remove();
         }
     }, 5000);
-}
+};
 
-function showStatus(message, type = 'info') {
+window.showStatus = function(message, type = 'info') {
     const statusEl = document.getElementById('status-message');
     if (statusEl) {
         statusEl.textContent = message;
@@ -120,9 +120,9 @@ function showStatus(message, type = 'info') {
             statusEl.style.display = 'none';
         }, 5000);
     }
-}
+};
 
-function showCheckoutStatus(message, type = 'info') {
+window.showCheckoutStatus = function(message, type = 'info') {
     const statusEl = document.getElementById('checkout-status-message');
     if (statusEl) {
         statusEl.textContent = message;
@@ -133,52 +133,52 @@ function showCheckoutStatus(message, type = 'info') {
             statusEl.style.display = 'none';
         }, 5000);
     }
-}
+};
 
-function showLoading(show) {
+window.showLoading = function(show) {
     const loadingEl = document.getElementById('loading');
     if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
-}
+};
 
-function showCheckoutLoading(show) {
+window.showCheckoutLoading = function(show) {
     const loadingEl = document.getElementById('checkout-loading');
     if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
-}
+};
 
-function showReceiptsLoading(show) {
+window.showReceiptsLoading = function(show) {
     const loadingEl = document.getElementById('receipts-loading');
     if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
-}
+};
 
-function showArtistsLoading(show) {
+window.showArtistsLoading = function(show) {
     const loadingEl = document.getElementById('artists-loading');
     if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
-}
+};
 
-function showGenresLoading(show) {
+window.showGenresLoading = function(show) {
     const loadingEl = document.getElementById('genres-loading');
     if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
-}
+};
 
-function showAccessoriesLoading(show) {
+window.showAccessoriesLoading = function(show) {
     const loadingEl = document.getElementById('accessories-loading');
     if (loadingEl) loadingEl.style.display = show ? 'block' : 'none';
-}
+};
 
 // Text Utilities
-function escapeHtml(text) {
+window.escapeHtml = function(text) {
     if (!text) return text;
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-}
+};
 
-function truncateText(text, maxLength) {
+window.truncateText = function(text, maxLength) {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength - 1) + '…' : text;
-}
+};
 
-function formatDate(dateString) {
+window.formatDate = function(dateString) {
     if (!dateString) return 'Unknown';
     try {
         const date = new Date(dateString);
@@ -186,35 +186,35 @@ function formatDate(dateString) {
     } catch (e) {
         return dateString.split('T')[0] || 'Unknown';
     }
-}
+};
 
 // Status Utilities
-function getStatusClass(statusId) {
+window.getStatusClass = function(statusId) {
     switch(statusId) {
         case 1: return 'condition-gplus';
         case 2: return 'condition-vgplus';
         case 3: return 'condition-mint';
         default: return 'condition-g';
     }
-}
+};
 
-function getStatusText(statusId) {
+window.getStatusText = function(statusId) {
     switch(statusId) {
         case 1: return 'Inactive';
         case 2: return 'Active';
         case 3: return 'Sold';
         default: return `Status ${statusId || '?'}`;
     }
-}
+};
 
-function getStatusIdFromFilter(filterValue) {
+window.getStatusIdFromFilter = function(filterValue) {
     switch(filterValue) {
         case 'inactive': return 1;
         case 'active': return 2;
         case 'sold': return 3;
         default: return null;
     }
-}
+};
 
 // Global Variables
 let consignorCache = {};
@@ -223,9 +223,6 @@ let filteredRecords = [];
 let currentPage = 1;
 let pageSize = 100;
 let totalPages = 1;
-
-// REMOVED: dbConfigValues global - no longer used
-// let dbConfigValues = {};
 
 let recentlyPrintedIds = new Set();
 let savedReceipts = [];
@@ -257,7 +254,7 @@ if (typeof window.Auth === 'undefined') {
             if (token) {
                 this.isLoggedIn = true;
                 try {
-                    const response = await APIUtils.get('/auth/me');
+                    const response = await window.APIUtils.get('/auth/me');
                     if (response.status === 'success' && response.user) {
                         this.user = response.user;
                     }
@@ -305,7 +302,7 @@ if (typeof window.Auth === 'undefined') {
  * Verify that required configuration values are available
  * @returns {Promise<boolean>} True if all required configs are available
  */
-async function verifyRequiredConfigs() {
+window.verifyRequiredConfigs = async function() {
     console.log('🟡 utils.js: Verifying required configuration values...');
     
     const requiredConfigs = ['TAX_ENABLED', 'TAX_RATE', 'STORE_NAME'];
@@ -356,13 +353,13 @@ async function verifyRequiredConfigs() {
     
     if (missingConfigs.length > 0) {
         console.warn('⚠️ utils.js: Missing config keys:', missingConfigs);
-        showMessage(`⚠️ Some configuration values are missing: ${missingConfigs.join(', ')}. Some features may not work correctly.`, 'warning');
+        window.showMessage(`⚠️ Some configuration values are missing: ${missingConfigs.join(', ')}. Some features may not work correctly.`, 'warning');
         return false;
     } else {
         console.log('✅ utils.js: All required configs loaded successfully');
         return true;
     }
-}
+};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async function() {
@@ -397,7 +394,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Verify required configuration values (non-critical, just for logging)
     try {
-        await verifyRequiredConfigs();
+        await window.verifyRequiredConfigs();
     } catch (error) {
         console.error('❌ utils.js: Failed to verify configuration:', error);
         // Don't show fatal error - let the app continue with defaults

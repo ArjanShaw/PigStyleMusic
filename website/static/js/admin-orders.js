@@ -28,16 +28,20 @@ async function loadOrders() {
             }
         });
         
+        // Check if response is OK before parsing
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const data = await response.json();
         
         if (data.status === 'success') {
             orders = data.orders || [];
             filteredOrders = [...orders];
-            updateOrdersStats();
             applyOrdersFilters();
         } else {
             console.error('Failed to load orders:', data.error);
-            showOrdersError('Failed to load orders');
+            showOrdersError(data.error || 'Failed to load orders');
         }
         
     } catch (error) {
@@ -59,37 +63,46 @@ async function loadOrderStats() {
             }
         });
         
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const data = await response.json();
         
         if (data.status === 'success') {
             updateStatsDisplay(data);
+        } else {
+            console.error('Failed to load order stats:', data.error);
         }
     } catch (error) {
         console.error('Error loading order stats:', error);
+        // Don't show error to user - stats are optional
     }
 }
 
-// Update statistics display
-function updateStatsDisplay(stats) {
+// Update statistics display from API data
+function updateStatsDisplay(data) {
+    const stats = data.stats || {};
+    
     const totalOrders = document.getElementById('total-orders');
     const totalRevenue = document.getElementById('total-revenue');
     const pendingOrders = document.getElementById('pending-orders');
     const paidOrders = document.getElementById('paid-orders');
     
     if (totalOrders) {
-        totalOrders.textContent = stats.stats?.total_orders || 0;
+        totalOrders.textContent = stats.total_orders || 0;
     }
     
     if (totalRevenue) {
-        totalRevenue.textContent = formatCurrency(stats.stats?.total_revenue || 0);
+        totalRevenue.textContent = formatCurrency(stats.total_revenue || 0);
     }
     
     if (pendingOrders) {
-        pendingOrders.textContent = stats.status_stats?.find(s => s.status === 'pending')?.count || 0;
+        pendingOrders.textContent = stats.pending_orders || 0;
     }
     
     if (paidOrders) {
-        paidOrders.textContent = stats.status_stats?.find(s => s.status === 'paid')?.count || 0;
+        paidOrders.textContent = stats.paid_orders || 0;
     }
 }
 
@@ -317,6 +330,10 @@ async function viewOrderDetails(orderId) {
             }
         });
         
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const data = await response.json();
         
         if (data.status === 'success') {
@@ -326,7 +343,7 @@ async function viewOrderDetails(orderId) {
         }
     } catch (error) {
         console.error('Error loading order details:', error);
-        alert('Error loading order details');
+        alert('Error loading order details: ' + error.message);
     }
 }
 
@@ -334,7 +351,7 @@ async function viewOrderDetails(orderId) {
 function showPrintableOrderModal(order) {
     const items = order.items || [];
     
-    // FIX: Check for shipping address presence instead of relying on shipping_method
+    // Check for shipping address presence
     const hasShippingAddress = order.shipping_address_line1 && 
                               order.shipping_address_line1.trim() !== '';
     
@@ -426,7 +443,7 @@ function showPrintableOrderModal(order) {
                     </div>
                 </div>
                 
-                <!-- Shipping/Pickup Card - FIXED: Now checks for shipping address presence -->
+                <!-- Shipping/Pickup Card -->
                 <div class="info-card ${hasShippingAddress ? '' : 'pickup-only'}">
                     <h3><i class="fas ${hasShippingAddress ? 'fa-truck' : 'fa-store'}"></i> 
                         ${hasShippingAddress ? 'Shipping Information' : 'Pickup Information'}
@@ -470,7 +487,7 @@ function showPrintableOrderModal(order) {
                         </table>
                     </div>
                     
-                    <!-- Totals - FIXED: Added explicit black text color -->
+                    <!-- Totals -->
                     <div class="totals-section" style="color: #333 !important;">
                         <div class="total-row" style="color: #333 !important;">
                             <span style="color: #333 !important;">Subtotal:</span>
@@ -522,7 +539,7 @@ function printOrderDetails() {
     // Clone the content for printing
     const printContent = content.cloneNode(true);
     
-    // Create print styles - FIXED: Added black text colors
+    // Create print styles
     const styles = `
         <style>
             body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #000 !important; }
@@ -731,6 +748,10 @@ async function refreshOrderPayment(orderId) {
             }
         });
         
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const data = await response.json();
         
         if (data.status === 'success') {
@@ -791,38 +812,11 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
-// Update orders stats
-function updateOrdersStats() {
-    const totalOrders = document.getElementById('total-orders');
-    const totalRevenue = document.getElementById('total-revenue');
-    const pendingOrders = document.getElementById('pending-orders');
-    const paidOrders = document.getElementById('paid-orders');
-    
-    if (totalOrders) {
-        totalOrders.textContent = orders.length;
-    }
-    
-    if (totalRevenue) {
-        const revenue = orders.reduce((sum, order) => sum + (parseFloat(order.total) || 0), 0);
-        totalRevenue.textContent = formatCurrency(revenue);
-    }
-    
-    if (pendingOrders) {
-        const pending = orders.filter(order => order.status === 'pending').length;
-        pendingOrders.textContent = pending;
-    }
-    
-    if (paidOrders) {
-        const paid = orders.filter(order => order.status === 'paid').length;
-        paidOrders.textContent = paid;
-    }
-}
-
-// Show error message
+// Show error message in table
 function showOrdersError(message) {
     const tableBody = document.getElementById('orders-body');
     if (tableBody) {
-        tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">${message}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">${escapeHtml(message)}</td></tr>`;
     }
 }
 
@@ -922,6 +916,21 @@ function initOrdersTab() {
         });
     }
 }
+
+// Make functions globally available
+window.initOrdersTab = initOrdersTab;
+window.goToOrdersPage = goToOrdersPage;
+window.changeOrdersPageSize = changeOrdersPageSize;
+window.sortOrders = sortOrders;
+window.searchOrders = searchOrders;
+window.clearOrdersSearch = clearOrdersSearch;
+window.refreshOrders = refreshOrders;
+window.exportOrdersToCSV = exportOrdersToCSV;
+window.viewOrderDetails = viewOrderDetails;
+window.closeOrderDetailsModal = closeOrderDetailsModal;
+window.printOrderDetails = printOrderDetails;
+window.refreshOrderPayment = refreshOrderPayment;
+window.filterOrdersByStatus = filterOrdersByStatus;
 
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', function() {
