@@ -12,9 +12,6 @@
 // Note: Genre functionality has been removed. Discogs genre is now stored as raw text
 // in the discogs_genre_raw field and displayed read-only on price tags.
 
-// Barcode Generator Class - Supports multiple formats
-
-
 // Add/Edit/Delete Manager Class
 class AddEditDeleteManager {
     constructor() {
@@ -22,17 +19,17 @@ class AddEditDeleteManager {
         this.currentSearchField = 'all';
         this.currentResults = [];
         this.conditions = [];
-        this.statuses = ['new', 'active', 'sold', 'removed'];
+        this.statuses = []; // Will be loaded from database
         this.consignors = [];
-        this.minimumPrice = 1.99;
+        this.minimumPrice = null; // MUST be loaded from config
         this.selectedConsignorId = null;
         this.defaultSleeveConditionId = null;
         this.defaultDiscConditionId = null;
-        this.defaultNotes = ''; // Default notes for new records
+        this.defaultNotes = null;
         this.autoEstimatePrice = true;
         this.activeBatch = null;
         this.newRecordsCount = 0;
-        this.storePriceMultiplier = 0.7;
+        this.storePriceMultiplier = null; // MUST be loaded from config
         
         this.init();
     }
@@ -42,6 +39,7 @@ class AddEditDeleteManager {
         await this.loadStats();
         await this.loadConditions();
         await this.loadConsignors();
+        await this.loadStatuses(); // Load statuses from database
         await this.checkActiveBatch();
         await this.loadNewRecordsCount();
         await this.loadStorePriceMultiplier();
@@ -50,6 +48,22 @@ class AddEditDeleteManager {
         this.setupEventListeners();
         this.renderGlobalSettings();
         this.renderBatchSection();
+    }
+
+    async loadStatuses() {
+        try {
+            const response = await APIUtils.get('/statuses');
+            if (response && response.statuses) {
+                this.statuses = response.statuses;
+                console.log('LOAD_STATUSES: Statuses loaded from database:', this.statuses);
+            } else {
+                console.error('LOAD_STATUSES: Invalid response');
+                this.statuses = [];
+            }
+        } catch (error) {
+            console.error('Error loading statuses:', error);
+            this.statuses = [];
+        }
     }
 
     async checkActiveBatch() {
@@ -86,11 +100,15 @@ class AddEditDeleteManager {
     async loadStorePriceMultiplier() {
         try {
             const response = await APIUtils.get('/config/STORE_PRICE_ESTIMATED_MULTIPLIER');
-            this.storePriceMultiplier = parseFloat(response.config_value) || 0.7;
+            if (!response || response.config_value === null) {
+                throw new Error('STORE_PRICE_ESTIMATED_MULTIPLIER not configured');
+            }
+            this.storePriceMultiplier = parseFloat(response.config_value);
             console.log(`STORE_PRICE_MULTIPLIER: Loaded: ${this.storePriceMultiplier}`);
         } catch (error) {
-            console.warn('Could not load STORE_PRICE_ESTIMATED_MULTIPLIER, using default 0.7:', error);
-            this.storePriceMultiplier = 0.7;
+            console.error('Failed to load STORE_PRICE_ESTIMATED_MULTIPLIER:', error);
+            showMessage('Store price multiplier not configured. Please set it in Admin Config.', 'error');
+            this.storePriceMultiplier = null;
         }
     }
 
@@ -445,11 +463,15 @@ class AddEditDeleteManager {
     async loadMinimumPrice() {
         try {
             const response = await APIUtils.get('/config/MIN_STORE_PRICE');
-            this.minimumPrice = parseFloat(response.config_value) || 1.99;
+            if (!response || response.config_value === null) {
+                throw new Error('MIN_STORE_PRICE not configured');
+            }
+            this.minimumPrice = parseFloat(response.config_value);
             console.log(`MIN_PRICE: Minimum store price loaded: $${this.minimumPrice.toFixed(2)}`);
         } catch (error) {
-            console.warn('MIN_PRICE: Could not load MIN_STORE_PRICE, using default:', error);
-            this.minimumPrice = 1.99;
+            console.error('Failed to load MIN_STORE_PRICE:', error);
+            showMessage('Minimum store price not configured. Please set it in Admin Config.', 'error');
+            this.minimumPrice = null;
         }
     }
 
@@ -629,7 +651,7 @@ class AddEditDeleteManager {
             return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
         }).join('');
         
-        // Build condition options for disc (no "use sleeve condition" option)
+        // Build condition options for disc
         const discConditionOptions = this.conditions.map(condition => {
             const selected = condition.id === this.defaultDiscConditionId ? 'selected' : '';
             return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
@@ -706,7 +728,7 @@ class AddEditDeleteManager {
                     <textarea id="global-default-notes" 
                               rows="2" 
                               style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333; resize: vertical;"
-                              placeholder="Enter default notes for new records...">${this.escapeHtml(this.defaultNotes)}</textarea>
+                              placeholder="Enter default notes for new records...">${this.escapeHtml(this.defaultNotes || '')}</textarea>
                     <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
                         These notes will be pre-filled for every new record
                     </div>
@@ -737,7 +759,7 @@ class AddEditDeleteManager {
                                step="0.01" 
                                min="0.01" 
                                max="1.00" 
-                               value="${this.storePriceMultiplier.toFixed(2)}" 
+                               value="${this.storePriceMultiplier ? this.storePriceMultiplier.toFixed(2) : '0.70'}" 
                                style="width: 80px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px;">
                         <button class="btn btn-small btn-info" id="save-multiplier-btn" style="padding: 4px 10px; font-size: 12px;">
                             <i class="fas fa-save"></i> Save
@@ -824,7 +846,7 @@ class AddEditDeleteManager {
             this.selectedConsignorId = null;
             this.defaultSleeveConditionId = null;
             this.defaultDiscConditionId = null;
-            this.defaultNotes = '';
+            this.defaultNotes = null;
             this.autoEstimatePrice = true;
             this.saveSettings();
             
@@ -947,7 +969,6 @@ class AddEditDeleteManager {
 
     async searchDatabase(searchTerm) {
         try {
-            // First, check if the search term is a number (could be ID or barcode)
             const isNumeric = /^\d+$/.test(searchTerm);
             
             let params = { q: searchTerm };
@@ -956,28 +977,22 @@ class AddEditDeleteManager {
                 params.search_field = this.currentSearchField;
             }
             
-            // If searching by barcode field specifically
             if (this.currentSearchField === 'barcode') {
                 params.search_field = 'barcode';
                 const response = await APIUtils.get('/records/search', params);
                 return (response.status === 'success' && response.records) ? response.records : [];
             }
             
-            // For 'all' search or numeric search, search both barcode and ID
             if (isNumeric && this.currentSearchField === 'all') {
-                // Search by ID first (exact match)
                 try {
                     const idResponse = await APIUtils.get(`/records/${parseInt(searchTerm)}`);
                     if (idResponse && idResponse.id) {
-                        // Found by ID, return as single record array
                         return [idResponse];
                     }
                 } catch (error) {
-                    // Not found by ID, continue to barcode search
                     console.log('Not found by ID, trying barcode...');
                 }
                 
-                // Then search by barcode
                 const barcodeParams = { q: searchTerm, search_field: 'barcode' };
                 const barcodeResponse = await APIUtils.get('/records/search', barcodeParams);
                 if (barcodeResponse.status === 'success' && barcodeResponse.records && barcodeResponse.records.length > 0) {
@@ -985,7 +1000,6 @@ class AddEditDeleteManager {
                 }
             }
             
-            // Fall back to regular search
             const response = await APIUtils.get('/records/search', params);
             return (response.status === 'success' && response.records) ? response.records : [];
             
@@ -1031,8 +1045,7 @@ class AddEditDeleteManager {
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
         }).join('');
         
-        // Escape default notes for use in HTML
-        const escapedDefaultNotes = this.escapeHtml(this.defaultNotes);
+        const escapedDefaultNotes = this.escapeHtml(this.defaultNotes || '');
         
         return `
             <h3>Search Results (${resultsCount})</h3>
@@ -1049,7 +1062,6 @@ class AddEditDeleteManager {
                 
                 const discogsGenreRaw = record.genre_raw || '';
                 
-                // Determine default selected condition values
                 const defaultSleeveSelected = this.defaultSleeveConditionId ? this.defaultSleeveConditionId : '';
                 const defaultDiscSelected = this.defaultDiscConditionId ? this.defaultDiscConditionId : '';
                 
@@ -1120,8 +1132,7 @@ class AddEditDeleteManager {
                                     <input type="number" 
                                            class="form-control price-input" 
                                            step="1" 
-                                           min="${this.minimumPrice}" 
-                                           placeholder="Min: $${this.minimumPrice.toFixed(2)}" 
+                                           ${this.minimumPrice ? `min="${this.minimumPrice}" placeholder="Min: $${this.minimumPrice.toFixed(2)}"` : 'placeholder="Enter price"'} 
                                            required
                                            autocomplete="off"
                                            autocomplete="new-password">
@@ -1170,11 +1181,6 @@ class AddEditDeleteManager {
                                 </div>
                             </div>
                             
-                            <div class="barcode-info" style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 4px;">
-                                <i class="fas fa-barcode"></i>
-                                <span>A numeric PigStyle barcode will be automatically generated when you add this record</span>
-                            </div>
-                            
                             <div id="calculation-${record.discogs_id || record.id}" class="calculation-container" style="margin-top: 15px;"></div>
                             
                             <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
@@ -1198,7 +1204,6 @@ class AddEditDeleteManager {
     renderDatabaseResults() {
         const user = JSON.parse(localStorage.getItem('user')) || {};
         const userRole = user.role || 'admin';
-        const resultsCount = this.currentResults.length;
         
         const filteredResults = this.currentResults;
         
@@ -1224,8 +1229,8 @@ class AddEditDeleteManager {
         const getStatusOptions = (recordId) => {
             const record = this.currentResults.find(r => r.id == recordId);
             return this.statuses.map(status => {
-                const selected = record && (record.status_name || 'active').toLowerCase() === status ? 'selected' : '';
-                return `<option value="${status}" ${selected}>${status.charAt(0).toUpperCase() + status.slice(1)}</option>`;
+                const selected = record && (record.status_id == status.id) ? 'selected' : '';
+                return `<option value="${status.id}" ${selected}>${status.status_name}</option>`;
             }).join('');
         };
         
@@ -1237,10 +1242,6 @@ class AddEditDeleteManager {
             <h3>Database Results (${filteredResults.length})</h3>
              
             ${filteredResults.map((record, index) => {
-                const statusName = (record.status_name || 'active').toLowerCase();
-                const statusClass = statusName.replace(/\s+/g, '-');
-                const displayStatus = record.status_name || 'Active';
-                
                 const currentConsignorId = record.consignor_id || '';
                 
                 const sleeveCondition = this.conditions.find(c => c.id == record.condition_sleeve_id);
@@ -1278,14 +1279,12 @@ class AddEditDeleteManager {
                             <div class="record-info">
                                 <div class="record-title">${record.artist} - ${record.title}</div>
                                 <div class="record-details" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px 15px; margin-top: 8px;">
-                                    <span><strong>Barcode:</strong> <span class="barcode-value">${record.barcode || 'None'}</span></span>
+                                    <span><strong>Barcode:</strong> <span class="barcode-value">${record.barcode || record.id}</span></span>
                                     <span><strong>Catalog #:</strong> ${record.catalog_number || 'None'}</span>
                                     <span><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</span>
                                     <span><strong>Sleeve:</strong> ${sleeveDisplay}</span>
                                     <span><strong>Disc:</strong> ${discDisplay}</span>
                                     <span><strong>Location:</strong> ${locationDisplay}</span>
-                                    <span><strong>Status:</strong> <span class="status-badge ${statusClass}">${displayStatus}</span></span>
-                                    ${record.consignor_name ? `<span><strong>Consignor:</strong> ${record.consignor_name}</span>` : ''}
                                     ${discogsGenreRaw ? `<span><strong>Discogs Genre:</strong> ${discogsGenreRaw.substring(0, 50)}${discogsGenreRaw.length > 50 ? '...' : ''}</span>` : ''}
                                 </div>
                                 ${notesDisplay}
@@ -1300,9 +1299,6 @@ class AddEditDeleteManager {
                                     <label class="form-label"><i class="fab fa-discogs"></i> Discogs Genre</label>
                                     <div class="form-control" style="background: #f8f9fa; cursor: default; min-height: 38px;">
                                         ${discogsGenreRaw || 'No genre information'}
-                                    </div>
-                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Raw genre from Discogs - appears on price tags
                                     </div>
                                 </div>
                                 
@@ -1332,9 +1328,6 @@ class AddEditDeleteManager {
                                            data-record-id="${record.id}"
                                            value="${this.escapeHtml(record.location || '')}" 
                                            placeholder="e.g., bin 1/12, shelf A/3">
-                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Physical location in store
-                                    </div>
                                 </div>
                                 
                                 <div>
@@ -1344,9 +1337,6 @@ class AddEditDeleteManager {
                                               rows="2"
                                               placeholder="Internal notes and Discogs listing comments"
                                               style="resize: vertical;">${this.escapeHtml(notesWithoutTag)}</textarea>
-                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Will be posted to Discogs when listed
-                                    </div>
                                 </div>
                                 
                                 <div>
@@ -1355,9 +1345,6 @@ class AddEditDeleteManager {
                                         <i class="fas fa-exclamation-triangle" style="color: #ffc107;"></i>
                                         <span>No original sleeve</span>
                                     </label>
-                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Adds "[NO ORIGINAL SLEEVE]" to notes
-                                    </div>
                                 </div>
                                 
                                 <div>
@@ -1367,13 +1354,9 @@ class AddEditDeleteManager {
                                            data-record-id="${record.id}"
                                            value="${record.store_price || ''}" 
                                            step="1" 
-                                           min="${this.minimumPrice}"
-                                           placeholder="Min: $${this.minimumPrice.toFixed(2)}"
+                                           ${this.minimumPrice ? `min="${this.minimumPrice}" placeholder="Min: $${this.minimumPrice.toFixed(2)}"` : 'placeholder="Enter price"'}
                                            autocomplete="off"
                                            autocomplete="new-password">
-                                    <div class="price-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
-                                        Step: $1.00
-                                    </div>
                                     <button class="btn btn-sm btn-info edit-estimate-now-btn" style="margin-top: 5px; font-size: 12px; display: ${this.autoEstimatePrice ? 'none' : 'inline-block'};" data-record-id="${record.id}">
                                         <i class="fas fa-calculator"></i> Estimate Price
                                     </button>
@@ -1383,7 +1366,7 @@ class AddEditDeleteManager {
                                     <label class="form-label">Consignor</label>
                                     <select class="form-control edit-consignor-select" data-record-id="${record.id}">
                                         <option value="">None</option>
-                                        ${consignorOptions.replace(`value="${currentConsignorId}"`, `value="${currentConsignorId}" selected`)}
+                                        ${consignorOptions}
                                     </select>
                                 </div>
                                 
@@ -1391,6 +1374,7 @@ class AddEditDeleteManager {
                                 <div>
                                     <label class="form-label">Status</label>
                                     <select class="form-control edit-status-select" data-record-id="${record.id}">
+                                        <option value="">Select status...</option>
                                         ${getStatusOptions(record.id)}
                                     </select>
                                 </div>
@@ -1423,10 +1407,8 @@ class AddEditDeleteManager {
         
         const discSelect = card.querySelector(isEditMode ? '.edit-disc-condition-select' : '.disc-condition-select');
         
-        // Auto-set disc condition to match sleeve condition
         if (discSelect && sleeveConditionId) {
             discSelect.value = sleeveConditionId;
-            // Trigger change event on disc select to update any listeners
             const changeEvent = new Event('change', { bubbles: true });
             discSelect.dispatchEvent(changeEvent);
         }
@@ -1443,14 +1425,12 @@ class AddEditDeleteManager {
         
         if (!record) return;
         
-        if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
+        if (sleeveConditionId && discConditionId && this.autoEstimatePrice && this.storePriceMultiplier !== null) {
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
         }
     }
 
     async handleDiscConditionChange(event, isEditMode = false) {
-        // Disc condition can still be changed manually if needed
-        // But note: when sleeve changes, it will override disc condition
         const selectElement = event.target;
         const card = selectElement.closest('.record-card');
         const recordId = card.getAttribute('data-record-id');
@@ -1471,7 +1451,7 @@ class AddEditDeleteManager {
         
         if (!record) return;
         
-        if (sleeveConditionId && discConditionId && this.autoEstimatePrice) {
+        if (sleeveConditionId && discConditionId && this.autoEstimatePrice && this.storePriceMultiplier !== null) {
             await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
         }
     }
@@ -1514,6 +1494,16 @@ class AddEditDeleteManager {
         
         if (!priceInput) return;
         
+        if (this.storePriceMultiplier === null) {
+            showMessage('Store price multiplier not configured. Please set it in Admin Config.', 'error');
+            return;
+        }
+        
+        if (this.minimumPrice === null) {
+            showMessage('Minimum store price not configured. Please set it in Admin Config.', 'error');
+            return;
+        }
+        
         const hasExistingValue = priceInput.value && priceInput.value.trim() !== '' && !isNaN(parseFloat(priceInput.value));
         const originalValue = priceInput.value;
         priceInput.disabled = true;
@@ -1545,7 +1535,6 @@ class AddEditDeleteManager {
         tempOverlay.remove();
         priceInput.disabled = false;
         
-        // ⚠️ CRITICAL: Only populate price if estimate was successful
         if (estimate.success && estimate.final_price !== null) {
             const finalPrice = estimate.final_price;
             priceInput.value = parseFloat(finalPrice).toFixed(2);
@@ -1571,7 +1560,6 @@ class AddEditDeleteManager {
             priceInput.parentElement.appendChild(hint);
             this.showPriceCalculationDetails(estimate, recordId, finalPrice);
         } else {
-            // ⚠️ NO PRICE ESTIMATE AVAILABLE - Leave field empty and show error
             if (!hasExistingValue) {
                 priceInput.value = '';
             }
@@ -1635,14 +1623,10 @@ class AddEditDeleteManager {
     }
 
     addConditionChangeListeners() {
-        // Add mode condition selects - with default value setting
         document.querySelectorAll('.sleeve-condition-select').forEach(select => {
-            // Set default value if available
             const defaultValue = select.getAttribute('data-default');
             if (defaultValue && defaultValue !== '' && !select.value) {
                 select.value = defaultValue;
-                
-                // Also set disc condition to match sleeve condition for default values
                 const card = select.closest('.record-card');
                 const discSelect = card.querySelector('.disc-condition-select');
                 if (discSelect && !discSelect.value) {
@@ -1653,7 +1637,6 @@ class AddEditDeleteManager {
         });
         
         document.querySelectorAll('.disc-condition-select').forEach(select => {
-            // Set default value if available and not already set by sleeve sync
             const defaultValue = select.getAttribute('data-default');
             if (defaultValue && defaultValue !== '' && !select.value) {
                 select.value = defaultValue;
@@ -1661,7 +1644,6 @@ class AddEditDeleteManager {
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, false));
         });
         
-        // Edit mode condition selects
         document.querySelectorAll('.edit-sleeve-condition-select').forEach(select => {
             select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, true));
         });
@@ -1669,7 +1651,6 @@ class AddEditDeleteManager {
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, true));
         });
         
-        // Estimate buttons
         document.querySelectorAll('.estimate-now-btn, .edit-estimate-now-btn').forEach(button => {
             button.addEventListener('click', (e) => {
                 const card = e.target.closest('.record-card');
@@ -1679,7 +1660,6 @@ class AddEditDeleteManager {
             });
         });
         
-        // "No Original Sleeve" checkboxes in add mode
         document.querySelectorAll('.no-original-sleeve-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const card = e.target.closest('.record-card');
@@ -1701,7 +1681,6 @@ class AddEditDeleteManager {
             });
         });
         
-        // "No Original Sleeve" checkboxes in edit mode
         document.querySelectorAll('.edit-no-original-sleeve-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const card = e.target.closest('.record-card');
@@ -1750,7 +1729,6 @@ class AddEditDeleteManager {
         this.addConditionChangeListeners();
     }
 
-
     async addRecordFromDiscogs(card, discogsRecord) {
         const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
         const discConditionSelect = card.querySelector('.disc-condition-select');
@@ -1791,7 +1769,6 @@ class AddEditDeleteManager {
         
         const discogsGenreRaw = discogsRecord.genre_raw || '';
         
-        // Create record WITHOUT any barcode - the record ID will be used as identifier
         const recordData = {
             artist: discogsRecord.artist,
             title: discogsRecord.title,
@@ -1818,7 +1795,6 @@ class AddEditDeleteManager {
                     batchMessage = ` (added to active batch #${this.activeBatch.id})`;
                 }
                 
-                // Show success with the record ID (will be used as barcode on price tags)
                 showMessage(`Record added successfully! Record ID: ${recordId}. Price: $${price.toFixed(2)}${batchMessage}`, 'success');
                 
                 await this.loadStats();
@@ -1858,7 +1834,6 @@ class AddEditDeleteManager {
         
         const currentRecord = this.currentResults.find(r => r.id == recordId);
         
-        // Build notes with tag if checkbox is checked
         let notes = notesInput ? notesInput.value.trim() : '';
         if (noSleeveCheckbox && noSleeveCheckbox.checked) {
             const tag = '[NO ORIGINAL SLEEVE]';
@@ -1866,7 +1841,6 @@ class AddEditDeleteManager {
                 notes = notes ? `${tag}\n${notes}` : tag;
             }
         } else if (notes) {
-            // Remove the tag if it exists and checkbox is unchecked
             notes = notes.replace('[NO ORIGINAL SLEEVE]', '').replace(/^\n+/, '').replace(/\n+$/, '');
         }
         
@@ -1878,7 +1852,7 @@ class AddEditDeleteManager {
         if (priceInput) {
             const price = parseFloat(priceInput.value);
             if (!isNaN(price) && price >= 0) {
-                if (price < this.minimumPrice) {
+                if (this.minimumPrice !== null && price < this.minimumPrice) {
                     showMessage(`Price must be at least $${this.minimumPrice.toFixed(2)}`, 'error');
                     return;
                 }
@@ -1890,8 +1864,21 @@ class AddEditDeleteManager {
         else if (consignorSelect && consignorSelect.value === '') updates.consignor_id = null;
         
         if (statusSelect && statusSelect.value) {
-            const statusMap = { 'new': 1, 'active': 2, 'sold': 3, 'removed': 4 };
-            updates.status_id = statusMap[statusSelect.value] || 2;
+            const newStatusId = parseInt(statusSelect.value);
+            const oldStatusId = currentRecord?.status_id;
+            
+            updates.status_id = newStatusId;
+            
+            if ((newStatusId === 3 || newStatusId === 4) && oldStatusId !== newStatusId) {
+                const today = new Date().toISOString().split('T')[0];
+                updates.date_sold = today;
+                console.log(`Status changed to ${newStatusId}, setting date_sold to ${today}`);
+            }
+            
+            if ((oldStatusId === 3 || oldStatusId === 4) && newStatusId !== oldStatusId) {
+                updates.date_sold = null;
+                console.log(`Status changed away from sold, clearing date_sold`);
+            }
         }
         
         if (Object.keys(updates).length === 0) {
@@ -2195,7 +2182,6 @@ class AddEditDeleteManager {
         return (dollars - 1) + 0.99;
     }
 
-    // ⚠️ CRITICAL: NO FALLBACK PRICES ⚠️
     async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
         const result = {
             success: false,
@@ -2213,11 +2199,15 @@ class AddEditDeleteManager {
             error: null
         };
 
-        // Use the current multiplier
+        if (this.storePriceMultiplier === null) {
+            result.error = 'Store price multiplier not configured';
+            result.calculation_steps.push('❌ Store price multiplier not configured');
+            return result;
+        }
+
         const multiplier = this.storePriceMultiplier;
         result.calculation_steps.push(`💰 Store Price Ratio: ${(multiplier * 100).toFixed(0)}%`);
 
-        // Discogs
         if (discogsId) {
             result.calculation_steps.push(`📀 Fetching Discogs price suggestions for release ID: ${discogsId}`);
             result.calculation_steps.push(`🎚️ Selected condition: ${conditionName}`);
@@ -2244,7 +2234,6 @@ class AddEditDeleteManager {
             result.calculation_steps.push(`⚠️ No Discogs ID available - skipping Discogs`);
         }
         
-        // eBay
         const searchQuery = `${artist} ${title} ${this.getFormatKeyword(formatType)}`;
         result.calculation_steps.push(`🛒 Searching eBay for: "${searchQuery}"`);
         
@@ -2275,7 +2264,6 @@ class AddEditDeleteManager {
             result.calculation_steps.push(`❌ eBay API call failed: ${ebayResult.error || 'Unknown error'}`);
         }
         
-        // Calculate market price (minimum of Discogs and eBay)
         let marketPrice = null;
         let priceSource = null;
         
@@ -2304,7 +2292,6 @@ class AddEditDeleteManager {
             result.calculation_steps.push(`📊 Using only eBay price: $${marketPrice.toFixed(2)}`);
             
         } else {
-            // ⚠️ NO PRICE DATA AVAILABLE - DO NOT USE FALLBACK ⚠️
             result.success = false;
             result.error = 'No price data available from Discogs or eBay. Please enter price manually.';
             result.calculation_steps.push(`❌ NO PRICE DATA: Discogs price: ${result.discogs_price}, eBay price: ${result.ebay_price}`);
@@ -2312,7 +2299,6 @@ class AddEditDeleteManager {
             return result;
         }
         
-        // Apply store price multiplier
         result.calculation_steps.push(``);
         result.calculation_steps.push(`💰 Applying store price ratio:`);
         result.calculation_steps.push(`  → Market price: $${marketPrice.toFixed(2)}`);
@@ -2321,13 +2307,11 @@ class AddEditDeleteManager {
         const multipliedPrice = marketPrice * multiplier;
         result.calculation_steps.push(`  → Ratio price: $${multipliedPrice.toFixed(2)}`);
         
-        // Apply rounding to .99
         const roundedPrice = this.roundDownTo99(multipliedPrice);
         result.calculation_steps.push(`  → Rounded down to .99: $${roundedPrice.toFixed(2)}`);
         
-        // Apply minimum price
         let finalPrice = roundedPrice;
-        if (finalPrice < this.minimumPrice) {
+        if (this.minimumPrice !== null && finalPrice < this.minimumPrice) {
             finalPrice = this.minimumPrice;
             result.calculation_steps.push(`  → Minimum store price applied ($${this.minimumPrice.toFixed(2)})`);
         }
