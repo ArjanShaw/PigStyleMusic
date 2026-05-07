@@ -99,17 +99,7 @@ const TabManager = (function() {
             }
         };
         
-        // Batches Tab
-        initializers['batches'] = () => {
-            console.log('🔵 TabManager: Initializing Batches tab');
-            if (typeof window.initBatchesTab === 'function') {
-                window.initBatchesTab();
-            } else if (typeof window.loadBatches === 'function') {
-                window.loadBatches();
-            } else {
-                console.warn('⚠️ initBatchesTab not found');
-            }
-        };
+         
         
         // Admin Config Tab
         initializers['admin-config'] = () => {
