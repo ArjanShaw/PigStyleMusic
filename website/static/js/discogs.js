@@ -379,12 +379,15 @@ async function calculateMarkupForRecord(createdAt, storePrice) {
 // ============================================================================
 // Render table from discogsFilteredRecords
 // ============================================================================
+ // ============================================================================
+// Render table from discogsFilteredRecords
+// ============================================================================
 
 async function renderDiscogsTable() {
     if (!discogsTableBody) return;
     
     if (discogsFilteredRecords.length === 0) {
-        discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this location.' : 'Select a location above') + '</td></tr>';
+        discogsTableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this location.' : 'Select a location above') + '</td</tr>';
         return;
     }
     
@@ -393,12 +396,6 @@ async function renderDiscogsTable() {
     
     for (const record of discogsFilteredRecords) {
         let imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
-        
-        let statusBadge = '';
-        if (record.status_id === 1) statusBadge = '<span class="status-badge new">📋 New</span>';
-        else if (record.status_id === 2) statusBadge = '<span class="status-badge active">✅ Active</span>';
-        else if (record.status_id === 3) statusBadge = '<span class="status-badge sold">💰 Sold</span>';
-        else statusBadge = '<span class="status-badge">❓ Unknown</span>';
         
         const canPost = (record.status_id === 2);
         let discogsPrice = null;
@@ -411,7 +408,6 @@ async function renderDiscogsTable() {
                 console.warn('Record ' + record.id + ' has no created_at');
             } else {
                 try {
-                    console.log('Calculating markup for record ' + record.id + ', created_at: ' + record.created_at);
                     const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
                     if (markupInfo.success) {
                         discogsPrice = markupInfo.discogs_price;
@@ -442,16 +438,16 @@ async function renderDiscogsTable() {
         html += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + (priceError ? '<div style="font-size: 10px; color: #dc3545;">⚠️ ' + priceError + '</div>' : '') + '</td>';
         html += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
         html += '<td title="' + escapeHtml(record.location || '') + '">' + (record.location ? record.location.substring(0, 50) : '—') + '</td>';
-        html += '<td>' + statusBadge + '</td>';
         html += '<td style="text-align: center;">';
         if (canPost && discogsPrice) {
             html += '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(record.artist) + '" data-title="' + escapeHtml(record.title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + (record.disc_condition_name || '') + '" data-sleeve-condition="' + (record.sleeve_condition_name || '') + '" data-catalog="' + escapeHtml(record.catalog_number || '') + '" data-location="' + escapeHtml(record.location || '') + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>';
         } else if (canPost && !discogsPrice) {
-            html += '<span style="color: #dc3545; font-size: 11px;" title="' + (priceError || 'Cannot post') + '">⚠️ Cannot post</span>';
+            html += '<span style="color: #dc3545; font-size: 11px;" title="' + (priceError || 'Cannot post') + '">⚠️ No price</span>';
         } else {
             html += '<span style="color: #999;">—</span>';
         }
-        html += '</td></tr>';
+        html += '</td>';
+        html += '</tr>';
         
         processedCount++;
         if (processedCount % 10 === 0) {

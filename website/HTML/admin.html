@@ -2518,7 +2518,7 @@
                 </div>
             </div>
         </div>
-        
+         
         <!-- Discogs Tab - Location-Based Bulk Posting -->
         <div id="discogs-tab" class="tab-content">
             <h2><i class="fab fa-discogs"></i> Discogs Management - Location Based</h2>
@@ -2547,7 +2547,7 @@
                     </div>
                     <div style="margin-top: 15px;">
                         <input type="number" id="new-rule-days" placeholder="Days" style="width: 80px; padding: 5px;">
-                        <input type="number" id="new-rule-percent" placeholder="%" style="width: 80px; padding: 5px;">
+                        <input type="number" id="new-rule-percent" placeholder="%" step="1" style="width: 80px; padding: 5px;">
                         <input type="text" id="new-rule-desc" placeholder="Description" style="width: 150px; padding: 5px;">
                         <button class="btn btn-success btn-sm" onclick="addMarkupRule()">Add Rule</button>
                     </div>
@@ -2595,7 +2595,7 @@
                 </button>
             </div>
             
-            <!-- Records Table - UNCHANGED from your original -->
+            <!-- Records Table - CORRECTED HEADERS -->
             <div class="records-table-container">
                 <table class="records-table">
                     <thead>
@@ -2607,14 +2607,15 @@
                             <th>Catalog #</th>
                             <th>Media Cond</th>
                             <th>Sleeve Cond</th>
-                            <th>Price</th>
+                            <th>Store Price</th>
+                            <th>Discogs Price</th>
+                            <th>Markup %</th>
                             <th>Location</th>
-                            <th>Status</th>
-                            <th>Action</th>
+                            <th>Post</th>
                         </tr>
                     </thead>
                     <tbody id="combined-inventory-body">
-                        <tr><td colspan="11" style="text-align: center; padding: 40px;">Select a location to view records</td</tr>
+                        <tr><td colspan="12" style="text-align: center; padding: 40px;">Select a location to view records</td</tr>
                     </tbody>
                 </table>
             </div>
@@ -2625,11 +2626,12 @@
                 <ul style="margin: 10px 0 0 20px;">
                     <li><strong>Select a Location:</strong> Choose a location from the dropdown</li>
                     <li><strong>Review Records:</strong> See all records currently assigned to that location</li>
+                    <li><strong>Discogs Price:</strong> Calculated using the markup rules based on record age</li>
                     <li><strong>Post to Discogs:</strong> Click "Post to Discogs" to list all eligible records</li>
-                    <li><strong>Single Post:</strong> Use the "Post" button next to individual records</li>
+                    <li><strong>Single Post:</strong> Use the "Post" button next to individual records to test a single listing</li>
                 </ul>
-                <p style="margin-top: 10px;"><strong>Formula:</strong> Discogs price = store_price × (1 + markup% / 100)</p>
-                <p><strong>💡 Tip:</strong> Only records with status "Active" will be posted.</p>
+                <p style="margin-top: 10px;"><strong>Formula:</strong> Discogs Price = Store Price × (1 + Markup% / 100)</p>
+                <p><strong>💡 Tip:</strong> Only records with status "Active" can be posted.</p>
             </div>
         </div>
           
