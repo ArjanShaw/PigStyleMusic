@@ -4565,37 +4565,25 @@ def get_unique_locations():
         locations = cursor.fetchall()
         conn.close()
         
-        print(f"\n🔍 RAW LOCATIONS FROM DATABASE:")
+        # REMOVE ALL print statements - use app.logger.debug instead if needed
         unique_bins = set()
         
         for row in locations:
             location = row['location']
-            print(f"   '{location}'")
             
             # Split by " | " separator
             if ' | ' in location:
                 parts = location.split(' | ')
                 
                 # Keep only the first two parts (Genre and Bin)
-                # This handles both:
-                #   ["Pop & Rock", "Bin 1", "↖️ Left Top"] -> "Pop & Rock | Bin 1"
-                #   ["Pop & Rock", "Bin 1"] -> "Pop & Rock | Bin 1"
                 if len(parts) >= 2:
                     bin_location = ' | '.join(parts[:2])
                     unique_bins.add(bin_location)
-                    print(f"   → Bin: '{bin_location}'")
-                else:
-                    unique_bins.add(location)
             else:
-                # Legacy format without separators
                 unique_bins.add(location)
         
         # Sort alphabetically
         bin_list = sorted(list(unique_bins))
-        
-        print(f"\n📍 FINAL BINS ({len(bin_list)}):")
-        for bin_loc in bin_list:
-            print(f"   '{bin_loc}'")
         
         return jsonify({
             'status': 'success',
@@ -4606,6 +4594,7 @@ def get_unique_locations():
     except Exception as e:
         app.logger.error(f"Error getting locations: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 
 @app.route('/api/records/by-location', methods=['GET'])
@@ -4620,72 +4609,31 @@ def get_records_by_location():
         conn = get_db()
         cursor = conn.cursor()
         
-        print(f"\n🔍 SEARCHING FOR BIN: '{bin_pattern}'")
+        # Use a simpler query without multiple pattern attempts
+        # Just match locations that START with the bin_pattern
+        search_pattern = bin_pattern + '%'
         
-        # Try multiple patterns to handle both with and without sublocation
-        patterns = [
-            bin_pattern + ' | %',  # Has sublocation: "Pop & Rock | Bin 1 | something"
-            bin_pattern,           # Exact match (no sublocation): "Pop & Rock | Bin 1"
-            bin_pattern + '%'      # Starts with (just in case)
-        ]
+        cursor.execute('''
+            SELECT 
+                r.id, r.artist, r.title, r.barcode, r.image_url, 
+                r.catalog_number, r.store_price, r.location, 
+                r.status_id, r.notes, r.created_at,
+                COALESCE(cs.condition_name, '') as sleeve_condition_name,
+                COALESCE(cd.condition_name, '') as disc_condition_name,
+                COALESCE(s.status_name, '') as status_name
+            FROM records r
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN d_status s ON r.status_id = s.id
+            WHERE r.location LIKE ? OR r.location = ?
+            ORDER BY r.location, r.created_at DESC
+        ''', (search_pattern, bin_pattern))
         
-        all_records = []
-        
-        for pattern in patterns:
-            cursor.execute('''
-                SELECT 
-                    r.id, r.artist, r.title, r.barcode, r.image_url, 
-                    r.catalog_number, r.store_price, r.location, 
-                    r.status_id, r.notes, r.created_at,
-                    cs.condition_name as sleeve_condition_name,
-                    cd.condition_name as disc_condition_name,
-                    s.status_name
-                FROM records r
-                LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-                LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-                LEFT JOIN d_status s ON r.status_id = s.id
-                WHERE r.location LIKE ?
-            ''', (pattern,))
-            
-            records = cursor.fetchall()
-            
-            if records:
-                print(f"   Pattern '{pattern}' matched {len(records)} records")
-                for record in records:
-                    # Avoid duplicates
-                    if not any(r['id'] == record['id'] for r in all_records):
-                        all_records.append(record)
-        
-        # If still no records, try a more flexible approach
-        if not all_records:
-            # Match any location that starts with the bin pattern
-            cursor.execute('''
-                SELECT 
-                    r.id, r.artist, r.title, r.barcode, r.image_url, 
-                    r.catalog_number, r.store_price, r.location, 
-                    r.status_id, r.notes, r.created_at,
-                    cs.condition_name as sleeve_condition_name,
-                    cd.condition_name as disc_condition_name,
-                    s.status_name
-                FROM records r
-                LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-                LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-                LEFT JOIN d_status s ON r.status_id = s.id
-                WHERE r.location LIKE ? OR r.location = ?
-            ''', (bin_pattern + '%', bin_pattern))
-            
-            all_records = cursor.fetchall()
-        
+        records = cursor.fetchall()
         conn.close()
         
-        print(f"   TOTAL: Found {len(all_records)} records in bin '{bin_pattern}'")
-        if all_records:
-            print(f"   Example locations:")
-            for i, record in enumerate(all_records[:3]):
-                print(f"      - '{record['location']}'")
-        
         records_list = []
-        for record in all_records:
+        for record in records:
             records_list.append({
                 'id': record['id'],
                 'artist': record['artist'],
@@ -4712,9 +4660,9 @@ def get_records_by_location():
         
     except Exception as e:
         app.logger.error(f"Error getting records by location: {str(e)}")
-        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-    
+
+
 # ==================== MARKUP RULES ENDPOINTS ====================
 
 @app.route('/api/markup-rules', methods=['GET'])
