@@ -11,93 +11,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        /* Collapsible Section Styles */
-        .collapsible-section {
-            transition: all 0.3s ease;
-        }
-
-        .collapsible-header:hover {
-            opacity: 0.95;
-        }
-
-        .collapsible-content {
-            transition: all 0.3s ease;
-        }
-
-        .markup-cell.positive {
-            color: #28a745;
-            font-weight: bold;
-        }
-
-        .markup-cell.negative {
-            color: #dc3545;
-            font-weight: bold;
-        }
-
-        .markup-cell.zero {
-            color: #ffc107;
-            font-weight: bold;
-        }
-
-        .discogs-price-cell {
-            font-weight: bold;
-        }
-
-        .discogs-price-cell.valid {
-            color: #28a745;
-        }
-
-        .discogs-price-cell.invalid {
-            color: #dc3545;
-        }
-        /* Discogs Tab Markup Rules Table Styles */
-        .config-section select, 
-        .config-section input {
-            font-size: 14px;
-        }
-
-        .config-section input:focus {
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
-        }
-
-        #markup-rules-body tr:hover {
-            background: #f8f9fa;
-        }
-
-        #markup-rules-body input {
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 6px;
-        }
-
-        #markup-rules-body input:focus {
-            border-color: #007bff;
-            outline: none;
-        }
-
-        .discogs-price-cell {
-            font-weight: bold;
-            color: #28a745;
-        }
-
-        .markup-cell {
-            font-size: 12px;
-            color: #666;
-        }
-
-        .markup-cell.positive {
-            color: #28a745;
-        }
-
-        .markup-cell.negative {
-            color: #dc3545;
-        }
-
-        .markup-cell.zero {
-            color: #ffc107;
-        }
-
         /* Status Badge Styles */
         .status-badge {
             display: inline-block;
@@ -2063,9 +1976,7 @@
             <div class="tab" data-tab="users">
                 <i class="fas fa-users"></i> Users
             </div>
-            <div class="tab" data-tab="batches">
-                <i class="fas fa-layer-group"></i> Batches
-            </div>
+             
             <div class="tab" data-tab="admin-config">
                 <i class="fas fa-sliders-h"></i> Admin Config
             </div>
@@ -2608,110 +2519,39 @@
             </div>
         </div>
        
-        <!-- Discogs Tab - Complete with Collapsible Markup Rules -->
+        <!-- Discogs Tab - Location-Based Bulk Posting (No listing ID tracking) -->
         <div id="discogs-tab" class="tab-content">
             <h2><i class="fab fa-discogs"></i> Discogs Management - Location Based</h2>
             
-            <!-- Collapsible Markup Rules Configuration Section -->
-            <div class="config-section" style="margin-bottom: 20px; background: white; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
-                <div onclick="toggleMarkupRules()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: white;">
-                    <div>
-                        <i class="fas fa-chart-line"></i>
-                        <strong style="margin-left: 10px;">Markup Rules Configuration</strong>
-                        <span style="margin-left: 15px; font-size: 12px; opacity: 0.8;">(Click to expand/collapse)</span>
-                    </div>
-                    <i id="markup-rules-toggle-icon" class="fas fa-chevron-down" style="transition: transform 0.3s;"></i>
+            <!-- Config Fields Row -->
+            <div class="config-row" style="margin-bottom: 20px; display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                <div class="config-field">
+                    <label for="discogs-markup"><i class="fas fa-percent"></i> Markup % (initial):</label>
+                    <input type="number" id="discogs-markup" class="config-input" step="1" min="0" max="200" value="20" style="width: 100px; padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
                 </div>
-                
-                <div id="markup-rules-content" style="display: none; padding: 20px; background: #f8f9fa; border-top: 1px solid #ddd;">
-                    <p style="margin-bottom: 15px; font-size: 14px; color: #666;">
-                        <i class="fas fa-info-circle"></i> 
-                        Rules are applied based on record age (days since creation). Values interpolate between rule points.
-                        Negative percentages = markdown (sell below store price).
-                        <strong style="color: #dc3545;">⚠️ You MUST configure at least one rule before posting to Discogs.</strong>
-                    </p>
-                    
-                    <!-- Add New Rule Form -->
-                    <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
-                        <h4 style="margin-top: 0; margin-bottom: 15px;">Add New Rule</h4>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
-                            <div>
-                                <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #666;">Days Old (min)</label>
-                                <input type="number" id="new-rule-days" placeholder="0" step="1" min="0" style="width: 120px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                            </div>
-                            <div>
-                                <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #666;">Markup %</label>
-                                <input type="number" id="new-rule-percent" placeholder="20" step="1" style="width: 120px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                            </div>
-                            <div>
-                                <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #666;">Description</label>
-                                <input type="text" id="new-rule-desc" placeholder="e.g., New records" style="width: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                            </div>
-                            <div>
-                                <button class="btn btn-success" onclick="addMarkupRule()" style="background: #28a745; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer;">
-                                    <i class="fas fa-plus"></i> Add Rule
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Rules Table -->
-                    <div style="background: white; border-radius: 8px; overflow-x: auto; border: 1px solid #e0e0e0;">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
-                                    <th style="padding: 12px; text-align: left;">Days Old</th>
-                                    <th style="padding: 12px; text-align: left;">Markup %</th>
-                                    <th style="padding: 12px; text-align: left;">Description</th>
-                                    <th style="padding: 12px; text-align: left;">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="markup-rules-body">
-                                <tr>
-                                    <td colspan="4" style="padding: 30px; text-align: center; color: #999;">
-                                        <i class="fas fa-spinner fa-pulse"></i> Loading rules...
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <!-- Warning if no rules exist -->
-                    <div id="no-rules-warning" style="margin-top: 15px; padding: 12px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; color: #721c24; display: none;">
-                        <i class="fas fa-exclamation-triangle"></i> 
-                        <strong>ERROR:</strong> No markup rules configured. You must add at least one markup rule before posting to Discogs.
-                    </div>
-                    
-                    <!-- Example Rules -->
-                    <div style="margin-top: 15px; padding: 12px; background: #e7f3ff; border-radius: 6px; font-size: 13px;">
-                        <i class="fas fa-lightbulb"></i>
-                        <strong>Example rule sets:</strong>
-                        <ul style="margin: 8px 0 0 20px; color: #666;">
-                            <li><strong>Standard:</strong> 0 days: +25%, 30 days: +20%, 60 days: +15%, 90 days: +10%, 180 days: 0%</li>
-                            <li><strong>Aggressive clearance:</strong> 0 days: +20%, 30 days: +10%, 60 days: 0%, 90 days: -15%, 120 days: -25%</li>
-                            <li><strong>Premium:</strong> 0 days: +40%, 30 days: +30%, 60 days: +20%, 90 days: +10%</li>
-                        </ul>
-                    </div>
-                </div>
+                <button class="btn btn-sm btn-primary" onclick="saveDiscogsConfig()">
+                    <i class="fas fa-save"></i> Save Config
+                </button>
+                <span id="config-status" style="font-size: 12px; color: #666;"></span>
             </div>
             
             <!-- Location Selector -->
-            <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+            <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                 <div class="filter-group" style="flex: 2;">
                     <label for="discogs-location-select"><i class="fas fa-map-marker-alt"></i> Select Location:</label>
-                    <select id="discogs-location-select" class="filter-select" style="min-width: 400px; padding: 8px 12px; font-size: 14px; border-radius: 4px; border: 1px solid #ddd;">
+                    <select id="discogs-location-select" class="filter-select" style="min-width: 400px; padding: 8px 12px; font-size: 14px;">
                         <option value="">-- Select a location --</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <button class="btn btn-secondary" onclick="refreshDiscogsLocations()" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                    <button class="btn btn-secondary" onclick="refreshDiscogsLocations()">
                         <i class="fas fa-sync-alt"></i> Refresh Locations
                     </button>
                 </div>
             </div>
             
             <!-- Search Bar -->
-            <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #28a745; padding: 15px; border-radius: 8px;">
+            <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #28a745; padding: 15px;">
                 <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 250px;">
                         <label for="discogs-search-input" style="display: block; margin-bottom: 5px; font-weight: 600; color: #28a745;">
@@ -2722,11 +2562,11 @@
                                 id="discogs-search-input" 
                                 class="search-input" 
                                 placeholder="Search by artist, title, or catalog number..."
-                                style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-                            <button class="btn btn-success" id="discogs-search-button" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">
+                                style="flex: 1;">
+                            <button class="btn btn-success" id="discogs-search-button">
                                 <i class="fas fa-search"></i> Search
                             </button>
-                            <button class="btn btn-secondary" onclick="clearDiscogsSearch()" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">
+                            <button class="btn btn-secondary" onclick="clearDiscogsSearch()">
                                 <i class="fas fa-times"></i> Clear
                             </button>
                         </div>
@@ -2735,65 +2575,54 @@
             </div>
             
             <!-- Status Message -->
-            <div id="discogs-status-message" class="status-message" style="display: none; padding: 12px; border-radius: 4px; margin-bottom: 15px;"></div>
+            <div id="discogs-status-message" class="status-message" style="display: none;"></div>
             
             <!-- Post Button -->
             <div style="margin-bottom: 20px;">
-                <button id="post-location-button" class="btn btn-success" disabled style="opacity: 0.5; background: #28a745; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px;">
+                <button id="post-location-button" class="btn btn-success" disabled style="opacity: 0.5;">
                     <i class="fab fa-discogs"></i> Post to Discogs
                 </button>
             </div>
             
             <!-- Records Table -->
-            <div class="records-table-container" style="overflow-x: auto; background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px;">
-                <table class="records-table" style="width: 100%; border-collapse: collapse;">
+            <div class="records-table-container">
+                <table class="records-table">
                     <thead>
-                        <tr style="background: #f8f9fa;">
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Image</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">ID</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Artist</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Title</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Catalog #</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Media Cond</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Sleeve Cond</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Store Price</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Discogs Price</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Markup</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Location</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Status</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Action</th>
+                        <tr>
+                            <th>Image</th>
+                            <th>ID</th>
+                            <th>Artist</th>
+                            <th>Title</th>
+                            <th>Catalog #</th>
+                            <th>Media Cond</th>
+                            <th>Sleeve Cond</th>
+                            <th>Price</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody id="combined-inventory-body">
-                        <tr>
-                            <td colspan="13" style="text-align: center; padding: 40px; color: #999;">Select a location to view records</td>
-                        </tr>
+                        <tr><td colspan="11" style="text-align: center; padding: 40px;">Select a location to view records</td</tr>
                     </tbody>
                 </table>
             </div>
             
             <!-- Info Box -->
-            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666; border-left: 4px solid #007bff;">
-                <h4 style="margin-top: 0; margin-bottom: 10px; color: #333;">
-                    <i class="fas fa-info-circle"></i> How it works:
-                </h4>
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
+                <h4><i class="fas fa-info-circle"></i> How it works:</h4>
                 <ul style="margin: 10px 0 0 20px;">
-                    <li><strong>Markup Rules:</strong> Click the colored bar above to expand and configure multiple rules based on record age</li>
-                    <li><strong>Interpolation:</strong> Values automatically interpolate between rule points for smooth pricing</li>
-                    <li><strong>Negative Markup:</strong> Use negative percentages for markdowns (sell below store price)</li>
-                    <li><strong>Select a Location:</strong> Choose a location from the dropdown to see all records in that section</li>
-                    <li><strong>Review & Search:</strong> Filter records within the location by artist, title, or catalog number</li>
+                    <li><strong>Select a Location:</strong> Choose a location from the dropdown</li>
+                    <li><strong>Review Records:</strong> See all records currently assigned to that location with images</li>
+                    <li><strong>Search:</strong> Filter within the location by artist, title, or catalog number</li>
                     <li><strong>Post to Discogs:</strong> Click "Post to Discogs" to list all eligible records from this location</li>
                     <li><strong>Single Post:</strong> Use the "Post" button next to individual records to list them one by one</li>
                 </ul>
-                <p style="margin-top: 10px;">
-                    <strong>Formula:</strong> Discogs price = store_price × (1 + markup_percent / 100)
-                </p>
-                <p style="margin-top: 10px;">
-                    <strong>💡 Tip:</strong> Only records with status "Active" (status_id=2) will be posted to Discogs.
-                </p>
+                <p style="margin-top: 10px;"><strong>Formula:</strong> Discogs price = store_price × (1 + markup% / 100)</p>
+                <p style="margin-top: 10px;"><strong>💡 Tip:</strong> Only records with status "Active" will be posted.</p>
             </div>
         </div>
+
           
         <!-- Users Tab -->
         <div id="users-tab" class="tab-content">
@@ -2916,114 +2745,7 @@
             </div>
         </div>
         
-        <!-- Batches Tab -->
-        <div id="batches-tab" class="tab-content">
-            <h2><i class="fas fa-layer-group"></i> Batch Management</h2>
-            
-            <!-- Stats Cards -->
-            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Batches</h3>
-                    <p class="stat-number" id="total-batches" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Active Batches</h3>
-                    <p class="stat-number" id="active-batches" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Completed</h3>
-                    <p class="stat-number" id="completed-batches" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Records in Batches</h3>
-                    <p class="stat-number" id="records-in-batches" style="font-size: 28px; font-weight: bold; color: #17a2b8; margin: 0;">0</p>
-                </div>
-            </div>
-            
-            <!-- Filters -->
-            <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
-                <div class="filter-group" style="flex: 1;">
-                    <label for="batch-status-filter"><i class="fas fa-filter"></i> Status:</label>
-                    <select id="batch-status-filter" class="filter-select" onchange="filterBatches()">
-                        <option value="all">All Batches</option>
-                        <option value="active">Active</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                    </select>
-                </div>
-                <div class="filter-group" style="flex: 2;">
-                    <label for="batch-search"><i class="fas fa-search"></i> Search:</label>
-                    <input type="text" id="batch-search" class="search-input" placeholder="Search by seller name or contact..." onkeyup="filterBatches()">
-                </div>
-                <div class="filter-group">
-                    <button class="btn btn-primary" onclick="loadBatches()">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Batches Table -->
-            <div class="records-table-container">
-                <table class="records-table" id="batches-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Seller Name</th>
-                            <th>Contact</th>
-                            <th>Percentage</th>
-                            <th>Items</th>
-                            <th>Total Store</th>
-                            <th>Total Offer</th>
-                            <th>Start Date</th>
-                            <th>End Date</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </thead>
-                    <tbody id="batches-body">
-                        <td colspan="11" style="text-align:center; padding:40px;">Loading batches...</td>
-                    </tbody>
-                </table>
-            </div>
-            
-            <!-- Pagination -->
-            <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <button class="page-btn" onclick="goToBatchesPage(1)" id="batches-first-btn" disabled>
-                    <i class="fas fa-angle-double-left"></i>
-                </button>
-                <button class="page-btn" onclick="goToBatchesPage(batchesCurrentPage - 1)" id="batches-prev-btn" disabled>
-                    <i class="fas fa-angle-left"></i>
-                </button>
-                
-                <span class="pagination-info">
-                    Page <input type="number" class="page-input" id="batches-current-page" min="1" value="1" 
-                        onchange="goToBatchesPage(parseInt(this.value))" onblur="goToBatchesPage(parseInt(this.value))" 
-                        style="width: 50px; text-align: center;"> 
-                    of <span id="batches-total-pages">1</span>
-                </span>
-                
-                <button class="page-btn" onclick="goToBatchesPage(batchesCurrentPage + 1)" id="batches-next-btn" disabled>
-                    <i class="fas fa-angle-right"></i>
-                </button>
-                <button class="page-btn" onclick="goToBatchesPage(batchesTotalPages)" id="batches-last-btn" disabled>
-                    <i class="fas fa-angle-double-right"></i>
-                </button>
-                
-                <div class="records-per-page" style="margin-left: auto;">
-                    <span>Show:</span>
-                    <select id="batches-page-size" onchange="changeBatchesPageSize(parseInt(this.value))">
-                        <option value="10">10</option>
-                        <option value="20" selected>20</option>
-                        <option value="50">50</option>
-                    </select>
-                </div>
-            </div>
-            
-            <!-- Loading Indicator -->
-            <div class="loading" id="batches-loading" style="display: none;">
-                <div class="loading-spinner"></div>
-                <p>Loading batches...</p>
-            </div>
-        </div>
+       
         
         <!-- Admin Config Tab -->
         <div id="admin-config-tab" class="tab-content">
@@ -4172,9 +3894,6 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     <div id="barcode-print-container" style="display: none;"></div>
 
     <!-- Scripts -->
-     <script src="/static/js/utils.js"></script>
-     <script src="/static/js/config-value-manager.js"></script>
-
     <script src="/static/js/app-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -4188,17 +3907,17 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         <script src="/static/js/discogs.js"></script>
 
     <script src="/static/js/tab-manager.js"></script>
-    
+    <script src="/static/js/utils.js"></script>
     <script src="/static/js/config-manager.js"></script>
-    
+    <script src="/static/js/config-value-manager.js"></script>
     <script src="/static/js/add-edit-delete-manager.js"></script>
     <script src="/static/js/price-tags.js"></script>
     <script src="/static/js/checkout.js"></script>
     <script src="/static/js/users.js"></script>
-    <script src="/static/js/batches.js"></script>
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/db-query.js"></script>
     <script src="/static/js/inventory.js"></script>
+    <script src="/static/js/square-payments.js"></script>
     <script src="/static/js/gift-cards.js"></script>
     <script src="/static/js/accessories-manager.js"></script>
     <script src="/static/js/stats.js"></script>
