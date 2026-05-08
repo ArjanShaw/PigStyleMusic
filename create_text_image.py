@@ -37,19 +37,15 @@ def create_text_image(text, font_size_inches, color, dpi=300, margin_inches=0.5)
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
     
-    # Get font metrics for better vertical alignment
-    ascent, descent = font.getmetrics()
-    
     # Create image with transparent background
     img_width = text_width + (2 * margin_px)
     img_height = text_height + (2 * margin_px)
     image = Image.new('RGBA', (img_width, img_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
-    # Position text to account for ascenders/descenders
-    # Use negative y offset to position text properly
-    x = margin_px - text_bbox[0]  # Compensate for left bearing
-    y = margin_px - text_bbox[1]  # Compensate for top bearing (this fixes the vertical alignment)
+    # Position text to account for left/top bearings
+    x = margin_px - text_bbox[0]
+    y = margin_px - text_bbox[1]
     
     draw.text((x, y), text, font=font, fill=color)
     
@@ -58,7 +54,6 @@ def create_text_image(text, font_size_inches, color, dpi=300, margin_inches=0.5)
     if bbox:
         image = image.crop(bbox)
     else:
-        # If no content found, use original dimensions
         print("Warning: No content found in image, using original dimensions")
     
     # Generate filename from text
@@ -77,20 +72,17 @@ def create_text_image(text, font_size_inches, color, dpi=300, margin_inches=0.5)
 def main():
     parser = argparse.ArgumentParser(description='Create transparent PNG text images')
     parser.add_argument('text', type=str, help='Text to render in the image (use quotes if it contains spaces or special characters)')
-    parser.add_argument('--size', '-s', type=float, default=6.0,
-                       help='Font size in inches (default: 6.0)')
+    parser.add_argument('--size', '-s', type=float, default=1.0,
+                       help='Font size in inches (default: 1.0)')
     parser.add_argument('--dpi', '-d', type=int, default=300,
                        help='DPI for print quality (default: 300)')
     parser.add_argument('--color', '-c', type=str, default='black',
                        help='Text color: red, green, blue, black, white, lightgreen, or custom "R,G,B" (default: black)')
     parser.add_argument('--margin', '-m', type=float, default=0.5,
                        help='Margin in inches around text (default: 0.5)')
-    parser.add_argument('--no-crop', action='store_true',
-                       help='Disable automatic cropping of transparent edges')
     
     args = parser.parse_args()
     
-    # Print debug info
     print(f"Creating image for text: '{args.text}'")
     
     # Parse color
@@ -107,7 +99,6 @@ def main():
     elif args.color.lower() == 'lightgreen':
         color = (144, 238, 144, 255)
     elif ',' in args.color:
-        # Custom RGB values
         try:
             rgb = [int(x.strip()) for x in args.color.split(',')]
             if len(rgb) == 3:
