@@ -27,8 +27,6 @@ class AddEditDeleteManager {
         this.defaultDiscConditionId = null;
         this.defaultNotes = null;
         this.autoEstimatePrice = true;
-        this.activeBatch = null;
-        this.newRecordsCount = 0;
         this.storePriceMultiplier = null; // MUST be loaded from config
         
         this.init();
@@ -40,14 +38,11 @@ class AddEditDeleteManager {
         await this.loadConditions();
         await this.loadConsignors();
         await this.loadStatuses(); // Load statuses from database
-        await this.checkActiveBatch();
-        await this.loadNewRecordsCount();
         await this.loadStorePriceMultiplier();
         await this.loadCommissionRate();
         this.loadSavedSettings();
         this.setupEventListeners();
         this.renderGlobalSettings();
-        this.renderBatchSection();
     }
 
     async loadStatuses() {
@@ -63,37 +58,6 @@ class AddEditDeleteManager {
         } catch (error) {
             console.error('Error loading statuses:', error);
             this.statuses = [];
-        }
-    }
-
-    async checkActiveBatch() {
-        try {
-            const response = await APIUtils.get('/api/batches/current-active');
-            
-            if (response.status === 'success' && response.has_active) {
-                this.activeBatch = response.batch;
-                console.log('Active batch found:', this.activeBatch);
-            } else {
-                this.activeBatch = null;
-            }
-        } catch (error) {
-            console.error('Error checking active batch:', error);
-            this.activeBatch = null;
-        }
-    }
-
-    async loadNewRecordsCount() {
-        try {
-            const response = await APIUtils.get('/records/count', { status_id: 1 });
-            this.newRecordsCount = response.count || 0;
-            const newRecordsElement = document.getElementById('new-records-count');
-            if (newRecordsElement) {
-                newRecordsElement.textContent = this.newRecordsCount;
-            }
-            console.log(`NEW_RECORDS: Count loaded: ${this.newRecordsCount}`);
-        } catch (error) {
-            console.error('Error loading new records count:', error);
-            this.newRecordsCount = 0;
         }
     }
 
@@ -157,299 +121,6 @@ class AddEditDeleteManager {
             if (commissionElement) {
                 commissionElement.textContent = 'N/A';
             }
-        }
-    }
-
-    renderBatchSection() {
-        const searchSection = document.querySelector('.search-section');
-        if (!searchSection) return;
-        
-        let batchSection = document.getElementById('batch-section');
-        if (batchSection) {
-            batchSection.remove();
-        }
-        
-        batchSection = document.createElement('div');
-        batchSection.id = 'batch-section';
-        batchSection.style.marginTop = '15px';
-        batchSection.style.marginBottom = '15px';
-        batchSection.style.borderRadius = '8px';
-        batchSection.style.overflow = 'hidden';
-        batchSection.style.border = '1px solid #dee2e6';
-        
-        const header = document.createElement('div');
-        
-        if (this.activeBatch) {
-            header.style.cssText = `
-                background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                color: white;
-                padding: 12px 15px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                font-weight: 500;
-            `;
-            header.innerHTML = `
-                <span><i class="fas fa-layer-group"></i> Active Batch #${this.activeBatch.id} - ${this.activeBatch.seller_name}</span>
-                <span class="batch-toggle"><i class="fas fa-chevron-down"></i></span>
-            `;
-        } else {
-            header.style.cssText = `
-                background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-                color: white;
-                padding: 12px 15px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                font-weight: 500;
-            `;
-            header.innerHTML = `
-                <span><i class="fas fa-layer-group"></i> No Active Batch</span>
-                <span class="batch-toggle"><i class="fas fa-chevron-down"></i></span>
-            `;
-        }
-        
-        const content = document.createElement('div');
-        content.style.cssText = `
-            background: #f8f9fa;
-            padding: 15px;
-            border-top: 1px solid #dee2e6;
-            display: none;
-        `;
-        
-        if (this.activeBatch) {
-            content.innerHTML = this.renderActiveBatchContent();
-        } else {
-            content.innerHTML = this.renderNewBatchContent();
-        }
-        
-        batchSection.appendChild(header);
-        batchSection.appendChild(content);
-        
-        header.addEventListener('click', () => {
-            const isVisible = content.style.display !== 'none';
-            content.style.display = isVisible ? 'none' : 'block';
-            header.querySelector('.batch-toggle i').className = isVisible ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
-        });
-        
-        const radioGroup = searchSection.querySelector('.radio-group');
-        if (radioGroup) {
-            radioGroup.after(batchSection);
-        } else {
-            searchSection.appendChild(batchSection);
-        }
-        
-        this.attachBatchEventListeners();
-    }
-
-    renderNewBatchContent() {
-        return `
-            <div style="margin-bottom: 15px;">
-                <h4 style="margin: 0 0 10px 0; color: #333;">Start New Batch</h4>
-                <p style="margin: 0 0 15px 0; font-size: 13px; color: #666;">
-                    Start a batch to track records from a seller. All records added while the batch is active will be associated with this seller.
-                </p>
-            </div>
-            
-            <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
-                <div style="flex: 2; min-width: 250px;">
-                    <label for="batch-seller-name" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
-                        <i class="fas fa-user"></i> Seller Name *
-                    </label>
-                    <input type="text" 
-                           id="batch-seller-name" 
-                           class="search-input" 
-                           placeholder="Enter seller's full name"
-                           style="width: 100%;">
-                </div>
-                
-                <div style="flex: 2; min-width: 250px;">
-                    <label for="batch-seller-contact" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
-                        <i class="fas fa-phone-alt"></i> Phone or Email *
-                    </label>
-                    <input type="text" 
-                           id="batch-seller-contact" 
-                           class="search-input" 
-                           placeholder="Enter phone number or email"
-                           style="width: 100%;">
-                </div>
-                
-                <div style="flex: 2; min-width: 300px;">
-                    <label for="batch-notes" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
-                        <i class="fas fa-sticky-note"></i> Notes (Optional)
-                    </label>
-                    <input type="text" 
-                           id="batch-notes" 
-                           class="search-input" 
-                           placeholder="Any additional notes about this batch"
-                           style="width: 100%;">
-                </div>
-                
-                <div style="flex: 0 0 auto;">
-                    <button class="btn btn-success" id="start-batch-btn">
-                        <i class="fas fa-play"></i> Start Batch
-                    </button>
-                </div>
-            </div>
-            
-            <p style="margin-top: 15px; margin-bottom: 0; font-size: 0.85rem; color: #666; border-top: 1px solid #dee2e6; padding-top: 10px;">
-                <i class="fas fa-info-circle"></i> 
-                After starting a batch, all records you add will be associated with this seller. Remember to complete the batch when you're done adding records.
-            </p>
-        `;
-    }
-
-    renderActiveBatchContent() {
-        if (!this.activeBatch) return '';
-        
-        return `
-            <div style="margin-bottom: 15px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h4 style="margin: 0; color: #333;">Active Batch #${this.activeBatch.id}</h4>
-                    <span class="status-badge batch-active">Active</span>
-                </div>
-                
-                <div style="background: white; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
-                    <p style="margin: 5px 0;"><strong>Seller:</strong> ${this.escapeHtml(this.activeBatch.seller_name || '')}</p>
-                    <p style="margin: 5px 0;"><strong>Contact:</strong> ${this.escapeHtml(this.activeBatch.seller_contact || '')}</p>
-                    <p style="margin: 5px 0;"><strong>Started:</strong> ${new Date(this.activeBatch.start_datetime).toLocaleString()}</p>
-                    <p style="margin: 5px 0;"><strong>Records in Batch:</strong> ${this.activeBatch.record_count || 0}</p>
-                    ${this.activeBatch.notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${this.escapeHtml(this.activeBatch.notes)}</p>` : ''}
-                </div>
-                
-                <div style="background: #e9ecef; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; font-weight: 500;">
-                        <span>Total Store Value:</span>
-                        <span>$${(this.activeBatch.total_store_value || 0).toFixed(2)}</span>
-                    </div>
-                </div>
-                
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button class="btn btn-success" id="complete-batch-btn">
-                        <i class="fas fa-check-circle"></i> Complete Batch
-                    </button>
-                    <button class="btn btn-warning" id="print-batch-btn">
-                        <i class="fas fa-print"></i> Print Bill of Sale
-                    </button>
-                    <button class="btn btn-danger" id="cancel-batch-btn">
-                        <i class="fas fa-times-circle"></i> Cancel Batch
-                    </button>
-                </div>
-            </div>
-        `;
-    }
-
-    attachBatchEventListeners() {
-        const startBtn = document.getElementById('start-batch-btn');
-        if (startBtn) {
-            startBtn.addEventListener('click', async () => {
-                const name = document.getElementById('batch-seller-name').value.trim();
-                const contact = document.getElementById('batch-seller-contact').value.trim();
-                const notes = document.getElementById('batch-notes').value.trim();
-                
-                if (!name) {
-                    showMessage('Please enter seller name', 'error');
-                    return;
-                }
-                if (!contact) {
-                    showMessage('Please enter seller contact (phone or email)', 'error');
-                    return;
-                }
-                
-                await this.startBatch(name, contact, notes);
-            });
-        }
-        
-        const completeBtn = document.getElementById('complete-batch-btn');
-        if (completeBtn) {
-            completeBtn.addEventListener('click', async () => {
-                await this.completeBatch();
-            });
-        }
-        
-        const printBtn = document.getElementById('print-batch-btn');
-        if (printBtn) {
-            printBtn.addEventListener('click', async () => {
-                if (this.activeBatch) {
-                    if (window.batchManager) {
-                        window.batchManager.printBatch(this.activeBatch.id);
-                    }
-                }
-            });
-        }
-        
-        const cancelBtn = document.getElementById('cancel-batch-btn');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('click', async () => {
-                if (!this.activeBatch) return;
-                
-                if (!confirm('WARNING: Cancelling this batch will delete ALL records added during this batch. This action CANNOT be undone. Are you sure?')) {
-                    return;
-                }
-                
-                try {
-                    const response = await APIUtils.post(`/api/batches/${this.activeBatch.id}/cancel`, {
-                        delete_records: true
-                    });
-                    
-                    if (response.status === 'success') {
-                        showMessage(`Batch cancelled and ${response.deleted_records || 0} records deleted`, 'warning');
-                        this.activeBatch = null;
-                        this.renderBatchSection();
-                    } else {
-                        showMessage('Error cancelling batch: ' + (response.error || 'Unknown error'), 'error');
-                    }
-                } catch (error) {
-                    console.error('Error cancelling batch:', error);
-                    showMessage('Error cancelling batch: ' + error.message, 'error');
-                }
-            });
-        }
-    }
-
-    async startBatch(name, contact, notes) {
-        try {
-            const response = await APIUtils.post('/api/batches', {
-                seller_name: name,
-                seller_contact: contact,
-                notes: notes
-            });
-            
-            if (response.status === 'success') {
-                showMessage(`Batch #${response.batch_id} started successfully!`, 'success');
-                await this.checkActiveBatch();
-                this.renderBatchSection();
-            } else {
-                showMessage('Error starting batch: ' + (response.error || 'Unknown error'), 'error');
-            }
-        } catch (error) {
-            console.error('Error starting batch:', error);
-            showMessage('Error starting batch: ' + error.message, 'error');
-        }
-    }
-
-    async completeBatch() {
-        if (!this.activeBatch) return;
-        
-        if (!confirm('Are you sure you want to complete this batch? This will mark it as finished and records will remain in inventory.')) {
-            return;
-        }
-        
-        try {
-            const response = await APIUtils.post(`/api/batches/${this.activeBatch.id}/complete`, {});
-            
-            if (response.status === 'success') {
-                showMessage('Batch completed successfully!', 'success');
-                this.activeBatch = null;
-                this.renderBatchSection();
-            } else {
-                showMessage('Error completing batch: ' + (response.error || 'Unknown error'), 'error');
-            }
-        } catch (error) {
-            console.error('Error completing batch:', error);
-            showMessage('Error completing batch: ' + error.message, 'error');
         }
     }
 
@@ -1034,7 +705,6 @@ class AddEditDeleteManager {
 
     renderDiscogsResults() {
         const resultsCount = this.currentResults.length;
-        const hasActiveBatch = this.activeBatch !== null;
         
         const conditionOptions = this.conditions.map(condition => {
             return `<option value="${condition.id}">${condition.display_name || condition.condition_name}</option>`;
@@ -1187,12 +857,6 @@ class AddEditDeleteManager {
                                 <button class="btn btn-primary add-record-btn">
                                     <i class="fas fa-plus"></i> Add to Inventory
                                 </button>
-                                
-                                ${hasActiveBatch ? `
-                                    <span class="form-hint" style="margin-left: 10px; font-size: 12px; color: #28a745;">
-                                        <i class="fas fa-check-circle"></i> Record will be added to active batch
-                                    </span>
-                                ` : ''}
                             </div>
                         </div>
                     </div>
@@ -1608,7 +1272,7 @@ class AddEditDeleteManager {
                                 <td style="padding: 4px; border: 1px solid #ddd;">${listing.condition}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;">${this.escapeHtml(listing.title.substring(0, 50))}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;"><a href="${listing.url}" target="_blank">View</a></td>
-                              </tr>`).join('')}</tbody>
+                               </tr>`).join('')}</tbody>
                     </table>
                 </div>
             </div>`;
@@ -1790,20 +1454,9 @@ class AddEditDeleteManager {
             if (response.status === 'success' && response.record) {
                 const recordId = response.record.id;
                 
-                let batchMessage = '';
-                if (this.activeBatch) {
-                    batchMessage = ` (added to active batch #${this.activeBatch.id})`;
-                }
-                
-                showMessage(`Record added successfully! Record ID: ${recordId}. Price: $${price.toFixed(2)}${batchMessage}`, 'success');
+                showMessage(`Record added successfully! Record ID: ${recordId}. Price: $${price.toFixed(2)}`, 'success');
                 
                 await this.loadStats();
-                await this.loadNewRecordsCount();
-                
-                if (this.activeBatch) {
-                    await this.checkActiveBatch();
-                    this.renderBatchSection();
-                }
                 
                 this.clearResults();
                 document.getElementById('searchInput').value = '';
@@ -1895,7 +1548,6 @@ class AddEditDeleteManager {
                 const currentSearch = document.getElementById('searchInput').value;
                 if (currentSearch) await this.performSearch(currentSearch);
                 await this.loadStats();
-                await this.loadNewRecordsCount();
             } else {
                 showMessage(`Error: ${response.error || 'Failed to update record'}`, 'error');
             }
@@ -1913,7 +1565,6 @@ class AddEditDeleteManager {
                 this.currentResults = this.currentResults.filter(r => r.id != recordId);
                 this.displayResults();
                 await this.loadStats();
-                await this.loadNewRecordsCount();
             } else {
                 showMessage(`Error: ${response.error || 'Failed to delete record'}`, 'error');
             }
@@ -2332,9 +1983,6 @@ document.addEventListener('tabChanged', function(e) {
         if (!window.addEditDeleteManager) {
             window.addEditDeleteManager = new AddEditDeleteManager();
         } else {
-            window.addEditDeleteManager.checkActiveBatch();
-            window.addEditDeleteManager.renderBatchSection();
-            window.addEditDeleteManager.loadNewRecordsCount();
             window.addEditDeleteManager.loadStorePriceMultiplier();
             window.addEditDeleteManager.loadCommissionRate();
         }
