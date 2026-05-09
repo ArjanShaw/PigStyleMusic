@@ -4389,7 +4389,7 @@ def get_top_artists_stats():
         WHERE status_id = 3 AND artist IS NOT NULL AND artist != ''
         GROUP BY artist
         ORDER BY copies_sold DESC
-        LIMIT 10
+         
     ''')
     
     results = cursor.fetchall()
