@@ -3,8 +3,9 @@
 // ============================================================================
 
 let currentLocationRecords = [];
-let discogsFilteredRecords = [];  // Renamed to avoid conflict
+let discogsFilteredRecords = [];
 let currentLocation = null;
+let currentLocationPrefix = null;
 let isLoading = false;
 let cancelResolve = false;
 
@@ -152,7 +153,7 @@ window.toggleMarkupRules = function() {
 };
 
 // ============================================================================
-// Load unique locations from records
+// Load unique locations from records (stripped of counters)
 // ============================================================================
 
 async function loadLocations() {
@@ -174,7 +175,7 @@ async function loadLocations() {
         
         if (data.status === 'success') {
             renderLocationSelect(data.locations);
-            console.log('✅ Loaded ' + data.locations.length + ' locations');
+            console.log('✅ Loaded ' + data.locations.length + ' bins/locations');
         } else {
             throw new Error(data.error || 'Failed to load locations');
         }
@@ -191,7 +192,7 @@ function renderLocationSelect(locations) {
         return;
     }
     
-    discogsLocationSelect.innerHTML = '<option value="">-- Select a location --</option>';
+    discogsLocationSelect.innerHTML = '<option value="">-- Select a bin/location --</option>';
     
     if (!locations || locations.length === 0) {
         discogsLocationSelect.innerHTML = '<option value="">-- No locations found --</option>';
@@ -207,7 +208,7 @@ function renderLocationSelect(locations) {
 }
 
 // ============================================================================
-// Load records by location
+// Load records by location (entire bin - all counters)
 // ============================================================================
 
 async function loadLocationRecords() {
@@ -215,11 +216,12 @@ async function loadLocationRecords() {
     
     if (!selectedLocation) {
         if (discogsTableBody) {
-            discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
+            discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
         }
         if (discogsPostButton) {
             discogsPostButton.disabled = true;
             discogsPostButton.style.opacity = '0.5';
+            discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post to Discogs';
         }
         return;
     }
@@ -232,6 +234,7 @@ async function loadLocationRecords() {
     }
     
     try {
+        // Use the existing endpoint - it will match all records with location starting with selectedLocation + " | "
         const url = window.AppConfig.baseUrl + '/api/records/by-location?location=' + encodeURIComponent(selectedLocation);
         
         const response = await fetch(url, {
@@ -247,11 +250,10 @@ async function loadLocationRecords() {
         
         if (data.status === 'success') {
             currentLocationRecords = data.records || [];
-            console.log('✅ Loaded ' + currentLocationRecords.length + ' records from location');
+            console.log('✅ Loaded ' + currentLocationRecords.length + ' records from bin "' + selectedLocation + '"');
             
             if (currentLocationRecords.length > 0) {
-                console.log('Sample record from API:', currentLocationRecords[0]);
-                console.log('created_at value:', currentLocationRecords[0].created_at);
+                console.log('Sample record location:', currentLocationRecords[0].location);
             }
             
             applyDiscogsSearchFilter();
@@ -260,7 +262,7 @@ async function loadLocationRecords() {
                 discogsPostButton.disabled = false;
                 discogsPostButton.style.opacity = '1';
                 const eligibleCount = discogsFilteredRecords.filter(function(r) { return r.status_id === 2; }).length;
-                discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post ' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' Record(s) to Discogs';
+                discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post Entire "' + selectedLocation + '" (' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' records)';
             }
         } else {
             throw new Error(data.error || 'Failed to load records');
@@ -274,6 +276,7 @@ async function loadLocationRecords() {
         if (discogsPostButton) {
             discogsPostButton.disabled = true;
             discogsPostButton.style.opacity = '0.5';
+            discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post to Discogs';
         }
     } finally {
         isLoading = false;
@@ -300,16 +303,16 @@ function applyDiscogsSearchFilter() {
     
     renderDiscogsTable();
     
-    if (discogsPostButton) {
+    if (discogsPostButton && currentLocation) {
         const eligibleCount = discogsFilteredRecords.filter(function(r) { return r.status_id === 2; }).length;
-        discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post ' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' Record(s) to Discogs';
+        discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post Entire "' + currentLocation + '" (' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' records)';
         discogsPostButton.disabled = (eligibleCount === 0);
         discogsPostButton.style.opacity = (eligibleCount === 0) ? '0.5' : '1';
     }
     
     if (discogsStatusMessage && currentLocation) {
         const searchInfo = searchTerm ? ' (matching "' + searchTerm + '")' : '';
-        discogsStatusMessage.innerHTML = '📍 Location: ' + currentLocation + ' | ' + discogsFilteredRecords.length + ' record(s) found' + searchInfo;
+        discogsStatusMessage.innerHTML = '📍 Bin: ' + currentLocation + ' | ' + discogsFilteredRecords.length + ' record(s) found in this bin' + searchInfo;
         discogsStatusMessage.className = 'status-message status-info';
         discogsStatusMessage.style.display = 'block';
         setTimeout(function() { if (discogsStatusMessage) discogsStatusMessage.style.display = 'none'; }, 3000);
@@ -384,7 +387,7 @@ async function renderDiscogsTable() {
     if (!discogsTableBody) return;
     
     if (discogsFilteredRecords.length === 0) {
-        discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this location.' : 'Select a location above') + '</td></tr>';
+        discogsTableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this bin.' : 'Select a bin above') + '</td></tr>';
         return;
     }
     
@@ -393,12 +396,6 @@ async function renderDiscogsTable() {
     
     for (const record of discogsFilteredRecords) {
         let imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
-        
-        let statusBadge = '';
-        if (record.status_id === 1) statusBadge = '<span class="status-badge new">📋 New</span>';
-        else if (record.status_id === 2) statusBadge = '<span class="status-badge active">✅ Active</span>';
-        else if (record.status_id === 3) statusBadge = '<span class="status-badge sold">💰 Sold</span>';
-        else statusBadge = '<span class="status-badge">❓ Unknown</span>';
         
         const canPost = (record.status_id === 2);
         let discogsPrice = null;
@@ -411,7 +408,6 @@ async function renderDiscogsTable() {
                 console.warn('Record ' + record.id + ' has no created_at');
             } else {
                 try {
-                    console.log('Calculating markup for record ' + record.id + ', created_at: ' + record.created_at);
                     const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
                     if (markupInfo.success) {
                         discogsPrice = markupInfo.discogs_price;
@@ -430,6 +426,9 @@ async function renderDiscogsTable() {
         const markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
         const displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
         
+        const displayLocation = record.location || '—';
+        const shortLocation = displayLocation.length > 30 ? displayLocation.substring(0, 27) + '...' : displayLocation;
+        
         html += '<tr>';
         html += '<td style="text-align: center;">' + (imageUrl ? '<img src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(record.artist) + '" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">' : '<div style="width: 40px; height: 40px; background: #e0e0e0; border-radius: 4px; display: inline-block;"></div>') + '</td>';
         html += '<td>' + (record.id || '—') + '</td>';
@@ -441,17 +440,17 @@ async function renderDiscogsTable() {
         html += '<td>' + (record.store_price ? '$' + parseFloat(record.store_price).toFixed(2) : '—') + '</td>';
         html += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + (priceError ? '<div style="font-size: 10px; color: #dc3545;">⚠️ ' + priceError + '</div>' : '') + '</td>';
         html += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
-        html += '<td title="' + escapeHtml(record.location || '') + '">' + (record.location ? record.location.substring(0, 50) : '—') + '</td>';
-        html += '<td>' + statusBadge + '</td>';
+        html += '<td title="' + escapeHtml(displayLocation) + '" style="font-size: 12px;">' + escapeHtml(shortLocation) + '</td>';
         html += '<td style="text-align: center;">';
         if (canPost && discogsPrice) {
             html += '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(record.artist) + '" data-title="' + escapeHtml(record.title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + (record.disc_condition_name || '') + '" data-sleeve-condition="' + (record.sleeve_condition_name || '') + '" data-catalog="' + escapeHtml(record.catalog_number || '') + '" data-location="' + escapeHtml(record.location || '') + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>';
         } else if (canPost && !discogsPrice) {
-            html += '<span style="color: #dc3545; font-size: 11px;" title="' + (priceError || 'Cannot post') + '">⚠️ Cannot post</span>';
+            html += '<span style="color: #dc3545; font-size: 11px;" title="' + (priceError || 'Cannot post') + '">⚠️ No price</span>';
         } else {
             html += '<span style="color: #999;">—</span>';
         }
-        html += '</td></tr>';
+        html += '</td>';
+        html += '</tr>';
         
         processedCount++;
         if (processedCount % 10 === 0) {
@@ -588,7 +587,7 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
 };
 
 // ============================================================================
-// Bulk Post All Records in Current Location - WITH 3-SECOND DELAYS & RETRIES
+// Bulk Post All Records in Current Bin - WITH 3-SECOND DELAYS & RETRIES
 // ============================================================================
 
 async function bulkPostToDiscogs() {
@@ -600,7 +599,7 @@ async function bulkPostToDiscogs() {
     }
     
     openProgressModal('Validating ' + eligibleRecords.length + ' records...');
-    appendToModalLog('🔍 Validating markup rules for ' + eligibleRecords.length + ' records...', 'info');
+    appendToModalLog('🔍 Validating markup rules for ' + eligibleRecords.length + ' records in bin "' + currentLocation + '"...', 'info');
     
     const validatedRecords = [];
     for (const record of eligibleRecords) {
@@ -646,16 +645,16 @@ async function bulkPostToDiscogs() {
     closeProgressModal();
     
     const totalTimeMinutes = Math.ceil(validatedRecords.length * 3 / 60);
-    if (!confirm('📋 Post ' + validatedRecords.length + ' record(s) from location "' + currentLocation + '" to Discogs?\n\n' +
-        'This will create new Discogs listings for each record.\n\n' +
+    if (!confirm('📋 Post ALL ' + validatedRecords.length + ' record(s) from bin "' + currentLocation + '" to Discogs?\n\n' +
+        'This will create new Discogs listings for EVERY record in this bin.\n\n' +
         '⚠️ Each record will take approximately 3-5 seconds\n' +
         '⏱️ Estimated total time: ~' + totalTimeMinutes + ' minute(s)\n\n' +
         'The process will automatically retry failed listings.')) {
         return;
     }
     
-    openProgressModal('Posting ' + validatedRecords.length + ' Records to Discogs');
-    appendToModalLog('🚀 Starting bulk post for ' + validatedRecords.length + ' records from "' + currentLocation + '"...', 'info');
+    openProgressModal('Posting ' + validatedRecords.length + ' Records from Bin "' + currentLocation + '" to Discogs');
+    appendToModalLog('🚀 Starting bulk post for ' + validatedRecords.length + ' records from bin "' + currentLocation + '"...', 'info');
     appendToModalLog('⏱️ 3-second delay between requests for reliability', 'warning');
     appendToModalLog('🔄 Automatic retries: up to 3 attempts per record', 'info');
     appendToModalLog('⏱️ Estimated total time: ~' + totalTimeMinutes + ' minutes', 'info');
@@ -767,6 +766,7 @@ async function bulkPostToDiscogs() {
     appendToModalLog('📊 FINAL RESULTS:', 'info');
     appendToModalLog('   ✅ Successfully posted: ' + posted, 'success');
     appendToModalLog('   ❌ Failed: ' + failed, failed > 0 ? 'error' : 'info');
+    appendToModalLog('   📍 Bin: ' + currentLocation, 'info');
     
     if (failedRecords.length > 0) {
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
@@ -785,11 +785,11 @@ async function bulkPostToDiscogs() {
     }
     
     if (posted > 0 && failed === 0) {
-        showDiscogsStatus('✅ Successfully posted all ' + posted + ' records to Discogs!', 'success');
+        showDiscogsStatus('✅ Successfully posted ALL ' + posted + ' records from bin "' + currentLocation + '" to Discogs!', 'success');
     } else if (posted > 0 && failed > 0) {
-        showDiscogsStatus('⚠️ Posted ' + posted + ' records, ' + failed + ' failed. Check log for details.', 'warning');
+        showDiscogsStatus('⚠️ Posted ' + posted + ' records from bin "' + currentLocation + '", ' + failed + ' failed. Check log for details.', 'warning');
     } else {
-        showDiscogsStatus('❌ Failed to post any records. Check log for details.', 'error');
+        showDiscogsStatus('❌ Failed to post any records from bin "' + currentLocation + '". Check log for details.', 'error');
     }
 }
 
@@ -935,7 +935,7 @@ function renderMarkupRules(rules) {
         html += '<td style="padding: 12px;">';
         html += '<button class="btn btn-sm btn-info" onclick="updateMarkupRule(' + rule.id + ')" style="padding: 4px 8px; margin-right: 5px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-save"></i></button> ';
         html += '<button class="btn btn-sm btn-danger" onclick="deleteMarkupRule(' + rule.id + ')" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-trash"></i></button>';
-        html += '</td></tr>';
+        html += '</tr>';
     }
     tbody.innerHTML = html;
 }
@@ -1088,12 +1088,13 @@ window.initDiscogsTab = function() {
         };
         discogsPostButton.disabled = true;
         discogsPostButton.style.opacity = '0.5';
+        discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post to Discogs';
     }
     
     loadLocations();
     loadMarkupRules();
     
-    discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>';
+    discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td>';
     
     console.log('✅ Discogs Tab initialized');
 };
@@ -1116,4 +1117,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - Location-based bulk posting with 3-second delays and retries');
+console.log('✅ discogs.js loaded - Bin-based bulk posting (entire bins at once)');

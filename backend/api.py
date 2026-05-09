@@ -4616,7 +4616,7 @@ def get_sales_over_time_daily_stats():
 # ==================== LOCATION-BASED ENDPOINTS FOR DISCOGS TAB ====================
 @app.route('/api/locations', methods=['GET'])
 def get_unique_locations():
-    """Get all unique locations from records, stripping the counter number"""
+    """Get unique bins (genre + bin, ignoring sublocation and counter)"""
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -4630,65 +4630,69 @@ def get_unique_locations():
         locations = cursor.fetchall()
         conn.close()
         
-        unique_locations = set()
+        # REMOVE ALL print statements - use app.logger.debug instead if needed
+        unique_bins = set()
         
         for row in locations:
             location = row['location']
-            # Split by " | " and remove the last part (the counter number)
+            
+            # Split by " | " separator
             if ' | ' in location:
                 parts = location.split(' | ')
+                
+                # Keep only the first two parts (Genre and Bin)
                 if len(parts) >= 2:
-                    # Remove the last part (counter number)
-                    location_without_counter = ' | '.join(parts[:-1])
-                    unique_locations.add(location_without_counter)
+                    bin_location = ' | '.join(parts[:2])
+                    unique_bins.add(bin_location)
             else:
-                unique_locations.add(location)
+                unique_bins.add(location)
         
         # Sort alphabetically
-        location_list = sorted(list(unique_locations))
-        
-        print(f"📍 Found {len(location_list)} unique locations (without counters)")
+        bin_list = sorted(list(unique_bins))
         
         return jsonify({
             'status': 'success',
-            'locations': location_list,
-            'count': len(location_list)
+            'locations': bin_list,
+            'count': len(bin_list)
         })
         
     except Exception as e:
         app.logger.error(f"Error getting locations: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
+
 @app.route('/api/records/by-location', methods=['GET'])
 def get_records_by_location():
-    """Get all records with a location matching the pattern (ignoring counter)"""
+    """Get all records matching a bin (genre + bin), with or without sublocation"""
     try:
-        location_pattern = request.args.get('location', '').strip()
+        bin_pattern = request.args.get('location', '').strip()
         
-        if not location_pattern:
+        if not bin_pattern:
             return jsonify({'status': 'error', 'error': 'Location parameter required'}), 400
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # Match locations that START with the pattern (ignoring the counter at the end)
-        search_pattern = location_pattern + ' | %'
+        # Use a simpler query without multiple pattern attempts
+        # Just match locations that START with the bin_pattern
+        search_pattern = bin_pattern + '%'
         
         cursor.execute('''
             SELECT 
                 r.id, r.artist, r.title, r.barcode, r.image_url, 
                 r.catalog_number, r.store_price, r.location, 
                 r.status_id, r.notes, r.created_at,
-                cs.condition_name as sleeve_condition_name,
-                cd.condition_name as disc_condition_name,
-                s.status_name
+                COALESCE(cs.condition_name, '') as sleeve_condition_name,
+                COALESCE(cd.condition_name, '') as disc_condition_name,
+                COALESCE(s.status_name, '') as status_name
             FROM records r
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             LEFT JOIN d_status s ON r.status_id = s.id
-            WHERE r.location LIKE ?
+            WHERE r.location LIKE ? OR r.location = ?
             ORDER BY r.location, r.created_at DESC
-        ''', (search_pattern,))
+        ''', (search_pattern, bin_pattern))
         
         records = cursor.fetchall()
         conn.close()
@@ -4707,23 +4711,22 @@ def get_records_by_location():
                 'status_id': record['status_id'],
                 'status_name': record['status_name'],
                 'notes': record['notes'],
-                'created_at': record['created_at'],  # ADD THIS LINE
+                'created_at': record['created_at'],
                 'sleeve_condition_name': record['sleeve_condition_name'],
                 'disc_condition_name': record['disc_condition_name']
             })
-        
-        print(f"📍 Pattern '{location_pattern}' matched {len(records_list)} records")
         
         return jsonify({
             'status': 'success',
             'records': records_list,
             'count': len(records_list),
-            'location_pattern': location_pattern
+            'location_pattern': bin_pattern
         })
         
     except Exception as e:
         app.logger.error(f"Error getting records by location: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 # ==================== MARKUP RULES ENDPOINTS ====================
 
