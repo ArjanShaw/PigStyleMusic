@@ -907,6 +907,71 @@ def get_admin_orders_stats():
         app.logger.error(f"Error getting order stats: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/stats/sales-over-time-discogs', methods=['GET'])
+def get_sales_over_time_discogs_stats():
+    """Get daily sales revenue for Discogs sales (status_id = 4)"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get daily sales data for Discogs listed/sold records (status_id = 4)
+    cursor.execute('''
+        SELECT 
+            date_sold as date,
+            SUM(store_price) as total_revenue
+        FROM records
+        WHERE status_id = 4 AND date_sold IS NOT NULL
+        GROUP BY date_sold
+        ORDER BY date_sold ASC
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    dates = [row['date'] for row in results]
+    revenue = [float(row['total_revenue'] or 0) for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'dates': dates,
+        'revenue': revenue
+    })
+
+
+@app.route('/api/stats/sales-over-time-all', methods=['GET'])
+def get_sales_over_time_all_stats():
+    """Get combined daily sales revenue for both store and Discogs sales"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get combined daily sales for status_id IN (3, 4)
+    cursor.execute('''
+        SELECT 
+            date_sold as date,
+            SUM(store_price) as total_revenue,
+            COUNT(CASE WHEN status_id = 3 THEN 1 END) as store_units,
+            COUNT(CASE WHEN status_id = 4 THEN 1 END) as discogs_units
+        FROM records
+        WHERE status_id IN (3, 4) AND date_sold IS NOT NULL
+        GROUP BY date_sold
+        ORDER BY date_sold ASC
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    dates = [row['date'] for row in results]
+    revenue = [float(row['total_revenue'] or 0) for row in results]
+    store_units = [row['store_units'] or 0 for row in results]
+    discogs_units = [row['discogs_units'] or 0 for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'dates': dates,
+        'revenue': revenue,
+        'store_units': store_units,
+        'discogs_units': discogs_units
+    })
+
 @app.route('/api/discogs/stats', methods=['GET'])
 def get_discogs_stats():
     """Get Discogs inventory statistics"""

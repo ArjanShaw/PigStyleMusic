@@ -13,12 +13,16 @@ async function loadStatsData() {
         }
         
         // Fetch all stats
-        const [topArtistsRes, salesOverTimeRes, topGenresRes] = await Promise.all([
+        const [topArtistsRes, salesOverTimeRes, salesDiscogsTimeRes, topGenresRes] = await Promise.all([
             fetch(AppConfig.baseUrl + '/api/stats/top-artists', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
             }),
             fetch(AppConfig.baseUrl + '/api/stats/sales-over-time-daily', {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+            }),
+            fetch(AppConfig.baseUrl + '/api/stats/sales-over-time-discogs', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
             }),
@@ -30,10 +34,12 @@ async function loadStatsData() {
         
         const topArtists = await topArtistsRes.json();
         const salesOverTime = await salesOverTimeRes.json();
+        const salesDiscogsTime = await salesDiscogsTimeRes.json();
         const topGenres = await topGenresRes.json();
         
         console.log('📊 Top Artists:', topArtists);
-        console.log('📊 Sales Over Time:', salesOverTime);
+        console.log('📊 Sales Over Time (Store):', salesOverTime);
+        console.log('📊 Sales Over Time (Discogs):', salesDiscogsTime);
         console.log('📊 Top Genres:', topGenres);
         
         if (topArtists.status !== 'success') {
@@ -42,10 +48,13 @@ async function loadStatsData() {
         if (salesOverTime.status !== 'success') {
             throw new Error('Sales over time: ' + (salesOverTime.error || 'Unknown error'));
         }
+        if (salesDiscogsTime.status !== 'success') {
+            console.warn('Discogs sales data not available, using empty data');
+        }
         
         // Render charts
         renderTopArtistsChart(topArtists);
-        renderSalesOverTimeChart(salesOverTime);
+        renderSalesOverTimeChart(salesOverTime, salesDiscogsTime);
         
         // Handle genre chart - filter out Unknown
         if (topGenres.status === 'success' && topGenres.genres && topGenres.genres.length > 0) {
@@ -138,7 +147,7 @@ function renderTopArtistsChart(data) {
     });
 }
 
-function renderSalesOverTimeChart(data) {
+function renderSalesOverTimeChart(storeData, discogsData) {
     const canvas = document.getElementById('salesOverTimeChart');
     if (!canvas) return;
     
@@ -146,32 +155,113 @@ function renderSalesOverTimeChart(data) {
         charts.salesOverTime.destroy();
     }
     
-    if (!data.dates || data.dates.length === 0) {
+    // If no store data, show empty
+    if (!storeData.dates || storeData.dates.length === 0) {
         canvas.style.display = 'none';
         return;
     }
     
+    canvas.style.display = 'block';
+    
+    // COLLECT ALL DATES from both datasets
+    const allDatesSet = new Set();
+    
+    // Add store dates
+    storeData.dates.forEach(date => allDatesSet.add(date));
+    
+    // Add discogs dates (if available)
+    if (discogsData && discogsData.status === 'success' && discogsData.dates) {
+        discogsData.dates.forEach(date => allDatesSet.add(date));
+    }
+    
+    // Sort dates chronologically
+    const allDates = Array.from(allDatesSet).sort();
+    
+    console.log('📊 All dates for chart:', allDates);
+    
+    // Create maps for quick lookup
+    const storeRevenueMap = new Map();
+    for (let i = 0; i < storeData.dates.length; i++) {
+        storeRevenueMap.set(storeData.dates[i], parseFloat(storeData.revenue[i]) || 0);
+    }
+    
+    const discogsRevenueMap = new Map();
+    if (discogsData && discogsData.status === 'success' && discogsData.dates) {
+        for (let i = 0; i < discogsData.dates.length; i++) {
+            discogsRevenueMap.set(discogsData.dates[i], parseFloat(discogsData.revenue[i]) || 0);
+        }
+    }
+    
+    // Build aligned arrays for all dates
+    const alignedStoreRevenue = [];
+    const alignedDiscogsRevenue = [];
+    const alignedCombinedRevenue = [];
+    
+    for (const date of allDates) {
+        const storeVal = storeRevenueMap.get(date) || 0;
+        const discogsVal = discogsRevenueMap.get(date) || 0;
+        alignedStoreRevenue.push(storeVal);
+        alignedDiscogsRevenue.push(discogsVal);
+        alignedCombinedRevenue.push(storeVal + discogsVal);
+    }
+    
+    console.log('📊 Aligned data:', {
+        dates: allDates,
+        storeRevenue: alignedStoreRevenue,
+        discogsRevenue: alignedDiscogsRevenue
+    });
+    
+    // Create datasets
+    const datasets = [
+        {
+            label: 'Store Sales ($)',
+            data: alignedStoreRevenue,
+            borderColor: 'rgba(75, 192, 192, 1)',
+            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+            fill: false,
+            tension: 0.1,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: 'rgba(75, 192, 192, 1)'
+        },
+        {
+            label: 'Discogs Sales ($)',
+            data: alignedDiscogsRevenue,
+            borderColor: 'rgba(255, 99, 132, 1)',
+            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+            fill: false,
+            tension: 0.1,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: 'rgba(255, 99, 132, 1)'
+        },
+        {
+            label: 'Combined Total ($)',
+            data: alignedCombinedRevenue,
+            borderColor: 'rgba(54, 162, 235, 1)',
+            backgroundColor: 'rgba(54, 162, 235, 0.05)',
+            fill: true,
+            tension: 0.1,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 2
+        }
+    ];
+    
     charts.salesOverTime = new Chart(canvas, {
         type: 'line',
         data: {
-            labels: data.dates,
-            datasets: [
-                {
-                    label: 'Sales Revenue ($)',
-                    data: data.revenue,
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                    fill: true,
-                    tension: 0,
-                    pointRadius: 5,
-                    pointHoverRadius: 7,
-                    pointBackgroundColor: 'rgba(75, 192, 192, 1)'
-                }
-            ]
+            labels: allDates,
+            datasets: datasets
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
             scales: {
                 y: {
                     beginAtZero: true,
@@ -189,6 +279,12 @@ function renderSalesOverTimeChart(data) {
                     title: {
                         display: true,
                         text: 'Date'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 15
                     }
                 }
             },
@@ -197,9 +293,13 @@ function renderSalesOverTimeChart(data) {
                     position: 'top'
                 },
                 tooltip: {
+                    mode: 'index',
+                    intersect: false,
                     callbacks: {
                         label: function(context) {
-                            return 'Revenue: $' + context.raw.toFixed(2);
+                            let label = context.dataset.label || '';
+                            let value = context.raw;
+                            return label + ': $' + value.toFixed(2);
                         }
                     }
                 }
@@ -207,6 +307,7 @@ function renderSalesOverTimeChart(data) {
         }
     });
 }
+
 
 function renderTopGenresChart(data) {
     const canvas = document.getElementById('topGenresChart');
