@@ -2216,7 +2216,6 @@ def get_record_by_barcode(barcode):
         record_dict['condition'] = record_dict['sleeve_condition_name']
     return jsonify(record_dict)
 
-
 @app.route('/records/search', methods=['GET'])
 def search_records():
     query = request.args.get('q', '').strip()
@@ -2226,15 +2225,33 @@ def search_records():
     conn = get_db()
     cursor = conn.cursor()
     search_term = f'%{query}%'
-    cursor.execute('''
-        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
-        FROM records r
-        LEFT JOIN d_status s ON r.status_id = s.id
-        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        WHERE r.barcode LIKE ? OR r.title LIKE ? OR r.artist LIKE ? OR r.catalog_number LIKE ?
-        ORDER BY r.created_at DESC
-    ''', (search_term, search_term, search_term, search_term))
+    
+    # Check if query is numeric - if so, search by ID as well
+    is_numeric = query.isdigit()
+    
+    if is_numeric:
+        # Search including ID field
+        cursor.execute('''
+            SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            WHERE r.id = ? OR r.barcode LIKE ? OR r.title LIKE ? OR r.artist LIKE ? OR r.catalog_number LIKE ?
+            ORDER BY r.created_at DESC
+        ''', (query, search_term, search_term, search_term, search_term))
+    else:
+        # Normal search without ID
+        cursor.execute('''
+            SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            WHERE r.barcode LIKE ? OR r.title LIKE ? OR r.artist LIKE ? OR r.catalog_number LIKE ?
+            ORDER BY r.created_at DESC
+        ''', (search_term, search_term, search_term, search_term))
+    
     records = cursor.fetchall()
     conn.close()
     records_list = []
@@ -2244,7 +2261,6 @@ def search_records():
             record_dict['condition'] = record_dict['sleeve_condition_name']
         records_list.append(record_dict)
     return jsonify({'status': 'success', 'records': records_list, 'count': len(records_list)})
-
 
 @app.route('/records/random', methods=['GET'])
 def get_random_records():
