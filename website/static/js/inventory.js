@@ -846,7 +846,6 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
 // ============================================================================
 // Scan Processing
 // ============================================================================
-
 async function processScan(barcode, fromQueue = false) {
     console.log(`Processing scan: ${barcode}, modalActive: ${isModalActive}`);
     
@@ -879,19 +878,24 @@ async function processScan(barcode, fromQueue = false) {
         }
         
         const records = searchData.records || [];
-        const exactMatches = records.filter(r => r.barcode && String(r.barcode).trim() === barcode);
         
-        if (exactMatches.length === 0) {
+        // API now returns exact matches only for numeric queries (ID or exact barcode)
+        // No need for additional filtering
+        if (records.length === 0) {
             playBeep(400, 500, 'sawtooth');
-            throw new Error(`No record found with barcode: ${barcode}`);
+            throw new Error(`No record found with barcode or ID: ${barcode}`);
         }
         
-        if (exactMatches.length > 1) {
-            console.log(`Found ${exactMatches.length} duplicates, checking for auto-selection...`);
+        // Handle multiple records (should be rare now, but keep for safety)
+        if (records.length > 1) {
+            console.log(`Found ${records.length} records, checking for duplicates...`);
             
-            const recentScansList = recentScans.map(s => ({ artist: s.record.artist, sortKey: getArtistSortKey(s.record.artist) }));
+            const recentScansList = recentScans.map(s => ({ 
+                artist: s.record.artist, 
+                sortKey: getArtistSortKey(s.record.artist) 
+            }));
             
-            const scoredMatches = exactMatches.map(record => ({
+            const scoredMatches = records.map(record => ({
                 record: record,
                 score: calculateMatchScore(record, recentScansList)
             }));
@@ -910,12 +914,13 @@ async function processScan(barcode, fromQueue = false) {
             }
             
             playBeep(1000, 400, 'sine');
-            showScanResult(`⚠️ ${exactMatches.length} records found. Select one, then press ENTER.`, 'warning');
-            showDuplicateRecordModal(exactMatches, barcode, bestMatch.record);
+            showScanResult(`⚠️ ${records.length} records found. Select one, then press ENTER.`, 'warning');
+            showDuplicateRecordModal(records, barcode, bestMatch.record);
             return;
         }
         
-        await processSelectedRecord(exactMatches[0], barcode);
+        // Single record found - process it
+        await processSelectedRecord(records[0], barcode);
         
     } catch (error) {
         console.error('Scan error:', error);
@@ -927,6 +932,7 @@ async function processScan(barcode, fromQueue = false) {
         }, 100);
     }
 }
+
 
 async function processSelectedRecord(record, barcode) {
     console.log(`Processing record #${record.id}: "${record.artist} - ${record.title}"`);
