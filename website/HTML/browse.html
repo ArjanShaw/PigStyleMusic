@@ -318,12 +318,16 @@
         let taxRate = 0;
 
         // Helper: extract genre from location
+        // Helper: extract genre from location (first segment before " | ")
         function extractGenreFromLocation(location) {
-            if (!location) return null;
-            if (location.includes(' - ')) {
-                const genre = location.split(' - ')[0].trim();
-                if (genre && genre !== 'n/a') return genre;
+            if (!location || location === 'NULL') return null;
+            // Split on " | " and take the first part
+            if (location.includes(' | ')) {
+                const genre = location.split(' | ')[0].trim();
+                if (genre && genre !== 'NULL' && genre !== '') return genre;
             }
+            // If no separator, return the whole thing (if not NULL)
+            if (location && location !== 'NULL') return location.trim();
             return null;
         }
 
