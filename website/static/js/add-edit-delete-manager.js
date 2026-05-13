@@ -145,13 +145,19 @@ class AddEditDeleteManager {
             this.minimumPrice = null;
         }
     }
-
     async loadStats() {
         try {
+            // Get total records
             const response = await APIUtils.get('/records/count');
             const recordsCount = response.count || 0;
             document.getElementById('total-records').textContent = recordsCount;
+            
+            // ADD THIS: Get NEW records count (status_id = 1)
+            const newResponse = await APIUtils.get('/records/count?status_id=1');
+            const newCount = newResponse.count || 0;
+            document.getElementById('new-records-count').textContent = newCount;
 
+            // Store capacity (unchanged)
             const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
             const capacity = parseInt(configResponse.config_value);
             const fillPercentage = (recordsCount / capacity * 100).toFixed(1);
@@ -162,6 +168,7 @@ class AddEditDeleteManager {
             console.error('Error loading stats:', error);
         }
     }
+
 
     async loadLastAddedRecord() {
         try {
