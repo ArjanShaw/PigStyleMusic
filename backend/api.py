@@ -1,3 +1,4 @@
+import string
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -1063,31 +1064,7 @@ def search_discogs_release():
         app.logger.error(f"Error searching Discogs: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
- 
-    """Sync your local records with Discogs listings"""
-    try:
-        d = get_discogs_client()
-        user = d.identity()
-        inventory = user.inventory
-        
-        discogs_map = {}
-        for page_num in range(inventory.pages):
-            page = inventory.page(page_num)
-            for listing in page:
-                key = f"{listing.release.id}_{listing.condition}_{listing.price.value}"
-                discogs_map[key] = {
-                    'listing_id': listing.id,
-                    'price': float(listing.price.value),
-                    'condition': listing.condition,
-                    'sleeve_condition': listing.sleeve_condition
-                }
-        
-        return jsonify({'success': True, 'message': f"Found {len(discogs_map)} listings on Discogs", 'count': len(discogs_map)})
-        
-    except Exception as e:
-        app.logger.error(f"Error syncing with Discogs: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
+  
 
 # ==================== SQUARE WEBHOOK ====================
 
