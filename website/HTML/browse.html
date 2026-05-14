@@ -33,7 +33,6 @@
             margin-bottom: 15px;
         }
         
-        /* Base filter button style */
         .filter-btn {
             background: #2c3e50;
             border: none;
@@ -69,7 +68,6 @@
             color: white;
         }
         
-        /* Genre filter specific */
         .filter-group {
             position: relative;
             display: inline-block;
@@ -141,7 +139,6 @@
             gap: 8px;
         }
         
-        /* Filter status row - compact */
         .filter-status-row {
             display: flex;
             justify-content: space-between;
@@ -182,7 +179,6 @@
             color: white;
         }
         
-        /* Condition badge styles (internal only, not shown on filter UI) */
         .condition-mint { background: #2ecc71; color: white; }
         .condition-near-mint { background: #3498db; color: white; }
         .condition-very-good-plus { background: #f39c12; color: white; }
@@ -194,6 +190,185 @@
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
+        }
+        
+        /* Checkout Modal Styles */
+        .checkout-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .checkout-modal {
+            background: white;
+            border-radius: 20px;
+            max-width: 550px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .checkout-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #eee;
+            background: #2c3e50;
+            color: white;
+            border-radius: 20px 20px 0 0;
+        }
+        
+        .checkout-modal-header h3 {
+            margin: 0;
+        }
+        
+        .checkout-modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: white;
+        }
+        
+        .checkout-summary {
+            padding: 20px 24px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+        }
+        
+        .total-row {
+            border-top: 2px solid #dee2e6;
+            margin-top: 8px;
+            padding-top: 12px;
+            font-size: 1.2em;
+        }
+        
+        .checkout-option {
+            padding: 20px 24px;
+            display: flex;
+            gap: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .option-card {
+            flex: 1;
+            border: 2px solid #dee2e6;
+            border-radius: 12px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .option-card.selected {
+            border-color: #ff6b6b;
+            background: #fff5f5;
+        }
+        
+        .option-card input {
+            margin: 0;
+        }
+        
+        .option-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .option-content i {
+            font-size: 24px;
+            color: #ff6b6b;
+        }
+        
+        .option-content small {
+            display: block;
+            font-size: 11px;
+            color: #6c757d;
+        }
+        
+        .checkout-fields {
+            padding: 20px 24px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .form-row .form-group {
+            flex: 1;
+        }
+        
+        .checkout-actions {
+            padding: 20px 24px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        
+        .checkout-actions button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .cancel-btn {
+            background: #e9ecef;
+            color: #495057;
+        }
+        
+        .confirm-btn {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .confirm-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .required {
+            color: #ff6b6b;
         }
     </style>
 </head>
@@ -210,7 +385,6 @@
             <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
             <div id="auth-section"></div>
             
-            <!-- Cart drawer toggle button -->
             <div id="cartToggleContainer" style="display: none;">
                 <div class="cart-icon-wrapper" id="cartToggle">
                     <i class="fas fa-shopping-cart"></i>
@@ -220,10 +394,8 @@
         </div>
     </nav>
 
-    <!-- Add padding to account for fixed navbar -->
     <div style="padding-top: 60px;"></div>
 
-    <!-- Background Image -->
     <div class="background-container">
         <img src="/static/images/background.png" alt="Background" class="background-image">
         <div class="background-overlay"></div>
@@ -235,7 +407,6 @@
         </div>
         
         <div class="filter-section">
-            <!-- Genre Filter Dropdown -->
             <div class="filter-group">
                 <button id="genreFilterBtn" class="filter-toggle-btn">
                     <i class="fas fa-filter"></i> Genre
@@ -252,18 +423,15 @@
                 </div>
             </div>
             
-            <!-- Filter 1: New Arrivals (last 7 days) - visible label -->
             <button id="newArrivalsBtn" class="filter-btn">
                 <i class="fas fa-calendar-week"></i> New Arrivals
             </button>
             
-            <!-- Filter 2: New Vinyl (Mint condition disc & sleeve - no mention of "mint" in UI) -->
             <button id="newVinylBtn" class="filter-btn">
                 <i class="fas fa-record-vinyl"></i> New Vinyl
             </button>
         </div>
         
-        <!-- Filter status bar (compact) -->
         <div id="filterStatusRow" class="filter-status-row" style="display: none;">
             <div class="filter-summary" id="filterSummary"></div>
             <button id="clearAllFiltersBtn" class="clear-filters-link">Clear all ✕</button>
@@ -297,7 +465,6 @@
         <div class="cart-drawer-footer" id="cartFooter" style="display: none;"></div>
     </div>
 
-    <!-- Cart Overlay -->
     <div class="cart-overlay" id="cartOverlay"></div>
 
     <script>
@@ -308,25 +475,19 @@
         let selectedGenres = [];
         let currentSearchTerm = '';
         
-        // Two distinct filters:
-        let newArrivalsActive = true;    // DEFAULT: ON - show last 7 days
-        let newVinylActive = false;      // DEFAULT: OFF - mint condition (disc & sleeve both Mint)
+        let newArrivalsActive = true;
+        let newVinylActive = false;
         
-        // Cart state
         let cart = { items: [], total: 0 };
         let shippingCost = 0;
         let taxRate = 0;
 
-        // Helper: extract genre from location
-        // Helper: extract genre from location (first segment before " | ")
         function extractGenreFromLocation(location) {
             if (!location || location === 'NULL') return null;
-            // Split on " | " and take the first part
             if (location.includes(' | ')) {
                 const genre = location.split(' | ')[0].trim();
                 if (genre && genre !== 'NULL' && genre !== '') return genre;
             }
-            // If no separator, return the whole thing (if not NULL)
             if (location && location !== 'NULL') return location.trim();
             return null;
         }
@@ -356,14 +517,11 @@
             }
         }
 
-        // New Vinyl filter: disc AND sleeve must be Mint (condition_disc_id === 1 && condition_sleeve_id === 1)
-        // No visible "mint" text anywhere on the button or UI
         function isNewVinyl(record) {
             if (!record) return false;
             return record.condition_disc_id === 1 && record.condition_sleeve_id === 1;
         }
 
-        // New Arrivals filter: created_at within last 7 days
         function isNewArrival(record) {
             if (!record || !record.created_at) return false;
             const createdDate = new Date(record.created_at);
@@ -372,7 +530,6 @@
             return createdDate >= sevenDaysAgo;
         }
 
-        // Group records by release
         function groupRecordsByRelease(records) {
             const groups = new Map();
             records.forEach(record => {
@@ -418,7 +575,6 @@
             }));
         }
 
-        // Update filter UI buttons and status bar
         function updateFilterUI() {
             const arrivalsBtn = document.getElementById('newArrivalsBtn');
             const vinylBtn = document.getElementById('newVinylBtn');
@@ -432,7 +588,6 @@
                 else vinylBtn.classList.remove('active');
             }
             
-            // Build summary text
             let filters = [];
             if (currentSearchTerm) filters.push(`Search: "${currentSearchTerm}"`);
             if (newArrivalsActive) filters.push(`New Arrivals (last 7 days)`);
@@ -450,12 +605,10 @@
             summaryDiv.innerHTML = `${filters.join(' · ')} <span class="result-count-badge">${groupedReleases.length} results</span>`;
         }
 
-        // Load catalog data with combined filters
         async function loadCatalogData() {
             const searchBox = document.getElementById('searchBox');
             currentSearchTerm = searchBox ? searchBox.value.trim() : '';
             
-            // Build URL - always fetch active records
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
@@ -469,19 +622,14 @@
                 if (data.status === 'success') {
                     let records = data.records || [];
                     
-                    // Apply filters in sequence:
-                    // 1. New Arrivals (if active)
                     if (newArrivalsActive) {
                         records = records.filter(record => isNewArrival(record));
                     }
                     
-                    // 2. New Vinyl (Mint disc AND sleeve) - if active, overrides? No, it's additive.
-                    // Both filters can be active simultaneously (AND logic)
                     if (newVinylActive) {
                         records = records.filter(record => isNewVinyl(record));
                     }
                     
-                    // 3. Genre filter
                     if (selectedGenres.length > 0) {
                         records = records.filter(record => {
                             const genre = extractGenreFromLocation(record.location);
@@ -492,7 +640,6 @@
                     allRecords = records;
                     groupedReleases = groupRecordsByRelease(allRecords);
                     
-                    // Extract unique genres from ALL original records (for dropdown)
                     const genreSet = new Set();
                     if (data.records) {
                         data.records.forEach(record => {
@@ -539,7 +686,7 @@
         function clearAllFilters() {
             selectedGenres = [];
             currentSearchTerm = '';
-            newArrivalsActive = false;   // reset both filters to OFF
+            newArrivalsActive = false;
             newVinylActive = false;
             const searchBox = document.getElementById('searchBox');
             if (searchBox) searchBox.value = '';
@@ -547,7 +694,6 @@
             loadCatalogData();
         }
 
-        // Toggle handlers
         function toggleNewArrivals() {
             newArrivalsActive = !newArrivalsActive;
             loadCatalogData();
@@ -696,7 +842,6 @@
             document.body.appendChild(modal);
         }
 
-        // Cart functions (abbreviated but complete)
         function addToCart(copy, release, format) {
             if (cart.items.some(item => item.copyId === copy.id)) { showNotification('Already in cart', 'error'); return false; }
             cart.items.push({ copyId: copy.id, title: release.title, artist: release.artist, condition: getConditionNameFromId(copy.condition_disc_id), price: copy.store_price, image_url: release.image_url, format, quantity: 1 });
@@ -705,24 +850,390 @@
             showNotification(`Added ${format} - ${release.title} to cart!`, 'success');
             return true;
         }
-        function removeFromCart(index) { cart.items.splice(index,1); cart.total = cart.items.reduce((sum,item)=>sum+(item.price*item.quantity),0); saveCart(); showNotification('Removed','success'); if(cart.items.length===0) closeCartDrawer(); }
+        
+        function removeFromCart(index) { 
+            cart.items.splice(index,1); 
+            cart.total = cart.items.reduce((sum,item)=>sum+(item.price*item.quantity),0); 
+            saveCart(); 
+            showNotification('Removed','success'); 
+            if(cart.items.length===0) closeCartDrawer(); 
+        }
+        
         function saveCart() { localStorage.setItem('pigstyle_cart', JSON.stringify(cart)); updateCartDisplay(); }
+        
         function loadCart() { const saved = localStorage.getItem('pigstyle_cart'); if(saved) { cart = JSON.parse(saved); updateCartDisplay(); } }
-        function updateCartDisplay() { const container = document.getElementById('cartToggleContainer'); const badge = document.getElementById('cartBadge'); const count = cart.items.reduce((sum,item)=>sum+item.quantity,0); badge.textContent = count; container.style.display = count>0 ? 'block' : 'none'; updateCartDrawer(); }
-        async function updateCartDrawer() { /* simplified but functional */ const itemsDiv = document.getElementById('cartItems'); const footer = document.getElementById('cartFooter'); if(cart.items.length===0){ itemsDiv.innerHTML='<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>'; footer.style.display='none'; return; } let subtotal = cart.items.reduce((s,i)=>s+(i.price*i.quantity),0); let taxAmt = subtotal * (taxRate/100); let html = `<table class="cart-items-table">...</table><button class="checkout-btn" id="checkoutBtn">Checkout</button>`; itemsDiv.innerHTML = html; footer.style.display='block'; document.getElementById('checkoutBtn')?.addEventListener('click',()=>alert('Checkout mock')); }
-        function showNotification(msg, type) { const n = document.createElement('div'); n.className = `notification ${type==='error'?'error':''}`; n.textContent = msg; document.body.appendChild(n); setTimeout(()=>n.remove(),3000); }
-        function openCartDrawer() { document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('active'); updateCartDrawer(); }
-        function closeCartDrawer() { document.getElementById('cartDrawer').classList.remove('open'); document.getElementById('cartOverlay').classList.remove('active'); }
-        function handleYouTubeClick(url, title) { const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); if(!match) return; const modal = document.createElement('div'); modal.className = 'youtube-modal-overlay'; modal.innerHTML = `<div class="youtube-modal"><div class="youtube-modal-header"><h3>${title}</h3><button class="youtube-modal-close" onclick="this.closest('.youtube-modal-overlay').remove()">×</button></div><div class="youtube-video-container"><iframe src="https://www.youtube.com/embed/${match[1]}?autoplay=1" frameborder="0" allowfullscreen></iframe></div></div>`; document.body.appendChild(modal); modal.onclick = (e) => { if (e.target === modal) modal.remove(); }; }
-        function escapeHtml(text) { if(!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-        function debounce(fn, delay) { let t; return function(...a){ clearTimeout(t); t = setTimeout(()=>fn(...a), delay); }; }
+        
+        function updateCartDisplay() { 
+            const container = document.getElementById('cartToggleContainer'); 
+            const badge = document.getElementById('cartBadge'); 
+            const count = cart.items.reduce((sum,item)=>sum+item.quantity,0); 
+            badge.textContent = count; 
+            container.style.display = count>0 ? 'block' : 'none'; 
+            updateCartDrawer(); 
+        }
+        
+        function updateCartDrawer() {
+            const itemsDiv = document.getElementById('cartItems'); 
+            const footer = document.getElementById('cartFooter'); 
+            if(cart.items.length===0){ 
+                itemsDiv.innerHTML='<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>'; 
+                footer.style.display='none'; 
+                return; 
+            } 
+            let subtotal = cart.items.reduce((s,i)=>s+(i.price*i.quantity),0); 
+            let taxAmt = subtotal * (taxRate/100); 
+            let shipping = 0;
+            let html = `
+                <table class="cart-items-table">
+                    <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr></thead>
+                    <tbody>
+            `;
+            cart.items.forEach((item, idx) => {
+                html += `
+                    <tr>
+                        <td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.format} · ${item.condition}</small></td>
+                        <td>$${item.price.toFixed(2)}</td>
+                        <td>${item.quantity}</td>
+                        <td>$${(item.price * item.quantity).toFixed(2)}</td>
+                        <td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td>
+                    </tr>
+                `;
+            });
+            html += `
+                    </tbody>
+                </table>
+                <div class="cart-summary">
+                    <div class="cart-summary-row"><span>Subtotal:</span><span>$${subtotal.toFixed(2)}</span></div>
+                    <div class="cart-summary-row"><span>Tax (${taxRate}%):</span><span>$${taxAmt.toFixed(2)}</span></div>
+                    <div class="cart-summary-row total"><span>Total:</span><span>$${(subtotal + taxAmt).toFixed(2)}</span></div>
+                </div>
+                <button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button>
+            `;
+            itemsDiv.innerHTML = html; 
+            footer.style.display='block'; 
+            document.getElementById('checkoutBtn')?.addEventListener('click', showCheckoutModal);
+        }
+        
+        function showNotification(msg, type) { 
+            const n = document.createElement('div'); 
+            n.className = `notification ${type==='error'?'error':''}`; 
+            n.textContent = msg; 
+            document.body.appendChild(n); 
+            setTimeout(()=>n.remove(),3000); 
+        }
+        
+        function openCartDrawer() { 
+            document.getElementById('cartDrawer').classList.add('open'); 
+            document.getElementById('cartOverlay').classList.add('active'); 
+            updateCartDrawer(); 
+        }
+        
+        function closeCartDrawer() { 
+            document.getElementById('cartDrawer').classList.remove('open'); 
+            document.getElementById('cartOverlay').classList.remove('active'); 
+        }
+        
+        function handleYouTubeClick(url, title) { 
+            const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); 
+            if(!match) return; 
+            const modal = document.createElement('div'); 
+            modal.className = 'youtube-modal-overlay'; 
+            modal.innerHTML = `<div class="youtube-modal"><div class="youtube-modal-header"><h3>${title}</h3><button class="youtube-modal-close" onclick="this.closest('.youtube-modal-overlay').remove()">×</button></div><div class="youtube-video-container"><iframe src="https://www.youtube.com/embed/${match[1]}?autoplay=1" frameborder="0" allowfullscreen></iframe></div></div>`; 
+            document.body.appendChild(modal); 
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); }; 
+        }
+        
+        function escapeHtml(text) { 
+            if(!text) return ''; 
+            const div = document.createElement('div'); 
+            div.textContent = text; 
+            return div.innerHTML; 
+        }
+        
+        function debounce(fn, delay) { 
+            let t; 
+            return function(...a){ 
+                clearTimeout(t); 
+                t = setTimeout(()=>fn(...a), delay); 
+            }; 
+        }
+
+        // CHECKOUT MODAL WITH SHIPPING VS WALK-IN
+        function showCheckoutModal() {
+            closeCartDrawer();
+            
+            const subtotal = cart.total;
+            const taxAmount = subtotal * (taxRate / 100);
+            const baseTotal = subtotal + taxAmount;
+            
+            const modal = document.createElement('div');
+            modal.className = 'checkout-modal-overlay';
+            modal.innerHTML = `
+                <div class="checkout-modal">
+                    <div class="checkout-modal-header">
+                        <h3><i class="fas fa-shopping-cart"></i> Checkout</h3>
+                        <button class="checkout-modal-close">&times;</button>
+                    </div>
+                    
+                    <div class="checkout-summary">
+                        <div class="summary-row">
+                            <span>Subtotal:</span>
+                            <span>$${subtotal.toFixed(2)}</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Tax (${taxRate}%):</span>
+                            <span>$${taxAmount.toFixed(2)}</span>
+                        </div>
+                        <div class="summary-row" id="shippingSummaryRow" style="display: none;">
+                            <span>Shipping:</span>
+                            <span id="shippingAmount">$${shippingCost.toFixed(2)}</span>
+                        </div>
+                        <div class="summary-row total-row">
+                            <strong>Total:</strong>
+                            <strong id="totalAmount">$${baseTotal.toFixed(2)}</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="checkout-option">
+                        <label class="option-card" id="walkinOption">
+                            <input type="radio" name="checkoutType" value="walkin" checked>
+                            <div class="option-content">
+                                <i class="fas fa-store"></i>
+                                <div>
+                                    <strong>In-Store Pickup</strong>
+                                    <small>Pick up at our store - No shipping fee</small>
+                                </div>
+                            </div>
+                        </label>
+                        
+                        <label class="option-card" id="shippingOption">
+                            <input type="radio" name="checkoutType" value="shipping">
+                            <div class="option-content">
+                                <i class="fas fa-truck"></i>
+                                <div>
+                                    <strong>Ship to Me</strong>
+                                    <small>$${shippingCost.toFixed(2)} shipping fee</small>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                    
+                    <div class="checkout-fields" id="walkinFields">
+                        <div class="form-group">
+                            <label>Your Name <span class="required">*</span></label>
+                            <input type="text" id="walkinName" placeholder="Enter your name">
+                        </div>
+                        <div class="form-group">
+                            <label>Email (for receipt)</label>
+                            <input type="email" id="walkinEmail" placeholder="your@email.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Phone (optional)</label>
+                            <input type="tel" id="walkinPhone" placeholder="(555) 555-5555">
+                        </div>
+                    </div>
+                    
+                    <div class="checkout-fields" id="shippingFields" style="display: none;">
+                        <div class="form-group">
+                            <label>Full Name <span class="required">*</span></label>
+                            <input type="text" id="shippingName" placeholder="Enter your full name">
+                        </div>
+                        <div class="form-group">
+                            <label>Email <span class="required">*</span></label>
+                            <input type="email" id="shippingEmail" placeholder="your@email.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Phone</label>
+                            <input type="tel" id="shippingPhone" placeholder="(555) 555-5555">
+                        </div>
+                        <div class="form-group">
+                            <label>Street Address <span class="required">*</span></label>
+                            <input type="text" id="addressLine1" placeholder="Street address">
+                        </div>
+                        <div class="form-group">
+                            <label>Apartment/Suite (optional)</label>
+                            <input type="text" id="addressLine2" placeholder="Apt, Suite, Unit, etc.">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>City <span class="required">*</span></label>
+                                <input type="text" id="city" placeholder="City">
+                            </div>
+                            <div class="form-group">
+                                <label>State <span class="required">*</span></label>
+                                <input type="text" id="state" placeholder="State">
+                            </div>
+                            <div class="form-group">
+                                <label>ZIP <span class="required">*</span></label>
+                                <input type="text" id="zip" placeholder="ZIP code">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="checkout-actions">
+                        <button class="cancel-btn" id="cancelCheckout">Cancel</button>
+                        <button class="confirm-btn" id="confirmCheckout">Continue to Payment</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            const walkinOption = modal.querySelector('#walkinOption');
+            const shippingOption = modal.querySelector('#shippingOption');
+            const walkinFields = modal.querySelector('#walkinFields');
+            const shippingFields = modal.querySelector('#shippingFields');
+            const shippingSummaryRow = modal.querySelector('#shippingSummaryRow');
+            const totalAmountSpan = modal.querySelector('#totalAmount');
+            const confirmBtn = modal.querySelector('#confirmCheckout');
+            
+            function updateTotal() {
+                const isShipping = shippingOption.querySelector('input').checked;
+                let total = baseTotal;
+                if (isShipping) {
+                    total = baseTotal + shippingCost;
+                    shippingSummaryRow.style.display = 'flex';
+                } else {
+                    shippingSummaryRow.style.display = 'none';
+                }
+                totalAmountSpan.textContent = `$${total.toFixed(2)}`;
+            }
+            
+            function updateSelectedOption() {
+                if (walkinOption.querySelector('input').checked) {
+                    walkinOption.classList.add('selected');
+                    shippingOption.classList.remove('selected');
+                    walkinFields.style.display = 'block';
+                    shippingFields.style.display = 'none';
+                } else {
+                    walkinOption.classList.remove('selected');
+                    shippingOption.classList.add('selected');
+                    walkinFields.style.display = 'none';
+                    shippingFields.style.display = 'block';
+                }
+                updateTotal();
+            }
+            
+            walkinOption.addEventListener('click', () => {
+                walkinOption.querySelector('input').checked = true;
+                shippingOption.querySelector('input').checked = false;
+                updateSelectedOption();
+            });
+            
+            shippingOption.addEventListener('click', () => {
+                walkinOption.querySelector('input').checked = false;
+                shippingOption.querySelector('input').checked = true;
+                updateSelectedOption();
+            });
+            
+            modal.querySelector('.checkout-modal-close').addEventListener('click', () => modal.remove());
+            modal.querySelector('#cancelCheckout').addEventListener('click', () => modal.remove());
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+            
+            confirmBtn.addEventListener('click', async () => {
+                const isShipping = shippingOption.querySelector('input').checked;
+                
+                let customerName = '';
+                let customerEmail = '';
+                let phone = '';
+                let address = '';
+                let address2 = '';
+                let city = '';
+                let state = '';
+                let zip = '';
+                
+                if (isShipping) {
+                    customerName = modal.querySelector('#shippingName').value.trim();
+                    customerEmail = modal.querySelector('#shippingEmail').value.trim();
+                    phone = modal.querySelector('#shippingPhone').value.trim();
+                    address = modal.querySelector('#addressLine1').value.trim();
+                    address2 = modal.querySelector('#addressLine2').value.trim();
+                    city = modal.querySelector('#city').value.trim();
+                    state = modal.querySelector('#state').value.trim();
+                    zip = modal.querySelector('#zip').value.trim();
+                    
+                    if (!customerName) { showNotification('Please enter your name', 'error'); return; }
+                    if (!customerEmail) { showNotification('Please enter your email', 'error'); return; }
+                    if (!address) { showNotification('Please enter your street address', 'error'); return; }
+                    if (!city) { showNotification('Please enter your city', 'error'); return; }
+                    if (!state) { showNotification('Please enter your state', 'error'); return; }
+                    if (!zip) { showNotification('Please enter your ZIP code', 'error'); return; }
+                } else {
+                    customerName = modal.querySelector('#walkinName').value.trim();
+                    customerEmail = modal.querySelector('#walkinEmail').value.trim();
+                    phone = modal.querySelector('#walkinPhone').value.trim();
+                    
+                    if (!customerName) { showNotification('Please enter your name', 'error'); return; }
+                }
+                
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = 'Processing...';
+                
+                const finalTotal = isShipping ? baseTotal + shippingCost : baseTotal;
+                
+                const checkoutData = {
+                    items: cart.items.map(item => ({
+                        copy_id: item.copyId,
+                        title: item.title,
+                        artist: item.artist,
+                        price: item.price,
+                        condition: item.condition,
+                        quantity: item.quantity
+                    })),
+                    item_type: 'record',
+                    shipping: {
+                        method: isShipping ? 'shipping' : 'pickup',
+                        amount: isShipping ? shippingCost : 0
+                    },
+                    subtotal: subtotal,
+                    total: finalTotal,
+                    tax: taxAmount,
+                    customer_name: customerName,
+                    customer_email: customerEmail,
+                    phone: phone,
+                    notes: ''
+                };
+                
+                if (isShipping) {
+                    checkoutData.address = address;
+                    checkoutData.apt = address2;
+                    checkoutData.city = city;
+                    checkoutData.state = state;
+                    checkoutData.zip = zip;
+                    checkoutData.country = 'USA';
+                }
+                
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(checkoutData)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.checkout_url) {
+                        window.location.href = data.checkout_url;
+                    } else {
+                        showNotification('Checkout failed: ' + (data.error || 'Unknown error'), 'error');
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = 'Continue to Payment';
+                    }
+                } catch (error) {
+                    console.error('Checkout error:', error);
+                    showNotification('Checkout error: ' + error.message, 'error');
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Continue to Payment';
+                }
+            });
+        }
 
         // Initialization
         document.addEventListener('DOMContentLoaded', async () => {
             shippingCost = parseFloat(await getConfigValue('SHIPPING_COST')) || 0;
-            taxRate = await getConfigValue('TAX_RATE') || 0;
+            taxRate = parseFloat(await getConfigValue('TAX_RATE')) || 0;
             loadCart();
-            await loadCatalogData();  // loads with default newArrivalsActive = true
+            await loadCatalogData();
             
             document.getElementById('cartToggle')?.addEventListener('click', openCartDrawer);
             document.getElementById('closeCartDrawer')?.addEventListener('click', closeCartDrawer);
