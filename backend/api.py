@@ -2034,7 +2034,6 @@ def create_record():
     finally:
         conn.close()
 
-
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()
@@ -2043,17 +2042,25 @@ def get_records():
     random_order = request.args.get('random', 'false').lower() == 'true'
     limit = request.args.get('limit', type=int)
     has_youtube = request.args.get('has_youtube', 'false').lower() == 'true'
-    status_id = request.args.get('status_id', type=int)  # Single status
-    status_ids = request.args.get('status_ids', '')      # Comma-separated list (e.g., "1,2")
+    status_id = request.args.get('status_id', type=int)
+    status_ids = request.args.get('status_ids', '')
     created_after = request.args.get('created_after')
     search = request.args.get('search', '').strip()
     
+    # Check if we should bypass the 7-day default filter
+    bypass_date_filter = request.args.get('bypass_date_filter', 'false').lower() == 'true'
+    
     query = '''
-        SELECT r.*, s.status_name,
-        cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
-        cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
-        cd.condition_name as disc_condition_name, cd.display_name as disc_display,
-        cd.abbreviation as disc_abbr, cd.quality_index as disc_quality
+        SELECT 
+            r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number,
+            r.condition_sleeve_id, r.condition_disc_id, r.store_price, r.youtube_url,
+            r.consignor_id, r.commission_rate, r.status_id, r.created_at, r.date_sold,
+            r.last_seen, r.location, r.notes, r.discogs_genre_raw,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
+            cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
+            cd.condition_name as disc_condition_name, cd.display_name as disc_display,
+            cd.abbreviation as disc_abbr, cd.quality_index as disc_quality
         FROM records r
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -2064,19 +2071,16 @@ def get_records():
     
     params = []
     
-    # Handle status filtering - supports multiple scenarios
+    # Handle status filtering
     if status_ids:
-        # Multiple statuses (e.g., "1,2" for NEW and ACTIVE)
         status_list = [int(s.strip()) for s in status_ids.split(',') if s.strip()]
         if status_list:
             placeholders = ','.join('?' for _ in status_list)
             query += f' AND r.status_id IN ({placeholders})'
             params.extend(status_list)
     elif status_id is not None:
-        # Single status
         query += ' AND r.status_id = ?'
         params.append(status_id)
-    # If neither status_id nor status_ids is provided, return ALL records (no status filter)
     
     # Apply search filter if provided
     if search:
@@ -2084,14 +2088,15 @@ def get_records():
         search_term = f'%{search}%'
         params.extend([search_term, search_term])
     else:
-        # NO SEARCH: Default to last 7 days of additions
-        if not created_after:
+        # Only apply 7-day filter if bypass_date_filter is NOT true
+        if not bypass_date_filter and not created_after:
             seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
             query += ' AND date(r.created_at) >= ?'
             params.append(seven_days_ago)
-        else:
+        elif created_after:
             query += ' AND date(r.created_at) >= ?'
             params.append(created_after)
+        # If bypass_date_filter is true, don't add any date filter
     
     if has_youtube:
         query += ' AND (r.youtube_url LIKE "%youtube.com%" OR r.youtube_url LIKE "%youtu.be%")'
@@ -2115,7 +2120,6 @@ def get_records():
         records_list.append(record_dict)
     
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
-
 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):

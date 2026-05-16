@@ -475,7 +475,7 @@
         let selectedGenres = [];
         let currentSearchTerm = '';
         
-        let newArrivalsActive = true;
+        let newArrivalsActive = false;
         let newVinylActive = false;
         
         let cart = { items: [], total: 0 };
@@ -610,8 +610,17 @@
             currentSearchTerm = searchBox ? searchBox.value.trim() : '';
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
+            
+            // Tell backend to bypass 7-day filter when newArrivalsActive is false
+            if (!newArrivalsActive) {
+                url += `&bypass_date_filter=true`;
+            }
+            
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
+                if (!newArrivalsActive) {
+                    url += `&bypass_date_filter=true`;
+                }
             }
             
             try {
@@ -622,24 +631,26 @@
                 if (data.status === 'success') {
                     let records = data.records || [];
                     
-                    if (newArrivalsActive) {
-                        records = records.filter(record => isNewArrival(record));
-                    }
-                    
+                    // Apply frontend filters for New Vinyl (since backend doesn't have this)
                     if (newVinylActive) {
                         records = records.filter(record => isNewVinyl(record));
                     }
                     
+                    // Apply genre filter
                     if (selectedGenres.length > 0) {
                         records = records.filter(record => {
                             const genre = extractGenreFromLocation(record.location);
-                            return genre && selectedGenres.includes(genre);
+                            if (!genre) return false;
+                            return selectedGenres.some(selected => 
+                                selected.toLowerCase() === genre.toLowerCase()
+                            );
                         });
                     }
                     
                     allRecords = records;
                     groupedReleases = groupRecordsByRelease(allRecords);
                     
+                    // Extract genres from ALL records (not just filtered ones) for dropdown
                     const genreSet = new Set();
                     if (data.records) {
                         data.records.forEach(record => {
@@ -882,10 +893,9 @@
             } 
             let subtotal = cart.items.reduce((s,i)=>s+(i.price*i.quantity),0); 
             let taxAmt = subtotal * (taxRate/100); 
-            let shipping = 0;
             let html = `
                 <table class="cart-items-table">
-                    <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr></thead>
+                    <thead>\n<th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th>\n</thead>
                     <tbody>
             `;
             cart.items.forEach((item, idx) => {
