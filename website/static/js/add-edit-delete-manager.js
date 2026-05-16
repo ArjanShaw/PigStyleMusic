@@ -1839,7 +1839,6 @@ class AddEditDeleteManager {
         if (dollars === 0) return 0.99;
         return (dollars - 1) + 0.99;
     }
-
     async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
         const result = {
             success: false,
@@ -1925,9 +1924,10 @@ class AddEditDeleteManager {
         let marketPrice = null;
         let priceSource = null;
         
+        // CHANGED: Now takes AVERAGE instead of MINIMUM
         if (result.discogs_price !== null && result.ebay_price !== null) {
-            marketPrice = Math.min(result.discogs_price, result.ebay_price);
-            priceSource = result.discogs_price <= result.ebay_price ? 'discogs' : 'ebay';
+            marketPrice = (result.discogs_price + result.ebay_price) / 2;
+            priceSource = 'average';
             
             const maxPrice = Math.max(result.discogs_price, result.ebay_price);
             const minPrice = Math.min(result.discogs_price, result.ebay_price);
@@ -1937,7 +1937,7 @@ class AddEditDeleteManager {
             }
             
             result.calculation_steps.push(`📊 Price comparison: Discogs $${result.discogs_price.toFixed(2)} vs eBay $${result.ebay_price.toFixed(2)}`);
-            result.calculation_steps.push(`  → Market price (minimum): $${marketPrice.toFixed(2)} (from ${priceSource})`);
+            result.calculation_steps.push(`  → Market price (average): $${marketPrice.toFixed(2)} (from Discogs $${result.discogs_price.toFixed(2)} + eBay $${result.ebay_price.toFixed(2)})`);
             
         } else if (result.discogs_price !== null) {
             marketPrice = result.discogs_price;
@@ -1982,6 +1982,7 @@ class AddEditDeleteManager {
         
         return result;
     }
+     
 }
 
 // Initialize when tab is activated
