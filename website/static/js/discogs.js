@@ -234,7 +234,6 @@ async function loadLocationRecords() {
     }
     
     try {
-        // Use the existing endpoint - it will match all records with location starting with selectedLocation + " | "
         const url = window.AppConfig.baseUrl + '/api/records/by-location?location=' + encodeURIComponent(selectedLocation);
         
         const response = await fetch(url, {
@@ -587,7 +586,7 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
 };
 
 // ============================================================================
-// Bulk Post All Records in Current Bin - WITH 3-SECOND DELAYS & RETRIES
+// Bulk Post All Records in Current Bin - Combined validation and posting
 // ============================================================================
 
 async function bulkPostToDiscogs() {
@@ -598,86 +597,64 @@ async function bulkPostToDiscogs() {
         return;
     }
     
-    openProgressModal('Validating ' + eligibleRecords.length + ' records...');
-    appendToModalLog('🔍 Validating markup rules for ' + eligibleRecords.length + ' records in bin "' + currentLocation + '"...', 'info');
-    
-    const validatedRecords = [];
-    for (const record of eligibleRecords) {
-        if (!record.created_at) {
-            appendToModalLog('❌ Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') cannot be posted: Missing creation date', 'error');
-            continue;
-        }
-        
-        const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
-        if (markupInfo.success) {
-            validatedRecords.push({
-                id: record.id,
-                artist: record.artist,
-                title: record.title,
-                store_price: record.store_price,
-                discogs_price: markupInfo.discogs_price,
-                markup_percent: markupInfo.markup_percent,
-                catalog_number: record.catalog_number,
-                disc_condition_name: record.disc_condition_name,
-                sleeve_condition_name: record.sleeve_condition_name,
-                notes: record.notes,
-                location: record.location
-            });
-            appendToModalLog('✅ Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') - will post at $' + markupInfo.discogs_price.toFixed(2) + ' (+' + markupInfo.markup_percent + '%)', 'success');
-        } else {
-            appendToModalLog('❌ Record #' + record.id + ' (' + record.artist + ' - ' + record.title + ') cannot be posted: ' + markupInfo.error, 'error');
-        }
-    }
-    
-    if (validatedRecords.length === 0) {
-        appendToModalLog('❌ No records can be posted. Please configure markup rules first.', 'error');
-        showDiscogsStatus('No records can be posted. Please configure markup rules in the Discogs tab.', 'error');
-        setTimeout(function() { closeProgressModal(); }, 3000);
-        return;
-    }
-    
-    if (validatedRecords.length < eligibleRecords.length) {
-        const skipped = eligibleRecords.length - validatedRecords.length;
-        appendToModalLog('⚠️ ' + skipped + ' record(s) skipped due to missing markup rules or creation dates', 'warning');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-    
-    closeProgressModal();
-    
-    const totalTimeMinutes = Math.ceil(validatedRecords.length * 3 / 60);
-    if (!confirm('📋 Post ALL ' + validatedRecords.length + ' record(s) from bin "' + currentLocation + '" to Discogs?\n\n' +
-        'This will create new Discogs listings for EVERY record in this bin.\n\n' +
+    const totalTimeMinutes = Math.ceil(eligibleRecords.length * 3 / 60);
+    if (!confirm('📋 Post ALL ' + eligibleRecords.length + ' record(s) from bin "' + currentLocation + '" to Discogs?\n\n' +
         '⚠️ Each record will take approximately 3-5 seconds\n' +
         '⏱️ Estimated total time: ~' + totalTimeMinutes + ' minute(s)\n\n' +
-        'The process will automatically retry failed listings.')) {
+        'The process will validate and post in one pass.\n\n' +
+        'Continue?')) {
         return;
     }
     
-    openProgressModal('Posting ' + validatedRecords.length + ' Records from Bin "' + currentLocation + '" to Discogs');
-    appendToModalLog('🚀 Starting bulk post for ' + validatedRecords.length + ' records from bin "' + currentLocation + '"...', 'info');
+    openProgressModal('Posting ' + eligibleRecords.length + ' Records from Bin "' + currentLocation + '" to Discogs');
+    appendToModalLog('🚀 Starting bulk post for ' + eligibleRecords.length + ' records from bin "' + currentLocation + '"...', 'info');
     appendToModalLog('⏱️ 3-second delay between requests for reliability', 'warning');
-    appendToModalLog('🔄 Automatic retries: up to 3 attempts per record', 'info');
+    appendToModalLog('🔄 Validating and posting in one pass', 'info');
     appendToModalLog('⏱️ Estimated total time: ~' + totalTimeMinutes + ' minutes', 'info');
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     
     let posted = 0;
     let failed = 0;
+    let skipped = 0;
     const failedRecords = [];
     
-    for (let i = 0; i < validatedRecords.length; i++) {
+    for (let i = 0; i < eligibleRecords.length; i++) {
         if (cancelResolve) {
             appendToModalLog('⏹️ Operation cancelled by user.', 'warning');
             break;
         }
         
-        const record = validatedRecords[i];
-        updateModalProgress(i + 1, validatedRecords.length);
+        const record = eligibleRecords[i];
+        updateModalProgress(i + 1, eligibleRecords.length);
         
-        appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-        appendToModalLog('[' + (i+1) + '/' + validatedRecords.length + '] 📀 ' + record.artist + ' - ' + record.title, 'info');
-        appendToModalLog('   Store: $' + record.store_price.toFixed(2) + ' → Discogs: $' + record.discogs_price.toFixed(2) + ' (' + (record.markup_percent > 0 ? '+' : '') + record.markup_percent + '%)', 'info');
+        // Quick validation
+        if (!record.created_at) {
+            skipped++;
+            appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing creation date, skipping`, 'warning');
+            continue;
+        }
         
-        // RETRY LOGIC: Try up to 3 times
+        if (!record.disc_condition_name && !record.sleeve_condition_name) {
+            skipped++;
+            appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing condition, skipping`, 'warning');
+            continue;
+        }
+        
+        appendToModalLog(`[${i+1}/${eligibleRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
+        
+        // Calculate markup
+        const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
+        
+        if (!markupInfo.success) {
+            failed++;
+            failedRecords.push(`${record.artist} - ${record.title}: ${markupInfo.error}`);
+            appendToModalLog(`   ❌ Cannot post: ${markupInfo.error}`, 'error');
+            continue;
+        }
+        
+        appendToModalLog(`   💰 Store: $${record.store_price} → Discogs: $${markupInfo.discogs_price} (+${markupInfo.markup_percent}%)`, 'info');
+        
+        // Post to Discogs
         let success = false;
         let lastError = null;
         const maxRetries = 3;
@@ -686,10 +663,8 @@ async function bulkPostToDiscogs() {
             if (cancelResolve) break;
             
             if (attempt > 1) {
-                appendToModalLog('   🔄 RETRY ' + attempt + ' of ' + maxRetries + '...', 'warning');
-                const waitTime = 5000 * attempt;
-                appendToModalLog('   ⏳ Waiting ' + (waitTime/1000) + ' seconds before retry...', 'info');
-                await new Promise(resolve => setTimeout(resolve, waitTime));
+                appendToModalLog(`   🔄 RETRY ${attempt}/${maxRetries}...`, 'warning');
+                await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
             }
             
             const listingData = {
@@ -698,18 +673,16 @@ async function bulkPostToDiscogs() {
                     artist: record.artist,
                     title: record.title,
                     catalog_number: record.catalog_number || '',
-                    media_condition: record.disc_condition_name || record.sleeve_condition_name || '',
-                    sleeve_condition: record.sleeve_condition_name || '',
-                    price: record.discogs_price,
+                    media_condition: record.disc_condition_name || record.sleeve_condition_name,
+                    sleeve_condition: record.sleeve_condition_name || record.disc_condition_name,
+                    price: markupInfo.discogs_price,
                     notes: record.notes || '',
                     location: record.location || ''
                 }
             };
             
             try {
-                appendToModalLog('   📤 Sending to Discogs API...', 'info');
-                
-                const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+                const postResponse = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
                     method: 'POST',
                     credentials: 'include',
                     headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
@@ -718,65 +691,57 @@ async function bulkPostToDiscogs() {
                     body: JSON.stringify(listingData)
                 });
                 
-                const result = await response.json();
+                const result = await postResponse.json();
                 
                 if (result.success) {
                     success = true;
                     posted++;
-                    let discogsUrl = result.listing_url;
-                    if (!discogsUrl && result.listing_id) {
-                        discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
-                    }
-                    appendToModalLog('   ✅ SUCCESS! Posted to Discogs', 'success');
-                    appendToModalLog('   🔗 Listing ID: ' + result.listing_id, 'info');
-                    if (discogsUrl) {
-                        appendToModalLog('   🔗 ' + discogsUrl, 'info');
-                    }
+                    appendToModalLog(`   ✅ POSTED! Listing ID: ${result.listing_id}`, 'success');
                     break;
                 } else {
                     lastError = result.error || 'Unknown error';
-                    appendToModalLog('   ❌ Attempt ' + attempt + ' failed: ' + lastError, 'error');
+                    appendToModalLog(`   ❌ Attempt ${attempt} failed: ${lastError}`, 'error');
                     
-                    if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate') && !result.error.includes('timeout'))) {
-                        appendToModalLog('   ⚠️ Non-retryable error, stopping attempts for this record', 'warning');
+                    if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate'))) {
                         break;
                     }
                 }
-            } catch (error) {
-                lastError = error.message;
-                appendToModalLog('   ❌ Attempt ' + attempt + ' failed: ' + error.message, 'error');
-                console.error('Fetch error:', error);
+            } catch (err) {
+                lastError = err.message;
+                appendToModalLog(`   ❌ Attempt ${attempt} error: ${err.message}`, 'error');
             }
         }
         
         if (!success) {
             failed++;
-            failedRecords.push(record.artist + ' - ' + record.title + ': ' + lastError);
-            appendToModalLog('   ❌ PERMANENT FAILURE after ' + maxRetries + ' attempts: ' + lastError, 'error');
+            failedRecords.push(`${record.artist} - ${record.title}: ${lastError}`);
+            appendToModalLog(`   ❌ PERMANENT FAILURE after ${maxRetries} attempts`, 'error');
         }
         
-        // CRITICAL: Wait 3 seconds between requests
-        if (i < validatedRecords.length - 1 && !cancelResolve) {
-            appendToModalLog('   ⏳ Waiting 3 seconds before next record...', 'info');
+        // Wait 3 seconds between records
+        if (i < eligibleRecords.length - 1 && !cancelResolve) {
+            appendToModalLog(`   ⏳ Waiting 3 seconds...`, 'info');
             await new Promise(resolve => setTimeout(resolve, 3000));
         }
     }
     
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     appendToModalLog('📊 FINAL RESULTS:', 'info');
-    appendToModalLog('   ✅ Successfully posted: ' + posted, 'success');
-    appendToModalLog('   ❌ Failed: ' + failed, failed > 0 ? 'error' : 'info');
-    appendToModalLog('   📍 Bin: ' + currentLocation, 'info');
+    appendToModalLog(`   ✅ Successfully posted: ${posted}`, 'success');
+    appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
+    appendToModalLog(`   ⚠️ Skipped: ${skipped}`, 'warning');
+    appendToModalLog(`   📍 Bin: ${currentLocation}`, 'info');
     
-    if (failedRecords.length > 0) {
+    if (failedRecords.length > 0 && failedRecords.length <= 20) {
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
         appendToModalLog('❌ FAILED RECORDS:', 'warning');
         for (const failedRecord of failedRecords) {
-            appendToModalLog('   • ' + failedRecord, 'error');
+            appendToModalLog(`   • ${failedRecord}`, 'error');
         }
+    } else if (failedRecords.length > 20) {
+        appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'warning');
+        appendToModalLog(`❌ ${failedRecords.length} records failed. Check console for details.`, 'error');
     }
-    
-    appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     
     if (posted > 0) {
         appendToModalLog('🔄 Reloading location data...', 'info');
@@ -784,14 +749,209 @@ async function bulkPostToDiscogs() {
         appendToModalLog('✅ Data refreshed', 'success');
     }
     
-    if (posted > 0 && failed === 0) {
+    if (posted > 0 && failed === 0 && skipped === 0) {
         showDiscogsStatus('✅ Successfully posted ALL ' + posted + ' records from bin "' + currentLocation + '" to Discogs!', 'success');
-    } else if (posted > 0 && failed > 0) {
-        showDiscogsStatus('⚠️ Posted ' + posted + ' records from bin "' + currentLocation + '", ' + failed + ' failed. Check log for details.', 'warning');
+    } else if (posted > 0) {
+        showDiscogsStatus(`⚠️ Posted ${posted} records, ${failed} failed, ${skipped} skipped. Check log.`, 'warning');
     } else {
-        showDiscogsStatus('❌ Failed to post any records from bin "' + currentLocation + '". Check log for details.', 'error');
+        showDiscogsStatus('❌ Failed to post any records. Check log.', 'error');
     }
 }
+
+// ============================================================================
+// REPOST ENTIRE STORE TO DISCOGS - Combined validation and posting
+// ============================================================================
+
+window.repostEntireStoreToDiscogs = async function() {
+    console.log('🔄 Reposting entire store to Discogs...');
+    
+    showDiscogsStatus('Loading all active records from the entire store...', 'info');
+    
+    try {
+        // Fetch ALL active records (status_id = 2) from ALL locations
+        const url = window.AppConfig.baseUrl + '/records/status/2';
+        
+        const response = await fetch(url, {
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+        });
+        
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status !== 'success') {
+            throw new Error(data.error || 'Failed to load records');
+        }
+        
+        const allActiveRecords = data.records || [];
+        
+        if (allActiveRecords.length === 0) {
+            showDiscogsStatus('No active records found in the store.', 'warning');
+            return;
+        }
+        
+        const totalTimeHours = Math.ceil(allActiveRecords.length * 3 / 3600);
+        if (!confirm(`📋 REPOST ENTIRE STORE to Discogs?\n\n` +
+            `This will process ${allActiveRecords.length} active records.\n` +
+            `⚠️ Each record takes ~3 seconds\n` +
+            `⏱️ Estimated time: ~${totalTimeHours} hour(s)\n\n` +
+            `The process will validate AND post in one pass.\n\n` +
+            `Continue?`)) {
+            return;
+        }
+        
+        openProgressModal('Reposting ' + allActiveRecords.length + ' Records from Entire Store');
+        appendToModalLog('🚀 Starting REPOST ENTIRE STORE for ' + allActiveRecords.length + ' records...', 'info');
+        appendToModalLog('⏱️ Validating and posting in one pass (3 seconds per record)', 'info');
+        appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        
+        let posted = 0;
+        let failed = 0;
+        let skipped = 0;
+        const failedRecords = [];
+        
+        for (let i = 0; i < allActiveRecords.length; i++) {
+            if (cancelResolve) {
+                appendToModalLog('⏹️ Operation cancelled by user.', 'warning');
+                break;
+            }
+            
+            const record = allActiveRecords[i];
+            updateModalProgress(i + 1, allActiveRecords.length);
+            
+            // Quick validation - skip if missing required data
+            if (!record.created_at) {
+                skipped++;
+                appendToModalLog(`[${i+1}/${allActiveRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing creation date, skipping`, 'warning');
+                continue;
+            }
+            
+            if (!record.disc_condition_name && !record.sleeve_condition_name) {
+                skipped++;
+                appendToModalLog(`[${i+1}/${allActiveRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing condition, skipping`, 'warning');
+                continue;
+            }
+            
+            appendToModalLog(`[${i+1}/${allActiveRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
+            
+            // Calculate markup (1 API call)
+            const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
+            
+            if (!markupInfo.success) {
+                failed++;
+                failedRecords.push(`${record.artist} - ${record.title}: ${markupInfo.error}`);
+                appendToModalLog(`   ❌ Cannot post: ${markupInfo.error}`, 'error');
+                continue;
+            }
+            
+            appendToModalLog(`   💰 Store: $${record.store_price} → Discogs: $${markupInfo.discogs_price} (+${markupInfo.markup_percent}%)`, 'info');
+            
+            // Post to Discogs (2nd API call)
+            let success = false;
+            let lastError = null;
+            const maxRetries = 3;
+            
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                if (cancelResolve) break;
+                
+                if (attempt > 1) {
+                    appendToModalLog(`   🔄 RETRY ${attempt}/${maxRetries}...`, 'warning');
+                    await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+                }
+                
+                const listingData = {
+                    record: {
+                        id: record.id,
+                        artist: record.artist,
+                        title: record.title,
+                        catalog_number: record.catalog_number || '',
+                        media_condition: record.disc_condition_name || record.sleeve_condition_name,
+                        sleeve_condition: record.sleeve_condition_name || record.disc_condition_name,
+                        price: markupInfo.discogs_price,
+                        notes: record.notes || '',
+                        location: record.location || ''
+                    }
+                };
+                
+                try {
+                    const postResponse = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(listingData)
+                    });
+                    
+                    const result = await postResponse.json();
+                    
+                    if (result.success) {
+                        success = true;
+                        posted++;
+                        appendToModalLog(`   ✅ POSTED! Listing ID: ${result.listing_id}`, 'success');
+                        break;
+                    } else {
+                        lastError = result.error || 'Unknown error';
+                        appendToModalLog(`   ❌ Attempt ${attempt} failed: ${lastError}`, 'error');
+                        
+                        if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate'))) {
+                            break;
+                        }
+                    }
+                } catch (err) {
+                    lastError = err.message;
+                    appendToModalLog(`   ❌ Attempt ${attempt} error: ${err.message}`, 'error');
+                }
+            }
+            
+            if (!success) {
+                failed++;
+                failedRecords.push(`${record.artist} - ${record.title}: ${lastError}`);
+                appendToModalLog(`   ❌ PERMANENT FAILURE after ${maxRetries} attempts`, 'error');
+            }
+            
+            // Wait 3 seconds between records
+            if (i < allActiveRecords.length - 1 && !cancelResolve) {
+                appendToModalLog(`   ⏳ Waiting 3 seconds...`, 'info');
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+        }
+        
+        appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        appendToModalLog('📊 FINAL RESULTS - ENTIRE STORE REPOST:', 'info');
+        appendToModalLog(`   ✅ Successfully posted: ${posted}`, 'success');
+        appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
+        appendToModalLog(`   ⚠️ Skipped (missing data): ${skipped}`, 'warning');
+        appendToModalLog(`   📊 Total processed: ${posted + failed + skipped} of ${allActiveRecords.length}`, 'info');
+        
+        if (failedRecords.length > 0 && failedRecords.length <= 20) {
+            appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            appendToModalLog('❌ FAILED RECORDS:', 'warning');
+            for (const failedRecord of failedRecords) {
+                appendToModalLog(`   • ${failedRecord}`, 'error');
+            }
+        } else if (failedRecords.length > 20) {
+            appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'warning');
+            appendToModalLog(`❌ ${failedRecords.length} records failed. Check console for details.`, 'error');
+        }
+        
+        if (posted > 0) {
+            showDiscogsStatus(`✅ Reposted ${posted} records. ${failed} failed, ${skipped} skipped.`, posted === allActiveRecords.length ? 'success' : 'warning');
+        } else {
+            showDiscogsStatus(`❌ Failed to repost any records. Check log for details.`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('Error in repostEntireStoreToDiscogs:', error);
+        showDiscogsStatus('Error: ' + error.message, 'error');
+        if (progressModal && progressModal.style.display === 'flex') {
+            appendToModalLog('❌ FATAL ERROR: ' + error.message, 'error');
+        }
+    }
+};
 
 // ============================================================================
 // Show status messages
@@ -1094,7 +1254,7 @@ window.initDiscogsTab = function() {
     loadLocations();
     loadMarkupRules();
     
-    discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td>';
+    discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
     
     console.log('✅ Discogs Tab initialized');
 };
