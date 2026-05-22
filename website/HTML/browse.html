@@ -192,6 +192,178 @@
             font-weight: 600;
         }
         
+        /* Record Modal Styles - Simplified */
+        .record-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .record-modal {
+            background: white;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            animation: modalSlideIn 0.3s ease;
+        }
+        
+        @keyframes modalSlideIn {
+            from { transform: translateY(30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .record-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            background: #2c3e50;
+            color: white;
+        }
+        
+        .record-modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        
+        .record-modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: white;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .record-modal-close:hover {
+            opacity: 0.8;
+        }
+        
+        .record-modal-image {
+            width: 100%;
+            height: 250px;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .record-modal-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .record-modal-image.default-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            color: white;
+        }
+        
+        .record-modal-info {
+            padding: 24px;
+        }
+        
+        .record-modal-artist {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        
+        .record-modal-title {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .record-modal-details {
+            margin: 15px 0;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 14px;
+        }
+        
+        .detail-label {
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .detail-value {
+            color: #333;
+        }
+        
+        .record-modal-price {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .record-modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        
+        .add-to-cart-modal-btn {
+            flex: 1;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .add-to-cart-modal-btn:hover:not(:disabled) {
+            background: #ff5252;
+            transform: translateY(-1px);
+        }
+        
+        .add-to-cart-modal-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .close-modal-btn {
+            flex: 1;
+            background: #e9ecef;
+            color: #495057;
+            border: none;
+            padding: 14px;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
         /* Checkout Modal Styles */
         .checkout-modal-overlay {
             position: fixed;
@@ -370,6 +542,107 @@
         .required {
             color: #ff6b6b;
         }
+        
+        /* Record Card Styles - Simplified for individual records */
+        .records-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+            padding: 20px;
+        }
+        
+        .record-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+        
+        .record-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+        
+        .record-card-image {
+            height: 200px;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .record-card-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .record-card-image.default-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            color: white;
+        }
+        
+        .record-card-info {
+            padding: 15px;
+        }
+        
+        .record-card-artist {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .record-card-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .record-card-price {
+            font-size: 20px;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin: 10px 0;
+        }
+        
+        .record-card-condition {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .record-card-genre {
+            font-size: 12px;
+            color: #888;
+            margin-top: 8px;
+        }
+        
+        .in-cart-badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
     </style>
 </head>
 <body>
@@ -423,7 +696,7 @@
                 </div>
             </div>
             
-            <button id="newArrivalsBtn" class="filter-btn">
+            <button id="newArrivalsBtn" class="filter-btn active">
                 <i class="fas fa-calendar-week"></i> New Arrivals
             </button>
             
@@ -470,12 +743,12 @@
     <script>
         // Core data
         let allRecords = [];
-        let groupedReleases = [];
         let availableGenres = [];
         let selectedGenres = [];
         let currentSearchTerm = '';
         
-        let newArrivalsActive = false;
+        // DEFAULT: Show New Arrivals (last 7 days) on page load
+        let newArrivalsActive = true;
         let newVinylActive = false;
         
         let cart = { items: [], total: 0 };
@@ -492,27 +765,15 @@
             return null;
         }
 
-        function getFormatFromBarcode(barcode) {
-            if (!barcode || typeof barcode !== 'string') return 'unknown';
+        function getFormatDisplayName(barcode) {
+            if (!barcode || typeof barcode !== 'string') return 'Vinyl';
             const prefix = barcode.substring(0, 2);
             switch(prefix) {
-                case '22': return '33';
-                case '55': return '45';
-                case '66': return '78';
-                case '33': return 'cd';
-                case '44': return 'cassette';
-                default: return 'unknown';
-            }
-        }
-
-        function getFormatDisplayName(barcode) {
-            const code = getFormatFromBarcode(barcode);
-            switch(code) {
-                case '33': return '33⅓ RPM';
-                case '45': return '45 RPM';
-                case '78': return '78 RPM';
-                case 'cd': return 'CD';
-                case 'cassette': return 'Cassette';
+                case '22': return '33⅓ RPM';
+                case '55': return '45 RPM';
+                case '66': return '78 RPM';
+                case '33': return 'CD';
+                case '44': return 'Cassette';
                 default: return 'Vinyl';
             }
         }
@@ -522,57 +783,17 @@
             return record.condition_disc_id === 1 && record.condition_sleeve_id === 1;
         }
 
-        function isNewArrival(record) {
-            if (!record || !record.created_at) return false;
-            const createdDate = new Date(record.created_at);
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            return createdDate >= sevenDaysAgo;
+        function getConditionNameFromId(conditionId) {
+            const map = {1: 'Mint', 2: 'Near Mint', 3: 'VG+', 4: 'VG', 5: 'G+', 6: 'G', 7: 'Fair', 8: 'Poor'};
+            return map[conditionId] || 'Unknown';
         }
 
-        function groupRecordsByRelease(records) {
-            const groups = new Map();
-            records.forEach(record => {
-                const key = `${record.title}|${record.artist}`;
-                if (!groups.has(key)) {
-                    groups.set(key, {
-                        id: record.id,
-                        title: record.title,
-                        artist: record.artist,
-                        image_url: record.image_url,
-                        genre_name: extractGenreFromLocation(record.location) || 'Uncategorized',
-                        created_at: record.created_at,
-                        copies: [],
-                        price_min: Infinity,
-                        price_max: -Infinity,
-                        conditions_disc: new Set(),
-                        conditions_sleeve: new Set(),
-                        formats: new Set(),
-                        youtube_url: record.youtube_url,
-                        is_new_vinyl: isNewVinyl(record)
-                    });
-                }
-                const group = groups.get(key);
-                group.copies.push(record);
-                if (record.store_price) {
-                    group.price_min = Math.min(group.price_min, record.store_price);
-                    group.price_max = Math.max(group.price_max, record.store_price);
-                }
-                if (record.condition_disc_id) group.conditions_disc.add(record.condition_disc_id);
-                if (record.condition_sleeve_id) group.conditions_sleeve.add(record.condition_sleeve_id);
-                group.formats.add(getFormatDisplayName(record.barcode));
-                if (record.youtube_url && !group.youtube_url) group.youtube_url = record.youtube_url;
-                if (isNewVinyl(record)) group.is_new_vinyl = true;
-            });
-            return Array.from(groups.values()).map(group => ({
-                ...group,
-                price_min: group.price_min === Infinity ? 0 : group.price_min,
-                price_max: group.price_max === -Infinity ? 0 : group.price_max,
-                conditions_disc: Array.from(group.conditions_disc),
-                conditions_sleeve: Array.from(group.conditions_sleeve),
-                formats: Array.from(group.formats),
-                total_copies: group.copies.length
-            }));
+        function getConditionClassFromId(conditionId) {
+            if (conditionId === 1) return 'condition-mint';
+            if (conditionId === 2) return 'condition-near-mint';
+            if (conditionId === 3) return 'condition-very-good-plus';
+            if (conditionId === 4) return 'condition-very-good';
+            return '';
         }
 
         function updateFilterUI() {
@@ -580,8 +801,13 @@
             const vinylBtn = document.getElementById('newVinylBtn');
             
             if (arrivalsBtn) {
-                if (newArrivalsActive) arrivalsBtn.classList.add('active');
-                else arrivalsBtn.classList.remove('active');
+                if (newArrivalsActive) {
+                    arrivalsBtn.classList.add('active');
+                    arrivalsBtn.innerHTML = '<i class="fas fa-calendar-week"></i> New Arrivals';
+                } else {
+                    arrivalsBtn.classList.remove('active');
+                    arrivalsBtn.innerHTML = '<i class="fas fa-list"></i> All Records';
+                }
             }
             if (vinylBtn) {
                 if (newVinylActive) vinylBtn.classList.add('active');
@@ -591,18 +817,32 @@
             let filters = [];
             if (currentSearchTerm) filters.push(`Search: "${currentSearchTerm}"`);
             if (newArrivalsActive) filters.push(`New Arrivals (last 7 days)`);
-            if (newVinylActive) filters.push(`New Vinyl`);
+            if (!newArrivalsActive) filters.push(`All Records`);
+            if (newVinylActive) filters.push(`New Vinyl Only`);
             if (selectedGenres.length > 0) filters.push(`Genre: ${selectedGenres.join(', ')}`);
             
             const statusRow = document.getElementById('filterStatusRow');
             const summaryDiv = document.getElementById('filterSummary');
             
+            if (filters.length === 0 && newArrivalsActive) {
+                statusRow.style.display = 'flex';
+                summaryDiv.innerHTML = `New Arrivals (last 7 days) <span class="result-count-badge">${allRecords.length} results</span>`;
+                return;
+            }
+            
+            if (filters.length === 0 && !newArrivalsActive) {
+                statusRow.style.display = 'flex';
+                summaryDiv.innerHTML = `All Records <span class="result-count-badge">${allRecords.length} results</span>`;
+                return;
+            }
+            
             if (filters.length === 0) {
                 statusRow.style.display = 'none';
                 return;
             }
+            
             statusRow.style.display = 'flex';
-            summaryDiv.innerHTML = `${filters.join(' · ')} <span class="result-count-badge">${groupedReleases.length} results</span>`;
+            summaryDiv.innerHTML = `${filters.join(' · ')} <span class="result-count-badge">${allRecords.length} results</span>`;
         }
 
         async function loadCatalogData() {
@@ -611,14 +851,15 @@
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
             
-            // Tell backend to bypass 7-day filter when newArrivalsActive is false
-            if (!newArrivalsActive) {
+            // When newArrivalsActive is TRUE, use default backend behavior (last 7 days)
+            // When newArrivalsActive is FALSE, bypass the filter to show all records
+            if (newArrivalsActive === false) {
                 url += `&bypass_date_filter=true`;
             }
             
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
-                if (!newArrivalsActive) {
+                if (newArrivalsActive === false) {
                     url += `&bypass_date_filter=true`;
                 }
             }
@@ -631,7 +872,7 @@
                 if (data.status === 'success') {
                     let records = data.records || [];
                     
-                    // Apply frontend filters for New Vinyl (since backend doesn't have this)
+                    // Apply frontend filters for New Vinyl
                     if (newVinylActive) {
                         records = records.filter(record => isNewVinyl(record));
                     }
@@ -648,9 +889,8 @@
                     }
                     
                     allRecords = records;
-                    groupedReleases = groupRecordsByRelease(allRecords);
                     
-                    // Extract genres from ALL records (not just filtered ones) for dropdown
+                    // Extract genres from ALL records for dropdown
                     const genreSet = new Set();
                     if (data.records) {
                         data.records.forEach(record => {
@@ -660,7 +900,7 @@
                     }
                     availableGenres = Array.from(genreSet).sort();
                     populateGenreDropdown();
-                    displayReleases(groupedReleases);
+                    displayRecords(allRecords);
                     updateFilterUI();
                 }
             } catch (error) {
@@ -697,7 +937,7 @@
         function clearAllFilters() {
             selectedGenres = [];
             currentSearchTerm = '';
-            newArrivalsActive = false;
+            newArrivalsActive = true;
             newVinylActive = false;
             const searchBox = document.getElementById('searchBox');
             if (searchBox) searchBox.value = '';
@@ -715,10 +955,11 @@
             loadCatalogData();
         }
 
-        function displayReleases(releases) {
+        function displayRecords(records) {
             const container = document.getElementById('catalogContainer');
             container.innerHTML = '';
-            if (!releases || releases.length === 0) {
+            
+            if (!records || records.length === 0) {
                 let message = 'No records match your filters.';
                 if (newArrivalsActive && !newVinylActive) message = 'No new arrivals in the last 7 days.';
                 if (newVinylActive && !newArrivalsActive) message = 'No new vinyl records available.';
@@ -726,176 +967,204 @@
                 container.innerHTML = `<div class="no-records-message"><i class="fas fa-search"></i><p>${message}</p></div>`;
                 return;
             }
-            const sortedReleases = [...releases].sort((a, b) => {
+            
+            // Sort by newest first
+            const sortedRecords = [...records].sort((a, b) => {
                 const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
                 const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
                 return dateB - dateA;
             });
+            
             const grid = document.createElement('div');
-            grid.className = 'group-gallery';
-            sortedReleases.forEach(release => grid.appendChild(createRecordCard(release)));
+            grid.className = 'records-grid';
+            sortedRecords.forEach(record => grid.appendChild(createRecordCard(record)));
             container.appendChild(grid);
         }
 
-        function getConditionClassFromId(conditionId) {
-            if (conditionId === 1) return 'condition-mint';
-            if (conditionId === 2) return 'condition-near-mint';
-            if (conditionId === 3) return 'condition-very-good-plus';
-            if (conditionId === 4) return 'condition-very-good';
-            return '';
-        }
-        
-        function getConditionNameFromId(conditionId) {
-            const map = {1: 'Mint', 2: 'Near Mint', 3: 'VG+', 4: 'VG', 5: 'G+', 6: 'G', 7: 'Fair', 8: 'Poor'};
-            return map[conditionId] || 'Unknown';
-        }
-
-        function createRecordCard(release) {
+        function createRecordCard(record) {
             const card = document.createElement('div');
-            card.className = 'card';
-            const genre = release.genre_name || 'Unknown';
-            let priceDisplay = '';
-            if (release.price_min > 0 && release.price_max > 0) {
-                if (release.price_min === release.price_max) priceDisplay = `$${release.price_min.toFixed(2)}`;
-                else priceDisplay = `$${release.price_min.toFixed(2)} - $${release.price_max.toFixed(2)}`;
-            } else if (release.price_min > 0) priceDisplay = `$${release.price_min.toFixed(2)}`;
-            else priceDisplay = 'Price varies';
+            card.className = 'record-card';
             
-            let copyCountHtml = release.total_copies > 1 ? `<span class="copy-count">${release.total_copies} copies</span>` : '';
-            const imageHtml = release.image_url ? 
-                `<img src="${release.image_url}" alt="${release.title}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : '';
+            const genre = extractGenreFromLocation(record.location) || 'Uncategorized';
+            const conditionName = getConditionNameFromId(record.condition_disc_id);
+            const conditionClass = getConditionClassFromId(record.condition_disc_id);
+            const format = getFormatDisplayName(record.barcode);
+            const alreadyInCart = cart.items.some(item => item.copyId === record.id);
+            
+            const imageHtml = record.image_url ? 
+                `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
             
             card.innerHTML = `
-                <div class="card-image ${!release.image_url ? 'default-record-bg' : ''}">${imageHtml}</div>
-                <div class="card-info">
-                    <h3 title="${escapeHtml(release.title)}">${escapeHtml(release.title)}</h3>
-                    <p class="artist" title="${escapeHtml(release.artist)}">${escapeHtml(release.artist)}</p>
-                    <div class="copy-info">${copyCountHtml}<span class="price-range">${priceDisplay}</span></div>
-                    <p class="genre" title="${escapeHtml(genre)}"><i class="fas fa-music"></i> ${escapeHtml(genre)}</p>
-                    ${release.youtube_url ? `<a href="#" class="youtube-link" onclick="handleYouTubeClick('${release.youtube_url}', '${escapeHtml(release.artist)} - ${escapeHtml(release.title)}'); return false;">🎵 Watch Video</a>` : ''}
+                <div class="record-card-image ${!record.image_url ? 'default-bg' : ''}">
+                    ${imageHtml || '<i class="fas fa-music"></i>'}
+                </div>
+                <div class="record-card-info">
+                    <div class="record-card-artist" title="${escapeHtml(record.artist)}">${escapeHtml(record.artist)}</div>
+                    <div class="record-card-title" title="${escapeHtml(record.title)}">${escapeHtml(record.title)}</div>
+                    <div class="record-card-price">$${parseFloat(record.store_price).toFixed(2)}</div>
+                    <div>
+                        <span class="record-card-condition ${conditionClass}">${conditionName}</span>
+                        <span class="record-card-genre">${format}</span>
+                        ${alreadyInCart ? '<span class="in-cart-badge"><i class="fas fa-check"></i> In Cart</span>' : ''}
+                    </div>
+                    <div class="record-card-genre"><i class="fas fa-music"></i> ${escapeHtml(genre)}</div>
                 </div>
             `;
-            card.addEventListener('click', function(e) {
-                if (e.target.closest('.youtube-link')) return;
-                showCopiesPopup(release);
+            
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.add-to-cart-modal-btn')) return;
+                showRecordModal(record);
             });
+            
             return card;
         }
 
-        function showCopiesPopup(release) {
+        function showRecordModal(record) {
+            const alreadyInCart = cart.items.some(item => item.copyId === record.id);
+            const genre = extractGenreFromLocation(record.location) || 'Uncategorized';
+            const conditionName = getConditionNameFromId(record.condition_disc_id);
+            const conditionClass = getConditionClassFromId(record.condition_disc_id);
+            const format = getFormatDisplayName(record.barcode);
+            
             const modal = document.createElement('div');
-            modal.className = 'copies-modal-overlay';
-            const imageHtml = release.image_url ? 
-                `<img src="${release.image_url}" alt="${escapeHtml(release.title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.classList.add('default-record-bg'); this.style.display='none';">` : '';
+            modal.className = 'record-modal-overlay';
             
-            const copies = allRecords.filter(record => record.title === release.title && record.artist === release.artist);
-            const copiesByFormat = new Map();
-            copies.forEach(copy => {
-                const format = getFormatDisplayName(copy.barcode);
-                if (!copiesByFormat.has(format)) copiesByFormat.set(format, []);
-                copiesByFormat.get(format).push(copy);
-            });
+            const imageHtml = record.image_url ? 
+                `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
             
-            let formatsHtml = '';
-            for (const [format, formatCopies] of copiesByFormat) {
-                let formatIcon = 'fa-record-vinyl', formatClass = '';
-                if (format === '33⅓ RPM') { formatIcon = 'fa-record-vinyl'; formatClass = 'vinyl-33'; }
-                else if (format === '45 RPM') { formatIcon = 'fa-record-vinyl'; formatClass = 'vinyl-45'; }
-                else if (format === '78 RPM') { formatIcon = 'fa-record-vinyl'; formatClass = 'vinyl-78'; }
-                else if (format === 'CD') { formatIcon = 'fa-compact-disc'; formatClass = 'cd'; }
-                else if (format === 'Cassette') { formatIcon = 'fa-tape'; formatClass = 'cassette'; }
-                
-                let copiesHtml = '';
-                formatCopies.forEach(copy => {
-                    const conditionClass = getConditionClassFromId(copy.condition_disc_id);
-                    const alreadyInCart = cart.items.some(item => item.copyId === copy.id);
-                    const displayCondition = getConditionNameFromId(copy.condition_disc_id);
-                    copiesHtml += `
-                        <div class="copy-item">
-                            <div class="copy-item-content">
-                                <span class="copy-condition"><span class="condition-indicator ${conditionClass}">${displayCondition}</span></span>
-                                <span class="copy-price">$${copy.store_price.toFixed(2)}</span>
+            modal.innerHTML = `
+                <div class="record-modal">
+                    <div class="record-modal-header">
+                        <h3>${escapeHtml(record.artist)}</h3>
+                        <button class="record-modal-close">&times;</button>
+                    </div>
+                    <div class="record-modal-image ${!record.image_url ? 'default-bg' : ''}">
+                        ${imageHtml || '<i class="fas fa-music" style="font-size: 64px;"></i>'}
+                    </div>
+                    <div class="record-modal-info">
+                        <div class="record-modal-title">${escapeHtml(record.title)}</div>
+                        <div class="record-modal-details">
+                            <div class="detail-row">
+                                <span class="detail-label">Condition:</span>
+                                <span class="detail-value"><span class="condition-indicator ${conditionClass}">${conditionName}</span></span>
                             </div>
-                            <button class="add-to-cart-btn ${alreadyInCart ? 'in-cart' : ''}" data-copy-id="${copy.id}" data-format="${format}" ${alreadyInCart ? 'disabled' : ''}>
+                            <div class="detail-row">
+                                <span class="detail-label">Format:</span>
+                                <span class="detail-value">${format}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Genre:</span>
+                                <span class="detail-value">${escapeHtml(genre)}</span>
+                            </div>
+                            ${record.catalog_number ? `
+                            <div class="detail-row">
+                                <span class="detail-label">Catalog #:</span>
+                                <span class="detail-value">${escapeHtml(record.catalog_number)}</span>
+                            </div>
+                            ` : ''}
+                            ${record.barcode ? `
+                            <div class="detail-row">
+                                <span class="detail-label">Barcode:</span>
+                                <span class="detail-value">${escapeHtml(record.barcode)}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="record-modal-price">$${parseFloat(record.store_price).toFixed(2)}</div>
+                        <div class="record-modal-actions">
+                            <button class="add-to-cart-modal-btn" data-record-id="${record.id}" ${alreadyInCart ? 'disabled' : ''}>
                                 <i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> ${alreadyInCart ? 'In Cart' : 'Add to Cart'}
                             </button>
+                            <button class="close-modal-btn">Close</button>
                         </div>
-                    `;
-                });
-                formatsHtml += `
-                    <div class="modal-format-section">
-                        <div class="modal-format-title ${formatClass}"><i class="fas ${formatIcon}"></i> ${format}<span style="margin-left:auto;">${formatCopies.length} copy${formatCopies.length !== 1 ? 's' : ''}</span></div>
-                        <div class="copies-list-with-format">${copiesHtml}</div>
                     </div>
-                `;
-            }
-            modal.innerHTML = `
-                <div class="copies-modal">
-                    <div class="copies-modal-header"><h3>${escapeHtml(release.artist)} - ${escapeHtml(release.title)}</h3><button class="copies-modal-close">&times;</button></div>
-                    <div class="copies-modal-content"><div class="modal-album-image ${!release.image_url ? 'default-record-bg' : ''}">${imageHtml}</div>${formatsHtml}</div>
-                    ${release.total_copies > 1 ? `<div class="copies-modal-footer"><span class="footer-total">Total Copies: ${release.total_copies}</span></div>` : ''}
                 </div>
             `;
-            modal.querySelector('.copies-modal-close').addEventListener('click', () => modal.remove());
-            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
-            modal.querySelectorAll('.add-to-cart-btn:not([disabled])').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const copyId = parseInt(btn.dataset.copyId);
-                    const format = btn.dataset.format;
-                    const copy = allRecords.find(r => r.id === copyId);
-                    if (copy) {
-                        addToCart(copy, { title: copy.title, artist: copy.artist, image_url: copy.image_url }, format);
-                        modal.remove();
-                    }
-                });
-            });
+            
             document.body.appendChild(modal);
+            
+            modal.querySelector('.record-modal-close').addEventListener('click', () => modal.remove());
+            modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.remove());
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+            
+            const addBtn = modal.querySelector('.add-to-cart-modal-btn');
+            if (addBtn && !addBtn.disabled) {
+                addBtn.addEventListener('click', () => {
+                    addToCart(record);
+                    modal.remove();
+                });
+            }
         }
 
-        function addToCart(copy, release, format) {
-            if (cart.items.some(item => item.copyId === copy.id)) { showNotification('Already in cart', 'error'); return false; }
-            cart.items.push({ copyId: copy.id, title: release.title, artist: release.artist, condition: getConditionNameFromId(copy.condition_disc_id), price: copy.store_price, image_url: release.image_url, format, quantity: 1 });
+        function addToCart(record) {
+            if (cart.items.some(item => item.copyId === record.id)) {
+                showNotification('Already in cart', 'error');
+                return false;
+            }
+            
+            cart.items.push({
+                copyId: record.id,
+                title: record.title,
+                artist: record.artist,
+                condition: getConditionNameFromId(record.condition_disc_id),
+                price: parseFloat(record.store_price),
+                image_url: record.image_url,
+                format: getFormatDisplayName(record.barcode),
+                quantity: 1
+            });
+            
             cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             saveCart();
-            showNotification(`Added ${format} - ${release.title} to cart!`, 'success');
+            showNotification(`Added ${record.title} to cart!`, 'success');
             return true;
         }
         
-        function removeFromCart(index) { 
-            cart.items.splice(index,1); 
-            cart.total = cart.items.reduce((sum,item)=>sum+(item.price*item.quantity),0); 
-            saveCart(); 
-            showNotification('Removed','success'); 
-            if(cart.items.length===0) closeCartDrawer(); 
+        function removeFromCart(index) {
+            cart.items.splice(index, 1);
+            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            saveCart();
+            showNotification('Removed from cart', 'success');
+            if (cart.items.length === 0) closeCartDrawer();
+            loadCatalogData(); // Refresh to update "In Cart" badges
         }
         
-        function saveCart() { localStorage.setItem('pigstyle_cart', JSON.stringify(cart)); updateCartDisplay(); }
+        function saveCart() {
+            localStorage.setItem('pigstyle_cart', JSON.stringify(cart));
+            updateCartDisplay();
+        }
         
-        function loadCart() { const saved = localStorage.getItem('pigstyle_cart'); if(saved) { cart = JSON.parse(saved); updateCartDisplay(); } }
+        function loadCart() {
+            const saved = localStorage.getItem('pigstyle_cart');
+            if (saved) {
+                cart = JSON.parse(saved);
+                updateCartDisplay();
+            }
+        }
         
-        function updateCartDisplay() { 
-            const container = document.getElementById('cartToggleContainer'); 
-            const badge = document.getElementById('cartBadge'); 
-            const count = cart.items.reduce((sum,item)=>sum+item.quantity,0); 
-            badge.textContent = count; 
-            container.style.display = count>0 ? 'block' : 'none'; 
-            updateCartDrawer(); 
+        function updateCartDisplay() {
+            const container = document.getElementById('cartToggleContainer');
+            const badge = document.getElementById('cartBadge');
+            const count = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+            badge.textContent = count;
+            container.style.display = count > 0 ? 'block' : 'none';
+            updateCartDrawer();
         }
         
         function updateCartDrawer() {
-            const itemsDiv = document.getElementById('cartItems'); 
-            const footer = document.getElementById('cartFooter'); 
-            if(cart.items.length===0){ 
-                itemsDiv.innerHTML='<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>'; 
-                footer.style.display='none'; 
-                return; 
-            } 
-            let subtotal = cart.items.reduce((s,i)=>s+(i.price*i.quantity),0); 
-            let taxAmt = subtotal * (taxRate/100); 
+            const itemsDiv = document.getElementById('cartItems');
+            const footer = document.getElementById('cartFooter');
+            
+            if (cart.items.length === 0) {
+                itemsDiv.innerHTML = '<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>';
+                footer.style.display = 'none';
+                return;
+            }
+            
+            let subtotal = cart.items.reduce((s, i) => s + (i.price * i.quantity), 0);
+            let taxAmt = subtotal * (taxRate / 100);
+            
             let html = `
                 <table class="cart-items-table">
-                    <thead>\n<th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th>\n</thead>
+                    <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr></thead>
                     <tbody>
             `;
             cart.items.forEach((item, idx) => {
@@ -919,56 +1188,57 @@
                 </div>
                 <button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button>
             `;
-            itemsDiv.innerHTML = html; 
-            footer.style.display='block'; 
+            itemsDiv.innerHTML = html;
+            footer.style.display = 'block';
             document.getElementById('checkoutBtn')?.addEventListener('click', showCheckoutModal);
         }
         
-        function showNotification(msg, type) { 
-            const n = document.createElement('div'); 
-            n.className = `notification ${type==='error'?'error':''}`; 
-            n.textContent = msg; 
-            document.body.appendChild(n); 
-            setTimeout(()=>n.remove(),3000); 
+        function showNotification(msg, type) {
+            const n = document.createElement('div');
+            n.className = `notification ${type === 'error' ? 'error' : ''}`;
+            n.textContent = msg;
+            n.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: ${type === 'error' ? '#dc3545' : '#28a745'};
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                z-index: 3000;
+                animation: slideIn 0.3s ease;
+            `;
+            document.body.appendChild(n);
+            setTimeout(() => n.remove(), 3000);
         }
         
-        function openCartDrawer() { 
-            document.getElementById('cartDrawer').classList.add('open'); 
-            document.getElementById('cartOverlay').classList.add('active'); 
-            updateCartDrawer(); 
+        function openCartDrawer() {
+            document.getElementById('cartDrawer').classList.add('open');
+            document.getElementById('cartOverlay').classList.add('active');
+            updateCartDrawer();
         }
         
-        function closeCartDrawer() { 
-            document.getElementById('cartDrawer').classList.remove('open'); 
-            document.getElementById('cartOverlay').classList.remove('active'); 
+        function closeCartDrawer() {
+            document.getElementById('cartDrawer').classList.remove('open');
+            document.getElementById('cartOverlay').classList.remove('active');
         }
         
-        function handleYouTubeClick(url, title) { 
-            const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); 
-            if(!match) return; 
-            const modal = document.createElement('div'); 
-            modal.className = 'youtube-modal-overlay'; 
-            modal.innerHTML = `<div class="youtube-modal"><div class="youtube-modal-header"><h3>${title}</h3><button class="youtube-modal-close" onclick="this.closest('.youtube-modal-overlay').remove()">×</button></div><div class="youtube-video-container"><iframe src="https://www.youtube.com/embed/${match[1]}?autoplay=1" frameborder="0" allowfullscreen></iframe></div></div>`; 
-            document.body.appendChild(modal); 
-            modal.onclick = (e) => { if (e.target === modal) modal.remove(); }; 
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
         
-        function escapeHtml(text) { 
-            if(!text) return ''; 
-            const div = document.createElement('div'); 
-            div.textContent = text; 
-            return div.innerHTML; 
-        }
-        
-        function debounce(fn, delay) { 
-            let t; 
-            return function(...a){ 
-                clearTimeout(t); 
-                t = setTimeout(()=>fn(...a), delay); 
-            }; 
+        function debounce(fn, delay) {
+            let t;
+            return function(...a) {
+                clearTimeout(t);
+                t = setTimeout(() => fn(...a), delay);
+            };
         }
 
-        // CHECKOUT MODAL WITH SHIPPING VS WALK-IN
+        // CHECKOUT MODAL
         function showCheckoutModal() {
             closeCartDrawer();
             
