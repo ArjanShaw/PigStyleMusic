@@ -484,12 +484,6 @@
             }
         }
 
-        @keyframes pulse {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-        }
-
         /* Search active indicator */
         .search-active {
             background-color: #e8f0fe;
@@ -513,19 +507,14 @@
     <nav class="navbar">
         <a href="/" class="nav-brand">
             <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px; margin-right: 10px;">
-             
         </a>
-
-         
 
         <div class="nav-links">
             <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
-            <a href="/misch" style="color: white; text-decoration: none;">Misc</a>
+            <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
             <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
             <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-
             <div id="auth-section"></div>
-     
         </div>
     </nav>
 
@@ -533,7 +522,7 @@
         <div class="login-prompt">
             <h1>Welcome to PigStyle Music</h1>
             <p>This dashboard is for registered users only. Please log in to access inventory management.</p>
-            <a href="/login-page" class="btn btn-primary">
+            <a href="/login" class="btn btn-primary">
                 <i class="fas fa-sign-in-alt"></i> Log In to Continue
             </a>
         </div>
@@ -552,7 +541,7 @@
             </div>
             <div class="stat-card">
                 <div class="stat-value credit-positive" id="user-credit">$0.00</div>
-                <div class="stat-label">Credit</div>
+                <div class="stat-label">Store Credit</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="last-added">--</div>
@@ -563,7 +552,6 @@
         <!-- Filters Section -->
         <div class="filters-section" id="filters-section">
             <div class="filters-row">
-                <!-- Status Filters -->
                 <div class="filter-group">
                     <label><i class="fas fa-filter"></i> Status:</label>
                     <div class="status-filters">
@@ -623,7 +611,7 @@
                         <th>Image</th>
                         <th>Artist</th>
                         <th>Title</th>
-                        <th>Genre</th>
+                        <th>Location</th>
                         <th>Condition</th>
                         <th>Price</th>
                         <th>Commission</th>
@@ -666,7 +654,7 @@
                     <i class="fas fa-angle-right"></i>
                 </button>
                 <button class="pagination-btn" id="page-last" title="Last Page">
-                    <i class="fas fa-angle-double-left"></i>
+                    <i class="fas fa-angle-double-right"></i>
                 </button>
             </div>
             <div class="pagination-size-selector">
@@ -757,25 +745,26 @@
         // AUTH HELPER
         // ============================================================================
         
-        // Check if Auth already exists to prevent redeclaration
         if (typeof window.Auth === 'undefined') {
             window.Auth = {
-                isLoggedIn: true,
-                user: { id: 1, role: 'admin', name: 'Admin User' },
+                isLoggedIn: false,
+                user: null,
                 
                 async checkSession() {
-                    // In a real app, this would verify the token with the server
-                    const token = localStorage.getItem('auth_token');
-                    if (token) {
-                        this.isLoggedIn = true;
-                        try {
-                            const response = await APIUtils.get('/auth/me');
-                            if (response.status === 'success' && response.user) {
-                                this.user = response.user;
-                            }
-                        } catch (error) {
-                            console.error('Auth check failed:', error);
+                    try {
+                        const response = await APIUtils.get('/session/check');
+                        if (response.logged_in && response.user) {
+                            this.isLoggedIn = true;
+                            this.user = response.user;
+                            console.log('Auth: User logged in', this.user.username);
+                        } else {
+                            this.isLoggedIn = false;
+                            this.user = null;
                         }
+                    } catch (error) {
+                        console.error('Auth check failed:', error);
+                        this.isLoggedIn = false;
+                        this.user = null;
                     }
                     return this.isLoggedIn;
                 },
@@ -827,7 +816,7 @@
                 });
 
                 document.getElementById('page-last')?.addEventListener('click', () => {
-                    if (this.currentPage !== this.totalPages) {
+                    if (this.currentPage !== this.totalPages && this.totalPages > 0) {
                         this.goToPage(this.totalPages);
                     }
                 });
@@ -846,8 +835,11 @@
                 this.totalItems = this.items.length;
                 this.totalPages = Math.ceil(this.totalItems / this.pageSize);
                 
-                if (this.currentPage > this.totalPages) {
-                    this.currentPage = Math.max(1, this.totalPages);
+                if (this.currentPage > this.totalPages && this.totalPages > 0) {
+                    this.currentPage = this.totalPages;
+                }
+                if (this.currentPage < 1) {
+                    this.currentPage = 1;
                 }
                 
                 this.render();
@@ -883,19 +875,16 @@
 
                 this.container.style.display = 'flex';
                 
-                // Update info text
                 const start = (this.currentPage - 1) * this.pageSize + 1;
                 const end = Math.min(this.currentPage * this.pageSize, this.totalItems);
                 document.getElementById('pagination-info').textContent = 
                     `Showing ${start}-${end} of ${this.totalItems} records`;
 
-                // Update button states
                 document.getElementById('page-first').disabled = this.currentPage === 1;
                 document.getElementById('page-prev').disabled = this.currentPage === 1;
                 document.getElementById('page-next').disabled = this.currentPage === this.totalPages;
                 document.getElementById('page-last').disabled = this.currentPage === this.totalPages;
 
-                // Render page numbers
                 this.renderPageNumbers();
             }
 
@@ -907,19 +896,16 @@
                 const maxVisiblePages = 5;
                 
                 if (this.totalPages <= maxVisiblePages + 2) {
-                    // Show all pages
                     for (let i = 1; i <= this.totalPages; i++) {
                         html += this.getPageButtonHtml(i);
                     }
                 } else {
-                    // Show first page
                     html += this.getPageButtonHtml(1);
                     
                     if (this.currentPage > 3) {
                         html += '<span class="pagination-ellipsis">...</span>';
                     }
                     
-                    // Show pages around current page
                     let start = Math.max(2, this.currentPage - 1);
                     let end = Math.min(this.totalPages - 1, this.currentPage + 1);
                     
@@ -931,7 +917,6 @@
                         html += '<span class="pagination-ellipsis">...</span>';
                     }
                     
-                    // Show last page
                     if (this.totalPages > 1) {
                         html += this.getPageButtonHtml(this.totalPages);
                     }
@@ -939,7 +924,6 @@
                 
                 pageNumbersContainer.innerHTML = html;
                 
-                // Add click handlers to page buttons
                 document.querySelectorAll('.page-btn').forEach(btn => {
                     btn.addEventListener('click', () => {
                         const page = parseInt(btn.getAttribute('data-page'));
@@ -963,16 +947,12 @@
                 this.currentSearchField = 'all';
                 this.currentSearchTerm = '';
                 this.currentResults = [];
-                this.genres = [];
-                this.conditions = [];
-                this.statuses = ['new', 'active', 'sold', 'removed'];
                 this.selectedStatuses = ['new', 'active', 'sold', 'removed'];
-                this.globalCommissionRate = 20; // Default global rate
+                this.globalCommissionRate = 20;
                 this.minimumPrice = 1.99;
                 this.allInventoryRecords = [];
                 this.filteredInventoryRecords = [];
                 
-                // Initialize pagination for inventory
                 this.inventoryPagination = new PaginationManager('inventory-pagination', 
                     (page, pageSize, pageItems) => {
                         this.renderInventoryPage(pageItems);
@@ -991,8 +971,6 @@
                     await this.loadGlobalCommissionRate();
                     this.showDashboard();
                     await this.loadStats();
-                    await this.loadGenres();
-                    this.loadConditions();
                     this.setupEventListeners();
                     await this.loadInventory();
                 } else {
@@ -1005,9 +983,9 @@
                 try {
                     const response = await APIUtils.get('/config/MIN_STORE_PRICE');
                     this.minimumPrice = parseFloat(response.config_value) || 1.99;
-                    console.log(`MIN_PRICE: Minimum store price loaded: $${this.minimumPrice.toFixed(2)}`);
+                    console.log(`MIN_PRICE: Minimum store price: $${this.minimumPrice.toFixed(2)}`);
                 } catch (error) {
-                    console.warn('MIN_PRICE: Could not load MIN_STORE_PRICE, using default:', error);
+                    console.warn('MIN_PRICE: Could not load, using default $1.99');
                     this.minimumPrice = 1.99;
                 }
             }
@@ -1017,9 +995,9 @@
                     const response = await APIUtils.get('/api/commission-rate');
                     this.globalCommissionRate = response.commission_rate || 20;
                     document.getElementById('commission-rate').textContent = `${this.globalCommissionRate}%`;
-                    console.log(`COMMISSION: Global commission rate loaded: ${this.globalCommissionRate}%`);
+                    console.log(`COMMISSION: Global rate: ${this.globalCommissionRate}%`);
                 } catch (error) {
-                    console.warn('COMMISSION: Could not load global commission rate, using default:', error);
+                    console.warn('COMMISSION: Could not load, using default 20%');
                     this.globalCommissionRate = 20;
                     document.getElementById('commission-rate').textContent = '20%';
                 }
@@ -1034,41 +1012,29 @@
                 }
                 
                 try {
-                    // Get all records for this user
                     const response = await APIUtils.get(`/records/user/${user.id}`);
                     const records = response.records || [];
                     
-                    // Calculate credit from sold records
                     let totalCredit = 0;
                     
                     records.forEach(record => {
-                        // Only count sold records (status_id === 3)
-                        if (record.status_id === 3 && record.consignor_id == user.id) {
+                        if (record.status_id === 3) {
                             const storePrice = Number(record.store_price) || 0;
-                            const commissionRate = Number(record.commission_rate) || 20; // Use record's commission rate, fallback to 20
+                            const commissionRate = Number(record.commission_rate) || 20;
                             
-                            if (!isNaN(storePrice) && !isNaN(commissionRate) && commissionRate > 0) {
-                                // Calculate consignor share (store_price minus commission)
-                                let consignorShare;
-                                if (commissionRate > 1) {
-                                    // Commission rate is percentage (e.g., 20)
-                                    consignorShare = storePrice * ((100 - commissionRate) / 100);
-                                } else {
-                                    // Commission rate is decimal (e.g., 0.2)
-                                    consignorShare = storePrice * (1 - commissionRate);
-                                }
-                                
-                                totalCredit += consignorShare;
+                            if (commissionRate > 1) {
+                                totalCredit += storePrice * ((100 - commissionRate) / 100);
+                            } else {
+                                totalCredit += storePrice * (1 - commissionRate);
                             }
                         }
                     });
                     
-                    // Update the display
                     document.getElementById('user-credit').textContent = `$${totalCredit.toFixed(2)}`;
-                    console.log(`CREDIT: User ${user.id} has $${totalCredit.toFixed(2)} in credit`);
+                    console.log(`CREDIT: User credit: $${totalCredit.toFixed(2)}`);
                     
                 } catch (error) {
-                    console.error('CREDIT: Error loading user credit:', error);
+                    console.error('CREDIT: Error loading:', error);
                     document.getElementById('user-credit').textContent = '$0.00';
                 }
             }
@@ -1106,12 +1072,13 @@
                     this.clearSearch();
                 });
 
-                // Status filter checkboxes
                 document.querySelectorAll('.status-filter-checkbox input').forEach(checkbox => {
                     checkbox.addEventListener('change', (e) => {
                         const status = e.target.value;
                         if (e.target.checked) {
-                            this.selectedStatuses.push(status);
+                            if (!this.selectedStatuses.includes(status)) {
+                                this.selectedStatuses.push(status);
+                            }
                         } else {
                             this.selectedStatuses = this.selectedStatuses.filter(s => s !== status);
                         }
@@ -1120,37 +1087,6 @@
                 });
 
                 this.updateSearchPlaceholder();
-            }
-
-            filterInventoryByStatus() {
-                if (this.selectedStatuses.length === 0) {
-                    // If no statuses selected, show empty
-                    document.getElementById('inventory-table-body').innerHTML = '';
-                    document.getElementById('inventory-empty').style.display = 'block';
-                    document.getElementById('inventory-pagination').style.display = 'none';
-                    return;
-                }
-
-                // Start with all records
-                let filtered = this.allInventoryRecords;
-                
-                // Apply status filter
-                filtered = filtered.filter(record => {
-                    const status = (record.status_name || 'active').toLowerCase();
-                    return this.selectedStatuses.includes(status);
-                });
-                
-                // Store filtered records
-                this.filteredInventoryRecords = filtered;
-
-                if (filtered.length === 0) {
-                    document.getElementById('inventory-table-body').innerHTML = '';
-                    document.getElementById('inventory-empty').style.display = 'block';
-                    document.getElementById('inventory-pagination').style.display = 'none';
-                } else {
-                    const pageItems = this.inventoryPagination.setItems(filtered);
-                    this.renderInventoryPage(pageItems);
-                }
             }
 
             updateSearchPlaceholder() {
@@ -1167,10 +1103,36 @@
                     case 'title':
                         searchInput.placeholder = 'Enter album title to filter...';
                         break;
-                    case 'all':
                     default:
                         searchInput.placeholder = 'Enter barcode, artist, or title to filter...';
                         break;
+                }
+            }
+
+            filterInventoryByStatus() {
+                if (this.selectedStatuses.length === 0) {
+                    document.getElementById('inventory-table-body').innerHTML = '';
+                    document.getElementById('inventory-empty').style.display = 'block';
+                    document.getElementById('inventory-pagination').style.display = 'none';
+                    return;
+                }
+
+                let filtered = this.allInventoryRecords;
+                
+                filtered = filtered.filter(record => {
+                    const status = (record.status_name || 'active').toLowerCase();
+                    return this.selectedStatuses.includes(status);
+                });
+                
+                this.filteredInventoryRecords = filtered;
+
+                if (filtered.length === 0) {
+                    document.getElementById('inventory-table-body').innerHTML = '';
+                    document.getElementById('inventory-empty').style.display = 'block';
+                    document.getElementById('inventory-pagination').style.display = 'none';
+                } else {
+                    const pageItems = this.inventoryPagination.setItems(filtered);
+                    this.renderInventoryPage(pageItems);
                 }
             }
 
@@ -1187,11 +1149,7 @@
                 if (searchStatus) searchStatus.style.display = 'none';
                 
                 try {
-                    // Always load records for the logged-in user only
-                    const response = await APIUtils.get(`/records/user/${user.id}`, {
-                        order_by: 'created_at',
-                        order: 'desc'
-                    });
+                    const response = await APIUtils.get(`/records/user/${user.id}`);
                     
                     this.allInventoryRecords = response.records || [];
                     
@@ -1203,19 +1161,17 @@
                         return;
                     }
                     
-                    // Initialize filtered records with all records
                     this.filteredInventoryRecords = [...this.allInventoryRecords];
-                    
-                    // Apply status filter
                     this.filterInventoryByStatus();
                     
-                    console.log('INVENTORY: Loaded', this.allInventoryRecords.length, 'records for user', user.id);
+                    console.log('INVENTORY: Loaded', this.allInventoryRecords.length, 'records');
                 } catch (error) {
-                    console.error('LOAD_INVENTORY: Error loading inventory:', error);
+                    console.error('LOAD_INVENTORY: Error:', error);
                     loadingDiv.style.display = 'none';
                     emptyDiv.innerHTML = `
                         <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 15px; color: #dc3545;"></i>
                         <p>Error loading inventory: ${error.message}</p>
+                        <button class="btn btn-primary btn-small" onclick="location.reload()">Retry</button>
                     `;
                     emptyDiv.style.display = 'block';
                     document.getElementById('inventory-pagination').style.display = 'none';
@@ -1229,11 +1185,7 @@
                 const searchStatus = document.getElementById('search-status');
                 
                 this.currentSearchTerm = searchTerm;
-                
-                console.log('FILTER_SEARCH: Starting filter for:', searchTerm);
-                console.log('FILTER_SEARCH: Search field:', this.currentSearchField);
 
-                // Show loading
                 loadingDiv.style.display = 'block';
                 tableBody.innerHTML = '';
                 emptyDiv.style.display = 'none';
@@ -1242,8 +1194,7 @@
                     const user = window.Auth.getUser();
                     let params = { 
                         q: searchTerm,
-                        search_field: this.currentSearchField,
-                        user_id: user.id  // Always filter by current user
+                        user_id: user.id
                     };
                     
                     const response = await APIUtils.get('/records/search', params);
@@ -1251,21 +1202,17 @@
                     loadingDiv.style.display = 'none';
                     
                     if (response.status === 'success' && response.records && response.records.length > 0) {
-                        // Get the search result IDs
                         const searchResultIds = new Set(response.records.map(r => r.id));
                         
-                        // Filter the inventory records to only show those that match the search
                         const filteredRecords = this.allInventoryRecords.filter(record => 
                             searchResultIds.has(record.id)
                         );
                         
-                        // Further filter by status
                         const statusFiltered = filteredRecords.filter(record => {
                             const status = (record.status_name || 'active').toLowerCase();
                             return this.selectedStatuses.includes(status);
                         });
                         
-                        // Update filtered records
                         this.filteredInventoryRecords = statusFiltered;
                         
                         if (statusFiltered.length === 0) {
@@ -1273,18 +1220,15 @@
                             emptyDiv.innerHTML = `
                                 <i class="fas fa-search"></i>
                                 <p>No records match your search: "${searchTerm}"</p>
-                                <p><small>Try different search terms or clear the search</small></p>
-                                <button class="btn btn-secondary btn-small clear-search-btn" onclick="window.inventoryManager.clearSearch()">
+                                <button class="btn btn-secondary btn-small" onclick="window.inventoryManager.clearSearch()">
                                     <i class="fas fa-times"></i> Clear Search
                                 </button>
                             `;
                             document.getElementById('inventory-pagination').style.display = 'none';
                         } else {
-                            // Update pagination with filtered records
                             const pageItems = this.inventoryPagination.setItems(statusFiltered);
                             this.renderInventoryPage(pageItems);
                             
-                            // Show search status
                             if (searchStatus) {
                                 searchStatus.innerHTML = `
                                     <i class="fas fa-filter"></i> 
@@ -1297,13 +1241,11 @@
                             }
                         }
                     } else {
-                        // No results from API
                         emptyDiv.style.display = 'block';
                         emptyDiv.innerHTML = `
                             <i class="fas fa-search"></i>
                             <p>No records match your search: "${searchTerm}"</p>
-                            <p><small>Try different search terms or clear the search</small></p>
-                            <button class="btn btn-secondary btn-small clear-search-btn" onclick="window.inventoryManager.clearSearch()">
+                            <button class="btn btn-secondary btn-small" onclick="window.inventoryManager.clearSearch()">
                                 <i class="fas fa-times"></i> Clear Search
                             </button>
                         `;
@@ -1311,7 +1253,7 @@
                         this.filteredInventoryRecords = [];
                     }
                 } catch (error) {
-                    console.error('FILTER_SEARCH: Error filtering table:', error);
+                    console.error('FILTER_SEARCH: Error:', error);
                     loadingDiv.style.display = 'none';
                     emptyDiv.style.display = 'block';
                     emptyDiv.innerHTML = `
@@ -1325,20 +1267,16 @@
             }
 
             clearSearch() {
-                // Clear search input
                 document.getElementById('searchInput').value = '';
                 this.currentSearchTerm = '';
                 
-                // Hide search status
                 const searchStatus = document.getElementById('search-status');
                 if (searchStatus) {
                     searchStatus.style.display = 'none';
                     searchStatus.innerHTML = '';
                 }
                 
-                // Restore status-filtered view
                 this.filterInventoryByStatus();
-                
                 this.showMessage('Search cleared', 'info');
             }
 
@@ -1363,13 +1301,16 @@
                     const statusClass = statusName.replace(/\s+/g, '-');
                     const displayStatus = record.status_name || 'Active';
                     
-                    // Get the record-specific commission rate from the database
-                    // The record object should contain commission_rate from the API response
+                    // Get location or genre from location field
+                    let locationDisplay = 'N/A';
+                    if (record.location) {
+                        locationDisplay = record.location;
+                    }
+                    
                     const commissionRate = record.commission_rate !== null && record.commission_rate !== undefined 
                         ? Number(record.commission_rate) 
-                        : 20; // Fallback to 20% if not set
+                        : 20;
                     
-                    // Format for display (ensure it's shown as a percentage)
                     const commissionDisplay = commissionRate > 1 ? commissionRate : (commissionRate * 100);
                     
                     return `
@@ -1385,15 +1326,11 @@
                         </td>
                         <td>${record.artist || 'N/A'}</td>
                         <td>${record.title || 'N/A'}</td>
-                        <td>${record.genre_name || 'N/A'}</td>
+                        <td>${locationDisplay}</td>
                         <td>${record.condition || 'N/A'}</td>
                         <td>$${(record.store_price || 0).toFixed(2)}</td>
-                        <td>
-                            <span class="commission-badge">${commissionDisplay.toFixed(1)}%</span>
-                        </td>
-                        <td>
-                            <span class="status-badge ${statusClass}">${displayStatus}</span>
-                        </td>
+                        <td><span class="commission-badge">${commissionDisplay.toFixed(1)}%</span></td>
+                        <td><span class="status-badge ${statusClass}">${displayStatus}</span></td>
                         <td>${record.catalog_number || 'N/A'}</td>
                         <td>${barcodeDisplay}</td>
                         <td>
@@ -1401,7 +1338,7 @@
                                 <button class="table-action-btn" onclick="window.inventoryManager.editRecord(${record.id})">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="table-action-btn delete-btn" onclick="window.inventoryManager.deleteRecord(${record.id}, true)">
+                                <button class="table-action-btn delete-btn" onclick="window.inventoryManager.deleteRecord(${record.id})">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -1413,15 +1350,12 @@
             async loadStats() {
                 const user = window.Auth.getUser();
                 
-                // Get count for logged-in user only
                 const response = await APIUtils.get(`/records/user/${user.id}`);
                 const recordsCount = response.records ? response.records.length : 0;
                 
                 document.getElementById('total-records').textContent = recordsCount;
 
-                // Load user credit
                 await this.loadUserCredit();
-
                 await this.loadLastAddedRecord();
             }
 
@@ -1429,103 +1363,74 @@
                 const user = window.Auth.getUser();
                 let lastAdded = '--';
                 
-                const response = await APIUtils.get(`/records/user/${user.id}`, {
-                    limit: 1,
-                    order_by: 'created_at',
-                    order: 'desc'
-                });
-                
-                if (response.records && response.records.length > 0) {
-                    const record = response.records[0];
-                    lastAdded = record.artist ? 
-                        `${record.artist.substring(0, 15)}${record.artist.length > 15 ? '...' : ''}` : 
-                        'Unknown';
+                try {
+                    const response = await APIUtils.get(`/records/user/${user.id}`);
+                    
+                    if (response.records && response.records.length > 0) {
+                        const records = response.records.sort((a, b) => 
+                            new Date(b.created_at) - new Date(a.created_at)
+                        );
+                        const record = records[0];
+                        lastAdded = record.artist ? 
+                            `${record.artist.substring(0, 15)}${record.artist.length > 15 ? '...' : ''}` : 
+                            'Unknown';
+                    }
+                } catch (error) {
+                    console.warn('Could not load last added record:', error);
                 }
                 
                 document.getElementById('last-added').textContent = lastAdded;
             }
 
-            async loadGenres() {
-                console.log('LOAD_GENRES: Starting to load genres from /genres endpoint');
-                const response = await APIUtils.get('/genres');
-                console.log('LOAD_GENRES: Raw API response:', response);
-                
-                if (response && response.genres) {
-                    this.genres = response.genres;
-                    console.log('LOAD_GENRES: Genres loaded successfully:', this.genres);
-                } else {
-                    console.error('LOAD_GENRES: Invalid response format:', response);
-                    this.genres = [];
-                }
-            }
-
-            loadConditions() {
-                const user = window.Auth.getUser();
-                console.log('LOAD_CONDITIONS: User role:', user.role);
-                
-                const allConditions = [
-                    'Mint (M)',
-                    'Near Mint (NM or M-)',
-                    'Very Good Plus (VG+)',
-                    'Very Good (VG)',
-                    'Good Plus (G+)',
-                    'Good (G)',
-                    'Fair (F)',
-                    'Poor (P)'
-                ];
-                
-                if (user.role === 'consignor') {
-                    this.conditions = allConditions.slice(0, 4);
-                } else {
-                    this.conditions = allConditions;
-                }
-                
-                console.log('LOAD_CONDITIONS: Conditions loaded:', this.conditions);
-            }
-
             async editRecord(recordId) {
-                // Perform search for the record
                 await this.filterTableBySearch(recordId.toString());
                 
-                // Scroll to the record
                 setTimeout(() => {
-                    const recordRow = document.querySelector(`tr:has(.table-action-btn[onclick*="${recordId}"])`);
-                    if (recordRow) {
-                        recordRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        recordRow.style.backgroundColor = '#fff3cd';
-                        setTimeout(() => {
-                            recordRow.style.backgroundColor = '';
-                        }, 2000);
+                    const rows = document.querySelectorAll('#inventory-table-body tr');
+                    for (let row of rows) {
+                        if (row.innerHTML.includes(`onclick="window.inventoryManager.editRecord(${recordId})`)) {
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            row.style.backgroundColor = '#fff3cd';
+                            setTimeout(() => {
+                                row.style.backgroundColor = '';
+                            }, 2000);
+                            break;
+                        }
                     }
                 }, 500);
             }
 
-            async deleteRecord(recordId, fromTable = false) {
-                const response = await APIUtils.delete(`/records/${recordId}`);
+            async deleteRecord(recordId) {
+                if (!confirm('Are you sure you want to delete this record? This action cannot be undone.')) {
+                    return;
+                }
                 
-                if (response.status === 'success') {
-                    this.showMessage('Record deleted successfully!', 'success');
+                try {
+                    const response = await APIUtils.delete(`/records/${recordId}`);
                     
-                    // Remove from allInventoryRecords
-                    this.allInventoryRecords = this.allInventoryRecords.filter(r => r.id != recordId);
-                    
-                    if (this.allInventoryRecords.length === 0) {
-                        document.getElementById('inventory-table-body').innerHTML = '';
-                        document.getElementById('inventory-empty').style.display = 'block';
-                        document.getElementById('inventory-pagination').style.display = 'none';
-                    } else {
-                        // If there's an active search, reapply it
-                        if (this.currentSearchTerm) {
-                            await this.filterTableBySearch(this.currentSearchTerm);
+                    if (response.status === 'success') {
+                        this.showMessage('Record deleted successfully!', 'success');
+                        
+                        this.allInventoryRecords = this.allInventoryRecords.filter(r => r.id != recordId);
+                        
+                        if (this.allInventoryRecords.length === 0) {
+                            document.getElementById('inventory-table-body').innerHTML = '';
+                            document.getElementById('inventory-empty').style.display = 'block';
+                            document.getElementById('inventory-pagination').style.display = 'none';
                         } else {
-                            // Otherwise just update status filter
-                            this.filterInventoryByStatus();
+                            if (this.currentSearchTerm) {
+                                await this.filterTableBySearch(this.currentSearchTerm);
+                            } else {
+                                this.filterInventoryByStatus();
+                            }
                         }
+                        
+                        await this.loadStats();
+                    } else {
+                        this.showMessage(`Error: ${response.error || 'Failed to delete record'}`, 'error');
                     }
-                    
-                    await this.loadStats();
-                } else {
-                    this.showMessage(`Error: ${response.error || 'Failed to delete record'}`, 'error');
+                } catch (error) {
+                    this.showMessage(`Error: ${error.message}`, 'error');
                 }
             }
 
@@ -1559,8 +1464,7 @@
                         max-width: 400px;
                         animation: slideIn 0.3s ease;
                     ">
-                        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'}" 
-                           style="font-size: 20px;"></i>
+                        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
                         <span>${message}</span>
                     </div>
                 `;
@@ -1591,7 +1495,9 @@
                 
                 if (e.key === 'Escape') {
                     document.getElementById('searchInput').value = '';
-                    window.inventoryManager.clearSearch();
+                    if (window.inventoryManager) {
+                        window.inventoryManager.clearSearch();
+                    }
                 }
             });
         });
