@@ -759,7 +759,7 @@ async function bulkPostToDiscogs() {
 }
 
 // ============================================================================
-// REPOST ENTIRE STORE TO DISCOGS - Combined validation and posting
+// REPOST ENTIRE STORE TO DISCOGS - ONLY ACTIVE RECORDS WITH A LOCATION
 // ============================================================================
 
 window.repostEntireStoreToDiscogs = async function() {
@@ -788,14 +788,26 @@ window.repostEntireStoreToDiscogs = async function() {
         
         const allActiveRecords = data.records || [];
         
-        if (allActiveRecords.length === 0) {
-            showDiscogsStatus('No active records found in the store.', 'warning');
+        // ========== MINIMAL CHANGE: filter by location ==========
+        const eligibleRecords = allActiveRecords.filter(record => {
+            return record.location && 
+                   record.location.trim() !== '' &&
+                   record.location !== 'null' &&
+                   record.location !== 'None';
+        });
+        // ========================================================
+        
+        const skippedNoLocation = allActiveRecords.length - eligibleRecords.length;
+        
+        if (eligibleRecords.length === 0) {
+            showDiscogsStatus(`No eligible records found. ${skippedNoLocation} active record(s) have no location set.`, 'warning');
             return;
         }
         
-        const totalTimeHours = Math.ceil(allActiveRecords.length * 3 / 3600);
+        const totalTimeHours = Math.ceil(eligibleRecords.length * 3 / 3600);
         if (!confirm(`📋 REPOST ENTIRE STORE to Discogs?\n\n` +
-            `This will process ${allActiveRecords.length} active records.\n` +
+            `Active records with location: ${eligibleRecords.length}\n` +
+            `Skipped (no location): ${skippedNoLocation}\n` +
             `⚠️ Each record takes ~3 seconds\n` +
             `⏱️ Estimated time: ~${totalTimeHours} hour(s)\n\n` +
             `The process will validate AND post in one pass.\n\n` +
@@ -803,8 +815,9 @@ window.repostEntireStoreToDiscogs = async function() {
             return;
         }
         
-        openProgressModal('Reposting ' + allActiveRecords.length + ' Records from Entire Store');
-        appendToModalLog('🚀 Starting REPOST ENTIRE STORE for ' + allActiveRecords.length + ' records...', 'info');
+        openProgressModal('Reposting ' + eligibleRecords.length + ' Records from Entire Store');
+        appendToModalLog('🚀 Starting REPOST ENTIRE STORE for ' + eligibleRecords.length + ' records...', 'info');
+        appendToModalLog(`⚠️ Skipped ${skippedNoLocation} active record(s) with missing location`, 'warning');
         appendToModalLog('⏱️ Validating and posting in one pass (3 seconds per record)', 'info');
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
         
@@ -813,29 +826,29 @@ window.repostEntireStoreToDiscogs = async function() {
         let skipped = 0;
         const failedRecords = [];
         
-        for (let i = 0; i < allActiveRecords.length; i++) {
+        for (let i = 0; i < eligibleRecords.length; i++) {
             if (cancelResolve) {
                 appendToModalLog('⏹️ Operation cancelled by user.', 'warning');
                 break;
             }
             
-            const record = allActiveRecords[i];
-            updateModalProgress(i + 1, allActiveRecords.length);
+            const record = eligibleRecords[i];
+            updateModalProgress(i + 1, eligibleRecords.length);
             
             // Quick validation - skip if missing required data
             if (!record.created_at) {
                 skipped++;
-                appendToModalLog(`[${i+1}/${allActiveRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing creation date, skipping`, 'warning');
+                appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing creation date, skipping`, 'warning');
                 continue;
             }
             
             if (!record.disc_condition_name && !record.sleeve_condition_name) {
                 skipped++;
-                appendToModalLog(`[${i+1}/${allActiveRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing condition, skipping`, 'warning');
+                appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing condition, skipping`, 'warning');
                 continue;
             }
             
-            appendToModalLog(`[${i+1}/${allActiveRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
+            appendToModalLog(`[${i+1}/${eligibleRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
             
             // Calculate markup (1 API call)
             const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
@@ -914,7 +927,7 @@ window.repostEntireStoreToDiscogs = async function() {
             }
             
             // Wait 3 seconds between records
-            if (i < allActiveRecords.length - 1 && !cancelResolve) {
+            if (i < eligibleRecords.length - 1 && !cancelResolve) {
                 appendToModalLog(`   ⏳ Waiting 3 seconds...`, 'info');
                 await new Promise(resolve => setTimeout(resolve, 3000));
             }
@@ -925,7 +938,7 @@ window.repostEntireStoreToDiscogs = async function() {
         appendToModalLog(`   ✅ Successfully posted: ${posted}`, 'success');
         appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
         appendToModalLog(`   ⚠️ Skipped (missing data): ${skipped}`, 'warning');
-        appendToModalLog(`   📊 Total processed: ${posted + failed + skipped} of ${allActiveRecords.length}`, 'info');
+        appendToModalLog(`   📊 Total processed: ${posted + failed + skipped} of ${eligibleRecords.length}`, 'info');
         
         if (failedRecords.length > 0 && failedRecords.length <= 20) {
             appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
@@ -939,7 +952,7 @@ window.repostEntireStoreToDiscogs = async function() {
         }
         
         if (posted > 0) {
-            showDiscogsStatus(`✅ Reposted ${posted} records. ${failed} failed, ${skipped} skipped.`, posted === allActiveRecords.length ? 'success' : 'warning');
+            showDiscogsStatus(`✅ Reposted ${posted} records. ${failed} failed, ${skipped} skipped.`, posted === eligibleRecords.length ? 'success' : 'warning');
         } else {
             showDiscogsStatus(`❌ Failed to repost any records. Check log for details.`, 'error');
         }
@@ -1095,7 +1108,7 @@ function renderMarkupRules(rules) {
         html += '<td style="padding: 12px;">';
         html += '<button class="btn btn-sm btn-info" onclick="updateMarkupRule(' + rule.id + ')" style="padding: 4px 8px; margin-right: 5px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-save"></i></button> ';
         html += '<button class="btn btn-sm btn-danger" onclick="deleteMarkupRule(' + rule.id + ')" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-trash"></i></button>';
-        html += '</tr>';
+        html += '</td>';
     }
     tbody.innerHTML = html;
 }
