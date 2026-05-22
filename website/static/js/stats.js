@@ -1,6 +1,10 @@
 // Stats Dashboard JavaScript
 
 let charts = {};
+let currentArtistPage = 1;
+let currentPerPage = 50;
+let currentArtistSearch = '';
+let allArtistsData = [];
 
 async function loadStatsData() {
     console.log('📊 loadStatsData() called');
@@ -53,30 +57,13 @@ async function loadStatsData() {
         }
         
         // Render charts
-        renderTopArtistsChart(topArtists);
         renderSalesOverTimeChart(salesOverTime, salesDiscogsTime);
+        renderTopGenresChart(topGenres);
         
-        // Handle genre chart - filter out Unknown
-        if (topGenres.status === 'success' && topGenres.genres && topGenres.genres.length > 0) {
-            renderTopGenresChart(topGenres);
-        } else {
-            console.log('No genre data to display');
-            const genreCanvas = document.getElementById('topGenresChart');
-            if (genreCanvas && genreCanvas.parentElement) {
-                const container = genreCanvas.parentElement;
-                if (container && !container.querySelector('.no-genre-data')) {
-                    const msg = document.createElement('p');
-                    msg.className = 'no-genre-data';
-                    msg.style.textAlign = 'center';
-                    msg.style.color = '#999';
-                    msg.style.padding = '40px';
-                    msg.innerHTML = 'No genre data available. Genres are pulled from Discogs when adding records.';
-                    container.appendChild(msg);
-                }
-            }
-        }
+        // Load artist table (replaces the bar chart)
+        loadArtistsTable(topArtists);
         
-        console.log('✅ Charts rendered successfully');
+        console.log('✅ Charts and table rendered successfully');
         
     } catch (error) {
         console.error('❌ Error loading stats data:', error);
@@ -87,47 +74,76 @@ async function loadStatsData() {
     }
 }
 
-function renderTopArtistsChart(data) {
-    const canvas = document.getElementById('topArtistsChart');
+function renderTopGenresChart(data) {
+    const canvas = document.getElementById('topGenresChart');
     if (!canvas) return;
     
-    if (charts.topArtists) {
-        charts.topArtists.destroy();
+    if (charts.topGenres) {
+        charts.topGenres.destroy();
     }
     
-    if (!data.artists || data.artists.length === 0) {
+    if (!data.genres || data.genres.length === 0) {
         canvas.style.display = 'none';
         return;
     }
     
-    charts.topArtists = new Chart(canvas, {
+    // Filter out "Unknown" genre
+    const filteredGenres = [];
+    const filteredSales = [];
+    
+    for (let i = 0; i < data.genres.length; i++) {
+        if (data.genres[i] !== 'Unknown') {
+            filteredGenres.push(data.genres[i]);
+            filteredSales.push(data.sales[i]);
+        }
+    }
+    
+    // If after filtering there are no genres, show a message
+    if (filteredGenres.length === 0) {
+        canvas.style.display = 'none';
+        const container = canvas.parentElement;
+        const existingMsg = container.querySelector('.no-genre-data');
+        if (!existingMsg) {
+            const msg = document.createElement('p');
+            msg.className = 'no-genre-data';
+            msg.style.textAlign = 'center';
+            msg.style.color = '#999';
+            msg.style.padding = '40px';
+            msg.innerHTML = 'No genre data available. Add Discogs genres when adding records.';
+            container.appendChild(msg);
+        }
+        return;
+    }
+    
+    // Remove any "no data" message if it exists
+    const container = canvas.parentElement;
+    const existingMsg = container.querySelector('.no-genre-data');
+    if (existingMsg) existingMsg.remove();
+    
+    canvas.style.display = 'block';
+    
+    charts.topGenres = new Chart(canvas, {
         type: 'bar',
         data: {
-            labels: data.artists,
+            labels: filteredGenres,
             datasets: [{
-                label: 'Copies Sold',
-                data: data.sales,
-                backgroundColor: 'rgba(54, 162, 235, 0.6)',
-                borderColor: 'rgba(54, 162, 235, 1)',
+                label: 'Units Sold',
+                data: filteredSales,
+                backgroundColor: 'rgba(255, 159, 64, 0.6)',
+                borderColor: 'rgba(255, 159, 64, 1)',
                 borderWidth: 1
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            indexAxis: 'y',
             scales: {
-                y: {
+                x: {
                     beginAtZero: true,
                     title: {
                         display: true,
                         text: 'Number of Copies Sold'
-                    }
-                },
-                x: {
-                    ticks: {
-                        autoSkip: true,
-                        maxRotation: 45,
-                        minRotation: 45
                     }
                 }
             },
@@ -138,7 +154,7 @@ function renderTopArtistsChart(data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return 'Copies Sold: ' + context.raw;
+                            return 'Units Sold: ' + context.raw;
                         }
                     }
                 }
@@ -308,98 +324,172 @@ function renderSalesOverTimeChart(storeData, discogsData) {
     });
 }
 
+// NEW FUNCTION: Load artists into table
+function loadArtistsTable(data) {
+    const tbody = document.getElementById('artistsTableBody');
+    if (!tbody) {
+        console.error('artistsTableBody element not found');
+        return;
+    }
+    
+    try {
+        if (data && data.artists && data.sales) {
+            // Remove asterisks from artist names
+            allArtistsData = data.artists.map((artist, idx) => ({
+                artist: artist.replace(/\*/g, '').trim(),
+                copies_sold: data.sales[idx]
+            }));
+        }
+        
+        if (allArtistsData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center;">No artist data available</td></tr>';
+            return;
+        }
+        
+        // Apply search filter
+        let filteredArtists = allArtistsData;
+        if (currentArtistSearch) {
+            filteredArtists = allArtistsData.filter(a => 
+                a.artist.toLowerCase().includes(currentArtistSearch.toLowerCase())
+            );
+        }
+        
+        // Sort by copies sold descending
+        filteredArtists.sort((a, b) => b.copies_sold - a.copies_sold);
+        
+        // Paginate
+        const start = (currentArtistPage - 1) * currentPerPage;
+        const end = start + currentPerPage;
+        const paginatedArtists = filteredArtists.slice(start, end);
+        const totalPages = Math.ceil(filteredArtists.length / currentPerPage);
+        
+        // Update total artists count in summary card
+        const totalArtistsElem = document.getElementById('totalArtistsCount');
+        if (totalArtistsElem) {
+            totalArtistsElem.textContent = filteredArtists.length;
+        }
+        
+        // Render table
+        if (paginatedArtists.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center;">No artists found</td></tr>';
+        } else {
+            tbody.innerHTML = paginatedArtists.map((artist, idx) => {
+                const rank = start + idx + 1;
+                return `
+                    <tr>
+                        <td style="padding: 6px 8px;">${rank}</td>
+                        <td style="padding: 6px 8px;">${escapeHtml(artist.artist)}</td>
+                        <td style="padding: 6px 8px; text-align: right; font-weight: 600;">${artist.copies_sold}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        // Update pagination controls
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+        const pageInfo = document.getElementById('pageInfo');
+        const perPageSelect = document.getElementById('artistsPerPage');
+        
+        if (prevBtn) prevBtn.disabled = currentArtistPage === 1;
+        if (nextBtn) nextBtn.disabled = currentArtistPage === totalPages || totalPages === 0;
+        if (pageInfo) pageInfo.textContent = `Page ${currentArtistPage} of ${totalPages || 1}`;
+        if (perPageSelect) perPageSelect.value = currentPerPage;
+        
+    } catch (error) {
+        console.error('Error loading artists table:', error);
+        tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: red;">Error loading artists</td></tr>';
+    }
+}
 
-function renderTopGenresChart(data) {
-    const canvas = document.getElementById('topGenresChart');
-    if (!canvas) return;
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Setup event listeners for artist table
+function setupArtistTableListeners() {
+    const searchBtn = document.getElementById('searchArtistBtn');
+    const clearBtn = document.getElementById('clearSearchBtn');
+    const searchInput = document.getElementById('artistSearchInput');
+    const prevBtn = document.getElementById('prevPageBtn');
+    const nextBtn = document.getElementById('nextPageBtn');
+    const perPageSelect = document.getElementById('artistsPerPage');
     
-    if (charts.topGenres) {
-        charts.topGenres.destroy();
+    if (searchBtn) {
+        searchBtn.onclick = () => {
+            currentArtistSearch = searchInput.value.trim();
+            currentArtistPage = 1;
+            // Reload data with search filter
+            fetchArtistsAndReload();
+        };
     }
     
-    if (!data.genres || data.genres.length === 0) {
-        canvas.style.display = 'none';
-        return;
+    if (clearBtn) {
+        clearBtn.onclick = () => {
+            if (searchInput) searchInput.value = '';
+            currentArtistSearch = '';
+            currentArtistPage = 1;
+            fetchArtistsAndReload();
+        };
     }
     
-    // Filter out "Unknown" genre
-    const filteredGenres = [];
-    const filteredSales = [];
-    
-    for (let i = 0; i < data.genres.length; i++) {
-        if (data.genres[i] !== 'Unknown') {
-            filteredGenres.push(data.genres[i]);
-            filteredSales.push(data.sales[i]);
-        }
-    }
-    
-    // If after filtering there are no genres, show a message
-    if (filteredGenres.length === 0) {
-        canvas.style.display = 'none';
-        const container = canvas.parentElement;
-        const existingMsg = container.querySelector('.no-genre-data');
-        if (!existingMsg) {
-            const msg = document.createElement('p');
-            msg.className = 'no-genre-data';
-            msg.style.textAlign = 'center';
-            msg.style.color = '#999';
-            msg.style.padding = '40px';
-            msg.innerHTML = 'No genre data available. Add Discogs genres when adding records.';
-            container.appendChild(msg);
-        }
-        return;
-    }
-    
-    // Remove any "no data" message if it exists
-    const container = canvas.parentElement;
-    const existingMsg = container.querySelector('.no-genre-data');
-    if (existingMsg) existingMsg.remove();
-    
-    canvas.style.display = 'block';
-    
-    charts.topGenres = new Chart(canvas, {
-        type: 'bar',
-        data: {
-            labels: filteredGenres,
-            datasets: [{
-                label: 'Units Sold',
-                data: filteredSales,
-                backgroundColor: 'rgba(255, 159, 64, 0.6)',
-                borderColor: 'rgba(255, 159, 64, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            indexAxis: 'y',
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Number of Copies Sold'
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    position: 'top'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return 'Units Sold: ' + context.raw;
-                        }
-                    }
-                }
+    if (searchInput) {
+        searchInput.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+                currentArtistSearch = searchInput.value.trim();
+                currentArtistPage = 1;
+                fetchArtistsAndReload();
             }
+        };
+    }
+    
+    if (prevBtn) {
+        prevBtn.onclick = () => {
+            if (currentArtistPage > 1) {
+                currentArtistPage--;
+                fetchArtistsAndReload();
+            }
+        };
+    }
+    
+    if (nextBtn) {
+        nextBtn.onclick = () => {
+            currentArtistPage++;
+            fetchArtistsAndReload();
+        };
+    }
+    
+    if (perPageSelect) {
+        perPageSelect.onchange = () => {
+            currentPerPage = parseInt(perPageSelect.value);
+            currentArtistPage = 1;
+            fetchArtistsAndReload();
+        };
+    }
+}
+
+async function fetchArtistsAndReload() {
+    try {
+        const response = await fetch(AppConfig.baseUrl + '/api/stats/top-artists', {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            loadArtistsTable(data);
         }
-    });
+    } catch (error) {
+        console.error('Error fetching artists:', error);
+    }
 }
 
 // Load stats when the stats tab is shown
 document.addEventListener('DOMContentLoaded', function() {
+    // Setup artist table listeners
+    setupArtistTableListeners();
+    
     var statsTab = document.querySelector('.tab[data-tab="stats"]');
     if (statsTab) {
         statsTab.addEventListener('click', function() {

@@ -1,3 +1,4 @@
+import string
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -1063,31 +1064,7 @@ def search_discogs_release():
         app.logger.error(f"Error searching Discogs: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
- 
-    """Sync your local records with Discogs listings"""
-    try:
-        d = get_discogs_client()
-        user = d.identity()
-        inventory = user.inventory
-        
-        discogs_map = {}
-        for page_num in range(inventory.pages):
-            page = inventory.page(page_num)
-            for listing in page:
-                key = f"{listing.release.id}_{listing.condition}_{listing.price.value}"
-                discogs_map[key] = {
-                    'listing_id': listing.id,
-                    'price': float(listing.price.value),
-                    'condition': listing.condition,
-                    'sleeve_condition': listing.sleeve_condition
-                }
-        
-        return jsonify({'success': True, 'message': f"Found {len(discogs_map)} listings on Discogs", 'count': len(discogs_map)})
-        
-    except Exception as e:
-        app.logger.error(f"Error syncing with Discogs: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
+  
 
 # ==================== SQUARE WEBHOOK ====================
 
@@ -2057,7 +2034,6 @@ def create_record():
     finally:
         conn.close()
 
-
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()
@@ -2066,17 +2042,25 @@ def get_records():
     random_order = request.args.get('random', 'false').lower() == 'true'
     limit = request.args.get('limit', type=int)
     has_youtube = request.args.get('has_youtube', 'false').lower() == 'true'
-    status_id = request.args.get('status_id', type=int)  # Single status
-    status_ids = request.args.get('status_ids', '')      # Comma-separated list (e.g., "1,2")
+    status_id = request.args.get('status_id', type=int)
+    status_ids = request.args.get('status_ids', '')
     created_after = request.args.get('created_after')
     search = request.args.get('search', '').strip()
     
+    # Check if we should bypass the 7-day default filter
+    bypass_date_filter = request.args.get('bypass_date_filter', 'false').lower() == 'true'
+    
     query = '''
-        SELECT r.*, s.status_name,
-        cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
-        cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
-        cd.condition_name as disc_condition_name, cd.display_name as disc_display,
-        cd.abbreviation as disc_abbr, cd.quality_index as disc_quality
+        SELECT 
+            r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number,
+            r.condition_sleeve_id, r.condition_disc_id, r.store_price, r.youtube_url,
+            r.consignor_id, r.commission_rate, r.status_id, r.created_at, r.date_sold,
+            r.last_seen, r.location, r.notes, r.discogs_genre_raw,
+            s.status_name,
+            cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
+            cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
+            cd.condition_name as disc_condition_name, cd.display_name as disc_display,
+            cd.abbreviation as disc_abbr, cd.quality_index as disc_quality
         FROM records r
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
@@ -2087,19 +2071,16 @@ def get_records():
     
     params = []
     
-    # Handle status filtering - supports multiple scenarios
+    # Handle status filtering
     if status_ids:
-        # Multiple statuses (e.g., "1,2" for NEW and ACTIVE)
         status_list = [int(s.strip()) for s in status_ids.split(',') if s.strip()]
         if status_list:
             placeholders = ','.join('?' for _ in status_list)
             query += f' AND r.status_id IN ({placeholders})'
             params.extend(status_list)
     elif status_id is not None:
-        # Single status
         query += ' AND r.status_id = ?'
         params.append(status_id)
-    # If neither status_id nor status_ids is provided, return ALL records (no status filter)
     
     # Apply search filter if provided
     if search:
@@ -2107,14 +2088,15 @@ def get_records():
         search_term = f'%{search}%'
         params.extend([search_term, search_term])
     else:
-        # NO SEARCH: Default to last 7 days of additions
-        if not created_after:
+        # Only apply 7-day filter if bypass_date_filter is NOT true
+        if not bypass_date_filter and not created_after:
             seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
             query += ' AND date(r.created_at) >= ?'
             params.append(seven_days_ago)
-        else:
+        elif created_after:
             query += ' AND date(r.created_at) >= ?'
             params.append(created_after)
+        # If bypass_date_filter is true, don't add any date filter
     
     if has_youtube:
         query += ' AND (r.youtube_url LIKE "%youtube.com%" OR r.youtube_url LIKE "%youtu.be%")'
@@ -2138,7 +2120,6 @@ def get_records():
         records_list.append(record_dict)
     
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
-
 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
@@ -2216,7 +2197,6 @@ def get_record_by_barcode(barcode):
         record_dict['condition'] = record_dict['sleeve_condition_name']
     return jsonify(record_dict)
 
-
 @app.route('/records/search', methods=['GET'])
 def search_records():
     query = request.args.get('q', '').strip()
@@ -2225,25 +2205,59 @@ def search_records():
     
     conn = get_db()
     cursor = conn.cursor()
-    search_term = f'%{query}%'
-    cursor.execute('''
-        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
-        FROM records r
-        LEFT JOIN d_status s ON r.status_id = s.id
-        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        WHERE r.barcode LIKE ? OR r.title LIKE ? OR r.artist LIKE ? OR r.catalog_number LIKE ?
-        ORDER BY r.created_at DESC
-    ''', (search_term, search_term, search_term, search_term))
+    
+    # Determine if query is numeric (could be ID or barcode)
+    is_numeric = query.isdigit()
+    
+    if is_numeric:
+        # NUMERIC QUERY - Exact matches only (ID or barcode)
+        id_value = int(query)
+        
+        cursor.execute('''
+            SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            WHERE r.id = ? OR r.barcode = ?
+            ORDER BY 
+                CASE 
+                    WHEN r.id = ? THEN 1
+                    WHEN r.barcode = ? THEN 2
+                    ELSE 3
+                END,
+                r.created_at DESC
+        ''', (id_value, query, id_value, query))
+        
+    else:
+        # NON-NUMERIC QUERY - Partial matches for artist/title only
+        search_term = f'%{query}%'
+        
+        cursor.execute('''
+            SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            WHERE r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?
+            ORDER BY r.created_at DESC
+        ''', (search_term, search_term, search_term))
+    
     records = cursor.fetchall()
     conn.close()
+    
     records_list = []
     for record in records:
         record_dict = dict(record)
         if record_dict.get('sleeve_condition_name'):
             record_dict['condition'] = record_dict['sleeve_condition_name']
         records_list.append(record_dict)
-    return jsonify({'status': 'success', 'records': records_list, 'count': len(records_list)})
+    
+    return jsonify({
+        'status': 'success', 
+        'records': records_list, 
+        'count': len(records_list)
+    })
 
 
 @app.route('/records/random', methods=['GET'])
@@ -4373,7 +4387,7 @@ def get_top_artists_stats():
         WHERE status_id = 3 AND artist IS NOT NULL AND artist != ''
         GROUP BY artist
         ORDER BY copies_sold DESC
-        LIMIT 10
+         
     ''')
     
     results = cursor.fetchall()
