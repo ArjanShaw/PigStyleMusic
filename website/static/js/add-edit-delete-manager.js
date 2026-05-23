@@ -1530,9 +1530,9 @@ class AddEditDeleteManager {
             updates.status_id = newStatusId;
             
             if ((newStatusId === 3 || newStatusId === 4) && oldStatusId !== newStatusId) {
-                const today = new Date().toISOString().split('T')[0];
-                updates.date_sold = today;
-                console.log(`Status changed to ${newStatusId}, setting date_sold to ${today}`);
+                const todayMST = this.getMSTDate();  // ✅ Uses local MST date
+                updates.date_sold = todayMST;
+                console.log(`Status changed to ${newStatusId}, setting date_sold to ${todayMST} (MST)`);
             }
             
             if ((oldStatusId === 3 || oldStatusId === 4) && newStatusId !== oldStatusId) {
@@ -1832,6 +1832,13 @@ class AddEditDeleteManager {
         const mid = Math.floor(sorted.length / 2);
         if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
         return sorted[mid];
+    }
+    getMSTDate() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     roundDownTo99(price) {
