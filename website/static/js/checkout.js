@@ -38,6 +38,15 @@ const PrinterCommands = {
     LINE_SPACING_NORMAL: ESC + '2'
 };
 
+// Helper function to get local MST date (not UTC)
+function getLocalMSTDate() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
@@ -1533,8 +1542,8 @@ async function processSquarePaymentSuccess() {
             }
         } else {
             try {
-                // Get current date for date_sold
-                const today = new Date().toISOString().split('T')[0];
+                // FIX #1: Use local MST date instead of UTC
+                const todayMST = getLocalMSTDate();
                 
                 const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                     method: 'PUT',
@@ -1544,7 +1553,7 @@ async function processSquarePaymentSuccess() {
                     credentials: 'include',
                     body: JSON.stringify({
                         status_id: 3,
-                        date_sold: today
+                        date_sold: todayMST
                     })
                 });
                 
@@ -1878,8 +1887,8 @@ window.processCashPayment = async function() {
                     // Validate commission rate for consignor items
                     validateConsignorCommission(item);
                     
-                    // Get current date for date_sold
-                    const today = new Date().toISOString().split('T')[0];
+                    // FIX #2: Use local MST date instead of UTC
+                    const todayMST = getLocalMSTDate();
                     
                     const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                         method: 'PUT',
@@ -1889,7 +1898,7 @@ window.processCashPayment = async function() {
                         credentials: 'include',
                         body: JSON.stringify({
                             status_id: 3,
-                            date_sold: today
+                            date_sold: todayMST
                         })
                     });
                     
@@ -2390,8 +2399,8 @@ async function completeCheckoutWithGiftCard(amountPaid) {
                 }
             } else {
                 try {
-                    // Get current date for date_sold
-                    const today = new Date().toISOString().split('T')[0];
+                    // FIX #3: Use local MST date instead of UTC
+                    const todayMST = getLocalMSTDate();
                     
                     await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
                         method: 'PUT',
@@ -2399,7 +2408,7 @@ async function completeCheckoutWithGiftCard(amountPaid) {
                         credentials: 'include',
                         body: JSON.stringify({ 
                             status_id: 3,
-                            date_sold: today
+                            date_sold: todayMST
                         })
                     });
                     
@@ -2523,4 +2532,4 @@ document.addEventListener('keypress', function(e) {
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
-console.log('✅ checkout.js loaded with VCP-8370 printer support, auto-add barcode, BERN IT checkbox, and date_sold fix');
+console.log('✅ checkout.js loaded with VCP-8370 printer support, auto-add barcode, BERN IT checkbox, and MST date_sold fix');
