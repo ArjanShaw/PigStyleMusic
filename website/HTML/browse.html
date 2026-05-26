@@ -831,16 +831,16 @@
                 url += `&bypass_date_filter=true`;
             }
             
-            // ADD REQUIRED FILTERS: only records with image and location
-            url += `&require_image=true&require_location=true`;
+            // ONLY filter for image (require_location is NOT sent)
+            url += `&require_image=true`;
             
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
                 if (!newArrivalsActive) {
                     url += `&bypass_date_filter=true`;
                 }
-                // ADD REQUIRED FILTERS also in search branch
-                url += `&require_image=true&require_location=true`;
+                // ALSO only filter for image in search branch
+                url += `&require_image=true`;
             }
             
             document.getElementById('catalogContainer').innerHTML = `<div class="loading-indicator"><div class="loading-dots"><div></div><div></div><div></div><div></div></div><p>Loading records...</p></div>`;
@@ -939,7 +939,7 @@
             const card = document.createElement('div');
             card.className = 'record-card';
             
-            const genre = extractGenreFromLocation(record.location) || 'Uncategorized';
+            const genre = extractGenreFromLocation(record.location);
             const locationDisplay = formatLocationDisplay(record.location);
             const conditionName = getConditionNameFromId(record.condition_disc_id);
             const conditionClass = getConditionClassFromId(record.condition_disc_id);
@@ -949,7 +949,7 @@
             const imageHtml = record.image_url ? 
                 `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
             
-            card.innerHTML = `
+            let innerHtml = `
                 <div class="record-card-image ${!record.image_url ? 'default-bg' : ''}">
                     ${imageHtml || '<i class="fas fa-music"></i>'}
                 </div>
@@ -962,18 +962,23 @@
                         <span class="record-card-genre">${format}</span>
                         ${alreadyInCart ? '<span class="in-cart-badge"><i class="fas fa-check"></i> In Cart</span>' : ''}
                     </div>
-                    <div class="record-card-genre"><i class="fas fa-music"></i> ${escapeHtml(genre)}</div>
-                    <div class="record-card-location"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(locationDisplay)}</div>
-                </div>
             `;
             
+            if (genre) {
+                innerHtml += `<div class="record-card-genre"><i class="fas fa-music"></i> ${escapeHtml(genre)}</div>`;
+            }
+            
+            innerHtml += `<div class="record-card-location"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(locationDisplay)}</div>`;
+            innerHtml += `</div>`;
+            
+            card.innerHTML = innerHtml;
             card.addEventListener('click', () => showRecordModal(record));
             return card;
         }
 
         function showRecordModal(record) {
             const alreadyInCart = cart.items.some(item => item.copyId === record.id);
-            const genre = extractGenreFromLocation(record.location) || 'Uncategorized';
+            const genre = extractGenreFromLocation(record.location);
             const locationDisplay = formatLocationDisplay(record.location);
             const conditionName = getConditionNameFromId(record.condition_disc_id);
             const conditionClass = getConditionClassFromId(record.condition_disc_id);
@@ -982,6 +987,15 @@
             const modal = document.createElement('div');
             modal.className = 'record-modal-overlay';
             const imageHtml = record.image_url ? `<img src="${record.image_url}" alt="${record.title}">` : '<i class="fas fa-music" style="font-size: 64px;"></i>';
+            
+            let detailsHtml = `
+                <div class="detail-row"><span class="detail-label">Condition:</span><span class="condition-indicator ${conditionClass}">${conditionName}</span></div>
+                <div class="detail-row"><span class="detail-label">Format:</span><span>${format}</span></div>
+            `;
+            if (genre) {
+                detailsHtml += `<div class="detail-row"><span class="detail-label">Genre:</span><span>${escapeHtml(genre)}</span></div>`;
+            }
+            detailsHtml += `<div class="detail-row"><span class="detail-label">Location:</span><span>${escapeHtml(locationDisplay)}</span></div>`;
             
             modal.innerHTML = `
                 <div class="record-modal">
@@ -993,10 +1007,7 @@
                     <div class="record-modal-info">
                         <div class="record-modal-title">${escapeHtml(record.title)}</div>
                         <div class="record-modal-details">
-                            <div class="detail-row"><span class="detail-label">Condition:</span><span class="condition-indicator ${conditionClass}">${conditionName}</span></div>
-                            <div class="detail-row"><span class="detail-label">Format:</span><span>${format}</span></div>
-                            <div class="detail-row"><span class="detail-label">Genre:</span><span>${escapeHtml(genre)}</span></div>
-                            <div class="detail-row"><span class="detail-label">Location:</span><span>${escapeHtml(locationDisplay)}</span></div>
+                            ${detailsHtml}
                         </div>
                         <div class="record-modal-price">$${parseFloat(record.store_price).toFixed(2)}</div>
                         <div class="record-modal-actions">
@@ -1071,7 +1082,7 @@
                     <tbody>
             `;
             cart.items.forEach((item, idx) => {
-                html += `<tr><td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.format} · ${item.condition}</small><br><small><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.location)}</small></td><td>$${item.price.toFixed(2)}</td><td>${item.quantity}</td><td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
+                html += `<tr><td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.format} · ${item.condition}</small><br><small><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.location)}</small></td><td>$${item.price.toFixed(2)}</td><td>${item.quantity}</td><td>$${(item.price * item.quantity).toFixed(2)}</td><td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
             });
             html += `</tbody></table><div style="margin-top:15px"><div>Subtotal: $${subtotal.toFixed(2)}</div><div>Tax: $${taxAmt.toFixed(2)}</div><div><strong>Total: $${(subtotal + taxAmt).toFixed(2)}</strong></div><button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button></div>`;
             itemsDiv.innerHTML = html;
@@ -1090,21 +1101,6 @@
         
         function openCartDrawer() { document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('active'); updateCartDrawer(); }
         function closeCartDrawer() { document.getElementById('cartDrawer').classList.remove('open'); document.getElementById('cartOverlay').classList.remove('active'); }
-        
-        function closeCartDrawer() { 
-            document.getElementById('cartDrawer').classList.remove('open'); 
-            document.getElementById('cartOverlay').classList.remove('active'); 
-        }
-        
-        function handleYouTubeClick(url, title) { 
-            const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); 
-            if(!match) return; 
-            const modal = document.createElement('div'); 
-            modal.className = 'youtube-modal-overlay'; 
-            modal.innerHTML = `<div class="youtube-modal"><div class="youtube-modal-header"><h3>${title}</h3><button class="youtube-modal-close" onclick="this.closest('.youtube-modal-overlay').remove()">×</button></div><div class="youtube-video-container"><iframe src="https://www.youtube.com/embed/${match[1]}?autoplay=1" frameborder="0" allowfullscreen></iframe></div></div>`; 
-            document.body.appendChild(modal); 
-            modal.onclick = (e) => { if (e.target === modal) modal.remove(); }; 
-        }
         
         function escapeHtml(text) { 
             if(!text) return ''; 
@@ -1160,9 +1156,6 @@
             };
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
         }
-        
-        function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-        function debounce(fn, delay) { let t; return function(...a) { clearTimeout(t); t = setTimeout(() => fn(...a), delay); }; }
         
         document.addEventListener('DOMContentLoaded', async () => {
             shippingCost = parseFloat(await getConfigValue('SHIPPING_COST')) || 0;
