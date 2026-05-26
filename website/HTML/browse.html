@@ -616,11 +616,16 @@
                 url += `&bypass_date_filter=true`;
             }
             
+            // ADD REQUIRED FILTERS: only records with image and location
+            url += `&require_image=true&require_location=true`;
+            
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
                 if (!newArrivalsActive) {
                     url += `&bypass_date_filter=true`;
                 }
+                // ADD REQUIRED FILTERS also in search branch
+                url += `&require_image=true&require_location=true`;
             }
             
             try {
@@ -895,7 +900,7 @@
             let taxAmt = subtotal * (taxRate/100); 
             let html = `
                 <table class="cart-items-table">
-                    <thead>\n<th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th>\n</thead>
+                    <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr></thead>
                     <tbody>
             `;
             cart.items.forEach((item, idx) => {
@@ -964,7 +969,7 @@
             let t; 
             return function(...a){ 
                 clearTimeout(t); 
-                t = setTimeout(()=>fn(...a), delay); 
+                setTimeout(()=>fn(...a), delay); 
             }; 
         }
 
