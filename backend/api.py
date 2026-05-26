@@ -2034,6 +2034,7 @@ def create_record():
     finally:
         conn.close()
 
+
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()
@@ -2046,6 +2047,10 @@ def get_records():
     status_ids = request.args.get('status_ids', '')
     created_after = request.args.get('created_after')
     search = request.args.get('search', '').strip()
+    
+    # New parameters for browse page filtering
+    require_image = request.args.get('require_image', 'false').lower() == 'true'
+    require_location = request.args.get('require_location', 'false').lower() == 'true'
     
     # Check if we should bypass the 7-day default filter
     bypass_date_filter = request.args.get('bypass_date_filter', 'false').lower() == 'true'
@@ -2100,6 +2105,14 @@ def get_records():
     
     if has_youtube:
         query += ' AND (r.youtube_url LIKE "%youtube.com%" OR r.youtube_url LIKE "%youtu.be%")'
+    
+    # NEW: Filter out records without an image
+    if require_image:
+        query += ' AND r.image_url IS NOT NULL AND r.image_url != \'\''
+    
+    # NEW: Filter out records without a location (and treat 'NULL' as missing)
+    if require_location:
+        query += ' AND r.location IS NOT NULL AND r.location != \'\' AND r.location != \'NULL\''
     
     # Order by newest first
     query += ' ORDER BY r.created_at DESC'
