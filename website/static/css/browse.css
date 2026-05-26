@@ -1467,4 +1467,59 @@ nav div a {
     .card-image {
         height: 140px;
     }
+    /* FIX - Filter Alignment Override - Add at the very end of browse.css */
+.filter-section {
+    display: flex !important;
+    align-items: center !important;
+    gap: 15px !important;
+    flex-wrap: wrap !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin-top: 15px !important;
+    margin-bottom: 15px !important;
+    box-shadow: none !important;
+}
+
+.filter-group {
+    display: inline-block !important;
+    margin-bottom: 0 !important;
+    position: relative !important;
+}
+
+.filter-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 40px !important;
+    padding: 0 20px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    border-radius: 40px !important;
+    border: none !important;
+    cursor: pointer !important;
+    gap: 8px !important;
+    background: #2c3e50 !important;
+    color: white !important;
+    box-sizing: border-box !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+}
+
+.filter-btn i {
+    font-size: 14px !important;
+}
+
+.filter-btn:hover {
+    background: #1e2a36 !important;
+    transform: translateY(-1px) !important;
+}
+
+.filter-btn.active {
+    background: #ff6b6b !important;
+    color: white !important;
+}
+
+.filter-btn.active i {
+    color: white !important;
+}
 }
