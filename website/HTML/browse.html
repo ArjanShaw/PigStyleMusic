@@ -831,16 +831,19 @@
                 url += `&bypass_date_filter=true`;
             }
             
-            // ONLY filter for image (require_location is NOT sent)
+            // Filter: only records with an image
             url += `&require_image=true`;
+            
+            // Filter: exclude records older than 30 days that have no location
+            url += `&exclude_old_no_location=true`;
             
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
                 if (!newArrivalsActive) {
                     url += `&bypass_date_filter=true`;
                 }
-                // ALSO only filter for image in search branch
                 url += `&require_image=true`;
+                url += `&exclude_old_no_location=true`;
             }
             
             document.getElementById('catalogContainer').innerHTML = `<div class="loading-indicator"><div class="loading-dots"><div></div><div></div><div></div><div></div></div><p>Loading records...</p></div>`;

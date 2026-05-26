@@ -2048,11 +2048,10 @@ def get_records():
     created_after = request.args.get('created_after')
     search = request.args.get('search', '').strip()
     
-    # New parameters for browse page filtering
     require_image = request.args.get('require_image', 'false').lower() == 'true'
     require_location = request.args.get('require_location', 'false').lower() == 'true'
+    exclude_old_no_location = request.args.get('exclude_old_no_location', 'false').lower() == 'true'
     
-    # Check if we should bypass the 7-day default filter
     bypass_date_filter = request.args.get('bypass_date_filter', 'false').lower() == 'true'
     
     query = '''
@@ -2106,13 +2105,15 @@ def get_records():
     if has_youtube:
         query += ' AND (r.youtube_url LIKE "%youtube.com%" OR r.youtube_url LIKE "%youtu.be%")'
     
-    # NEW: Filter out records without an image
     if require_image:
         query += ' AND r.image_url IS NOT NULL AND r.image_url != \'\''
     
-    # NEW: Filter out records without a location (and treat 'NULL' as missing)
     if require_location:
         query += ' AND r.location IS NOT NULL AND r.location != \'\' AND r.location != \'NULL\''
+    
+    if exclude_old_no_location:
+        query += ''' AND (r.created_at >= date('now', '-30 days') 
+                     OR (r.location IS NOT NULL AND r.location != '' AND r.location != 'NULL')) '''
     
     # Order by newest first
     query += ' ORDER BY r.created_at DESC'
@@ -2133,6 +2134,7 @@ def get_records():
         records_list.append(record_dict)
     
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
+
 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
