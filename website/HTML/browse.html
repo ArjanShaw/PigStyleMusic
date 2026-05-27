@@ -156,6 +156,8 @@
             border-radius: 20px;
             font-size: 11px;
             font-weight: 600;
+            background: #3498db;
+            color: white;
         }
         
         .record-card-genre {
@@ -183,11 +185,6 @@
             font-weight: 600;
             margin-left: 8px;
         }
-        
-        .condition-mint { background: #2ecc71; color: white; }
-        .condition-near-mint { background: #3498db; color: white; }
-        .condition-very-good-plus { background: #f39c12; color: white; }
-        .condition-very-good { background: #e67e22; color: white; }
         
         .pagination-btn {
             background: #2c3e50;
@@ -722,7 +719,7 @@
             return location;
         }
 
-stones        function getConditionDisplayName(conditionId) {
+        function getConditionDisplayName(conditionId) {
             const map = {1: 'Mint', 2: 'Near Mint', 3: 'VG+', 4: 'VG', 5: 'G+', 6: 'G', 7: 'Fair', 8: 'Poor'};
             return map[conditionId] || 'Unknown';
         }
@@ -1080,8 +1077,16 @@ stones        function getConditionDisplayName(conditionId) {
             setTimeout(() => n.remove(), 3000);
         }
         
-        function openCartDrawer() { document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('active'); updateCartDrawer(); }
-        function closeCartDrawer() { document.getElementById('cartDrawer').classList.remove('open'); document.getElementById('cartOverlay').classList.remove('active'); }
+        function openCartDrawer() { 
+            document.getElementById('cartDrawer').classList.add('open'); 
+            document.getElementById('cartOverlay').classList.add('active'); 
+            updateCartDrawer(); 
+        }
+        
+        function closeCartDrawer() { 
+            document.getElementById('cartDrawer').classList.remove('open'); 
+            document.getElementById('cartOverlay').classList.remove('active'); 
+        }
         
         function escapeHtml(text) { 
             if(!text) return ''; 
@@ -1098,7 +1103,6 @@ stones        function getConditionDisplayName(conditionId) {
             }; 
         }
 
-        // CHECKOUT MODAL WITH SHIPPING VS WALK-IN
         function showCheckoutModal() {
             closeCartDrawer();
             const subtotal = cart.total;
@@ -1113,7 +1117,10 @@ stones        function getConditionDisplayName(conditionId) {
             const radios = modal.querySelectorAll('input[name="type"]');
             const shippingFields = modal.querySelector('#shippingFields');
             const pickupFields = modal.querySelector('#pickupFields');
-            radios.forEach(r => r.onchange = () => { shippingFields.style.display = r.value === 'shipping' ? 'block' : 'none'; pickupFields.style.display = r.value === 'pickup' ? 'block' : 'none'; });
+            radios.forEach(r => r.onchange = () => { 
+                shippingFields.style.display = r.value === 'shipping' ? 'block' : 'none'; 
+                pickupFields.style.display = r.value === 'pickup' ? 'block' : 'none'; 
+            });
             modal.querySelector('#confirmCheckoutBtn').onclick = async () => {
                 const isShipping = modal.querySelector('input[value="shipping"]').checked;
                 let customerName, customerEmail;
@@ -1146,17 +1153,49 @@ stones        function getConditionDisplayName(conditionId) {
             document.getElementById('cartToggle')?.addEventListener('click', openCartDrawer);
             document.getElementById('closeCartDrawer')?.addEventListener('click', closeCartDrawer);
             document.getElementById('cartOverlay')?.addEventListener('click', closeCartDrawer);
-            document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { selectedGenres = []; currentSearchTerm = ''; newArrivalsActive = true; newVinylActive = false; currentPage = 1; document.getElementById('searchBox').value = ''; document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); loadCatalogData(); });
-            document.getElementById('newArrivalsBtn')?.addEventListener('click', () => { newArrivalsActive = !newArrivalsActive; currentPage = 1; loadCatalogData(); });
-            document.getElementById('newVinylBtn')?.addEventListener('click', () => { newVinylActive = !newVinylActive; currentPage = 1; loadCatalogData(); });
+            document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
+                selectedGenres = []; 
+                currentSearchTerm = ''; 
+                newArrivalsActive = true; 
+                newVinylActive = false; 
+                currentPage = 1; 
+                document.getElementById('searchBox').value = ''; 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
+                loadCatalogData(); 
+            });
+            document.getElementById('newArrivalsBtn')?.addEventListener('click', () => { 
+                newArrivalsActive = !newArrivalsActive; 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
+            document.getElementById('newVinylBtn')?.addEventListener('click', () => { 
+                newVinylActive = !newVinylActive; 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
             document.getElementById('searchBox')?.addEventListener('input', debounce(() => loadCatalogData(), 500));
             const genreBtn = document.getElementById('genreFilterBtn');
             const genreDropdown = document.getElementById('genreDropdown');
-            genreBtn?.addEventListener('click', (e) => { e.stopPropagation(); genreDropdown.classList.toggle('show'); });
-            document.addEventListener('click', (e) => { if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) genreDropdown?.classList.remove('show'); });
-            document.getElementById('selectAllGenres')?.addEventListener('click', () => { document.querySelectorAll('#genreList input').forEach(cb => cb.checked = true); });
-            document.getElementById('clearAllGenres')?.addEventListener('click', () => { document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); });
-            document.getElementById('applyGenres')?.addEventListener('click', () => { selectedGenres = Array.from(document.querySelectorAll('#genreList input:checked')).map(cb => cb.value); genreDropdown.classList.remove('show'); currentPage = 1; loadCatalogData(); });
+            genreBtn?.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                genreDropdown.classList.toggle('show'); 
+            });
+            document.addEventListener('click', (e) => { 
+                if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) 
+                    genreDropdown?.classList.remove('show'); 
+            });
+            document.getElementById('selectAllGenres')?.addEventListener('click', () => { 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = true); 
+            });
+            document.getElementById('clearAllGenres')?.addEventListener('click', () => { 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
+            });
+            document.getElementById('applyGenres')?.addEventListener('click', () => { 
+                selectedGenres = Array.from(document.querySelectorAll('#genreList input:checked')).map(cb => cb.value); 
+                genreDropdown.classList.remove('show'); 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
             window.removeFromCart = removeFromCart;
         });
     </script>
