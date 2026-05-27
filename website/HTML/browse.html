@@ -722,34 +722,20 @@
             return location;
         }
 
-        function getFormatDisplayName(barcode) {
-            if (!barcode || typeof barcode !== 'string') return 'Vinyl';
-            const prefix = barcode.substring(0, 2);
-            switch(prefix) {
-                case '22': return '33⅓ RPM';
-                case '55': return '45 RPM';
-                case '66': return '78 RPM';
-                case '33': return 'CD';
-                case '44': return 'Cassette';
-                default: return 'Vinyl';
-            }
-        }
-
-        function isNewVinyl(record) {
-            return record.condition_disc_id === 1 && record.condition_sleeve_id === 1;
-        }
-
-        function getConditionNameFromId(conditionId) {
+stones        function getConditionDisplayName(conditionId) {
             const map = {1: 'Mint', 2: 'Near Mint', 3: 'VG+', 4: 'VG', 5: 'G+', 6: 'G', 7: 'Fair', 8: 'Poor'};
             return map[conditionId] || 'Unknown';
         }
 
-        function getConditionClassFromId(conditionId) {
-            if (conditionId === 1) return 'condition-mint';
-            if (conditionId === 2) return 'condition-near-mint';
-            if (conditionId === 3) return 'condition-very-good-plus';
-            if (conditionId === 4) return 'condition-very-good';
-            return '';
+        function getCombinedCondition(discId, sleeveId) {
+            const disc = getConditionDisplayName(discId);
+            const sleeve = getConditionDisplayName(sleeveId);
+            if (disc === sleeve) return disc;
+            return `${disc}/${sleeve}`;
+        }
+
+        function isNewVinyl(record) {
+            return record.condition_disc_id === 1 && record.condition_sleeve_id === 1;
         }
 
         function displayRecords(records) {
@@ -826,15 +812,11 @@
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
             
-            // Tell backend to bypass 7-day filter when newArrivalsActive is false
             if (!newArrivalsActive) {
                 url += `&bypass_date_filter=true`;
             }
             
-            // Filter: only records with an image
             url += `&require_image=true`;
-            
-            // Filter: exclude records older than 30 days that have no location
             url += `&exclude_old_no_location=true`;
             
             if (currentSearchTerm) {
@@ -944,9 +926,7 @@
             
             const genre = extractGenreFromLocation(record.location);
             const locationDisplay = formatLocationDisplay(record.location);
-            const conditionName = getConditionNameFromId(record.condition_disc_id);
-            const conditionClass = getConditionClassFromId(record.condition_disc_id);
-            const format = getFormatDisplayName(record.barcode);
+            const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
             const alreadyInCart = cart.items.some(item => item.copyId === record.id);
             
             const imageHtml = record.image_url ? 
@@ -961,8 +941,7 @@
                     <div class="record-card-title">${escapeHtml(record.title)}</div>
                     <div class="record-card-price">$${parseFloat(record.store_price).toFixed(2)}</div>
                     <div>
-                        <span class="record-card-condition ${conditionClass}">${conditionName}</span>
-                        <span class="record-card-genre">${format}</span>
+                        <span class="record-card-condition">${escapeHtml(combinedCondition)}</span>
                         ${alreadyInCart ? '<span class="in-cart-badge"><i class="fas fa-check"></i> In Cart</span>' : ''}
                     </div>
             `;
@@ -983,17 +962,16 @@
             const alreadyInCart = cart.items.some(item => item.copyId === record.id);
             const genre = extractGenreFromLocation(record.location);
             const locationDisplay = formatLocationDisplay(record.location);
-            const conditionName = getConditionNameFromId(record.condition_disc_id);
-            const conditionClass = getConditionClassFromId(record.condition_disc_id);
-            const format = getFormatDisplayName(record.barcode);
+            const discCondition = getConditionDisplayName(record.condition_disc_id);
+            const sleeveCondition = getConditionDisplayName(record.condition_sleeve_id);
             
             const modal = document.createElement('div');
             modal.className = 'record-modal-overlay';
             const imageHtml = record.image_url ? `<img src="${record.image_url}" alt="${record.title}">` : '<i class="fas fa-music" style="font-size: 64px;"></i>';
             
             let detailsHtml = `
-                <div class="detail-row"><span class="detail-label">Condition:</span><span class="condition-indicator ${conditionClass}">${conditionName}</span></div>
-                <div class="detail-row"><span class="detail-label">Format:</span><span>${format}</span></div>
+                <div class="detail-row"><span class="detail-label">Disc:</span><span>${escapeHtml(discCondition)}</span></div>
+                <div class="detail-row"><span class="detail-label">Sleeve:</span><span>${escapeHtml(sleeveCondition)}</span></div>
             `;
             if (genre) {
                 detailsHtml += `<div class="detail-row"><span class="detail-label">Genre:</span><span>${escapeHtml(genre)}</span></div>`;
@@ -1037,11 +1015,11 @@
                 showNotification('Already in cart', 'error');
                 return;
             }
+            const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
             cart.items.push({
                 copyId: record.id, title: record.title, artist: record.artist,
-                condition: getConditionNameFromId(record.condition_disc_id),
+                condition: combinedCondition,
                 price: parseFloat(record.store_price), image_url: record.image_url,
-                format: getFormatDisplayName(record.barcode),
                 location: formatLocationDisplay(record.location), quantity: 1
             });
             cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -1085,7 +1063,7 @@
                     <tbody>
             `;
             cart.items.forEach((item, idx) => {
-                html += `<tr><td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.format} · ${item.condition}</small><br><small><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.location)}</small></td><td>$${item.price.toFixed(2)}</td><td>${item.quantity}</td><td>$${(item.price * item.quantity).toFixed(2)}</td><td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
+                html += `<tr><td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.condition}</small><br><small><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.location)}</small></td><td>$${item.price.toFixed(2)}</td><td>${item.quantity}</td><td>$${(item.price * item.quantity).toFixed(2)}</td><td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
             });
             html += `</tbody></table><div style="margin-top:15px"><div>Subtotal: $${subtotal.toFixed(2)}</div><div>Tax: $${taxAmt.toFixed(2)}</div><div><strong>Total: $${(subtotal + taxAmt).toFixed(2)}</strong></div><button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button></div>`;
             itemsDiv.innerHTML = html;
