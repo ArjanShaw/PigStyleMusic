@@ -2140,6 +2140,71 @@ def get_record(record_id):
         return jsonify({'status': 'error', 'error': 'Record not found'}), 404
     return jsonify(dict(record))
 
+@app.route('/api/stats/last-seen-distribution', methods=['GET'])
+def get_last_seen_distribution_stats():
+    """Get distribution of active records by weeks since last seen"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get active records (status_id = 2) with non-null last_seen
+    cursor.execute('''
+        SELECT last_seen
+        FROM records
+        WHERE status_id = 2 AND last_seen IS NOT NULL
+    ''')
+    
+    records = cursor.fetchall()
+    conn.close()
+    
+    today = datetime.now().date()
+    
+    # Dictionary to store counts by week number
+    week_counts = {}
+    
+    for record in records:
+        last_seen_str = record['last_seen']
+        try:
+            # Parse last_seen date
+            if isinstance(last_seen_str, str):
+                last_seen = datetime.strptime(last_seen_str.split('T')[0], '%Y-%m-%d').date()
+            else:
+                last_seen = last_seen_str
+            
+            # Calculate days since last seen
+            days_ago = (today - last_seen).days
+            
+            # Calculate weeks since last seen (floor division)
+            weeks_ago = days_ago // 7
+            
+            # Increment count for this week number
+            week_counts[weeks_ago] = week_counts.get(weeks_ago, 0) + 1
+            
+        except Exception as e:
+            app.logger.error(f"Error parsing last_seen date {last_seen_str}: {e}")
+            continue
+    
+    # If no data, return empty
+    if not week_counts:
+        return jsonify({
+            'status': 'success',
+            'week_numbers': [],
+            'counts': []
+        })
+    
+    # Get the maximum week number
+    max_week = max(week_counts.keys())
+    
+    # Build complete arrays from week 0 to max_week
+    week_numbers = list(range(max_week + 1))
+    counts = [week_counts.get(week, 0) for week in week_numbers]
+    
+    return jsonify({
+        'status': 'success',
+        'week_numbers': week_numbers,
+        'counts': counts
+    })
+
+
 @app.route('/records/<int:record_id>', methods=['PUT'])
 def update_record(record_id):
     data = request.get_json()
