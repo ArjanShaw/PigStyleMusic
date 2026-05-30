@@ -17,7 +17,7 @@ async function loadStatsData() {
         }
         
         // Fetch all stats
-        const [topArtistsRes, salesOverTimeRes, salesDiscogsTimeRes, topGenresRes] = await Promise.all([
+        const [topArtistsRes, salesOverTimeRes, salesDiscogsTimeRes, topGenresRes, lastSeenDistRes] = await Promise.all([
             fetch(AppConfig.baseUrl + '/api/stats/top-artists', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -33,6 +33,10 @@ async function loadStatsData() {
             fetch(AppConfig.baseUrl + '/api/stats/top-genres', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+            }),
+            fetch(AppConfig.baseUrl + '/api/stats/last-seen-distribution', {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
             })
         ]);
         
@@ -40,11 +44,13 @@ async function loadStatsData() {
         const salesOverTime = await salesOverTimeRes.json();
         const salesDiscogsTime = await salesDiscogsTimeRes.json();
         const topGenres = await topGenresRes.json();
+        const lastSeenDistribution = await lastSeenDistRes.json();
         
         console.log('📊 Top Artists:', topArtists);
         console.log('📊 Sales Over Time (Store):', salesOverTime);
         console.log('📊 Sales Over Time (Discogs):', salesDiscogsTime);
         console.log('📊 Top Genres:', topGenres);
+        console.log('📊 Last Seen Distribution:', lastSeenDistribution);
         
         if (topArtists.status !== 'success') {
             throw new Error('Top artists: ' + (topArtists.error || 'Unknown error'));
@@ -59,6 +65,7 @@ async function loadStatsData() {
         // Render charts
         renderSalesOverTimeChart(salesOverTime, salesDiscogsTime);
         renderTopGenresChart(topGenres);
+        renderLastSeenDistributionChart(lastSeenDistribution);
         
         // Load artist table (replaces the bar chart)
         loadArtistsTable(topArtists);
@@ -316,6 +323,102 @@ function renderSalesOverTimeChart(storeData, discogsData) {
                             let label = context.dataset.label || '';
                             let value = context.raw;
                             return label + ': $' + value.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// NEW FUNCTION: Render Last Seen Distribution Chart
+function renderLastSeenDistributionChart(data) {
+    const canvas = document.getElementById('lastSeenDistributionChart');
+    if (!canvas) return;
+    
+    if (charts.lastSeenDistribution) {
+        charts.lastSeenDistribution.destroy();
+    }
+    
+    if (!data.week_numbers || data.week_numbers.length === 0 || data.counts.length === 0) {
+        canvas.style.display = 'none';
+        const container = canvas.parentElement;
+        const existingMsg = container.querySelector('.no-lastseen-data');
+        if (!existingMsg) {
+            const msg = document.createElement('p');
+            msg.className = 'no-lastseen-data';
+            msg.style.textAlign = 'center';
+            msg.style.color = '#999';
+            msg.style.padding = '40px';
+            msg.innerHTML = 'No last seen data available for active records.';
+            container.appendChild(msg);
+        }
+        return;
+    }
+    
+    // Remove any "no data" message if it exists
+    const container = canvas.parentElement;
+    const existingMsg = container.querySelector('.no-lastseen-data');
+    if (existingMsg) existingMsg.remove();
+    
+    canvas.style.display = 'block';
+    
+    // Create labels for x-axis (e.g., "This week", "1 week ago", "2 weeks ago", etc.)
+    const labels = data.week_numbers.map(week => {
+        if (week === 0) return 'This week';
+        if (week === 1) return '1 week ago';
+        return `${week} weeks ago`;
+    });
+    
+    charts.lastSeenDistribution = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Number of Records',
+                data: data.counts,
+                backgroundColor: 'rgba(153, 102, 255, 0.6)',
+                borderColor: 'rgba(153, 102, 255, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Number of Records'
+                    },
+                    ticks: {
+                        stepSize: 1,
+                        precision: 0
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time Since Last Seen'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 15
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `Records: ${context.raw}`;
                         }
                     }
                 }
