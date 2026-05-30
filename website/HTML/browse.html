@@ -156,6 +156,8 @@
             border-radius: 20px;
             font-size: 11px;
             font-weight: 600;
+            background: #3498db;
+            color: white;
         }
         
         .record-card-genre {
@@ -183,11 +185,6 @@
             font-weight: 600;
             margin-left: 8px;
         }
-        
-        .condition-mint { background: #2ecc71; color: white; }
-        .condition-near-mint { background: #3498db; color: white; }
-        .condition-very-good-plus { background: #f39c12; color: white; }
-        .condition-very-good { background: #e67e22; color: white; }
         
         .pagination-btn {
             background: #2c3e50;
@@ -722,34 +719,20 @@
             return location;
         }
 
-        function getFormatDisplayName(barcode) {
-            if (!barcode || typeof barcode !== 'string') return 'Vinyl';
-            const prefix = barcode.substring(0, 2);
-            switch(prefix) {
-                case '22': return '33⅓ RPM';
-                case '55': return '45 RPM';
-                case '66': return '78 RPM';
-                case '33': return 'CD';
-                case '44': return 'Cassette';
-                default: return 'Vinyl';
-            }
-        }
-
-        function isNewVinyl(record) {
-            return record.condition_disc_id === 1 && record.condition_sleeve_id === 1;
-        }
-
-        function getConditionNameFromId(conditionId) {
+        function getConditionDisplayName(conditionId) {
             const map = {1: 'Mint', 2: 'Near Mint', 3: 'VG+', 4: 'VG', 5: 'G+', 6: 'G', 7: 'Fair', 8: 'Poor'};
             return map[conditionId] || 'Unknown';
         }
 
-        function getConditionClassFromId(conditionId) {
-            if (conditionId === 1) return 'condition-mint';
-            if (conditionId === 2) return 'condition-near-mint';
-            if (conditionId === 3) return 'condition-very-good-plus';
-            if (conditionId === 4) return 'condition-very-good';
-            return '';
+        function getCombinedCondition(discId, sleeveId) {
+            const disc = getConditionDisplayName(discId);
+            const sleeve = getConditionDisplayName(sleeveId);
+            if (disc === sleeve) return disc;
+            return `${disc}/${sleeve}`;
+        }
+
+        function isNewVinyl(record) {
+            return record.condition_disc_id === 1 && record.condition_sleeve_id === 1;
         }
 
         function displayRecords(records) {
@@ -825,10 +808,21 @@
             currentPage = 1;
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
-            if (newArrivalsActive === false) url += `&bypass_date_filter=true`;
+            
+            if (!newArrivalsActive) {
+                url += `&bypass_date_filter=true`;
+            }
+            
+            url += `&require_image=true`;
+            url += `&exclude_old_no_location=true`;
+            
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
-                if (newArrivalsActive === false) url += `&bypass_date_filter=true`;
+                if (!newArrivalsActive) {
+                    url += `&bypass_date_filter=true`;
+                }
+                url += `&require_image=true`;
+                url += `&exclude_old_no_location=true`;
             }
             
             document.getElementById('catalogContainer').innerHTML = `<div class="loading-indicator"><div class="loading-dots"><div></div><div></div><div></div><div></div></div><p>Loading records...</p></div>`;
@@ -927,17 +921,15 @@
             const card = document.createElement('div');
             card.className = 'record-card';
             
-            const genre = extractGenreFromLocation(record.location) || 'Uncategorized';
+            const genre = extractGenreFromLocation(record.location);
             const locationDisplay = formatLocationDisplay(record.location);
-            const conditionName = getConditionNameFromId(record.condition_disc_id);
-            const conditionClass = getConditionClassFromId(record.condition_disc_id);
-            const format = getFormatDisplayName(record.barcode);
+            const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
             const alreadyInCart = cart.items.some(item => item.copyId === record.id);
             
             const imageHtml = record.image_url ? 
                 `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
             
-            card.innerHTML = `
+            let innerHtml = `
                 <div class="record-card-image ${!record.image_url ? 'default-bg' : ''}">
                     ${imageHtml || '<i class="fas fa-music"></i>'}
                 </div>
@@ -946,30 +938,42 @@
                     <div class="record-card-title">${escapeHtml(record.title)}</div>
                     <div class="record-card-price">$${parseFloat(record.store_price).toFixed(2)}</div>
                     <div>
-                        <span class="record-card-condition ${conditionClass}">${conditionName}</span>
-                        <span class="record-card-genre">${format}</span>
+                        <span class="record-card-condition">${escapeHtml(combinedCondition)}</span>
                         ${alreadyInCart ? '<span class="in-cart-badge"><i class="fas fa-check"></i> In Cart</span>' : ''}
                     </div>
-                    <div class="record-card-genre"><i class="fas fa-music"></i> ${escapeHtml(genre)}</div>
-                    <div class="record-card-location"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(locationDisplay)}</div>
-                </div>
             `;
             
+            if (genre) {
+                innerHtml += `<div class="record-card-genre"><i class="fas fa-music"></i> ${escapeHtml(genre)}</div>`;
+            }
+            
+            innerHtml += `<div class="record-card-location"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(locationDisplay)}</div>`;
+            innerHtml += `</div>`;
+            
+            card.innerHTML = innerHtml;
             card.addEventListener('click', () => showRecordModal(record));
             return card;
         }
 
         function showRecordModal(record) {
             const alreadyInCart = cart.items.some(item => item.copyId === record.id);
-            const genre = extractGenreFromLocation(record.location) || 'Uncategorized';
+            const genre = extractGenreFromLocation(record.location);
             const locationDisplay = formatLocationDisplay(record.location);
-            const conditionName = getConditionNameFromId(record.condition_disc_id);
-            const conditionClass = getConditionClassFromId(record.condition_disc_id);
-            const format = getFormatDisplayName(record.barcode);
+            const discCondition = getConditionDisplayName(record.condition_disc_id);
+            const sleeveCondition = getConditionDisplayName(record.condition_sleeve_id);
             
             const modal = document.createElement('div');
             modal.className = 'record-modal-overlay';
             const imageHtml = record.image_url ? `<img src="${record.image_url}" alt="${record.title}">` : '<i class="fas fa-music" style="font-size: 64px;"></i>';
+            
+            let detailsHtml = `
+                <div class="detail-row"><span class="detail-label">Disc:</span><span>${escapeHtml(discCondition)}</span></div>
+                <div class="detail-row"><span class="detail-label">Sleeve:</span><span>${escapeHtml(sleeveCondition)}</span></div>
+            `;
+            if (genre) {
+                detailsHtml += `<div class="detail-row"><span class="detail-label">Genre:</span><span>${escapeHtml(genre)}</span></div>`;
+            }
+            detailsHtml += `<div class="detail-row"><span class="detail-label">Location:</span><span>${escapeHtml(locationDisplay)}</span></div>`;
             
             modal.innerHTML = `
                 <div class="record-modal">
@@ -981,10 +985,7 @@
                     <div class="record-modal-info">
                         <div class="record-modal-title">${escapeHtml(record.title)}</div>
                         <div class="record-modal-details">
-                            <div class="detail-row"><span class="detail-label">Condition:</span><span class="condition-indicator ${conditionClass}">${conditionName}</span></div>
-                            <div class="detail-row"><span class="detail-label">Format:</span><span>${format}</span></div>
-                            <div class="detail-row"><span class="detail-label">Genre:</span><span>${escapeHtml(genre)}</span></div>
-                            <div class="detail-row"><span class="detail-label">Location:</span><span>${escapeHtml(locationDisplay)}</span></div>
+                            ${detailsHtml}
                         </div>
                         <div class="record-modal-price">$${parseFloat(record.store_price).toFixed(2)}</div>
                         <div class="record-modal-actions">
@@ -1011,11 +1012,11 @@
                 showNotification('Already in cart', 'error');
                 return;
             }
+            const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
             cart.items.push({
                 copyId: record.id, title: record.title, artist: record.artist,
-                condition: getConditionNameFromId(record.condition_disc_id),
+                condition: combinedCondition,
                 price: parseFloat(record.store_price), image_url: record.image_url,
-                format: getFormatDisplayName(record.barcode),
                 location: formatLocationDisplay(record.location), quantity: 1
             });
             cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -1044,18 +1045,22 @@
         }
         
         function updateCartDrawer() {
-            const itemsDiv = document.getElementById('cartItems');
-            const footer = document.getElementById('cartFooter');
-            if (cart.items.length === 0) {
-                itemsDiv.innerHTML = '<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>';
-                footer.style.display = 'none';
-                return;
-            }
-            let subtotal = cart.items.reduce((s, i) => s + (i.price * i.quantity), 0);
-            let taxAmt = subtotal * (taxRate / 100);
-            let html = `<table style="width:100%"><thead><tr><th>Item</th><th>Price</th><th>Qty</th><th></th></tr></thead><tbody>`;
+            const itemsDiv = document.getElementById('cartItems'); 
+            const footer = document.getElementById('cartFooter'); 
+            if(cart.items.length===0){ 
+                itemsDiv.innerHTML='<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>'; 
+                footer.style.display='none'; 
+                return; 
+            } 
+            let subtotal = cart.items.reduce((s,i)=>s+(i.price*i.quantity),0); 
+            let taxAmt = subtotal * (taxRate/100); 
+            let html = `
+                <table class="cart-items-table">
+                    <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr></thead>
+                    <tbody>
+            `;
             cart.items.forEach((item, idx) => {
-                html += `<tr><td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.format} · ${item.condition}</small><br><small><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.location)}</small></td><td>$${item.price.toFixed(2)}</td><td>${item.quantity}</td><td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
+                html += `<tr><td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.condition}</small><br><small><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.location)}</small></td><td>$${item.price.toFixed(2)}</td><td>${item.quantity}</td><td>$${(item.price * item.quantity).toFixed(2)}</td><td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
             });
             html += `</tbody></table><div style="margin-top:15px"><div>Subtotal: $${subtotal.toFixed(2)}</div><div>Tax: $${taxAmt.toFixed(2)}</div><div><strong>Total: $${(subtotal + taxAmt).toFixed(2)}</strong></div><button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button></div>`;
             itemsDiv.innerHTML = html;
@@ -1072,9 +1077,32 @@
             setTimeout(() => n.remove(), 3000);
         }
         
-        function openCartDrawer() { document.getElementById('cartDrawer').classList.add('open'); document.getElementById('cartOverlay').classList.add('active'); updateCartDrawer(); }
-        function closeCartDrawer() { document.getElementById('cartDrawer').classList.remove('open'); document.getElementById('cartOverlay').classList.remove('active'); }
+        function openCartDrawer() { 
+            document.getElementById('cartDrawer').classList.add('open'); 
+            document.getElementById('cartOverlay').classList.add('active'); 
+            updateCartDrawer(); 
+        }
         
+        function closeCartDrawer() { 
+            document.getElementById('cartDrawer').classList.remove('open'); 
+            document.getElementById('cartOverlay').classList.remove('active'); 
+        }
+        
+        function escapeHtml(text) { 
+            if(!text) return ''; 
+            const div = document.createElement('div'); 
+            div.textContent = text; 
+            return div.innerHTML; 
+        }
+        
+        function debounce(fn, delay) { 
+            let t; 
+            return function(...a){ 
+                clearTimeout(t); 
+                setTimeout(()=>fn(...a), delay); 
+            }; 
+        }
+
         function showCheckoutModal() {
             closeCartDrawer();
             const subtotal = cart.total;
@@ -1089,7 +1117,10 @@
             const radios = modal.querySelectorAll('input[name="type"]');
             const shippingFields = modal.querySelector('#shippingFields');
             const pickupFields = modal.querySelector('#pickupFields');
-            radios.forEach(r => r.onchange = () => { shippingFields.style.display = r.value === 'shipping' ? 'block' : 'none'; pickupFields.style.display = r.value === 'pickup' ? 'block' : 'none'; });
+            radios.forEach(r => r.onchange = () => { 
+                shippingFields.style.display = r.value === 'shipping' ? 'block' : 'none'; 
+                pickupFields.style.display = r.value === 'pickup' ? 'block' : 'none'; 
+            });
             modal.querySelector('#confirmCheckoutBtn').onclick = async () => {
                 const isShipping = modal.querySelector('input[value="shipping"]').checked;
                 let customerName, customerEmail;
@@ -1114,9 +1145,6 @@
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
         }
         
-        function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-        function debounce(fn, delay) { let t; return function(...a) { clearTimeout(t); t = setTimeout(() => fn(...a), delay); }; }
-        
         document.addEventListener('DOMContentLoaded', async () => {
             shippingCost = parseFloat(await getConfigValue('SHIPPING_COST')) || 0;
             taxRate = parseFloat(await getConfigValue('TAX_RATE')) || 0;
@@ -1125,17 +1153,49 @@
             document.getElementById('cartToggle')?.addEventListener('click', openCartDrawer);
             document.getElementById('closeCartDrawer')?.addEventListener('click', closeCartDrawer);
             document.getElementById('cartOverlay')?.addEventListener('click', closeCartDrawer);
-            document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { selectedGenres = []; currentSearchTerm = ''; newArrivalsActive = true; newVinylActive = false; currentPage = 1; document.getElementById('searchBox').value = ''; document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); loadCatalogData(); });
-            document.getElementById('newArrivalsBtn')?.addEventListener('click', () => { newArrivalsActive = !newArrivalsActive; currentPage = 1; loadCatalogData(); });
-            document.getElementById('newVinylBtn')?.addEventListener('click', () => { newVinylActive = !newVinylActive; currentPage = 1; loadCatalogData(); });
+            document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
+                selectedGenres = []; 
+                currentSearchTerm = ''; 
+                newArrivalsActive = true; 
+                newVinylActive = false; 
+                currentPage = 1; 
+                document.getElementById('searchBox').value = ''; 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
+                loadCatalogData(); 
+            });
+            document.getElementById('newArrivalsBtn')?.addEventListener('click', () => { 
+                newArrivalsActive = !newArrivalsActive; 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
+            document.getElementById('newVinylBtn')?.addEventListener('click', () => { 
+                newVinylActive = !newVinylActive; 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
             document.getElementById('searchBox')?.addEventListener('input', debounce(() => loadCatalogData(), 500));
             const genreBtn = document.getElementById('genreFilterBtn');
             const genreDropdown = document.getElementById('genreDropdown');
-            genreBtn?.addEventListener('click', (e) => { e.stopPropagation(); genreDropdown.classList.toggle('show'); });
-            document.addEventListener('click', (e) => { if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) genreDropdown?.classList.remove('show'); });
-            document.getElementById('selectAllGenres')?.addEventListener('click', () => { document.querySelectorAll('#genreList input').forEach(cb => cb.checked = true); });
-            document.getElementById('clearAllGenres')?.addEventListener('click', () => { document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); });
-            document.getElementById('applyGenres')?.addEventListener('click', () => { selectedGenres = Array.from(document.querySelectorAll('#genreList input:checked')).map(cb => cb.value); genreDropdown.classList.remove('show'); currentPage = 1; loadCatalogData(); });
+            genreBtn?.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                genreDropdown.classList.toggle('show'); 
+            });
+            document.addEventListener('click', (e) => { 
+                if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) 
+                    genreDropdown?.classList.remove('show'); 
+            });
+            document.getElementById('selectAllGenres')?.addEventListener('click', () => { 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = true); 
+            });
+            document.getElementById('clearAllGenres')?.addEventListener('click', () => { 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
+            });
+            document.getElementById('applyGenres')?.addEventListener('click', () => { 
+                selectedGenres = Array.from(document.querySelectorAll('#genreList input:checked')).map(cb => cb.value); 
+                genreDropdown.classList.remove('show'); 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
             window.removeFromCart = removeFromCart;
         });
     </script>
