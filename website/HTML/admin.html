@@ -1972,7 +1972,9 @@
             <div class="tab" data-tab="accessories">
                 <i class="fas fa-tshirt"></i> Accessories
             </div>
-             
+             <div class="tab" data-tab="inventory-purchases">
+                <i class="fas fa-shopping-cart"></i> Inventory Purchases
+            </div>
             <div class="tab" data-tab="users">
                 <i class="fas fa-users"></i> Users
             </div>
@@ -2367,7 +2369,198 @@
                 <p>Searching...</p>
             </div>
         </div>
-         
+         <!-- Inventory Purchases Tab -->
+        <div id="inventory-purchases-tab" class="tab-content">
+            <h2><i class="fas fa-shopping-cart"></i> Inventory Purchases</h2>
+            
+            <!-- Stats Summary Cards -->
+            <div class="stats-row" style="margin-bottom: 25px;">
+                <div class="stat-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+                    <div class="stat-value" id="total-spent" style="color: white;">$0.00</div>
+                    <div class="stat-label" style="color: rgba(255,255,255,0.9);">Total Spent</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white;">
+                    <div class="stat-value" id="month-spent" style="color: white;">$0.00</div>
+                    <div class="stat-label" style="color: rgba(255,255,255,0.9);">This Month</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%); color: #333;">
+                    <div class="stat-value" id="total-purchases" style="color: #333;">0</div>
+                    <div class="stat-label" style="color: rgba(51,51,51,0.8);">Total Purchases</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%); color: white;">
+                    <div class="stat-value" id="month-purchases" style="color: white;">0</div>
+                    <div class="stat-label" style="color: rgba(255,255,255,0.9);">Purchases This Month</div>
+                </div>
+            </div>
+            
+            <!-- Add New Purchase Form -->
+            <div class="user-form-section" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); margin-bottom: 25px;">
+                <h3 style="margin-bottom: 20px;"><i class="fas fa-plus-circle"></i> Record New Purchase</h3>
+                
+                <form id="add-purchase-form">
+                    <div class="user-form-grid">
+                        <div class="user-form-group">
+                            <label for="purchase-date"><i class="fas fa-calendar"></i> Purchase Date</label>
+                            <input type="date" id="purchase-date" value="">
+                        </div>
+                        <div class="user-form-group">
+                            <label for="seller-name"><i class="fas fa-user"></i> Seller Name</label>
+                            <input type="text" id="seller-name" placeholder="e.g., John's Records">
+                        </div>
+                        <div class="user-form-group">
+                            <label for="seller-contact"><i class="fas fa-phone"></i> Seller Contact</label>
+                            <input type="text" id="seller-contact" placeholder="Email or Phone">
+                        </div>
+                        <div class="user-form-group">
+                            <label for="amount-spent"><i class="fas fa-dollar-sign"></i> Amount Spent *</label>
+                            <input type="number" id="amount-spent" step="0.01" min="0.01" placeholder="0.00" required>
+                        </div>
+                        <div class="user-form-group" style="grid-column: 1/-1;">
+                            <label for="purchase-description"><i class="fas fa-align-left"></i> Description</label>
+                            <textarea id="purchase-description" rows="3" placeholder="What was purchased? (e.g., 50 records from estate sale)"></textarea>
+                        </div>
+                        <div class="user-form-group" style="grid-column: 1/-1;">
+                            <label for="bill-image"><i class="fas fa-file-image"></i> Bill of Sale (Image)</label>
+                            <input type="file" id="bill-image" accept="image/*,application/pdf">
+                            <p style="font-size: 12px; opacity: 0.8; margin-top: 5px;">Upload a photo or scan of the receipt/bill</p>
+                            <div id="bill-preview"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="action-buttons" style="justify-content: flex-start;">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-save"></i> Record Purchase
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="cancel-add-purchase">
+                            <i class="fas fa-times"></i> Clear Form
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Filter Section -->
+            <div class="search-section" style="margin-bottom: 20px;">
+                <h4 style="margin-bottom: 15px;"><i class="fas fa-filter"></i> Filter Purchases</h4>
+                <form id="purchases-search-form">
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                        <div style="flex: 1; min-width: 150px;">
+                            <label for="filter-start-date">Start Date</label>
+                            <input type="date" id="filter-start-date" class="filter-select">
+                        </div>
+                        <div style="flex: 1; min-width: 150px;">
+                            <label for="filter-end-date">End Date</label>
+                            <input type="date" id="filter-end-date" class="filter-select">
+                        </div>
+                        <div style="flex: 2; min-width: 200px;">
+                            <label for="filter-seller-name">Seller Name</label>
+                            <input type="text" id="filter-seller-name" class="filter-select" placeholder="Search by seller...">
+                        </div>
+                        <div class="action-buttons" style="margin-bottom: 0;">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="clear-filters-btn">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Purchases Table -->
+            <div class="records-table-container">
+                <table class="records-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Date</th>
+                            <th>Seller Name</th>
+                            <th>Contact</th>
+                            <th>Amount</th>
+                            <th>Description</th>
+                            <th>Bill of Sale</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="purchases-body">
+                        <td colspan="8" style="text-align:center; padding:40px;">
+                            <i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i>
+                            <p>Loading purchases...</p>
+                        </td>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div class="pagination-container">
+                <div class="pagination-info">
+                    Showing <span id="purchases-showing">0</span>-<span id="purchases-total-filtered">0</span> of <span id="purchases-total">0</span> purchases
+                </div>
+                <div class="pagination-controls">
+                    <button class="pagination-btn" id="purchases-prev-page" disabled>Previous</button>
+                    <span id="purchases-page-info" style="margin: 0 10px;">Page 1</span>
+                    <button class="pagination-btn" id="purchases-next-page" disabled>Next</button>
+                    <div class="pagination-size-selector">
+                        <span>Show:</span>
+                        <select id="purchases-page-size">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="inventory-purchases-status" class="status-message" style="display: none;"></div>
+            <div class="loading" id="inventory-purchases-loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>Loading...</p>
+            </div>
+        </div>
+
+        <!-- Edit Purchase Modal -->
+        <div id="edit-purchase-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h3 class="modal-title"><i class="fas fa-edit"></i> Edit Purchase</h3>
+                    <button class="modal-close" onclick="window.closeEditModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="edit-purchase-id">
+                    <div style="margin-bottom: 15px;">
+                        <label for="edit-purchase-date">Purchase Date</label>
+                        <input type="date" id="edit-purchase-date" class="filter-select" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="edit-seller-name">Seller Name</label>
+                        <input type="text" id="edit-seller-name" class="filter-select" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="edit-seller-contact">Seller Contact</label>
+                        <input type="text" id="edit-seller-contact" class="filter-select" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="edit-amount-spent">Amount Spent ($)</label>
+                        <input type="number" id="edit-amount-spent" step="0.01" min="0.01" class="filter-select" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="edit-purchase-description">Description</label>
+                        <textarea id="edit-purchase-description" rows="3" class="filter-select" style="width: 100%;"></textarea>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="edit-bill-image">Bill of Sale (replace existing)</label>
+                        <input type="file" id="edit-bill-image" accept="image/*,application/pdf" onchange="window.uploadEditBillImage(event)">
+                        <div id="edit-bill-preview"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="window.closeEditModal()">Cancel</button>
+                    <button class="btn btn-success" onclick="window.updatePurchase()">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
         <!-- Inventory Tab -->
         <div id="inventory-tab" class="tab-content">
             <h2><i class="fas fa-boxes"></i> Inventory Management</h2>
@@ -3963,8 +4156,8 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
 
     <!-- Admin JavaScript Modules -->
 
-        <script src="/static/js/discogs.js"></script>
-
+    <script src="/static/js/discogs.js"></script>
+    <script src="/static/js/inventory-purchases.js"></script>
     <script src="/static/js/tab-manager.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/config-manager.js"></script>

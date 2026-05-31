@@ -2218,7 +2218,397 @@ def get_last_seen_distribution_stats():
         'week_numbers': week_numbers,
         'counts': counts
     })
+# ==================== INVENTORY PURCHASES ENDPOINTS ====================
 
+# Create upload folder for bills of sale if not exists
+BILLS_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'bills')
+os.makedirs(BILLS_UPLOAD_FOLDER, exist_ok=True)
+
+@app.route('/api/inventory-purchases', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_inventory_purchases():
+    """Get all inventory purchases with optional filtering"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get filter parameters
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        seller_name = request.args.get('seller_name', '').strip()
+        limit = request.args.get('limit', 100, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        
+        query = '''
+            SELECT 
+                id,
+                purchase_date,
+                seller_name,
+                seller_contact,
+                amount_spent,
+                description,
+                bill_of_sale_path,
+                created_at,
+                updated_at
+            FROM inventory_purchases
+            WHERE 1=1
+        '''
+        params = []
+        
+        if start_date:
+            query += ' AND purchase_date >= ?'
+            params.append(start_date)
+        
+        if end_date:
+            query += ' AND purchase_date <= ?'
+            params.append(end_date)
+        
+        if seller_name:
+            query += ' AND seller_name LIKE ?'
+            params.append(f'%{seller_name}%')
+        
+        query += ' ORDER BY purchase_date DESC, created_at DESC LIMIT ? OFFSET ?'
+        params.extend([limit, offset])
+        
+        cursor.execute(query, params)
+        purchases = cursor.fetchall()
+        
+        # Get total count
+        count_query = '''
+            SELECT COUNT(*) as total FROM inventory_purchases WHERE 1=1
+        '''
+        count_params = []
+        if start_date:
+            count_query += ' AND purchase_date >= ?'
+            count_params.append(start_date)
+        if end_date:
+            count_query += ' AND purchase_date <= ?'
+            count_params.append(end_date)
+        if seller_name:
+            count_query += ' AND seller_name LIKE ?'
+            count_params.append(f'%{seller_name}%')
+        
+        cursor.execute(count_query, count_params)
+        total = cursor.fetchone()['total']
+        
+        conn.close()
+        
+        purchases_list = []
+        for purchase in purchases:
+            purchase_dict = dict(purchase)
+            # Convert amount to float for JSON
+            purchase_dict['amount_spent'] = float(purchase_dict['amount_spent'])
+            purchases_list.append(purchase_dict)
+        
+        return jsonify({
+            'status': 'success',
+            'purchases': purchases_list,
+            'total': total,
+            'limit': limit,
+            'offset': offset
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting inventory purchases: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_inventory_purchase():
+    """Create a new inventory purchase record"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        # Validate required fields
+        if 'amount_spent' not in data:
+            return jsonify({'status': 'error', 'error': 'amount_spent is required'}), 400
+        
+        amount_spent = float(data['amount_spent'])
+        if amount_spent <= 0:
+            return jsonify({'status': 'error', 'error': 'amount_spent must be greater than 0'}), 400
+        
+        purchase_date = data.get('purchase_date', datetime.now().strftime('%Y-%m-%d'))
+        seller_name = data.get('seller_name', '').strip()
+        seller_contact = data.get('seller_contact', '').strip()
+        description = data.get('description', '').strip()
+        bill_of_sale_path = data.get('bill_of_sale_path', '').strip()
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO inventory_purchases (
+                purchase_date, seller_name, seller_contact, amount_spent, 
+                description, bill_of_sale_path
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        ''', (purchase_date, seller_name, seller_contact, amount_spent, description, bill_of_sale_path))
+        
+        purchase_id = cursor.lastrowid
+        conn.commit()
+        
+        # Fetch the created record
+        cursor.execute('''
+            SELECT id, purchase_date, seller_name, seller_contact, amount_spent, 
+                   description, bill_of_sale_path, created_at, updated_at
+            FROM inventory_purchases WHERE id = ?
+        ''', (purchase_id,))
+        
+        new_purchase = cursor.fetchone()
+        conn.close()
+        
+        purchase_dict = dict(new_purchase)
+        purchase_dict['amount_spent'] = float(purchase_dict['amount_spent'])
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Inventory purchase recorded successfully',
+            'purchase': purchase_dict
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error creating inventory purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases/upload-bill', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def upload_bill_of_sale():
+    """Upload a bill of sale image for an inventory purchase"""
+    try:
+        if 'bill_image' not in request.files:
+            return jsonify({'status': 'error', 'error': 'No image file provided'}), 400
+        
+        file = request.files['bill_image']
+        
+        if file.filename == '':
+            return jsonify({'status': 'error', 'error': 'No file selected'}), 400
+        
+        # Check file extension
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
+        file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+        
+        if file_ext not in allowed_extensions:
+            return jsonify({'status': 'error', 'error': f'File type not allowed. Allowed: {", ".join(allowed_extensions)}'}), 400
+        
+        # Generate unique filename
+        import uuid
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        unique_id = uuid.uuid4().hex[:8]
+        filename = f"bill_{timestamp}_{unique_id}.{file_ext}"
+        
+        filepath = os.path.join(BILLS_UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        
+        # Return the relative URL path
+        file_url = f"/static/uploads/bills/{filename}"
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Bill of sale uploaded successfully',
+            'file_path': file_url,
+            'filename': filename
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error uploading bill of sale: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_inventory_purchase(purchase_id):
+    """Get a single inventory purchase by ID"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, purchase_date, seller_name, seller_contact, amount_spent, 
+                   description, bill_of_sale_path, created_at, updated_at
+            FROM inventory_purchases WHERE id = ?
+        ''', (purchase_id,))
+        
+        purchase = cursor.fetchone()
+        conn.close()
+        
+        if not purchase:
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+        
+        purchase_dict = dict(purchase)
+        purchase_dict['amount_spent'] = float(purchase_dict['amount_spent'])
+        
+        return jsonify({
+            'status': 'success',
+            'purchase': purchase_dict
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting inventory purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_inventory_purchase(purchase_id):
+    """Update an existing inventory purchase"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if purchase exists
+        cursor.execute('SELECT id FROM inventory_purchases WHERE id = ?', (purchase_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+        
+        update_fields = []
+        update_values = []
+        
+        if 'purchase_date' in data:
+            update_fields.append('purchase_date = ?')
+            update_values.append(data['purchase_date'])
+        
+        if 'seller_name' in data:
+            update_fields.append('seller_name = ?')
+            update_values.append(data['seller_name'].strip() if data['seller_name'] else None)
+        
+        if 'seller_contact' in data:
+            update_fields.append('seller_contact = ?')
+            update_values.append(data['seller_contact'].strip() if data['seller_contact'] else None)
+        
+        if 'amount_spent' in data:
+            amount = float(data['amount_spent'])
+            if amount <= 0:
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'amount_spent must be greater than 0'}), 400
+            update_fields.append('amount_spent = ?')
+            update_values.append(amount)
+        
+        if 'description' in data:
+            update_fields.append('description = ?')
+            update_values.append(data['description'].strip() if data['description'] else None)
+        
+        if 'bill_of_sale_path' in data:
+            update_fields.append('bill_of_sale_path = ?')
+            update_values.append(data['bill_of_sale_path'].strip() if data['bill_of_sale_path'] else None)
+        
+        if not update_fields:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
+        
+        update_fields.append('updated_at = CURRENT_TIMESTAMP')
+        update_values.append(purchase_id)
+        
+        cursor.execute(f"UPDATE inventory_purchases SET {', '.join(update_fields)} WHERE id = ?", update_values)
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success', 'message': 'Purchase updated successfully'})
+        
+    except Exception as e:
+        app.logger.error(f"Error updating inventory purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_inventory_purchase(purchase_id):
+    """Delete an inventory purchase (and optionally the bill image file)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get bill path before deletion
+        cursor.execute('SELECT bill_of_sale_path FROM inventory_purchases WHERE id = ?', (purchase_id,))
+        purchase = cursor.fetchone()
+        
+        if not purchase:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+        
+        # Delete the associated bill image file if it exists
+        if purchase['bill_of_sale_path']:
+            file_path = os.path.join(os.path.dirname(__file__), 'static', purchase['bill_of_sale_path'].lstrip('/'))
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    app.logger.warning(f"Could not delete bill image file: {e}")
+        
+        cursor.execute('DELETE FROM inventory_purchases WHERE id = ?', (purchase_id,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success', 'message': 'Purchase deleted successfully'})
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting inventory purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases/summary', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_inventory_purchases_summary():
+    """Get summary statistics for inventory purchases"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Total spent all time
+        cursor.execute('SELECT COALESCE(SUM(amount_spent), 0) as total_spent FROM inventory_purchases')
+        total_spent = cursor.fetchone()['total_spent']
+        
+        # Total spent this month
+        cursor.execute('''
+            SELECT COALESCE(SUM(amount_spent), 0) as month_spent 
+            FROM inventory_purchases 
+            WHERE strftime('%Y-%m', purchase_date) = strftime('%Y-%m', 'now')
+        ''')
+        month_spent = cursor.fetchone()['month_spent']
+        
+        # Total purchases count
+        cursor.execute('SELECT COUNT(*) as total_purchases FROM inventory_purchases')
+        total_purchases = cursor.fetchone()['total_purchases']
+        
+        # Purchases this month
+        cursor.execute('''
+            SELECT COUNT(*) as month_purchases 
+            FROM inventory_purchases 
+            WHERE strftime('%Y-%m', purchase_date) = strftime('%Y-%m', 'now')
+        ''')
+        month_purchases = cursor.fetchone()['month_purchases']
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'summary': {
+                'total_spent': float(total_spent),
+                'month_spent': float(month_spent),
+                'total_purchases': total_purchases,
+                'month_purchases': month_purchases
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting inventory purchases summary: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/records/<int:record_id>', methods=['PUT'])
 def update_record(record_id):
