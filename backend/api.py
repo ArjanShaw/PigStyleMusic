@@ -2059,7 +2059,7 @@ def get_records():
             r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number,
             r.condition_sleeve_id, r.condition_disc_id, r.store_price, r.youtube_url,
             r.consignor_id, r.commission_rate, r.status_id, r.created_at, r.date_sold,
-            r.last_seen, r.location, r.notes, r.discogs_genre_raw,
+            r.last_seen, r.location, r.notes, r.discogs_genre_raw,r.cogs,
             s.status_name,
             cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
             cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
@@ -2560,6 +2560,224 @@ def delete_inventory_purchase(purchase_id):
         app.logger.error(f"Error deleting inventory purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ==================== COGS (Cost of Goods Sold) ENDPOINTS ====================
+
+@app.route('/api/cogs/batch', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def set_batch_cogs():
+    """
+    Set COGS for all NEW records (status_id = 1) by distributing a batch total
+    proportionally based on each record's store_price.
+    
+    Request body: { "batch_cogs": 100.00 }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'batch_cogs' not in data:
+            return jsonify({'status': 'error', 'error': 'batch_cogs required'}), 400
+        
+        batch_cogs = float(data['batch_cogs'])
+        
+        if batch_cogs < 0:
+            return jsonify({'status': 'error', 'error': 'batch_cogs cannot be negative'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all NEW records (status_id = 1) with their store_price
+        cursor.execute('''
+            SELECT id, store_price 
+            FROM records 
+            WHERE status_id = 1 AND store_price IS NOT NULL AND store_price > 0
+        ''')
+        
+        records = cursor.fetchall()
+        
+        if not records:
+            conn.close()
+            return jsonify({
+                'status': 'error', 
+                'error': 'No NEW records (status_id=1) with valid store_price found'
+            }), 404
+        
+        # Calculate total store price sum for all new records
+        total_store_price = sum(record['store_price'] for record in records)
+        
+        if total_store_price <= 0:
+            conn.close()
+            return jsonify({
+                'status': 'error', 
+                'error': 'Total store price sum is zero or negative'
+            }), 400
+        
+        # Calculate and update COGS for each record proportionally
+        records_updated = 0
+        total_cogs_sum = 0
+        
+        for record in records:
+            # Calculate proportional COGS
+            proportion = record['store_price'] / total_store_price
+            cogs_value = batch_cogs * proportion
+            cogs_value = round(cogs_value, 2)  # Round to 2 decimal places
+            
+            # Update the record
+            cursor.execute('''
+                UPDATE records 
+                SET cogs = ? 
+                WHERE id = ?
+            ''', (cogs_value, record['id']))
+            
+            records_updated += 1
+            total_cogs_sum += cogs_value
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Successfully distributed ${batch_cogs:.2f} across {records_updated} records',
+            'records_updated': records_updated,
+            'batch_cogs': batch_cogs,
+            'total_store_price_sum': round(total_store_price, 2),
+            'total_cogs_sum': round(total_cogs_sum, 2),
+            'average_cogs': round(total_cogs_sum / records_updated, 2) if records_updated > 0 else 0
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error setting batch COGS: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/cogs/summary', methods=['GET'])
+@login_required
+def get_cogs_summary():
+    """Get COGS summary statistics by status"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Summary by status
+        cursor.execute('''
+            SELECT 
+                r.status_id,
+                s.status_name,
+                COUNT(*) as record_count,
+                COALESCE(SUM(r.store_price), 0) as total_store_price,
+                COALESCE(SUM(r.cogs), 0) as total_cogs,
+                COALESCE(AVG(r.cogs), 0) as avg_cogs,
+                COALESCE(SUM(r.store_price - r.cogs), 0) as total_profit
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            GROUP BY r.status_id
+            ORDER BY r.status_id
+        ''')
+        
+        summary = cursor.fetchall()
+        
+        # Overall totals
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_records,
+                COALESCE(SUM(store_price), 0) as total_store_price,
+                COALESCE(SUM(cogs), 0) as total_cogs,
+                COALESCE(SUM(store_price - cogs), 0) as total_profit
+            FROM records
+            WHERE cogs IS NOT NULL
+        ''')
+        
+        overall = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'summary': [dict(row) for row in summary],
+            'overall': {
+                'total_records_with_cogs': overall['total_records'],
+                'total_store_price': float(overall['total_store_price']),
+                'total_cogs': float(overall['total_cogs']),
+                'total_profit': float(overall['total_profit'])
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting COGS summary: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/cogs/record/<int:record_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_individual_cogs(record_id):
+    """Update COGS for a single record"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'cogs' not in data:
+            return jsonify({'status': 'error', 'error': 'cogs value required'}), 400
+        
+        cogs_value = float(data['cogs'])
+        
+        if cogs_value < 0:
+            return jsonify({'status': 'error', 'error': 'COGS cannot be negative'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id FROM records WHERE id = ?', (record_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Record not found'}), 404
+        
+        cursor.execute('UPDATE records SET cogs = ? WHERE id = ?', (cogs_value, record_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'COGS updated to ${cogs_value:.2f} for record #{record_id}'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error updating individual COGS: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/cogs/clear', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def clear_cogs_for_status():
+    """Clear COGS values for records with a specific status (or all)"""
+    try:
+        data = request.get_json()
+        status_id = data.get('status_id') if data else None
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        if status_id is not None:
+            cursor.execute('UPDATE records SET cogs = NULL WHERE status_id = ?', (status_id,))
+            cleared_count = cursor.rowcount
+            message = f'Cleared COGS for {cleared_count} records with status_id={status_id}'
+        else:
+            cursor.execute('UPDATE records SET cogs = NULL')
+            cleared_count = cursor.rowcount
+            message = f'Cleared COGS for all {cleared_count} records'
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': message,
+            'records_cleared': cleared_count
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error clearing COGS: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/inventory-purchases/summary', methods=['GET'])
 @login_required

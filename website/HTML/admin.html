@@ -3081,9 +3081,30 @@
             </div>
         </div>
 
-        <!-- Price Tags Tab with Starting Position -->
+        <!-- Price Tags Tab with Starting Position and COGS -->
         <div id="price-tags-tab" class="tab-content">
             <h2><i class="fas fa-tags"></i> Print Price Tags</h2>
+            
+            <!-- COGS Batch Section -->
+            <div class="cogs-batch-section" style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 8px; color: white;">
+                <h3 style="margin: 0 0 10px 0;"><i class="fas fa-dollar-sign"></i> Batch COGS Assignment</h3>
+                <p style="margin: 0 0 10px 0; font-size: 13px; opacity: 0.9;">
+                    Enter the total amount you paid for a batch of NEW records. COGS will be distributed proportionally based on each record's store price.
+                </p>
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 12px;">Batch COGS Total ($):</label>
+                        <input type="number" id="batch-cogs-amount" step="0.01" min="0" placeholder="e.g., 100.00" 
+                            style="width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px;">
+                    </div>
+                    <div>
+                        <button id="apply-batch-cogs-btn" class="btn" style="background: #ffc107; color: #333; border: none; padding: 10px 20px; border-radius: 6px;">
+                            <i class="fas fa-calculator"></i> Apply Batch COGS
+                        </button>
+                    </div>
+                </div>
+                <div id="batch-cogs-result" style="margin-top: 10px; font-size: 12px;"></div>
+            </div>
             
             <!-- Starting Position Selector -->
             <div class="starting-position-section">
@@ -3118,7 +3139,7 @@
                 
                 <div class="filter-group">
                     <label for="status-filter"><i class="fas fa-filter"></i> Filter by Status:</label>
-                    <select id="status-filter" class="filter-select" onchange="filterRecords()">
+                    <select id="status-filter" class="filter-select">
                         <option value="all">All Statuses</option>
                         <option value="new">New Only</option>
                         <option value="active">Active Only</option>
@@ -3162,11 +3183,10 @@
                         </label>
                         <div style="display: flex; gap: 10px;">
                             <input type="text" 
-                                   id="record-locator-search" 
-                                   class="search-input" 
-                                   placeholder="Search by artist, title, or barcode..."
-                                   style="flex: 1;"
-                                   onkeyup="locateRecord()">
+                                id="record-locator-search" 
+                                class="search-input" 
+                                placeholder="Search by artist, title, or barcode..."
+                                style="flex: 1;">
                             <button class="btn btn-info" onclick="findNextMatch()" title="Find next match">
                                 <i class="fas fa-arrow-down"></i> Find
                             </button>
@@ -3197,7 +3217,7 @@
                     
                     <span class="pagination-info">
                         Page <input type="number" class="page-input" id="current-page" min="1" value="1" 
-                               onchange="goToPage(parseInt(this.value))" onblur="goToPage(parseInt(this.value))"> 
+                            onchange="goToPage(parseInt(this.value))" onblur="goToPage(parseInt(this.value))"> 
                         of <span id="total-pages">1</span>
                     </span>
                     
@@ -3230,11 +3250,14 @@
                                 <th>Artist</th>
                                 <th>Title</th>
                                 <th>Price</th>
+                                <th>COGS</th>
+                                <th>Profit</th>
                                 <th>Catalog #</th>
                                 <th>Discogs Genre</th>
                                 <th>Barcode</th>
                                 <th>Consignor</th>
                                 <th>Status</th>
+                                <th></th>
                             </thead>
                         <tbody id="records-body">
                             <!-- Records will be loaded here -->

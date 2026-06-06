@@ -42,6 +42,11 @@
     let markActiveQueueBtn = null;
     let cancelRangeBtn = null;
 
+    // COGS Batch Elements
+    let batchCogsAmount = null;
+    let applyBatchCogsBtn = null;
+    let batchCogsResultDiv = null;
+
     // Consignor mapping for initials
     let consignorMap = {};
 
@@ -74,6 +79,11 @@
         printQueueBtn = document.getElementById('print-queue-btn');
         markActiveQueueBtn = document.getElementById('mark-active-queue-btn');
         cancelRangeBtn = document.getElementById('cancel-range-btn');
+        
+        // Get COGS Batch elements
+        batchCogsAmount = document.getElementById('batch-cogs-amount');
+        applyBatchCogsBtn = document.getElementById('apply-batch-cogs-btn');
+        batchCogsResultDiv = document.getElementById('batch-cogs-result');
         
         // Hide printing position controls if they exist (remove from DOM)
         const positionControls = document.querySelector('.print-position-controls');
@@ -193,10 +203,93 @@
         if (markActiveQueueBtn) markActiveQueueBtn.addEventListener('click', markQueueAsActive);
         if (cancelRangeBtn) cancelRangeBtn.addEventListener('click', cancelRangeSelection);
         
+        // COGS Batch button
+        if (applyBatchCogsBtn) {
+            applyBatchCogsBtn.addEventListener('click', applyBatchCOGS);
+        }
+        
         // Locator search
         const locatorSearch = document.getElementById('record-locator-search');
         if (locatorSearch) {
             locatorSearch.addEventListener('input', debounce(locateRecord, 300));
+        }
+    }
+
+    // ============================================================================
+    // COGS Batch Functions
+    // ============================================================================
+
+    async function applyBatchCOGS() {
+        if (!batchCogsAmount) return;
+        
+        const amount = parseFloat(batchCogsAmount.value);
+        
+        if (isNaN(amount) || amount <= 0) {
+            showStatus('Please enter a valid positive amount for COGS', 'error');
+            return;
+        }
+        
+        if (loadingDiv) loadingDiv.style.display = 'block';
+        
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/cogs/batch`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ batch_cogs: amount })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.status === 'success') {
+                showStatus(`✅ Batch COGS applied: ${data.records_updated} records updated. Total COGS sum: $${data.total_cogs_sum.toFixed(2)}`, 'success');
+                
+                if (batchCogsResultDiv) {
+                    batchCogsResultDiv.innerHTML = `
+                        <div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 10px; margin-top: 10px;">
+                            <strong>✅ Batch COGS Applied</strong><br>
+                            Records updated: ${data.records_updated}<br>
+                            Total store price sum: $${data.total_store_price_sum.toFixed(2)}<br>
+                            Total COGS sum: $${data.total_cogs_sum.toFixed(2)}<br>
+                            Average COGS per record: $${data.average_cogs.toFixed(2)}
+                        </div>
+                    `;
+                    setTimeout(() => {
+                        if (batchCogsResultDiv) batchCogsResultDiv.innerHTML = '';
+                    }, 8000);
+                }
+                
+                // Clear the input
+                batchCogsAmount.value = '';
+                
+                // Reload records to show updated COGS values
+                await loadRecordsForPriceTags();
+            } else {
+                showStatus(`❌ Error: ${data.error || 'Unknown error'}`, 'error');
+                if (batchCogsResultDiv) {
+                    batchCogsResultDiv.innerHTML = `
+                        <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px; padding: 10px; margin-top: 10px;">
+                            <strong>❌ Error</strong><br>
+                            ${data.error || 'Failed to apply batch COGS'}
+                        </div>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('Error applying batch COGS:', error);
+            showStatus(`Error: ${error.message}`, 'error');
+            if (batchCogsResultDiv) {
+                batchCogsResultDiv.innerHTML = `
+                    <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px; padding: 10px; margin-top: 10px;">
+                        <strong>❌ Error</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+            }
+        } finally {
+            if (loadingDiv) loadingDiv.style.display = 'none';
         }
     }
 
@@ -262,7 +355,7 @@
                 showStatus('Error loading records: ' + error.message, 'error');
             }
             if (recordsBody) {
-                recordsBody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:40px;">Error loading records: ${error.message}</td></tr>`;
+                recordsBody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding:40px;">Error loading records: ${error.message}</td></tr>`;
             }
         } finally {
             if (loadingDiv) loadingDiv.style.display = 'none';
@@ -522,7 +615,7 @@
     }
 
     // ============================================================================
-    // Render Records Table
+    // Render Records Table (with COGS column)
     // ============================================================================
 
     function renderRecords() {
@@ -540,7 +633,7 @@
         console.log('Rendering records', start+1, 'to', end, `(${pageRecords.length} records on this page)`);
         
         if (pageRecords.length === 0) {
-            recordsBody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:40px;">No records found</td></tr>';
+            recordsBody.innerHTML = '<tr><td colspan="13" style="text-align:center; padding:40px;">No records found</td></tr>';
             return;
         }
         
@@ -552,6 +645,8 @@
             const statusName = getStatusName(record.status_id);
             const dateCreated = record.created_at ? new Date(record.created_at).toLocaleDateString() : 'Unknown';
             const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+            const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
+            const profit = (record.store_price && record.cogs) ? `$${(record.store_price - record.cogs).toFixed(2)}` : '—';
             const genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim().substring(0, 30) : '—';
             const isInQueue = printQueue.some(q => q.id === record.id);
             const queuePosition = printQueue.findIndex(q => q.id === record.id);
@@ -601,6 +696,8 @@
                     <td>${escapeHtml(record.artist || 'Unknown')}</td>
                     <td>${escapeHtml(record.title || 'Unknown')}</td>
                     <td style="width: 80px;">${price}</td>
+                    <td style="width: 80px;">${cogs}</td>
+                    <td style="width: 80px;">${profit}</td>
                     <td style="width: 100px;">${escapeHtml(record.catalog_number || '—')}</td>
                     <td style="width: 120px;">${escapeHtml(genre)}</td>
                     <td style="width: 120px;"><span class="barcode-value">${displayBarcode}</span></td>
@@ -733,6 +830,8 @@
         let html = '';
         printQueue.forEach((record, idx) => {
             const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+            const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
+            const profit = (record.store_price && record.cogs) ? `$${(record.store_price - record.cogs).toFixed(2)}` : '—';
             const genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim().substring(0, 25) : '';
             // Use record ID as barcode if barcode column is null
             const displayBarcode = record.barcode || record.id;
@@ -744,6 +843,8 @@
                         <div class="queue-item-title">${escapeHtml(record.artist)} - ${escapeHtml(record.title)}</div>
                         <div class="queue-item-details">
                             <span>Price: ${price}</span>
+                            <span>COGS: ${cogs}</span>
+                            <span>Profit: ${profit}</span>
                             ${genre ? `<span>Genre: ${escapeHtml(genre)}</span>` : ''}
                             <span>ID: ${displayBarcode}</span>
                         </div>
@@ -1054,7 +1155,7 @@
             if (cells.length >= 5) {
                 const artist = cells[3]?.textContent.toLowerCase() || '';
                 const title = cells[4]?.textContent.toLowerCase() || '';
-                const barcode = cells[8]?.textContent.toLowerCase() || '';
+                const barcode = cells[9]?.textContent.toLowerCase() || '';
                 
                 if (artist.includes(searchTerm) || title.includes(searchTerm) || barcode.includes(searchTerm)) {
                     matchRows.push(row);
@@ -1169,8 +1270,11 @@
     window.goToPage = goToPage;
     window.findNextMatch = findNextMatch;
     window.clearLocatorHighlight = clearLocatorHighlight;
+    
+    // COGS Batch
+    window.applyBatchCOGS = applyBatchCOGS;
 
-    console.log('✅ price-tags.js loaded - Using record ID as barcode when barcode column is null');
+    console.log('✅ price-tags.js loaded - With COGS batch functionality');
     
     // Auto-initialize when DOM is ready
     if (document.readyState === 'loading') {
