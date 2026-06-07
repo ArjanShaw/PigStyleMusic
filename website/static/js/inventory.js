@@ -31,6 +31,7 @@ let addGenreBtn = null;
 let toggleBuilderBtn = null;
 let locationBuilderSection = null;
 let scanHistoryContainer = null;
+let nextLocationBtn = null;
 
 // Audio context
 let audioContext = null;
@@ -53,15 +54,20 @@ const SUBLOCATION_NAMES = {
     'LT': 'Left Top',
     'RT': 'Right Top',
     'LB': 'Left Bottom',
-    'RB': 'Right Bottom'
+    'RB': 'Right Bottom',
+    'NA': 'N/A'
 };
 
 const SUBLOCATION_ICONS = {
     'LT': '↖️',
     'RT': '↗️',
     'LB': '↙️',
-    'RB': '↘️'
+    'RB': '↘️',
+    'NA': '⚪'
 };
+
+// Sublocation sequence order for bin traversal
+const SUBLOCATION_SEQUENCE = ['LT', 'RT', 'LB', 'RB'];
 
 // ============================================================================
 // Helper Functions
@@ -88,7 +94,8 @@ function buildLocationString() {
         parts.push(mainLocation);
     }
     
-    if (currentSublocation && SUBLOCATION_NAMES[currentSublocation]) {
+    // Only add sublocation if it's NOT "N/A" and has a valid value
+    if (currentSublocation && currentSublocation !== 'NA' && currentSublocation !== '' && SUBLOCATION_NAMES[currentSublocation]) {
         parts.push(`${SUBLOCATION_ICONS[currentSublocation]} ${SUBLOCATION_NAMES[currentSublocation]}`);
     }
     
@@ -286,6 +293,100 @@ function playBeep(frequency = 800, duration = 200, type = 'sine') {
     }
 }
 
+// Error sound - lower frequency, longer duration, harsh waveform
+function playErrorSound() {
+    try {
+        initAudio();
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+        
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 220; // Lower frequency
+        oscillator.type = 'sawtooth'; // Harsher sound for error
+        
+        gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.6);
+        
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.6);
+    } catch (error) {
+        console.warn('Could not play error sound:', error);
+    }
+}
+
+// Warning sound - two quick beeps
+function playWarningSound() {
+    try {
+        initAudio();
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+        
+        // First beep
+        const osc1 = audioContext.createOscillator();
+        const gain1 = audioContext.createGain();
+        osc1.connect(gain1);
+        gain1.connect(audioContext.destination);
+        osc1.frequency.value = 600;
+        osc1.type = 'sine';
+        gain1.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.15);
+        osc1.start();
+        osc1.stop(audioContext.currentTime + 0.15);
+        
+        // Second beep slightly delayed
+        setTimeout(() => {
+            const osc2 = audioContext.createOscillator();
+            const gain2 = audioContext.createGain();
+            osc2.connect(gain2);
+            gain2.connect(audioContext.destination);
+            osc2.frequency.value = 500;
+            osc2.type = 'sine';
+            gain2.gain.setValueAtTime(0.3, audioContext.currentTime + 0.25);
+            gain2.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.4);
+            osc2.start();
+            osc2.stop(audioContext.currentTime + 0.4);
+        }, 200);
+    } catch (error) {
+        console.warn('Could not play warning sound:', error);
+    }
+}
+
+// Success sound - happy ascending notes
+function playSuccessSound() {
+    try {
+        initAudio();
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+        
+        // Ascending notes for success
+        const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+        notes.forEach((freq, i) => {
+            setTimeout(() => {
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+                osc.frequency.value = freq;
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.2);
+                osc.start();
+                osc.stop(audioContext.currentTime + 0.2);
+            }, i * 100);
+        });
+    } catch (error) {
+        console.warn('Could not play success sound:', error);
+    }
+}
+
 // ============================================================================
 // Counter Management
 // ============================================================================
@@ -310,6 +411,84 @@ function resetCounter() {
     updateLocationPreview();
     showScanResult(`Counter reset to 1`, 'info');
     if (barcodeInput) barcodeInput.focus();
+}
+
+// ============================================================================
+// Next Location Button - Automated Bin Traversal
+// ============================================================================
+
+function updateNextButtonState() {
+    if (!nextLocationBtn) return;
+    
+    const locationType = mainLocationType ? mainLocationType.value : 'Bin';
+    // Only enable Next button for Bin locations
+    if (locationType === 'Bin') {
+        nextLocationBtn.disabled = false;
+        nextLocationBtn.title = 'Move to next bin position (LT → RT → LB → RB → next bin)';
+    } else {
+        nextLocationBtn.disabled = true;
+        nextLocationBtn.title = 'Next button only available for Bin locations';
+    }
+}
+
+function moveToNextLocation() {
+    const locationType = mainLocationType ? mainLocationType.value : 'Bin';
+    
+    // Only proceed if we're using Bin location type
+    if (locationType !== 'Bin') {
+        playWarningSound();
+        showScanResult('Next button only works for Bin locations', 'warning');
+        return;
+    }
+    
+    const currentSubloc = sublocationSelect ? sublocationSelect.value : '';
+    
+    // Find current position in sequence
+    const currentIndex = SUBLOCATION_SEQUENCE.indexOf(currentSubloc);
+    
+    // If current sublocation is N/A or empty, start at LT
+    if (currentSubloc === 'NA' || currentSubloc === '' || currentIndex === -1) {
+        // Set to first sublocation (Left Top)
+        if (sublocationSelect) {
+            sublocationSelect.value = 'LT';
+            onSublocationChange();
+        }
+        playBeep(600, 100, 'sine');
+        showScanResult('📍 Moved to Left Top position', 'info');
+        return;
+    }
+    
+    // Move to next sublocation in sequence
+    if (currentIndex < SUBLOCATION_SEQUENCE.length - 1) {
+        // Next sublocation in same bin
+        const nextSubloc = SUBLOCATION_SEQUENCE[currentIndex + 1];
+        if (sublocationSelect) {
+            sublocationSelect.value = nextSubloc;
+            onSublocationChange();
+        }
+        playBeep(600, 100, 'sine');
+        showScanResult(`📍 Moved to ${SUBLOCATION_NAMES[nextSubloc]}`, 'info');
+    } else {
+        // At last sublocation (RB), increment bin counter and go back to LT
+        const currentBinNumber = parseInt(mainLocationNumber ? mainLocationNumber.value : '1') || 1;
+        const nextBinNumber = currentBinNumber + 1;
+        
+        if (mainLocationNumber) {
+            mainLocationNumber.value = String(nextBinNumber);
+            onMainLocationNumberChange();
+        }
+        
+        if (sublocationSelect) {
+            sublocationSelect.value = 'LT';
+            onSublocationChange();
+        }
+        
+        playSuccessSound();
+        showScanResult(`📍 Moved to Bin ${nextBinNumber} | Left Top (new bin!)`, 'success');
+    }
+    
+    // Reset counter when location changes
+    resetCounter();
 }
 
 // ============================================================================
@@ -370,7 +549,7 @@ function renderGenreSelect() {
     if (!genreSelect) return;
     
     const currentValue = genreSelect.value;
-    genreSelect.innerHTML = '<option value="">-- No Genre --</option>';
+    genreSelect.innerHTML = '<option value="">-- Select a Genre (Required) --</option>';
     
     availableGenres.forEach(genre => {
         const option = document.createElement('option');
@@ -381,17 +560,76 @@ function renderGenreSelect() {
         }
         genreSelect.appendChild(option);
     });
+    
+    // Update currentGenre based on selected value
+    if (genreSelect.value && genreSelect.value !== '') {
+        currentGenre = genreSelect.value;
+    } else {
+        currentGenre = '';
+    }
+}
+
+function validateSelectionsForScan() {
+    const missingFields = [];
+    
+    // Check genre - required
+    const genre = genreSelect ? genreSelect.value : '';
+    if (!genre || genre === '') {
+        missingFields.push('Genre');
+        if (genreSelect) {
+            genreSelect.style.border = '2px solid #dc3545';
+            genreSelect.style.backgroundColor = '#fff8f8';
+            setTimeout(() => {
+                if (genreSelect) {
+                    genreSelect.style.border = '';
+                    genreSelect.style.backgroundColor = '';
+                }
+            }, 2000);
+        }
+    }
+    
+    // Check sublocation - must be selected (even if N/A)
+    const sublocation = sublocationSelect ? sublocationSelect.value : '';
+    if (!sublocation || sublocation === '') {
+        missingFields.push('Sublocation');
+        if (sublocationSelect) {
+            sublocationSelect.style.border = '2px solid #dc3545';
+            sublocationSelect.style.backgroundColor = '#fff8f8';
+            setTimeout(() => {
+                if (sublocationSelect) {
+                    sublocationSelect.style.border = '';
+                    sublocationSelect.style.backgroundColor = '';
+                }
+            }, 2000);
+        }
+    }
+    
+    return {
+        isValid: missingFields.length === 0,
+        missingFields: missingFields
+    };
 }
 
 function onGenreChange() {
     currentGenre = genreSelect ? genreSelect.value : '';
     console.log(`🎵 Genre changed to: "${currentGenre}"`);
+    
+    // Reset counter when genre changes
+    resetCounter();
+    
+    // Remove red border/background if it was there
+    if (genreSelect) {
+        genreSelect.style.border = '';
+        genreSelect.style.backgroundColor = '';
+    }
+    
     updateLocationPreview();
 }
 
 async function addCustomGenre() {
     const genreName = addGenreInput ? addGenreInput.value.trim() : '';
     if (!genreName) {
+        playWarningSound();
         showScanResult('Please enter a genre name', 'warning');
         return;
     }
@@ -399,6 +637,7 @@ async function addCustomGenre() {
     const formattedName = genreName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
     
     if (availableGenres.includes(formattedName)) {
+        playWarningSound();
         showScanResult(`Genre "${formattedName}" already exists`, 'warning');
         if (genreSelect) {
             genreSelect.value = formattedName;
@@ -420,6 +659,7 @@ async function addCustomGenre() {
     if (addGenreInput) addGenreInput.value = '';
     
     updateLocationPreview();
+    playSuccessSound();
     showScanResult(`✅ Genre "${formattedName}" added`, 'success');
 }
 
@@ -435,19 +675,40 @@ function onMainLocationTypeChange() {
     if (mainLocationNumber) {
         mainLocationNumber.style.display = isCustom ? 'none' : 'block';
     }
+    
+    // Reset counter when location type changes
+    resetCounter();
+    
+    // Update Next button state
+    updateNextButtonState();
+    
     updateLocationPreview();
 }
 
 function onMainLocationNumberChange() {
+    // Reset counter when bin number changes
+    resetCounter();
     updateLocationPreview();
 }
 
 function onCustomLocationChange() {
+    // Reset counter when custom location changes
+    resetCounter();
     updateLocationPreview();
 }
 
 function onSublocationChange() {
     currentSublocation = sublocationSelect ? sublocationSelect.value : '';
+    
+    // Reset counter when sublocation changes
+    resetCounter();
+    
+    // Remove red border/background if it was there
+    if (sublocationSelect) {
+        sublocationSelect.style.border = '';
+        sublocationSelect.style.backgroundColor = '';
+    }
+    
     updateLocationPreview();
 }
 
@@ -455,7 +716,7 @@ function onSublocationChange() {
 // Duplicate Record Modal Functions
 // ============================================================================
 
-function closeDuplicateRecordModal() {
+function closeDuplicateRecordModal(skipFocus = false) {
     if (modalKeyHandler) {
         document.removeEventListener('keydown', modalKeyHandler);
         modalKeyHandler = null;
@@ -469,7 +730,7 @@ function closeDuplicateRecordModal() {
     currentModalRecords = [];
     currentSelectedRecord = null;
     
-    if (barcodeInput) {
+    if (barcodeInput && !skipFocus) {
         barcodeInput.disabled = false;
         barcodeInput.focus();
     }
@@ -846,13 +1107,38 @@ function showDuplicateRecordModal(records, originalBarcode, autoSelectedRecord =
 // ============================================================================
 // Scan Processing
 // ============================================================================
+
 async function processScan(barcode, fromQueue = false) {
     console.log(`Processing scan: ${barcode}, modalActive: ${isModalActive}`);
     
     if (isModalActive) {
-        playBeep(600, 150, 'sine');
+        playWarningSound();
         showScanResult(`⚠️ Multiple records found. Select one, then press ENTER.`, 'warning');
         if (barcodeInput) barcodeInput.value = '';
+        return;
+    }
+    
+    // Validate that genre is selected (mandatory)
+    const validation = validateSelectionsForScan();
+    if (!validation.isValid) {
+        playErrorSound();
+        const missingText = validation.missingFields.join(' and ');
+        showScanResult(`❌ Cannot scan: Please select ${missingText} first.`, 'error');
+        if (barcodeInput) barcodeInput.value = '';
+        
+        // Flash the missing fields visually
+        if (validation.missingFields.includes('Genre') && genreSelect) {
+            genreSelect.style.animation = 'shake 0.5s ease';
+            setTimeout(() => {
+                if (genreSelect) genreSelect.style.animation = '';
+            }, 500);
+        }
+        if (validation.missingFields.includes('Sublocation') && sublocationSelect) {
+            sublocationSelect.style.animation = 'shake 0.5s ease';
+            setTimeout(() => {
+                if (sublocationSelect) sublocationSelect.style.animation = '';
+            }, 500);
+        }
         return;
     }
     
@@ -882,7 +1168,7 @@ async function processScan(barcode, fromQueue = false) {
         // API now returns exact matches only for numeric queries (ID or exact barcode)
         // No need for additional filtering
         if (records.length === 0) {
-            playBeep(400, 500, 'sawtooth');
+            playErrorSound();
             throw new Error(`No record found with barcode or ID: ${barcode}`);
         }
         
@@ -924,7 +1210,7 @@ async function processScan(barcode, fromQueue = false) {
         
     } catch (error) {
         console.error('Scan error:', error);
-        playBeep(400, 500, 'sawtooth');
+        playErrorSound();
         showScanResult(`❌ Error: ${error.message}`, 'error');
         
         setTimeout(() => {
@@ -933,12 +1219,11 @@ async function processScan(barcode, fromQueue = false) {
     }
 }
 
-
 async function processSelectedRecord(record, barcode) {
     console.log(`Processing record #${record.id}: "${record.artist} - ${record.title}"`);
     
     if (record.status_id === 3) {
-        playBeep(400, 500, 'sawtooth');
+        playErrorSound();
         showScanResult(`⚠️ Record #${record.id} is already SOLD. Cannot update location.`, 'warning');
         setTimeout(() => {
             if (barcodeInput) barcodeInput.focus();
@@ -982,8 +1267,7 @@ async function processSelectedRecord(record, barcode) {
     addToRecentScans(record, locationString);
     
     incrementCounter();
-    playBeep(880, 100, 'sine');
-    setTimeout(() => playBeep(440, 100, 'sine'), 100);
+    playSuccessSound();
     
     const artist = record.artist || 'Unknown';
     const title = record.title || 'Unknown';
@@ -1055,6 +1339,7 @@ function initInventoryTab() {
     locationBuilderSection = document.getElementById('location-builder-section');
     scanHistoryContainer = document.getElementById('scan-history-container');
     modalElement = document.getElementById('duplicate-record-modal');
+    nextLocationBtn = document.getElementById('next-location-btn');
     
     if (!barcodeInput) {
         console.error('Inventory tab elements not found');
@@ -1066,6 +1351,12 @@ function initInventoryTab() {
     currentCounter = 1;
     if (counterDisplay) counterDisplay.textContent = currentCounter;
     
+    // Set default sublocation to empty (forcing selection)
+    if (sublocationSelect) {
+        sublocationSelect.value = '';
+        currentSublocation = '';
+    }
+    
     if (genreSelect) genreSelect.addEventListener('change', onGenreChange);
     if (mainLocationType) mainLocationType.addEventListener('change', onMainLocationTypeChange);
     if (mainLocationNumber) mainLocationNumber.addEventListener('input', onMainLocationNumberChange);
@@ -1076,6 +1367,7 @@ function initInventoryTab() {
         if (e.key === 'Enter') addCustomGenre();
     });
     if (toggleBuilderBtn) toggleBuilderBtn.addEventListener('click', toggleLocationBuilder);
+    if (nextLocationBtn) nextLocationBtn.addEventListener('click', moveToNextLocation);
     
     if (barcodeInput) {
         barcodeInput.addEventListener('keypress', onBarcodeEnter);
@@ -1083,6 +1375,7 @@ function initInventoryTab() {
     
     onMainLocationTypeChange();
     updateLocationPreview();
+    updateNextButtonState();
     
     // Reset state
     isModalActive = false;
@@ -1104,7 +1397,21 @@ function initInventoryTab() {
     
     barcodeInput.focus();
     
-    console.log('✅ Inventory Tab initialized with collapsible builder and scan history');
+    // Add CSS animation for shake effect
+    if (!document.getElementById('inventory-shake-style')) {
+        const style = document.createElement('style');
+        style.id = 'inventory-shake-style';
+        style.textContent = `
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+                20%, 40%, 60%, 80% { transform: translateX(2px); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    console.log('✅ Inventory Tab initialized with mandatory genre, forced sublocation selection, and error sounds');
 }
 
 function onBarcodeEnter(event) {
@@ -1113,6 +1420,9 @@ function onBarcodeEnter(event) {
         const barcode = barcodeInput.value.trim();
         if (barcode) {
             processScan(barcode);
+        } else {
+            playWarningSound();
+            showScanResult('Please enter or scan a barcode', 'warning');
         }
     }
 }
@@ -1125,6 +1435,7 @@ window.initInventoryTab = initInventoryTab;
 window.resetCounter = resetCounter;
 window.closeDuplicateRecordModal = closeDuplicateRecordModal;
 window.toggleLocationBuilder = toggleLocationBuilder;
+window.moveToNextLocation = moveToNextLocation;
 
 // ============================================================================
 // Tab Activation
@@ -1153,4 +1464,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ inventory.js loaded with collapsible builder and scan history');
+console.log('✅ inventory.js loaded with collapsible builder, scan history, forced selections, and error sounds');
