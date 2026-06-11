@@ -2591,7 +2591,7 @@
                 </div>
             </div>
         </div>
-
+ 
         <!-- Inventory Tab -->
 <div id="inventory-tab" class="tab-content">
     <h2><i class="fas fa-boxes"></i> Inventory Management</h2>
@@ -2756,30 +2756,26 @@
         </div>
     </div>
 </div>
-           
-
-
     <!-- Discogs Tab - Location-Based Bulk Posting -->
-    <div id="discogs-tab" class="tab-content">
-        <h2><i class="fab fa-discogs"></i> Discogs Management - Location Based</h2>
-        
-        <!-- COLLAPSIBLE MARKUP RULES TABLE -->
-        <div style="margin-bottom: 20px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
-            <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 12px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupRules()">
-                <span><i class="fas fa-chart-line"></i> Markup Rules (based on record age)</span>
-                <span><i class="fas fa-chevron-down" id="markup-rules-toggle-icon" style="transition: transform 0.3s;"></i></span>
-            </div>
-            <div id="markup-rules-content" style="display: none; padding: 20px; background: #f8f9fa;">
-                <div class="records-table-container">
-                    <table class="records-table">
-                        <thead>
-                            <tr>
-                                <th>Days Old</th>
-                                <th>Markup %</th>
-                                <th>Description</th>
-                                <th>Actions</th>
-                                    
-                                </thead>
+<div id="discogs-tab" class="tab-content">
+    <h2><i class="fab fa-discogs"></i> Discogs Management - Location Based</h2>
+    
+    <!-- COLLAPSIBLE MARKUP RULES TABLE -->
+    <div style="margin-bottom: 20px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 12px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupRules()">
+            <span><i class="fas fa-chart-line"></i> Markup Rules (based on record age)</span>
+            <span><i class="fas fa-chevron-down" id="markup-rules-toggle-icon" style="transition: transform 0.3s;"></i></span>
+        </div>
+        <div id="markup-rules-content" style="display: none; padding: 20px; background: #f8f9fa;">
+            <div class="records-table-container">
+                <table class="records-table">
+                    <thead>
+                        <tr>
+                            <th>Days Old</th>
+                            <th>Markup %</th>
+                            <th>Description</th>
+                            <th>Actions</th>
+                        </thead>
                         <tbody id="markup-rules-body">
                             <tr><td colspan="4" style="text-align: center; padding: 40px;">Loading rules...</td></tr>
                         </tbody>
@@ -2790,6 +2786,28 @@
                     <input type="number" id="new-rule-percent" placeholder="%" step="1" style="width: 80px; padding: 5px;">
                     <input type="text" id="new-rule-desc" placeholder="Description" style="width: 150px; padding: 5px;">
                     <button class="btn btn-success btn-sm" onclick="addMarkupRule()">Add Rule</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- LAST SEEN DATE FILTER -->
+        <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); border-radius: 8px; color: white;">
+            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <div>
+                    <i class="fas fa-calendar-alt" style="font-size: 20px;"></i>
+                    <strong style="margin-left: 8px;">Last Seen Filter:</strong>
+                </div>
+                <div>
+                    <label style="font-weight: normal;">Only post records last seen on or after:</label>
+                    <input type="date" id="last-seen-cutoff-date" class="filter-select" style="padding: 8px 12px; font-size: 14px; border-radius: 4px; border: none; margin-left: 10px; color: #333;">
+                </div>
+                <div>
+                    <button id="apply-last-seen-filter" class="btn btn-light btn-sm" style="background: white; color: #17a2b8;">
+                        <i class="fas fa-sync-alt"></i> Apply Filter
+                    </button>
+                </div>
+                <div style="font-size: 12px; opacity: 0.9;">
+                    <i class="fas fa-info-circle"></i> Records with last_seen = NULL or older than selected date will be skipped when posting
                 </div>
             </div>
         </div>
@@ -2855,12 +2873,12 @@
                         <th>Store Price</th>
                         <th>Discogs Price</th>
                         <th>Markup %</th>
+                        <th>Last Seen</th>
                         <th>Location</th>
                         <th>Post</th>
-                    </tr>
-                </thead>
+                    </thead>
                 <tbody id="combined-inventory-body">
-                    <tr><td colspan="12" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>
+                    <tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>
                 </tbody>
             </table>
         </div>
@@ -2869,17 +2887,19 @@
         <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
             <h4><i class="fas fa-info-circle"></i> How it works:</h4>
             <ul style="margin: 10px 0 0 20px;">
+                <li><strong>Last Seen Filter:</strong> Set a cutoff date - only records seen on or after that date will be posted</li>
                 <li><strong>Select a Location:</strong> Choose a location from the dropdown</li>
                 <li><strong>Review Records:</strong> See all records currently assigned to that location</li>
                 <li><strong>Discogs Price:</strong> Calculated using the markup rules based on record age</li>
                 <li><strong>Post to Discogs:</strong> Click "Post to Discogs" to list all eligible records</li>
-                <li><strong>Repost Entire Store:</strong> Click the yellow button to post ALL active records from every location</li>
+                <li><strong>Repost Entire Store:</strong> Click the yellow button to post ALL active store records (respects last_seen filter)</li>
                 <li><strong>Single Post:</strong> Use the "Post" button next to individual records to test a single listing</li>
             </ul>
             <p style="margin-top: 10px;"><strong>Formula:</strong> Discogs Price = Store Price × (1 + Markup% / 100)</p>
-            <p><strong>💡 Tip:</strong> Only records with status "Active" can be posted.</p>
+            <p><strong>💡 Tip:</strong> Only records with status "Active" and last_seen on/after cutoff date can be posted.</p>
         </div>
     </div>
+</div>
 
         <!-- Users Tab -->
         <div id="users-tab" class="tab-content">
