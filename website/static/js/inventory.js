@@ -11,6 +11,7 @@ let currentMainLocation = 'Bin';
 let currentMainNumber = '1';
 let currentCustomLocation = '';
 let currentSublocation = '';
+let currentCustomSublocation = ''; // NEW: Custom sublocation text
 let currentCounter = 1;
 
 // Available genres
@@ -23,6 +24,7 @@ let mainLocationType = null;
 let mainLocationNumber = null;
 let customLocationInput = null;
 let sublocationSelect = null;
+let customSublocationInput = null; // NEW: Custom sublocation input
 let counterDisplay = null;
 let scanResultDiv = null;
 let locationPreview = null;
@@ -55,7 +57,8 @@ const SUBLOCATION_NAMES = {
     'RT': 'Right Top',
     'LB': 'Left Bottom',
     'RB': 'Right Bottom',
-    'NA': 'N/A'
+    'NA': 'N/A',
+    'CUSTOM': 'Custom'
 };
 
 const SUBLOCATION_ICONS = {
@@ -63,7 +66,8 @@ const SUBLOCATION_ICONS = {
     'RT': '↗️',
     'LB': '↙️',
     'RB': '↘️',
-    'NA': '⚪'
+    'NA': '⚪',
+    'CUSTOM': '✏️'
 };
 
 // Sublocation sequence order for bin traversal
@@ -82,6 +86,18 @@ function getMainLocationString() {
     return `${locationType} ${number}`;
 }
 
+function getSublocationString() {
+    // Check if custom sublocation is being used
+    if (currentSublocation === 'CUSTOM') {
+        return currentCustomSublocation || '';
+    }
+    // Use standard sublocation with icon and name
+    if (currentSublocation && currentSublocation !== 'NA' && currentSublocation !== '' && SUBLOCATION_NAMES[currentSublocation]) {
+        return `${SUBLOCATION_ICONS[currentSublocation]} ${SUBLOCATION_NAMES[currentSublocation]}`;
+    }
+    return '';
+}
+
 function buildLocationString() {
     const parts = [];
     
@@ -94,9 +110,10 @@ function buildLocationString() {
         parts.push(mainLocation);
     }
     
-    // Only add sublocation if it's NOT "N/A" and has a valid value
-    if (currentSublocation && currentSublocation !== 'NA' && currentSublocation !== '' && SUBLOCATION_NAMES[currentSublocation]) {
-        parts.push(`${SUBLOCATION_ICONS[currentSublocation]} ${SUBLOCATION_NAMES[currentSublocation]}`);
+    // Add sublocation string (could be custom or standard)
+    const sublocationStr = getSublocationString();
+    if (sublocationStr) {
+        parts.push(sublocationStr);
     }
     
     parts.push(String(currentCounter));
@@ -421,23 +438,36 @@ function updateNextButtonState() {
     if (!nextLocationBtn) return;
     
     const locationType = mainLocationType ? mainLocationType.value : 'Bin';
-    // Only enable Next button for Bin locations
-    if (locationType === 'Bin') {
+    const sublocation = sublocationSelect ? sublocationSelect.value : '';
+    
+    // Only enable Next button for Bin locations and standard sublocations (not custom)
+    if (locationType === 'Bin' && sublocation !== 'CUSTOM') {
         nextLocationBtn.disabled = false;
         nextLocationBtn.title = 'Move to next bin position (LT → RT → LB → RB → next bin)';
     } else {
         nextLocationBtn.disabled = true;
-        nextLocationBtn.title = 'Next button only available for Bin locations';
+        if (sublocation === 'CUSTOM') {
+            nextLocationBtn.title = 'Next button not available for custom sublocation';
+        } else {
+            nextLocationBtn.title = 'Next button only available for Bin locations';
+        }
     }
 }
 
 function moveToNextLocation() {
     const locationType = mainLocationType ? mainLocationType.value : 'Bin';
+    const sublocation = sublocationSelect ? sublocationSelect.value : '';
     
-    // Only proceed if we're using Bin location type
+    // Only proceed if we're using Bin location type and standard sublocation
     if (locationType !== 'Bin') {
         playWarningSound();
         showScanResult('Next button only works for Bin locations', 'warning');
+        return;
+    }
+    
+    if (sublocation === 'CUSTOM') {
+        playWarningSound();
+        showScanResult('Next button not available for custom sublocation', 'warning');
         return;
     }
     
@@ -489,6 +519,52 @@ function moveToNextLocation() {
     
     // Reset counter when location changes
     resetCounter();
+}
+
+// ============================================================================
+// Custom Sublocation Handlers
+// ============================================================================
+
+function onSublocationTypeChange() {
+    const selectedValue = sublocationSelect ? sublocationSelect.value : '';
+    
+    if (selectedValue === 'CUSTOM') {
+        // Show custom input field
+        if (customSublocationInput) {
+            customSublocationInput.style.display = 'block';
+            customSublocationInput.focus();
+        }
+        currentSublocation = 'CUSTOM';
+        currentCustomSublocation = customSublocationInput ? customSublocationInput.value.trim() : '';
+    } else {
+        // Hide custom input field
+        if (customSublocationInput) {
+            customSublocationInput.style.display = 'none';
+        }
+        currentSublocation = selectedValue;
+        currentCustomSublocation = '';
+    }
+    
+    // Reset counter when sublocation changes
+    resetCounter();
+    
+    // Remove red border/background if it was there
+    if (sublocationSelect) {
+        sublocationSelect.style.border = '';
+        sublocationSelect.style.backgroundColor = '';
+    }
+    
+    // Update Next button state
+    updateNextButtonState();
+    
+    updateLocationPreview();
+}
+
+function onCustomSublocationChange() {
+    if (customSublocationInput) {
+        currentCustomSublocation = customSublocationInput.value.trim();
+    }
+    updateLocationPreview();
 }
 
 // ============================================================================
@@ -588,7 +664,7 @@ function validateSelectionsForScan() {
         }
     }
     
-    // Check sublocation - must be selected (even if N/A)
+    // Check sublocation - must be selected (even if N/A or Custom)
     const sublocation = sublocationSelect ? sublocationSelect.value : '';
     if (!sublocation || sublocation === '') {
         missingFields.push('Sublocation');
@@ -601,6 +677,24 @@ function validateSelectionsForScan() {
                     sublocationSelect.style.backgroundColor = '';
                 }
             }, 2000);
+        }
+    }
+    
+    // If Custom is selected, check that custom text is not empty
+    if (sublocation === 'CUSTOM') {
+        const customText = customSublocationInput ? customSublocationInput.value.trim() : '';
+        if (!customText) {
+            missingFields.push('Custom Sublocation Text');
+            if (customSublocationInput) {
+                customSublocationInput.style.border = '2px solid #dc3545';
+                customSublocationInput.style.backgroundColor = '#fff8f8';
+                setTimeout(() => {
+                    if (customSublocationInput) {
+                        customSublocationInput.style.border = '';
+                        customSublocationInput.style.backgroundColor = '';
+                    }
+                }, 2000);
+            }
         }
     }
     
@@ -698,18 +792,7 @@ function onCustomLocationChange() {
 }
 
 function onSublocationChange() {
-    currentSublocation = sublocationSelect ? sublocationSelect.value : '';
-    
-    // Reset counter when sublocation changes
-    resetCounter();
-    
-    // Remove red border/background if it was there
-    if (sublocationSelect) {
-        sublocationSelect.style.border = '';
-        sublocationSelect.style.backgroundColor = '';
-    }
-    
-    updateLocationPreview();
+    onSublocationTypeChange();
 }
 
 // ============================================================================
@@ -1139,6 +1222,12 @@ async function processScan(barcode, fromQueue = false) {
                 if (sublocationSelect) sublocationSelect.style.animation = '';
             }, 500);
         }
+        if (validation.missingFields.includes('Custom Sublocation Text') && customSublocationInput) {
+            customSublocationInput.style.animation = 'shake 0.5s ease';
+            setTimeout(() => {
+                if (customSublocationInput) customSublocationInput.style.animation = '';
+            }, 500);
+        }
         return;
     }
     
@@ -1165,14 +1254,12 @@ async function processScan(barcode, fromQueue = false) {
         
         const records = searchData.records || [];
         
-        // API now returns exact matches only for numeric queries (ID or exact barcode)
-        // No need for additional filtering
         if (records.length === 0) {
             playErrorSound();
             throw new Error(`No record found with barcode or ID: ${barcode}`);
         }
         
-        // Handle multiple records (should be rare now, but keep for safety)
+        // Handle multiple records
         if (records.length > 1) {
             console.log(`Found ${records.length} records, checking for duplicates...`);
             
@@ -1330,6 +1417,7 @@ function initInventoryTab() {
     mainLocationNumber = document.getElementById('main-location-number');
     customLocationInput = document.getElementById('custom-location-input');
     sublocationSelect = document.getElementById('sublocation');
+    customSublocationInput = document.getElementById('custom-sublocation-input');
     counterDisplay = document.getElementById('counter-display');
     scanResultDiv = document.getElementById('scan-result');
     locationPreview = document.getElementById('location-preview');
@@ -1355,6 +1443,12 @@ function initInventoryTab() {
     if (sublocationSelect) {
         sublocationSelect.value = '';
         currentSublocation = '';
+    }
+    
+    // Set up custom sublocation input (hidden by default)
+    if (customSublocationInput) {
+        customSublocationInput.style.display = 'none';
+        customSublocationInput.addEventListener('input', onCustomSublocationChange);
     }
     
     if (genreSelect) genreSelect.addEventListener('change', onGenreChange);
@@ -1411,7 +1505,7 @@ function initInventoryTab() {
         document.head.appendChild(style);
     }
     
-    console.log('✅ Inventory Tab initialized with mandatory genre, forced sublocation selection, and error sounds');
+    console.log('✅ Inventory Tab initialized with mandatory genre, forced sublocation selection (including custom), and error sounds');
 }
 
 function onBarcodeEnter(event) {
@@ -1464,4 +1558,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ inventory.js loaded with collapsible builder, scan history, forced selections, and error sounds');
+console.log('✅ inventory.js loaded with collapsible builder, scan history, forced selections, custom sublocation support, and error sounds');

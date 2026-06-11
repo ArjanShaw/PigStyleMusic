@@ -2592,166 +2592,171 @@
             </div>
         </div>
 
-
-                <!-- Inventory Tab -->
-        <div id="inventory-tab" class="tab-content">
-            <h2><i class="fas fa-boxes"></i> Inventory Management</h2>
-            
-            <!-- Barcode Scanner Section - ALWAYS VISIBLE (outside collapsible) -->
-            <div style="margin-bottom: 25px;">
-                <div class="inventory-scanner-input" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 12px; padding: 20px; color: white;">
-                    <h3 style="margin-top: 0; margin-bottom: 15px; color: white;"><i class="fas fa-qrcode"></i> Barcode Scanner</h3>
-                    <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; font-weight: bold;">
-                        <i class="fas fa-barcode"></i> Scan Barcode
-                    </label>
-                    <input type="text" 
-                        id="inventory-barcode-input" 
-                        class="search-input" 
-                        placeholder="Scan barcode here..."
-                        style="width: 100%; font-size: 18px; padding: 12px 15px; color: #333; background: white; border: 2px solid #ddd; border-radius: 8px;">
-                    <div id="scan-result" class="scan-result" style="display: none; margin-top: 15px; background: rgba(255,255,255,0.9); border-radius: 8px; padding: 10px;"></div>
-                </div>
-            </div>
-            
-            <!-- Action Buttons Row -->
-            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <button id="toggle-builder-btn" class="btn btn-secondary" style="background: #6c757d; color: white;">
-                    <i class="fas fa-chevron-up"></i> <span>Hide Location Builder</span>
-                </button>
-                <button id="next-location-btn" class="btn btn-info" style="background: #17a2b8; color: white;">
-                    <i class="fas fa-step-forward"></i> Next Bin Position
-                </button>
-                <span style="font-size: 12px; color: #666;">
-                    <i class="fas fa-info-circle"></i> Next button: LT → RT → LB → RB → next bin
-                </span>
-            </div>
-            
-            <!-- Collapsible Location Builder Section -->
-            <div id="location-builder-section" class="inventory-scanner-section" style="transition: all 0.3s ease;">
-                <h3><i class="fas fa-map-marker-alt"></i> Location Builder</h3>
-                
-                <!-- Location Builder Table -->
-                <table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden;">
-                    <!-- Row 1: Genre (MANDATORY) -->
-                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
-                        <td style="padding: 15px; width: 150px; font-weight: bold; vertical-align: middle;">
-                            <i class="fas fa-music"></i> Genre <span style="color: #ffc107;">*</span>
-                        </td>
-                        <td style="padding: 15px;">
-                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                                <select id="genre-select" style="flex: 2; min-width: 200px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
-                                    <option value="">-- Select a Genre (Required) --</option>
-                                </select>
-                                <input type="text" id="add-genre-input" placeholder="New genre name..." style="flex: 1; min-width: 150px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: none;">
-                                <button type="button" id="add-genre-btn" class="btn btn-small btn-info" style="white-space: nowrap;">
-                                    <i class="fas fa-plus"></i> Add Genre
-                                </button>
-                            </div>
-                            <div style="font-size: 11px; opacity: 0.7; margin-top: 5px;">
-                                <i class="fas fa-info-circle"></i> <strong style="color: #ffc107;">Required</strong> - Select a genre before scanning
-                            </div>
-                        </td>
-                    </tr>
-                    
-                    <!-- Row 2: Main Location -->
-                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
-                        <td style="padding: 15px; width: 150px; font-weight: bold; vertical-align: middle;">
-                            <i class="fas fa-location-dot"></i> Main Location
-                        </td>
-                        <td style="padding: 15px;">
-                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                                <select id="main-location-type" style="background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: none; font-size: 14px;">
-                                    <option value="Bin">📦 Bin</option>
-                                    <option value="Display">🖼️ Display</option>
-                                    <option value="Wall">🧱 Wall</option>
-                                    <option value="Custom">✏️ Custom</option>
-                                </select>
-                                <input type="text" id="custom-location-input" placeholder="Custom location (e.g., Shelf A, Rack 3)" style="flex: 2; min-width: 200px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: none; display: none;">
-                                <input type="text" id="main-location-number" placeholder="Number/Identifier (e.g., 2, A, 3)" style="flex: 1; min-width: 150px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: none;" value="1">
-                            </div>
-                            <div style="font-size: 11px; opacity: 0.7; margin-top: 5px;">
-                                <i class="fas fa-info-circle"></i> Select location type and enter the identifier (e.g., "Bin 2", "Display A", "Wall 3")
-                            </div>
-                        </td>
-                    </tr>
-                    
-                    <!-- Row 3: Sublocation (Position in Bin) - FORCED SELECTION -->
-                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
-                        <td style="padding: 15px; width: 150px; font-weight: bold; vertical-align: middle;">
-                            <i class="fas fa-arrows-alt"></i> Sublocation <span style="color: #ffc107;">*</span>
-                        </td>
-                        <td style="padding: 15px;">
-                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                                <select id="sublocation" style="background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px; min-width: 220px;">
-                                    <option value="" disabled selected>-- Select Sublocation (Required) --</option>
-                                    <option value="NA">⚪ N/A (No sublocation)</option>
-                                    <option value="LT">↖️ Left Top</option>
-                                    <option value="RT">↗️ Right Top</option>
-                                    <option value="LB">↙️ Left Bottom</option>
-                                    <option value="RB">↘️ Right Bottom</option>
-                                </select>
-                            </div>
-                            <div style="font-size: 11px; opacity: 0.7; margin-top: 5px;">
-                                <i class="fas fa-info-circle"></i> <strong style="color: #ffc107;">Required</strong> - Choose N/A or a specific position
-                            </div>
-                        </td>
-                    </tr>
-                    
-                    <!-- Row 4: Counter -->
-                    <tr>
-                        <td style="padding: 15px; width: 150px; font-weight: bold; vertical-align: middle;">
-                            <i class="fas fa-hashtag"></i> Counter
-                        </td>
-                        <td style="padding: 15px;">
-                            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                                <div style="font-size: 28px; font-weight: bold; background: rgba(0,0,0,0.3); padding: 8px 20px; border-radius: 8px; font-family: monospace;" id="counter-display">1</div>
-                                <button class="btn btn-light" onclick="resetCounter()" style="background: white; color: #28a745;">
-                                    <i class="fas fa-sync-alt"></i> Reset Counter
-                                </button>
-                            </div>
-                            <div style="font-size: 11px; opacity: 0.7; margin-top: 5px;">
-                                <i class="fas fa-info-circle"></i> Auto-increments after each successful scan. Resets when location changes.
-                            </div>
-                        </td>
-                    </tr>
-                </table>
-                
-                <!-- Location Preview Card -->
-                <div style="margin-top: 25px; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 20px; text-align: center;">
-                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px;">
-                        <i class="fas fa-eye"></i> Next Scan Will Use This Location
+        <!-- Inventory Tab -->
+<div id="inventory-tab" class="tab-content">
+    <h2><i class="fas fa-boxes"></i> Inventory Management</h2>
+    
+    <!-- Barcode Scanner Section - ALWAYS VISIBLE (outside collapsible) -->
+    <div style="margin-bottom: 25px;">
+        <div class="inventory-scanner-input" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 12px; padding: 20px; color: white;">
+            <h3 style="margin-top: 0; margin-bottom: 15px; color: white;"><i class="fas fa-qrcode"></i> Barcode Scanner</h3>
+            <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; font-weight: bold;">
+                <i class="fas fa-barcode"></i> Scan Barcode
+            </label>
+            <input type="text" 
+                id="inventory-barcode-input" 
+                class="search-input" 
+                placeholder="Scan barcode here..."
+                style="width: 100%; font-size: 18px; padding: 12px 15px; color: #333; background: white; border: 2px solid #ddd; border-radius: 8px;">
+            <div id="scan-result" class="scan-result" style="display: none; margin-top: 15px; background: rgba(255,255,255,0.9); border-radius: 8px; padding: 10px;"></div>
+        </div>
+    </div>
+    
+    <!-- Action Buttons Row -->
+    <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <button id="toggle-builder-btn" class="btn btn-secondary" style="background: #6c757d; color: white;">
+            <i class="fas fa-chevron-up"></i> <span>Hide Location Builder</span>
+        </button>
+        <button id="next-location-btn" class="btn btn-info" style="background: #17a2b8; color: white;">
+            <i class="fas fa-step-forward"></i> Next Bin Position
+        </button>
+        <span style="font-size: 12px; color: #666;">
+            <i class="fas fa-info-circle"></i> Next button: LT → RT → LB → RB → next bin
+        </span>
+    </div>
+    
+    <!-- Collapsible Location Builder Section -->
+    <div id="location-builder-section" class="inventory-scanner-section" style="transition: all 0.3s ease;">
+        <h3><i class="fas fa-map-marker-alt"></i> Location Builder</h3>
+        
+        <!-- Location Builder Table -->
+        <table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden;">
+            <!-- Row 1: Genre (MANDATORY) -->
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                <td style="padding: 15px; width: 150px; font-weight: bold; vertical-align: middle;">
+                    <i class="fas fa-music"></i> Genre <span style="color: #ffc107;">*</span>
+                </td>
+                <td style="padding: 15px;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <select id="genre-select" style="flex: 2; min-width: 200px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
+                            <option value="">-- Select a Genre (Required) --</option>
+                        </select>
+                        <input type="text" id="add-genre-input" placeholder="New genre name..." style="flex: 1; min-width: 150px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: none;">
+                        <button type="button" id="add-genre-btn" class="btn btn-small btn-info" style="white-space: nowrap;">
+                            <i class="fas fa-plus"></i> Add Genre
+                        </button>
                     </div>
-                    <div id="location-preview" style="font-size: 20px; font-weight: bold; font-family: monospace; word-break: break-all; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
-                        -- Select genre and sublocation --
+                    <div style="font-size: 11px; opacity: 0.7; margin-top: 5px;">
+                        <i class="fas fa-info-circle"></i> <strong style="color: #ffc107;">Required</strong> - Select a genre before scanning
                     </div>
-                </div>
-                
-                <!-- Instructions -->
-                <div style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 8px;">
-                    <h4><i class="fas fa-info-circle"></i> How it works:</h4>
-                    <ul style="margin: 10px 0 0 20px; font-size: 0.85rem;">
-                        <li><strong>Genre (Required):</strong> Select or add a genre before scanning. Counter resets when genre changes.</li>
-                        <li><strong>Sublocation (Required):</strong> Choose N/A or a specific position (Left/Right Top/Bottom).</li>
-                        <li><strong>Main Location:</strong> Choose Bin, Display, Wall, or Custom + enter identifier</li>
-                        <li><strong>Next Button:</strong> For Bin locations, cycles through positions: LT → RT → LB → RB → next bin number</li>
-                        <li><strong>Counter:</strong> Auto-increments after each scan. Resets when location or sublocation changes</li>
-                        <li><strong>Error Sound:</strong> You'll hear an error sound if you try to scan without selecting Genre or Sublocation</li>
-                        <li>The location preview shows exactly how the location will appear on the record</li>
-                    </ul>
-                </div>
-            </div>
+                </td>
+            </tr>
             
-            <!-- Recent Scan History Section -->
-            <div style="margin-top: 25px;">
-                <h3><i class="fas fa-history"></i> Recent Scans <span style="font-size: 12px; color: #666;">(last 10 scans)</span></h3>
-                <div id="scan-history-container" style="background: white; border-radius: 12px; padding: 15px; border: 1px solid #ddd; max-height: 400px; overflow-y: auto;">
-                    <div style="text-align: center; padding: 30px; color: #999;">
-                        <i class="fas fa-camera" style="font-size: 48px; margin-bottom: 10px; display: block;"></i>
-                        <p>No scans yet. Scan barcodes to see history.</p>
+            <!-- Row 2: Main Location -->
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                <td style="padding: 15px; width: 150px; font-weight: bold; vertical-align: middle;">
+                    <i class="fas fa-location-dot"></i> Main Location
+                </td>
+                <td style="padding: 15px;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <select id="main-location-type" style="background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: none; font-size: 14px;">
+                            <option value="Bin">📦 Bin</option>
+                            <option value="Display">🖼️ Display</option>
+                            <option value="Wall">🧱 Wall</option>
+                            <option value="Custom">✏️ Custom</option>
+                        </select>
+                        <input type="text" id="custom-location-input" placeholder="Custom location (e.g., Shelf A, Rack 3)" style="flex: 2; min-width: 200px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: none; display: none;">
+                        <input type="text" id="main-location-number" placeholder="Number/Identifier (e.g., 2, A, 3)" style="flex: 1; min-width: 150px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: none;" value="1">
                     </div>
-                </div>
+                    <div style="font-size: 11px; opacity: 0.7; margin-top: 5px;">
+                        <i class="fas fa-info-circle"></i> Select location type and enter the identifier (e.g., "Bin 2", "Display A", "Wall 3")
+                    </div>
+                </td>
+            </tr>
+            
+            <!-- Row 3: Sublocation (Position in Bin) - FORCED SELECTION with CUSTOM option -->
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                <td style="padding: 15px; width: 150px; font-weight: bold; vertical-align: middle;">
+                    <i class="fas fa-arrows-alt"></i> Sublocation <span style="color: #ffc107;">*</span>
+                </td>
+                <td style="padding: 15px;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <select id="sublocation" style="background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px; min-width: 220px;">
+                            <option value="" disabled selected>-- Select Sublocation (Required) --</option>
+                            <option value="NA">⚪ N/A (No sublocation)</option>
+                            <option value="LT">↖️ Left Top</option>
+                            <option value="RT">↗️ Right Top</option>
+                            <option value="LB">↙️ Left Bottom</option>
+                            <option value="RB">↘️ Right Bottom</option>
+                            <option value="CUSTOM">✏️ Custom (Enter below)</option>
+                        </select>
+                        <input type="text" 
+                               id="custom-sublocation-input" 
+                               placeholder="Enter custom sublocation (e.g., Shelf 3, Back wall, Display case)"
+                               style="display: none; flex: 2; min-width: 200px; background: white; color: #333; padding: 10px 12px; border-radius: 6px; border: 1px solid #ddd;">
+                    </div>
+                    <div style="font-size: 11px; opacity: 0.7; margin-top: 5px;">
+                        <i class="fas fa-info-circle"></i> <strong style="color: #ffc107;">Required</strong> - Choose N/A, a specific position, or enter a custom sublocation
+                    </div>
+                </td>
+            </tr>
+            
+            <!-- Row 4: Counter -->
+            <tr>
+                <td style="padding: 15px; width: 150px; font-weight: bold; vertical-align: middle;">
+                    <i class="fas fa-hashtag"></i> Counter
+                </td>
+                <td style="padding: 15px;">
+                    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                        <div style="font-size: 28px; font-weight: bold; background: rgba(0,0,0,0.3); padding: 8px 20px; border-radius: 8px; font-family: monospace;" id="counter-display">1</div>
+                        <button class="btn btn-light" onclick="resetCounter()" style="background: white; color: #28a745;">
+                            <i class="fas fa-sync-alt"></i> Reset Counter
+                        </button>
+                    </div>
+                    <div style="font-size: 11px; opacity: 0.7; margin-top: 5px;">
+                        <i class="fas fa-info-circle"></i> Auto-increments after each successful scan. Resets when location changes.
+                    </div>
+                </td>
+            </tr>
+        </table>
+        
+        <!-- Location Preview Card -->
+        <div style="margin-top: 25px; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 20px; text-align: center;">
+            <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px;">
+                <i class="fas fa-eye"></i> Next Scan Will Use This Location
+            </div>
+            <div id="location-preview" style="font-size: 20px; font-weight: bold; font-family: monospace; word-break: break-all; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                -- Select genre and sublocation --
             </div>
         </div>
+        
+        <!-- Instructions -->
+        <div style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+            <h4><i class="fas fa-info-circle"></i> How it works:</h4>
+            <ul style="margin: 10px 0 0 20px; font-size: 0.85rem;">
+                <li><strong>Genre (Required):</strong> Select or add a genre before scanning. Counter resets when genre changes.</li>
+                <li><strong>Sublocation (Required):</strong> Choose N/A, a specific position (Left/Right Top/Bottom), or enter a custom sublocation.</li>
+                <li><strong>Main Location:</strong> Choose Bin, Display, Wall, or Custom + enter identifier</li>
+                <li><strong>Next Button:</strong> For Bin locations, cycles through positions: LT → RT → LB → RB → next bin number (disabled for Custom sublocation)</li>
+                <li><strong>Counter:</strong> Auto-increments after each scan. Resets when location or sublocation changes</li>
+                <li><strong>Error Sound:</strong> You'll hear an error sound if you try to scan without selecting Genre or Sublocation</li>
+                <li>The location preview shows exactly how the location will appear on the record</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Recent Scan History Section -->
+    <div style="margin-top: 25px;">
+        <h3><i class="fas fa-history"></i> Recent Scans <span style="font-size: 12px; color: #666;">(last 10 scans)</span></h3>
+        <div id="scan-history-container" style="background: white; border-radius: 12px; padding: 15px; border: 1px solid #ddd; max-height: 400px; overflow-y: auto;">
+            <div style="text-align: center; padding: 30px; color: #999;">
+                <i class="fas fa-camera" style="font-size: 48px; margin-bottom: 10px; display: block;"></i>
+                <p>No scans yet. Scan barcodes to see history.</p>
+            </div>
+        </div>
+    </div>
+</div>
+           
 
 
     <!-- Discogs Tab - Location-Based Bulk Posting -->
