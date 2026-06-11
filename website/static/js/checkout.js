@@ -90,7 +90,7 @@ window.getStatusText = function(statusId) {
 };
 
 // ============================================================================
-// Custom Sale Price Functions (NEW)
+// Custom Sale Price Functions
 // ============================================================================
 
 window.updateCartWithCustomPrice = function() {
@@ -1133,8 +1133,695 @@ async function updateCartDisplay() {
     if (cartItems) cartItems.innerHTML = cartHtml;
 }
 
- 
- // ============================================================================
+// ============================================================================
+// Square Terminal Payment Functions
+// ============================================================================
+
+function renderTerminalSelectionModal() {
+    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+    const selectionList = document.getElementById('terminal-selection-list');
+    const modal = document.getElementById('terminal-selection-modal');
+    
+    if (!selectionList || !modal) return;
+    
+    let html = '<h4>Select Terminal</h4>';
+    
+    onlineTerminals.forEach(terminal => {
+        let terminalId = terminal.id;
+        if (terminalId && terminalId.startsWith('device:')) {
+            terminalId = terminalId.replace('device:', '');
+        }
+        
+        html += `
+            <div class="terminal-device" onclick="selectTerminalForCheckout('${terminalId}')">
+                <input type="radio" name="terminal" value="${terminalId}" ${selectedTerminalId === terminalId ? 'checked' : ''}>
+                <div class="terminal-device-info">
+                    <div class="terminal-device-name">${escapeHtml(terminal.device_name) || 'Square Terminal'}</div>
+                    <div class="terminal-device-status online">Online</div>
+                </div>
+            </div>
+        `;
+    });
+    
+    selectionList.innerHTML = html;
+    
+    if (selectedTerminalId && onlineTerminals.some(t => {
+        let tid = t.id;
+        if (tid && tid.startsWith('device:')) {
+            tid = tid.replace('device:', '');
+        }
+        return tid === selectedTerminalId;
+    })) {
+        document.getElementById('confirm-terminal-btn').disabled = false;
+    } else {
+        document.getElementById('confirm-terminal-btn').disabled = true;
+    }
+    
+    modal.style.display = 'flex';
+}
+
+window.selectTerminalForCheckout = function(terminalId) {
+    selectedTerminalId = terminalId;
+    
+    document.querySelectorAll('input[name="terminal"]').forEach(radio => {
+        radio.checked = radio.value === terminalId;
+    });
+    
+    document.getElementById('confirm-terminal-btn').disabled = false;
+};
+
+window.closeTerminalSelectionModal = function() {
+    const modal = document.getElementById('terminal-selection-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+function startPollingCheckoutStatus(checkoutId) {
+    console.log('Starting to poll for checkout status:', checkoutId);
+    
+    const pollInterval = setInterval(async () => {
+        try {
+            const url = `${AppConfig.baseUrl}/api/square/terminal/checkout/${checkoutId}/status`;
+            
+            const response = await fetch(url, { credentials: 'include' });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Status check failed: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status !== 'success') {
+                throw new Error(data.error || 'Failed to get checkout status');
+            }
+            
+            const checkout = data.checkout;
+            const status = checkout.status;
+            
+            console.log(`Checkout ${checkoutId} status:`, status);
+            
+            if (square_payment_sessions[checkoutId]) {
+                square_payment_sessions[checkoutId].status = status;
+                
+                if (status === 'COMPLETED') {
+                    if (!checkout.payment_ids || checkout.payment_ids.length === 0) {
+                        throw new Error('Checkout completed but no payment ID found');
+                    }
+                    
+                    const paymentId = checkout.payment_ids[0];
+                    square_payment_sessions[checkoutId].payment_id = paymentId;
+                    console.log('✅ Payment ID captured:', paymentId);
+                    
+                    clearInterval(pollInterval);
+                    
+                    if (pendingCartCheckout) {
+                        showCheckoutStatus('Payment completed! Processing...', 'success');
+                        
+                        setTimeout(async () => {
+                            await processSquarePaymentSuccess();
+                            closeTerminalCheckoutModal();
+                        }, 1000);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error polling checkout status:', error);
+            if (error.message.includes('404') || error.message.includes('500')) {
+                clearInterval(pollInterval);
+            }
+        }
+    }, 3000);
+    
+    if (square_payment_sessions[checkoutId]) {
+        square_payment_sessions[checkoutId].pollInterval = pollInterval;
+    }
+    
+    setTimeout(() => {
+        clearInterval(pollInterval);
+        console.log('Stopped polling for checkout:', checkoutId);
+    }, 300000);
+}
+
+window.initiateCartTerminalCheckout = async function() {
+    if (!pendingCartCheckout) {
+        showCheckoutStatus('No items selected for checkout', 'error');
+        closeTerminalSelectionModal();
+        return;
+    }
+    
+    if (!selectedTerminalId) {
+        showCheckoutStatus('Please select a terminal', 'error');
+        return;
+    }
+    
+    const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
+    const amountCents = Math.round(total * 100);
+    const recordIds = pendingCartCheckout.items.map(item => 
+        item.type === 'custom' ? `custom_${item.id}` : item.id
+    );
+    const recordTitles = pendingCartCheckout.items.map(item => 
+        item.type === 'custom' ? item.note : item.title
+    );
+    
+    closeTerminalSelectionModal();
+    
+    const modalBody = document.getElementById('terminal-checkout-body');
+    const modal = document.getElementById('terminal-checkout-modal');
+    
+    if (modalBody) {
+        modalBody.innerHTML = `
+            <div class="payment-status">
+                <div class="payment-status-icon processing">
+                    <i class="fas fa-spinner fa-pulse"></i>
+                </div>
+                <div class="payment-status-message">Creating Terminal Checkout...</div>
+                <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
+                <div class="payment-status-detail">Please wait while we prepare the terminal</div>
+            </div>
+        `;
+    }
+    if (modal) modal.style.display = 'flex';
+    
+    try {
+        const requestBody = {
+            amount_cents: amountCents,
+            record_ids: recordIds,
+            record_titles: recordTitles,
+            device_id: selectedTerminalId
+        };
+        
+        console.log('Sending checkout request:', requestBody);
+        
+        const response = await fetch(`${AppConfig.baseUrl}/api/square/terminal/checkout`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(requestBody)
+        });
+        
+        const responseText = await response.text();
+        console.log('Response status:', response.status);
+        console.log('Response body:', responseText);
+        
+        if (!response.ok) {
+            let errorMessage = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || errorData.error || errorMessage;
+            } catch (e) {
+                if (responseText) errorMessage = responseText;
+            }
+            throw new Error(errorMessage);
+        }
+        
+        const data = JSON.parse(responseText);
+        
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Failed to create checkout');
+        }
+        
+        const checkout = data.checkout;
+        activeCheckoutId = checkout.id;
+        
+        square_payment_sessions[activeCheckoutId] = {
+            record_ids: recordIds,
+            amount: total,
+            status: 'CREATED',
+            payment_id: null,
+            checkout_data: checkout
+        };
+        
+        startPollingCheckoutStatus(activeCheckoutId);
+        
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div class="payment-status">
+                    <div class="payment-status-icon processing">
+                        <i class="fas fa-credit-card"></i>
+                    </div>
+                    <div class="payment-status-message">Checkout Created</div>
+                    <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
+                    <div class="payment-status-detail">Please complete payment on the Square Terminal</div>
+                    <div class="payment-status-detail" style="margin-top: 20px; font-weight: bold;">Waiting for payment...</div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn btn-success" onclick="forceCompleteSquarePayment()">
+                            <i class="fas fa-check-circle"></i> Complete Sale
+                        </button>
+                        <button class="btn btn-danger" onclick="cancelTerminalCheckout()">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        console.error('Checkout error:', error);
+        
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div class="payment-status">
+                    <div class="payment-status-icon error">
+                        <i class="fas fa-times-circle"></i>
+                    </div>
+                    <div class="payment-status-message">Checkout Failed</div>
+                    <div class="payment-status-detail">${error.message}</div>
+                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+            `;
+        }
+        
+        showCheckoutStatus(`Checkout failed: ${error.message}`, 'error');
+    }
+};
+
+window.forceCompleteSquarePayment = async function() {
+    if (!activeCheckoutId) {
+        showCheckoutStatus('No active checkout to complete', 'error');
+        return;
+    }
+    
+    if (!pendingCartCheckout) {
+        showCheckoutStatus('No pending cart checkout found', 'error');
+        return;
+    }
+    
+    const modalBody = document.getElementById('terminal-checkout-body');
+    
+    if (modalBody) {
+        modalBody.innerHTML = `
+            <div class="payment-status">
+                <div class="payment-status-icon processing">
+                    <i class="fas fa-spinner fa-pulse"></i>
+                </div>
+                <div class="payment-status-message">Completing sale manually...</div>
+                <div class="payment-status-detail">Processing payment for ${pendingCartCheckout.items.length} items</div>
+            </div>
+        `;
+    }
+    
+    try {
+        if (square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
+            clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
+        }
+        
+        const manualPaymentId = `MANUAL-${Date.now()}`;
+        square_payment_sessions[activeCheckoutId].payment_id = manualPaymentId;
+        square_payment_sessions[activeCheckoutId].status = 'COMPLETED';
+        
+        await processSquarePaymentSuccess();
+        closeTerminalCheckoutModal();
+        showCheckoutStatus('Sale completed successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error completing sale:', error);
+        
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div class="payment-status">
+                    <div class="payment-status-icon error">
+                        <i class="fas fa-times-circle"></i>
+                    </div>
+                    <div class="payment-status-message">Completion Failed</div>
+                    <div class="payment-status-detail">${error.message}</div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn btn-warning" onclick="forceCompleteSquarePayment()">
+                            <i class="fas fa-redo"></i> Retry
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeTerminalCheckoutModal()">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        showCheckoutStatus(`Failed to complete sale: ${error.message}`, 'error');
+    }
+};
+
+window.cancelTerminalCheckout = async function() {
+    if (!activeCheckoutId) {
+        showCheckoutStatus('No active checkout to cancel', 'info');
+        return;
+    }
+    
+    if (square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
+        clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
+    }
+    
+    const modalBody = document.getElementById('terminal-checkout-body');
+    if (modalBody) {
+        modalBody.innerHTML = `
+            <div class="payment-status">
+                <div class="payment-status-icon processing">
+                    <i class="fas fa-spinner fa-pulse"></i>
+                </div>
+                <div class="payment-status-message">Cancelling checkout...</div>
+            </div>
+        `;
+    }
+    
+    try {
+        console.log('Original checkout ID:', activeCheckoutId);
+        
+        const url = `${AppConfig.baseUrl}/api/square/terminal/checkout/${activeCheckoutId}/cancel`;
+        console.log('Sending cancel request to:', url);
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({})
+        });
+        
+        console.log('Cancel response status:', response.status);
+        
+        const responseText = await response.text();
+        console.log('Cancel response body:', responseText);
+        
+        if (!response.ok) {
+            let errorMessage = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || errorData.error || errorMessage;
+            } catch (e) {
+                if (responseText) errorMessage = responseText;
+            }
+            throw new Error(errorMessage);
+        }
+        
+        const data = JSON.parse(responseText);
+        
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Failed to cancel checkout');
+        }
+        
+        showCheckoutStatus('Checkout cancelled successfully', 'success');
+        
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div class="payment-status">
+                    <div class="payment-status-icon success">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="payment-status-message">Checkout Cancelled Successfully</div>
+                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+            `;
+        }
+        
+        if (square_payment_sessions[activeCheckoutId]) {
+            delete square_payment_sessions[activeCheckoutId];
+        }
+        
+        activeCheckoutId = null;
+        
+    } catch (error) {
+        console.error('Cancel checkout error:', error);
+        
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div class="payment-status">
+                    <div class="payment-status-icon error">
+                        <i class="fas fa-times-circle"></i>
+                    </div>
+                    <div class="payment-status-message">Failed to Cancel Checkout</div>
+                    <div class="payment-status-detail">${error.message}</div>
+                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                    <button class="btn btn-secondary" onclick="cancelTerminalCheckout()" style="margin-top: 10px;">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
+        
+        showCheckoutStatus(`Failed to cancel: ${error.message}`, 'error');
+    }
+};
+
+window.closeTerminalCheckoutModal = function() {
+    const modal = document.getElementById('terminal-checkout-modal');
+    if (modal) modal.style.display = 'none';
+    
+    if (activeCheckoutId && square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
+        clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
+    }
+    
+    activeCheckoutId = null;
+};
+
+window.completeSquarePayment = async function() {
+    if (!pendingCartCheckout) {
+        showCheckoutStatus('No pending checkout found', 'error');
+        return;
+    }
+    
+    await processSquarePaymentSuccess();
+    
+    const modalBody = document.getElementById('terminal-checkout-body');
+    if (modalBody) {
+        modalBody.innerHTML = `
+            <div class="payment-status">
+                <div class="payment-status-icon success">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="payment-status-message">Payment Recorded Successfully!</div>
+                <div class="payment-status-detail">Records have been updated to sold status</div>
+                <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
+                    <i class="fas fa-check"></i> Done
+                </button>
+            </div>
+        `;
+    }
+    
+    showCheckoutStatus('Payment completed successfully!', 'success');
+};
+
+async function processSquarePaymentSuccess() {
+    showCheckoutLoading(true);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const soldItems = [];
+    const consignorPayments = {};
+    let squarePaymentId = null;
+    let bernTotal = 0;
+    
+    if (activeCheckoutId) {
+        console.log('Checking for payment ID for checkout:', activeCheckoutId);
+        
+        if (!square_payment_sessions || !square_payment_sessions[activeCheckoutId]) {
+            throw new Error('No checkout session found');
+        }
+        
+        squarePaymentId = square_payment_sessions[activeCheckoutId].payment_id;
+        
+        if (!squarePaymentId) {
+            const url = `${AppConfig.baseUrl}/api/square/terminal/checkout/${activeCheckoutId}/status`;
+            
+            const response = await fetch(url, { credentials: 'include' });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to get checkout status: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            if (data.status !== 'success') {
+                throw new Error(data.error || 'Failed to get checkout status');
+            }
+            
+            const checkout = data.checkout;
+            if (checkout.status !== 'COMPLETED') {
+                throw new Error(`Checkout not completed. Status: ${checkout.status}`);
+            }
+            
+            if (!checkout.payment_ids || checkout.payment_ids.length === 0) {
+                throw new Error('Checkout completed but no payment ID found');
+            }
+            
+            squarePaymentId = checkout.payment_ids[0];
+            square_payment_sessions[activeCheckoutId].payment_id = squarePaymentId;
+        }
+        
+        console.log('Payment ID verified:', squarePaymentId);
+    } else {
+        throw new Error('No active checkout ID found');
+    }
+    
+    const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
+    const originalSubtotal = parseFloat(document.getElementById('cart-original-subtotal')?.textContent.replace('$', '') || '0');
+    const { discountedSubtotal } = calculateTotals();
+    
+    for (const item of pendingCartCheckout.items) {
+        if (item.type === 'custom') {
+            successCount++;
+            soldItems.push({
+                ...item,
+                description: item.note || 'Custom Item',
+                store_price: item.store_price
+            });
+            
+            if (item.bern_it) {
+                bernTotal += item.store_price;
+            }
+        } else {
+            try {
+                const todayMST = getLocalMSTDate();
+                
+                const itemStorePrice = parseFloat(item.store_price) || 0;
+                let proportionalActualPrice;
+                
+                if (currentCustomSalePrice !== null && currentCustomSalePrice > 0) {
+                    proportionalActualPrice = (itemStorePrice / originalSubtotal) * currentCustomSalePrice;
+                } else {
+                    proportionalActualPrice = (itemStorePrice / originalSubtotal) * discountedSubtotal;
+                }
+                
+                const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        status_id: 3,
+                        date_sold: todayMST,
+                        actual_sale_price: proportionalActualPrice
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to update record: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    throw new Error(data.error || 'Failed to update record');
+                }
+                
+                successCount++;
+                soldItems.push({
+                    ...item,
+                    actual_sale_price: proportionalActualPrice
+                });
+                
+                if (item.consignor_id && item.consignor_id !== 1) {
+                    const commissionRate = parseFloat(item.commission_rate);
+                    if (isNaN(commissionRate)) {
+                        throw new Error(`Invalid commission rate for consignor item: ${item.artist} - ${item.title}`);
+                    }
+                    const consignorShare = proportionalActualPrice * (1 - (commissionRate / 100));
+                    
+                    if (!consignorPayments[item.consignor_id]) {
+                        consignorPayments[item.consignor_id] = 0;
+                    }
+                    consignorPayments[item.consignor_id] += consignorShare;
+                }
+            } catch (error) {
+                console.error(`Error updating record ${item.id}:`, error);
+                errorCount++;
+                throw error;
+            }
+        }
+    }
+    
+    if (bernTotal > 0) {
+        await updateBernFund(bernTotal);
+        showCheckoutStatus(`🔥 Added $${bernTotal.toFixed(2)} to BERN fund!`, 'success');
+    }
+    
+    if (Object.keys(consignorPayments).length > 0) {
+        let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
+        for (const [consignorId, amount] of Object.entries(consignorPayments)) {
+            storedOwed[consignorId] = (storedOwed[consignorId] || 0) + amount;
+        }
+        localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
+        if (typeof window.consignorOwedAmounts !== 'undefined') {
+            window.consignorOwedAmounts = storedOwed;
+        }
+    }
+    
+    if (successCount > 0) {
+        let cashierName = 'Admin';
+        try {
+            const userData = localStorage.getItem('user');
+            if (userData) {
+                const user = JSON.parse(userData);
+                cashierName = user.username || 'Admin';
+            }
+        } catch (e) {
+            console.error('Error parsing user data:', e);
+        }
+        
+        const taxRate = await validateTaxRate();
+        const discount = currentDiscount.value || 0;
+        const tax = discountedSubtotal * taxRate;
+        
+        const transaction = {
+            id: `SQUARE-${Date.now()}`,
+            square_payment_id: squarePaymentId,
+            date: new Date().toISOString(),
+            items: soldItems,
+            originalSubtotal: originalSubtotal,
+            subtotal: discountedSubtotal,
+            discount: discount,
+            discountType: currentDiscount.type,
+            discountAmount: currentDiscount.amount,
+            customSalePrice: currentCustomSalePrice,
+            tax: tax,
+            taxRate: taxRate * 100,
+            total: total,
+            paymentMethod: 'Square Terminal',
+            cashier: cashierName,
+            storeName: await getConfigValue('STORE_NAME'),
+            storeAddress: await getConfigValue('STORE_ADDRESS'),
+            storePhone: await getConfigValue('STORE_PHONE'),
+            footer: await getConfigValue('RECEIPT_FOOTER'),
+            consignorPayments: consignorPayments,
+            bernDonation: bernTotal
+        };
+        
+        if (typeof window.saveReceipt === 'function') {
+            await window.saveReceipt(transaction);
+        }
+        
+        const receiptText = await formatReceiptForPrinter(transaction);
+        await window.printToThermalPrinter(receiptText);
+        
+        checkoutCart = [];
+        currentDiscount = { amount: 0, type: 'percentage', value: 0 };
+        currentCustomSalePrice = null;
+        const discountAmount = document.getElementById('discount-amount');
+        const discountType = document.getElementById('discount-type');
+        const customPriceInput = document.getElementById('custom-sale-price');
+        if (discountAmount) discountAmount.value = '';
+        if (discountType) discountType.value = 'percentage';
+        if (customPriceInput) customPriceInput.value = '';
+        updateCartDisplay();
+        searchRecordsAndAccessories();
+        
+        showCheckoutStatus(`Successfully sold ${successCount} items via Square Terminal`, 'success');
+    } else {
+        throw new Error('No items were successfully processed');
+    }
+    
+    showCheckoutLoading(false);
+    pendingCartCheckout = null;
+}
+
+// ============================================================================
 // Discogs Sell Button Function (No confirmation popup, No receipt printing)
 // ============================================================================
 
@@ -1272,7 +1959,7 @@ window.processDiscogsSale = async function() {
                 isDiscogsSale: true
             };
             
-            // Save receipt to database (for record keeping)
+            // Save receipt to database (for record keeping) - NO PHYSICAL PRINT
             if (typeof window.saveReceipt === 'function') {
                 await window.saveReceipt(transaction);
                 console.log('Discogs sale recorded in database, receipt ID:', transaction.id);
@@ -1309,64 +1996,6 @@ window.processDiscogsSale = async function() {
         showCheckoutLoading(false);
     }
 };
-
-// ============================================================================
-// Square Payment Functions (condensed - same as before)
-// ============================================================================
-
-window.processSquarePayment = function() {
-    if (checkoutCart.length === 0) {
-        showCheckoutStatus('Cart is empty', 'error');
-        return;
-    }
-    
-    if (availableTerminals.length === 0) {
-        showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
-        return;
-    }
-    
-    if (availableTerminals.length === 1) {
-        const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
-        if (onlineTerminals.length === 0) {
-            showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
-            return;
-        }
-        
-        let singleTerminalId = availableTerminals[0].id;
-        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
-            singleTerminalId = singleTerminalId.replace('device:', '');
-        }
-        selectedTerminalId = singleTerminalId;
-        
-        pendingCartCheckout = {
-            items: [...checkoutCart],
-            type: 'cart',
-            discount: { ...currentDiscount },
-            customSalePrice: currentCustomSalePrice
-        };
-        
-        initiateCartTerminalCheckout();
-        return;
-    }
-    
-    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
-    if (onlineTerminals.length === 0) {
-        showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
-        return;
-    }
-    
-    pendingCartCheckout = {
-        items: [...checkoutCart],
-        type: 'cart',
-        discount: { ...currentDiscount },
-        customSalePrice: currentCustomSalePrice
-    };
-    
-    renderTerminalSelectionModal();
-};
-
-// Keep all existing Square payment functions (they remain the same)
-// ... (Square payment functions continue here)
 
 // ============================================================================
 // Cash Payment Functions (with custom sale price support)
@@ -1730,6 +2359,11 @@ async function formatReceiptForPrinter(transaction) {
         receipt += '\n';
     }
     
+    if (transaction.square_payment_id) {
+        receipt += `Square ID: ${transaction.square_payment_id}\n`;
+        receipt += '\n';
+    }
+    
     if (transaction.isDiscogsSale) {
         receipt += centerText('🎵 DISCOGS SALE 🎵', charsPerLine) + '\n';
         receipt += '\n';
@@ -1742,7 +2376,62 @@ async function formatReceiptForPrinter(transaction) {
 }
 
 // ============================================================================
-// Gift Card Payment Functions (condensed)
+// Square Payment Function (wrapper)
+// ============================================================================
+
+window.processSquarePayment = function() {
+    if (checkoutCart.length === 0) {
+        showCheckoutStatus('Cart is empty', 'error');
+        return;
+    }
+    
+    if (availableTerminals.length === 0) {
+        showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
+        return;
+    }
+    
+    if (availableTerminals.length === 1) {
+        const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+        if (onlineTerminals.length === 0) {
+            showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
+            return;
+        }
+        
+        let singleTerminalId = availableTerminals[0].id;
+        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
+            singleTerminalId = singleTerminalId.replace('device:', '');
+        }
+        selectedTerminalId = singleTerminalId;
+        
+        pendingCartCheckout = {
+            items: [...checkoutCart],
+            type: 'cart',
+            discount: { ...currentDiscount },
+            customSalePrice: currentCustomSalePrice
+        };
+        
+        initiateCartTerminalCheckout();
+        return;
+    }
+    
+    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+    if (onlineTerminals.length === 0) {
+        showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
+        return;
+    }
+    
+    pendingCartCheckout = {
+        items: [...checkoutCart],
+        type: 'cart',
+        discount: { ...currentDiscount },
+        customSalePrice: currentCustomSalePrice
+    };
+    
+    renderTerminalSelectionModal();
+};
+
+// ============================================================================
+// Gift Card Payment Functions
 // ============================================================================
 
 window.showGiftCardModal = function() {
@@ -2111,4 +2800,4 @@ document.addEventListener('keypress', function(e) {
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
-console.log('✅ checkout.js loaded with VCP-8370 printer support, custom sale price, and Discogs sell button (no confirmation popup)');
+console.log('✅ checkout.js loaded with VCP-8370 printer support, custom sale price, and Discogs sell button (no confirmation popup, no receipt printing)');
