@@ -2189,186 +2189,216 @@
                 <p>Loading...</p>
             </div>
         </div>
-
+  
         <!-- Check Out Tab -->
-        <div id="check-out-tab" class="tab-content">
-            <h2><i class="fas fa-shopping-cart"></i> Check Out</h2>
-            
-            <div class="terminal-management">
-                <div class="terminal-header">
-                    <h3><i class="fas fa-square"></i> Square Terminal Status</h3>
-                    <button class="btn btn-secondary" onclick="refreshTerminals()">
-                        <i class="fas fa-sync-alt"></i> Refresh Terminals
-                    </button>
-                </div>
-                <div id="terminal-list" class="terminal-list">
-                    <div style="text-align: center; padding: 20px; color: #666;">
-                        <i class="fas fa-square" style="font-size: 24px; margin-bottom: 10px; color: #ccc;"></i>
-                        <p>Click refresh to load available terminals</p>
-                    </div>
-                </div>
+<div id="check-out-tab" class="tab-content">
+    <h2><i class="fas fa-shopping-cart"></i> Check Out</h2>
+    
+    <div class="terminal-management">
+        <div class="terminal-header">
+            <h3><i class="fas fa-square"></i> Square Terminal Status</h3>
+            <button class="btn btn-secondary" onclick="refreshTerminals()">
+                <i class="fas fa-sync-alt"></i> Refresh Terminals
+            </button>
+        </div>
+        <div id="terminal-list" class="terminal-list">
+            <div style="text-align: center; padding: 20px; color: #666;">
+                <i class="fas fa-square" style="font-size: 24px; margin-bottom: 10px; color: #ccc;"></i>
+                <p>Click refresh to load available terminals</p>
             </div>
-            
-            <!-- Custom Item Section -->
-            <div class="custom-item-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
-                <h3 style="margin-bottom: 15px;"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
-                <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
-                    <div style="flex: 2; min-width: 200px;">
-                        <label for="custom-note" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Description/Note</label>
-                        <input type="text" 
-                               id="custom-note" 
-                               class="search-input" 
-                               placeholder="e.g., Gift card, Service, Donation..."
-                               style="width: 100%; background: rgba(255,255,255,0.9);">
-                    </div>
-                    <div style="flex: 1; min-width: 150px;">
-                        <label for="custom-price" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Price ($)</label>
+        </div>
+    </div>
+    
+    <!-- Custom Item Section -->
+    <div class="custom-item-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+        <h3 style="margin-bottom: 15px;"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+            <div style="flex: 2; min-width: 200px;">
+                <label for="custom-note" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Description/Note</label>
+                <input type="text" 
+                       id="custom-note" 
+                       class="search-input" 
+                       placeholder="e.g., Gift card, Service, Donation..."
+                       style="width: 100%; background: rgba(255,255,255,0.9);">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label for="custom-price" style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Price ($)</label>
+                <input type="number" 
+                       id="custom-price" 
+                       class="search-input" 
+                       placeholder="0.00" 
+                       min="0" 
+                       step="0.01"
+                       style="width: 100%; background: rgba(255,255,255,0.9);">
+            </div>
+            <div style="flex: 0 0 auto;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 20px;">
+                    <input type="checkbox" id="custom-bern-it" style="width: 18px; height: 18px; cursor: pointer;">
+                    <span style="font-size: 0.9rem;"><i class="fas fa-fire"></i> 🔥 BERN IT</span>
+                </label>
+            </div>
+            <div style="flex: 0 0 auto;">
+                <button class="btn btn-success" onclick="addCustomItemToCart()" style="height: 42px; padding: 0 25px; background: #ffd700; color: #333; border: none;">
+                    <i class="fas fa-cart-plus"></i> Add to Cart
+                </button>
+            </div>
+        </div>
+        <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
+            <i class="fas fa-info-circle"></i> Add custom items like gift cards, services, or miscellaneous merchandise. Check "BERN IT" to add the amount to the BERN fund.
+        </p>
+    </div>
+    
+    <div class="search-container">
+        <div class="search-box">
+            <input type="text" id="search-query" class="search-input" 
+                   placeholder="Search by barcode, title, artist, or catalog number..." 
+                   onkeypress="if(event.key === 'Enter') searchRecordsAndAccessories()">
+            <button class="btn btn-primary" onclick="searchRecordsAndAccessories()">
+                <i class="fas fa-search"></i> Search
+            </button>
+        </div>
+        
+        <div class="search-filters">
+            <label class="search-filter-checkbox">
+                <input type="checkbox" id="filter-active" checked> 
+                <i class="fas fa-check-circle" style="color: #28a745;"></i> Active Only
+            </label>
+            <label class="search-filter-checkbox">
+                <input type="checkbox" id="filter-barcode"> 
+                <i class="fas fa-barcode"></i> Search Barcode Only
+            </label>
+            <span style="color: #666; margin-left: auto; display: flex; align-items: center;">
+                <i class="fas fa-info-circle"></i> 
+                <span style="margin-left: 5px;">Found <span id="search-result-count">0</span> results</span>
+            </span>
+        </div>
+    </div>
+    
+    <div id="checkout-status-message" class="status-message"></div>
+    
+    <div id="search-results-container">
+        <div class="results-count" id="results-count-header">
+            Showing <span id="displayed-results">0</span> items
+        </div>
+        <div id="search-results" class="search-results">
+            <div style="text-align: center; padding: 40px; color: #666;">
+                <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
+                <p>Enter a search term to find records</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="shopping-cart-section" class="cart-section" style="display: none;">
+        <div class="cart-header">
+            <h3><i class="fas fa-shopping-cart"></i> Shopping Cart</h3>
+            <span id="cart-item-count" class="badge" style="background: #3498db; color: white; padding: 5px 10px; border-radius: 20px;">0 items</span>
+        </div>
+        
+        <div id="cart-items" class="cart-items"></div>
+        
+        <!-- Price Adjustment Section - Discount and Custom Sale Price side by side -->
+        <div class="price-adjustment-section" style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- Discount Field -->
+                <div>
+                    <label for="discount-amount" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">
+                        <i class="fas fa-tag"></i> Discount
+                    </label>
+                    <div style="display: flex; gap: 10px;">
                         <input type="number" 
-                               id="custom-price" 
-                               class="search-input" 
+                               id="discount-amount" 
+                               class="discount-input" 
                                placeholder="0.00" 
                                min="0" 
                                step="0.01"
-                               style="width: 100%; background: rgba(255,255,255,0.9);">
-                    </div>
-                    <div style="flex: 0 0 auto;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 20px;">
-                            <input type="checkbox" id="custom-bern-it" style="width: 18px; height: 18px; cursor: pointer;">
-                            <span style="font-size: 0.9rem;"><i class="fas fa-fire"></i> 🔥 BERN IT</span>
-                        </label>
-                    </div>
-                    <div style="flex: 0 0 auto;">
-                        <button class="btn btn-success" onclick="addCustomItemToCart()" style="height: 42px; padding: 0 25px; background: #ffd700; color: #333; border: none;">
-                            <i class="fas fa-cart-plus"></i> Add to Cart
-                        </button>
-                    </div>
-                </div>
-                <p style="margin-top: 10px; font-size: 0.85rem; opacity: 0.9;">
-                    <i class="fas fa-info-circle"></i> Add custom items like gift cards, services, or miscellaneous merchandise. Check "BERN IT" to add the amount to the BERN fund.
-                </p>
-            </div>
-            
-            <div class="search-container">
-                <div class="search-box">
-                    <input type="text" id="search-query" class="search-input" 
-                           placeholder="Search by barcode, title, artist, or catalog number..." 
-                           onkeypress="if(event.key === 'Enter') searchRecordsAndAccessories()">
-                    <button class="btn btn-primary" onclick="searchRecordsAndAccessories()">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                </div>
-                
-                <div class="search-filters">
-                    <label class="search-filter-checkbox">
-                        <input type="checkbox" id="filter-active" checked> 
-                        <i class="fas fa-check-circle" style="color: #28a745;"></i> Active Only
-                    </label>
-                    <label class="search-filter-checkbox">
-                        <input type="checkbox" id="filter-barcode"> 
-                        <i class="fas fa-barcode"></i> Search Barcode Only
-                    </label>
-                    <span style="color: #666; margin-left: auto; display: flex; align-items: center;">
-                        <i class="fas fa-info-circle"></i> 
-                        <span style="margin-left: 5px;">Found <span id="search-result-count">0</span> results</span>
-                    </span>
-                </div>
-            </div>
-            
-            <div id="checkout-status-message" class="status-message"></div>
-            
-            <div id="search-results-container">
-                <div class="results-count" id="results-count-header">
-                    Showing <span id="displayed-results">0</span> items
-                </div>
-                <div id="search-results" class="search-results">
-                    <div style="text-align: center; padding: 40px; color: #666;">
-                        <i class="fas fa-search" style="font-size: 48px; margin-bottom: 20px; color: #ccc;"></i>
-                        <p>Enter a search term to find records</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="shopping-cart-section" class="cart-section" style="display: none;">
-                <div class="cart-header">
-                    <h3><i class="fas fa-shopping-cart"></i> Shopping Cart</h3>
-                    <span id="cart-item-count" class="badge" style="background: #3498db; color: white; padding: 5px 10px; border-radius: 20px;">0 items</span>
-                </div>
-                
-                <div id="cart-items" class="cart-items"></div>
-                
-                <!-- Discount Field -->
-                <div class="discount-section" style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 4px;">
-                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                        <div style="flex: 1;">
-                            <label for="discount-amount" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">
-                                <i class="fas fa-tag"></i> Discount
-                            </label>
-                            <div style="display: flex; gap: 10px;">
-                                <input type="number" 
-                                       id="discount-amount" 
-                                       class="discount-input" 
-                                       placeholder="0.00" 
-                                       min="0" 
-                                       step="0.01"
-                                       style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
-                                       oninput="updateCartWithDiscount()">
-                                <select id="discount-type" 
-                                        class="discount-type-select"
-                                        style="width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
-                                        onchange="updateCartWithDiscount()">
-                                    <option value="fixed">$ Fixed</option>
-                                    <option value="percentage" selected>% Off</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="font-size: 12px; color: #666;">Discount Applied</div>
-                            <div id="discount-display" style="font-weight: bold; color: #27ae60;">$0.00</div>
-                        </div>
+                               style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
+                               oninput="updateCartWithDiscount()">
+                        <select id="discount-type" 
+                                class="discount-type-select"
+                                style="width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                onchange="updateCartWithDiscount()">
+                            <option value="fixed">$ Fixed</option>
+                            <option value="percentage" selected>% Off</option>
+                        </select>
                     </div>
                     <div id="discount-error" style="color: #dc3545; font-size: 12px; margin-top: 5px; display: none;"></div>
                 </div>
                 
-                <div class="cart-summary">
-                    <div class="summary-row">
-                        <span>Subtotal:</span>
-                        <span id="cart-subtotal">$0.00</span>
+                <!-- Custom Sale Price Field -->
+                <div>
+                    <label for="custom-sale-price" style="display: block; margin-bottom: 5px; font-weight: 500; color: #333;">
+                        <i class="fas fa-dollar-sign"></i> Custom Sale Price (overrides discount)
+                    </label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="number" 
+                               id="custom-sale-price" 
+                               class="sale-price-input" 
+                               placeholder="Enter custom total" 
+                               min="0" 
+                               step="0.01"
+                               style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
+                               oninput="updateCartWithCustomPrice()">
+                        <button class="btn btn-small btn-secondary" onclick="clearCustomSalePrice()" style="white-space: nowrap;">
+                            <i class="fas fa-undo"></i> Clear
+                        </button>
                     </div>
-                    <div class="summary-row" id="discount-row" style="display: none;">
-                        <span>Discount:</span>
-                        <span id="cart-discount" style="color: #27ae60;">-$0.00</span>
+                    <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                        <i class="fas fa-info-circle"></i> Enter a custom total sale amount. This will override any discount.
                     </div>
-                    <div class="summary-row">
-                        <span>Tax (<span id="tax-rate-display">0</span>%):</span>
-                        <span id="cart-tax">$0.00</span>
-                    </div>
-                    <div class="summary-row total">
-                        <span>Total:</span>
-                        <span id="cart-total">$0.00</span>
-                    </div>
-                </div>
-                
-                <div class="cart-actions">
-                    <button class="btn btn-secondary" onclick="clearCart()">
-                        <i class="fas fa-times"></i> Clear Cart
-                    </button>
-                    <button class="btn btn-cash" onclick="showTenderModal()" id="checkout-cash-btn">
-                        <i class="fas fa-money-bill-wave"></i> Cash
-                    </button>
-                    <button class="btn btn-giftcard" onclick="showGiftCardModal()" id="checkout-giftcard-btn" style="background: #ff6b6b; color: white;">
-                        <i class="fas fa-gift"></i> Gift Card
-                    </button>
-                    <button class="btn btn-square" onclick="processSquarePayment()" id="checkout-square-btn">
-                        <i class="fas fa-square"></i> Square
-                    </button>
                 </div>
             </div>
             
-            <div class="loading" id="checkout-loading">
-                <div class="loading-spinner"></div>
-                <p>Searching...</p>
+            <div id="savings-display" style="margin-top: 10px; font-size: 12px; color: #28a745; border-top: 1px solid #dee2e6; padding-top: 8px;"></div>
+        </div>
+        
+        <div class="cart-summary">
+            <div class="summary-row">
+                <span>Original Subtotal:</span>
+                <span id="cart-original-subtotal">$0.00</span>
+            </div>
+            <div class="summary-row" id="discount-row" style="display: none;">
+                <span>Discount:</span>
+                <span id="cart-discount" style="color: #27ae60;">-$0.00</span>
+            </div>
+            <div class="summary-row" id="custom-price-row" style="display: none;">
+                <span>Custom Sale Price:</span>
+                <span id="cart-custom-price" style="color: #007bff;">$0.00</span>
+            </div>
+            <div class="summary-row">
+                <span>Tax (<span id="tax-rate-display">0</span>%):</span>
+                <span id="cart-tax">$0.00</span>
+            </div>
+            <div class="summary-row total">
+                <span>Total:</span>
+                <span id="cart-total">$0.00</span>
             </div>
         </div>
+        
+        <div class="cart-actions">
+            <button class="btn btn-secondary" onclick="clearCart()">
+                <i class="fas fa-times"></i> Clear Cart
+            </button>
+            <button class="btn btn-cash" onclick="showTenderModal()" id="checkout-cash-btn">
+                <i class="fas fa-money-bill-wave"></i> Cash
+            </button>
+            <button class="btn btn-giftcard" onclick="showGiftCardModal()" id="checkout-giftcard-btn" style="background: #ff6b6b; color: white;">
+                <i class="fas fa-gift"></i> Gift Card
+            </button>
+            <button class="btn btn-discogs" onclick="processDiscogsSale()" id="checkout-discogs-btn" style="background: #333; color: white; border: 1px solid #da552f;">
+                <i class="fab fa-discogs"></i> Discogs
+            </button>
+            <button class="btn btn-square" onclick="processSquarePayment()" id="checkout-square-btn">
+                <i class="fas fa-square"></i> Square
+            </button>
+        </div>
+    </div>
+    
+    <div class="loading" id="checkout-loading">
+        <div class="loading-spinner"></div>
+        <p>Searching...</p>
+    </div>
+</div>
+
          <!-- Inventory Purchases Tab -->
         <div id="inventory-purchases-tab" class="tab-content">
             <h2><i class="fas fa-shopping-cart"></i> Inventory Purchases</h2>
