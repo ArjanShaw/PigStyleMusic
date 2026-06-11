@@ -11,11 +11,11 @@ let cancelResolve = false;
 
 // DOM Elements
 let tableBody = null;
-let locationSelect = null;
-let postButton = null;
-let statusMessage = null;
-let searchInput = null;
-let searchButton = null;
+let discogsLocationSelect = null;
+let discogsPostButton = null;
+let discogsStatusMessage = null;
+let discogsSearchInput = null;
+let discogsSearchButton = null;
 
 // Modal elements
 let progressModal = null;
@@ -24,6 +24,14 @@ let modalProgressBar = null;
 let modalProgressText = null;
 let modalLog = null;
 let modalCancelBtn = null;
+
+// ============================================================================
+// Helper: Check if record has a consignor
+// ============================================================================
+
+function hasConsignor(record) {
+    return (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null);
+}
 
 // ============================================================================
 // Create Progress Modal
@@ -215,8 +223,8 @@ async function loadLocationRecords() {
     const selectedLocation = discogsLocationSelect ? discogsLocationSelect.value : null;
     
     if (!selectedLocation) {
-        if (discogsTableBody) {
-            discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
+        if (tableBody) {
+            tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
         }
         if (discogsPostButton) {
             discogsPostButton.disabled = true;
@@ -229,8 +237,8 @@ async function loadLocationRecords() {
     currentLocation = selectedLocation;
     isLoading = true;
     
-    if (discogsTableBody) {
-        discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading records...</td></tr>';
+    if (tableBody) {
+        tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading records...</td></tr>';
     }
     
     try {
@@ -260,7 +268,10 @@ async function loadLocationRecords() {
             if (discogsPostButton) {
                 discogsPostButton.disabled = false;
                 discogsPostButton.style.opacity = '1';
-                const eligibleCount = discogsFilteredRecords.filter(function(r) { return r.status_id === 2; }).length;
+                // Only count store items (no consignor) for posting
+                const eligibleCount = discogsFilteredRecords.filter(function(r) { 
+                    return r.status_id === 2 && !hasConsignor(r);
+                }).length;
                 discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post Entire "' + selectedLocation + '" (' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' records)';
             }
         } else {
@@ -269,8 +280,8 @@ async function loadLocationRecords() {
         
     } catch (error) {
         console.error('Error loading location records:', error);
-        if (discogsTableBody) {
-            discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + error.message + '</td></tr>';
+        if (tableBody) {
+            tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + error.message + '</td><tr>';
         }
         if (discogsPostButton) {
             discogsPostButton.disabled = true;
@@ -303,7 +314,9 @@ function applyDiscogsSearchFilter() {
     renderDiscogsTable();
     
     if (discogsPostButton && currentLocation) {
-        const eligibleCount = discogsFilteredRecords.filter(function(r) { return r.status_id === 2; }).length;
+        const eligibleCount = discogsFilteredRecords.filter(function(r) { 
+            return r.status_id === 2 && !hasConsignor(r);
+        }).length;
         discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post Entire "' + currentLocation + '" (' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' records)';
         discogsPostButton.disabled = (eligibleCount === 0);
         discogsPostButton.style.opacity = (eligibleCount === 0) ? '0.5' : '1';
@@ -383,10 +396,10 @@ async function calculateMarkupForRecord(createdAt, storePrice) {
 // ============================================================================
 
 async function renderDiscogsTable() {
-    if (!discogsTableBody) return;
+    if (!tableBody) return;
     
     if (discogsFilteredRecords.length === 0) {
-        discogsTableBody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this bin.' : 'Select a bin above') + '</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this bin.' : 'Select a bin above') + '</td></tr>';
         return;
     }
     
@@ -397,14 +410,19 @@ async function renderDiscogsTable() {
         let imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
         
         const canPost = (record.status_id === 2);
+        const hasConsignorFlag = hasConsignor(record);
         let discogsPrice = null;
         let markupPercent = null;
         let priceError = null;
         
         if (canPost) {
-            if (!record.created_at) {
+            if (hasConsignorFlag) {
+                // Consignor items - use store price, no markup, but cannot auto-post
+                discogsPrice = record.store_price;
+                markupPercent = 0;
+                priceError = 'Consignor item - cannot auto-post';
+            } else if (!record.created_at) {
                 priceError = 'Missing creation date';
-                console.warn('Record ' + record.id + ' has no created_at');
             } else {
                 try {
                     const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
@@ -428,9 +446,12 @@ async function renderDiscogsTable() {
         const displayLocation = record.location || '—';
         const shortLocation = displayLocation.length > 30 ? displayLocation.substring(0, 27) + '...' : displayLocation;
         
-        html += '<tr>';
+        // Add consignor badge if applicable
+        const consignorBadge = hasConsignorFlag ? '<span style="display: inline-block; background: #ffc107; color: #333; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 5px;" title="Consignor item - cannot auto-post">👤 Consignor</span>' : '';
+        
+        html += '<tr style="' + (hasConsignorFlag ? 'background: #fff8e7;' : '') + '">';
         html += '<td style="text-align: center;">' + (imageUrl ? '<img src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(record.artist) + '" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">' : '<div style="width: 40px; height: 40px; background: #e0e0e0; border-radius: 4px; display: inline-block;"></div>') + '</td>';
-        html += '<td>' + (record.id || '—') + '</td>';
+        html += '<td>' + (record.id || '—') + consignorBadge + '</td>';
         html += '<td><strong>' + escapeHtml(record.artist) + '</strong></td>';
         html += '<td>' + escapeHtml(record.title) + '</td>';
         html += '<td>' + (record.catalog_number || '—') + '</td>';
@@ -441,10 +462,15 @@ async function renderDiscogsTable() {
         html += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
         html += '<td title="' + escapeHtml(displayLocation) + '" style="font-size: 12px;">' + escapeHtml(shortLocation) + '</td>';
         html += '<td style="text-align: center;">';
-        if (canPost && discogsPrice) {
-            html += '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(record.artist) + '" data-title="' + escapeHtml(record.title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + (record.disc_condition_name || '') + '" data-sleeve-condition="' + (record.sleeve_condition_name || '') + '" data-catalog="' + escapeHtml(record.catalog_number || '') + '" data-location="' + escapeHtml(record.location || '') + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>';
+        
+        if (canPost && discogsPrice && !hasConsignorFlag) {
+            // Normal store item - can post
+            html += '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(record.artist) + '" data-title="' + escapeHtml(record.title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + (record.disc_condition_name || '') + '" data-sleeve-condition="' + (record.sleeve_condition_name || '') + '" data-catalog="' + escapeHtml(record.catalog_number || '') + '" data-location="' + escapeHtml(record.location || '') + '" data-notes="' + escapeHtml(record.notes || '') + '" data-has-consignor="false"><i class="fab fa-discogs"></i> Post</button>';
+        } else if (canPost && hasConsignorFlag) {
+            // Consignor item - cannot auto-post
+            html += '<span style="color: #ffc107; font-size: 11px;" title="Consignor items must be posted manually on Discogs"><i class="fas fa-user"></i> Manual only</span>';
         } else if (canPost && !discogsPrice) {
-            html += '<span style="color: #dc3545; font-size: 11px;" title="' + (priceError || 'Cannot post') + '">⚠️ No price</span>';
+            html += '<span style="color: #dc3545; font-size: 11px;">⚠️ No price</span>';
         } else {
             html += '<span style="color: #999;">—</span>';
         }
@@ -457,7 +483,7 @@ async function renderDiscogsTable() {
         }
     }
     
-    discogsTableBody.innerHTML = html;
+    tableBody.innerHTML = html;
     
     // Attach event listeners to post buttons
     document.querySelectorAll('.post-single-btn').forEach(function(btn) {
@@ -474,7 +500,8 @@ async function renderDiscogsTable() {
                 this.dataset.sleeveCondition,
                 this.dataset.catalog,
                 this.dataset.location,
-                this.dataset.notes
+                this.dataset.notes,
+                this.dataset.hasConsignor === 'true'
             );
         });
     });
@@ -484,8 +511,14 @@ async function renderDiscogsTable() {
 // Post Single Record to Discogs - WITH RETRIES
 // ============================================================================
 
-window.postSingleRecordToDiscogs = async function(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
+window.postSingleRecordToDiscogs = async function(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes, hasConsignorFlag) {
     console.log('postSingleRecordToDiscogs called', { recordId, artist, title, price, discogsPrice });
+    
+    // NEW: Prevent posting consignor items
+    if (hasConsignorFlag) {
+        showDiscogsStatus('Consignor items cannot be auto-posted to Discogs. Must be posted manually.', 'error');
+        return;
+    }
     
     if (!recordId || !mediaCondition || !sleeveCondition || !price || !discogsPrice) {
         showDiscogsStatus('Missing required information', 'error');
@@ -586,31 +619,44 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
 };
 
 // ============================================================================
-// Bulk Post All Records in Current Bin - Combined validation and posting
+// Bulk Post All Records in Current Bin - SKIP CONSIGNOR ITEMS
 // ============================================================================
 
 async function bulkPostToDiscogs() {
-    const eligibleRecords = discogsFilteredRecords.filter(function(r) { return r.status_id === 2; });
+    // Only include store items (no consignor) for posting
+    const eligibleRecords = discogsFilteredRecords.filter(function(r) { 
+        return r.status_id === 2 && !hasConsignor(r);
+    });
+    const consignorCount = discogsFilteredRecords.filter(function(r) { 
+        return r.status_id === 2 && hasConsignor(r);
+    }).length;
     
     if (eligibleRecords.length === 0) {
-        showDiscogsStatus('No eligible records to post (only Active records can be posted)', 'warning');
+        if (consignorCount > 0) {
+            showDiscogsStatus('All records in this bin are consignor items. Consignor items cannot be auto-posted to Discogs.', 'warning');
+        } else {
+            showDiscogsStatus('No eligible records to post (only Active store records can be posted)', 'warning');
+        }
         return;
     }
     
     const totalTimeMinutes = Math.ceil(eligibleRecords.length * 3 / 60);
-    if (!confirm('📋 Post ALL ' + eligibleRecords.length + ' record(s) from bin "' + currentLocation + '" to Discogs?\n\n' +
-        '⚠️ Each record will take approximately 3-5 seconds\n' +
-        '⏱️ Estimated total time: ~' + totalTimeMinutes + ' minute(s)\n\n' +
-        'The process will validate and post in one pass.\n\n' +
-        'Continue?')) {
+    let confirmMessage = '📋 Post ' + eligibleRecords.length + ' store record(s) from bin "' + currentLocation + '" to Discogs?\n\n';
+    if (consignorCount > 0) {
+        confirmMessage += '⚠️ ' + consignorCount + ' consignor item(s) will be SKIPPED (cannot auto-post)\n\n';
+    }
+    confirmMessage += '⏱️ Estimated total time: ~' + totalTimeMinutes + ' minute(s)\n\nContinue?';
+    
+    if (!confirm(confirmMessage)) {
         return;
     }
     
     openProgressModal('Posting ' + eligibleRecords.length + ' Records from Bin "' + currentLocation + '" to Discogs');
-    appendToModalLog('🚀 Starting bulk post for ' + eligibleRecords.length + ' records from bin "' + currentLocation + '"...', 'info');
+    appendToModalLog('🚀 Starting bulk post for ' + eligibleRecords.length + ' store records from bin "' + currentLocation + '"...', 'info');
+    if (consignorCount > 0) {
+        appendToModalLog('⚠️ Skipping ' + consignorCount + ' consignor item(s) (cannot auto-post)', 'warning');
+    }
     appendToModalLog('⏱️ 3-second delay between requests for reliability', 'warning');
-    appendToModalLog('🔄 Validating and posting in one pass', 'info');
-    appendToModalLog('⏱️ Estimated total time: ~' + totalTimeMinutes + ' minutes', 'info');
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     
     let posted = 0;
@@ -642,7 +688,7 @@ async function bulkPostToDiscogs() {
         
         appendToModalLog(`[${i+1}/${eligibleRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
         
-        // Calculate markup
+        // Calculate markup (1 API call)
         const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
         
         if (!markupInfo.success) {
@@ -729,8 +775,10 @@ async function bulkPostToDiscogs() {
     appendToModalLog('📊 FINAL RESULTS:', 'info');
     appendToModalLog(`   ✅ Successfully posted: ${posted}`, 'success');
     appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
-    appendToModalLog(`   ⚠️ Skipped: ${skipped}`, 'warning');
-    appendToModalLog(`   📍 Bin: ${currentLocation}`, 'info');
+    appendToModalLog(`   ⚠️ Skipped (missing data): ${skipped}`, 'warning');
+    if (consignorCount > 0) {
+        appendToModalLog(`   👤 Consignor items skipped: ${consignorCount}`, 'warning');
+    }
     
     if (failedRecords.length > 0 && failedRecords.length <= 20) {
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
@@ -750,7 +798,7 @@ async function bulkPostToDiscogs() {
     }
     
     if (posted > 0 && failed === 0 && skipped === 0) {
-        showDiscogsStatus('✅ Successfully posted ALL ' + posted + ' records from bin "' + currentLocation + '" to Discogs!', 'success');
+        showDiscogsStatus('✅ Successfully posted ALL ' + posted + ' store records from bin "' + currentLocation + '" to Discogs!', 'success');
     } else if (posted > 0) {
         showDiscogsStatus(`⚠️ Posted ${posted} records, ${failed} failed, ${skipped} skipped. Check log.`, 'warning');
     } else {
@@ -759,13 +807,13 @@ async function bulkPostToDiscogs() {
 }
 
 // ============================================================================
-// REPOST ENTIRE STORE TO DISCOGS - ONLY ACTIVE RECORDS WITH A LOCATION
+// REPOST ENTIRE STORE TO DISCOGS - ONLY STORE ITEMS (NO CONSIGNORS)
 // ============================================================================
 
 window.repostEntireStoreToDiscogs = async function() {
     console.log('🔄 Reposting entire store to Discogs...');
     
-    showDiscogsStatus('Loading all active records from the entire store...', 'info');
+    showDiscogsStatus('Loading all active store records from the entire store...', 'info');
     
     try {
         // Fetch ALL active records (status_id = 2) from ALL locations
@@ -788,36 +836,44 @@ window.repostEntireStoreToDiscogs = async function() {
         
         const allActiveRecords = data.records || [];
         
-        // ========== MINIMAL CHANGE: filter by location ==========
+        // Filter: Must have location AND be store-owned (no consignor)
         const eligibleRecords = allActiveRecords.filter(record => {
+            const hasConsignorFlag = hasConsignor(record);
             return record.location && 
                    record.location.trim() !== '' &&
                    record.location !== 'null' &&
-                   record.location !== 'None';
+                   record.location !== 'None' &&
+                   !hasConsignorFlag;
         });
-        // ========================================================
         
-        const skippedNoLocation = allActiveRecords.length - eligibleRecords.length;
+        const skippedNoLocation = allActiveRecords.filter(r => (!r.location || r.location.trim() === '')).length;
+        const skippedConsignor = allActiveRecords.filter(r => hasConsignor(r)).length;
         
         if (eligibleRecords.length === 0) {
-            showDiscogsStatus(`No eligible records found. ${skippedNoLocation} active record(s) have no location set.`, 'warning');
+            let msg = `No eligible store records found. `;
+            if (skippedNoLocation > 0) msg += `${skippedNoLocation} record(s) have no location. `;
+            if (skippedConsignor > 0) msg += `${skippedConsignor} consignor record(s) cannot be auto-posted.`;
+            showDiscogsStatus(msg, 'warning');
             return;
         }
         
         const totalTimeHours = Math.ceil(eligibleRecords.length * 3 / 3600);
-        if (!confirm(`📋 REPOST ENTIRE STORE to Discogs?\n\n` +
-            `Active records with location: ${eligibleRecords.length}\n` +
-            `Skipped (no location): ${skippedNoLocation}\n` +
-            `⚠️ Each record takes ~3 seconds\n` +
-            `⏱️ Estimated time: ~${totalTimeHours} hour(s)\n\n` +
-            `The process will validate AND post in one pass.\n\n` +
-            `Continue?`)) {
+        let confirmMsg = `📋 REPOST ENTIRE STORE to Discogs?\n\n`;
+        confirmMsg += `Store records with location: ${eligibleRecords.length}\n`;
+        confirmMsg += `Skipped (no location): ${skippedNoLocation}\n`;
+        confirmMsg += `Skipped (consignor items): ${skippedConsignor}\n`;
+        confirmMsg += `⚠️ Each record takes ~3 seconds\n`;
+        confirmMsg += `⏱️ Estimated time: ~${totalTimeHours} hour(s)\n\n`;
+        confirmMsg += `Continue?`;
+        
+        if (!confirm(confirmMsg)) {
             return;
         }
         
-        openProgressModal('Reposting ' + eligibleRecords.length + ' Records from Entire Store');
-        appendToModalLog('🚀 Starting REPOST ENTIRE STORE for ' + eligibleRecords.length + ' records...', 'info');
-        appendToModalLog(`⚠️ Skipped ${skippedNoLocation} active record(s) with missing location`, 'warning');
+        openProgressModal('Reposting ' + eligibleRecords.length + ' Store Records from Entire Store');
+        appendToModalLog('🚀 Starting REPOST ENTIRE STORE for ' + eligibleRecords.length + ' store records...', 'info');
+        appendToModalLog(`⚠️ Skipped ${skippedNoLocation} record(s) with missing location`, 'warning');
+        appendToModalLog(`⚠️ Skipped ${skippedConsignor} consignor item(s) (cannot auto-post)`, 'warning');
         appendToModalLog('⏱️ Validating and posting in one pass (3 seconds per record)', 'info');
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
         
@@ -952,7 +1008,7 @@ window.repostEntireStoreToDiscogs = async function() {
         }
         
         if (posted > 0) {
-            showDiscogsStatus(`✅ Reposted ${posted} records. ${failed} failed, ${skipped} skipped.`, posted === eligibleRecords.length ? 'success' : 'warning');
+            showDiscogsStatus(`✅ Reposted ${posted} store records. ${failed} failed, ${skipped} skipped.`, posted === eligibleRecords.length ? 'success' : 'warning');
         } else {
             showDiscogsStatus(`❌ Failed to repost any records. Check log for details.`, 'error');
         }
@@ -1109,6 +1165,7 @@ function renderMarkupRules(rules) {
         html += '<button class="btn btn-sm btn-info" onclick="updateMarkupRule(' + rule.id + ')" style="padding: 4px 8px; margin-right: 5px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-save"></i></button> ';
         html += '<button class="btn btn-sm btn-danger" onclick="deleteMarkupRule(' + rule.id + ')" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-trash"></i></button>';
         html += '</td>';
+        html += '</tr>';
     }
     tbody.innerHTML = html;
 }
@@ -1220,14 +1277,14 @@ window.refreshDiscogsLocations = loadLocations;
 window.initDiscogsTab = function() {
     console.log('🎵 Initializing Discogs Tab...');
     
-    discogsTableBody = document.getElementById('combined-inventory-body');
+    tableBody = document.getElementById('combined-inventory-body');
     discogsLocationSelect = document.getElementById('discogs-location-select');
     discogsPostButton = document.getElementById('post-location-button');
     discogsStatusMessage = document.getElementById('discogs-status-message');
     discogsSearchInput = document.getElementById('discogs-search-input');
     discogsSearchButton = document.getElementById('discogs-search-button');
     
-    if (!discogsTableBody) {
+    if (!tableBody) {
         console.error('Table body element not found!');
         return;
     }
@@ -1267,7 +1324,7 @@ window.initDiscogsTab = function() {
     loadLocations();
     loadMarkupRules();
     
-    discogsTableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
     
     console.log('✅ Discogs Tab initialized');
 };
@@ -1290,4 +1347,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - Bin-based bulk posting (entire bins at once)');
+console.log('✅ discogs.js loaded - Bin-based bulk posting (consignor items are SKIPPED)');
