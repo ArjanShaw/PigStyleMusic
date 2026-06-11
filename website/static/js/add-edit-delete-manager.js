@@ -26,6 +26,7 @@ class AddEditDeleteManager {
         this.defaultSleeveConditionId = null;
         this.defaultDiscConditionId = null;
         this.defaultNotes = null;
+        this.defaultCogs = null; // NEW: Default COGS value
         this.autoEstimatePrice = true;
         this.storePriceMultiplier = null; // MUST be loaded from config
         
@@ -249,6 +250,15 @@ class AddEditDeleteManager {
                 console.log('LOAD_SETTINGS: Loaded default notes:', this.defaultNotes);
             }
             
+            // NEW: Load default COGS
+            const savedDefaultCogs = localStorage.getItem('add_record_default_cogs');
+            if (savedDefaultCogs !== null && savedDefaultCogs !== '') {
+                this.defaultCogs = parseFloat(savedDefaultCogs);
+                console.log('LOAD_SETTINGS: Loaded default COGS:', this.defaultCogs);
+            } else {
+                this.defaultCogs = null;
+            }
+            
             const savedAutoEstimate = localStorage.getItem('add_record_auto_estimate');
             if (savedAutoEstimate !== null) {
                 this.autoEstimatePrice = savedAutoEstimate === 'true';
@@ -257,6 +267,7 @@ class AddEditDeleteManager {
             console.log('LOAD_SETTINGS: Loaded consignor ID:', this.selectedConsignorId);
             console.log('LOAD_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
             console.log('LOAD_SETTINGS: Default notes:', this.defaultNotes);
+            console.log('LOAD_SETTINGS: Default COGS:', this.defaultCogs);
         } catch (error) {
             console.error('Error loading saved settings:', error);
         }
@@ -288,12 +299,20 @@ class AddEditDeleteManager {
                 localStorage.removeItem('add_record_default_notes');
             }
             
+            // NEW: Save default COGS
+            if (this.defaultCogs !== null && this.defaultCogs !== '') {
+                localStorage.setItem('add_record_default_cogs', this.defaultCogs.toString());
+            } else {
+                localStorage.removeItem('add_record_default_cogs');
+            }
+            
             localStorage.setItem('add_record_auto_estimate', this.autoEstimatePrice.toString());
             
             console.log('SAVE_SETTINGS: Saved consignor ID:', this.selectedConsignorId);
             console.log('SAVE_SETTINGS: Saved sleeve condition ID:', this.defaultSleeveConditionId);
             console.log('SAVE_SETTINGS: Saved disc condition ID:', this.defaultDiscConditionId);
             console.log('SAVE_SETTINGS: Saved default notes:', this.defaultNotes);
+            console.log('SAVE_SETTINGS: Saved default COGS:', this.defaultCogs);
             console.log('SAVE_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
         } catch (error) {
             console.error('Error saving settings:', error);
@@ -412,6 +431,23 @@ class AddEditDeleteManager {
                     </div>
                 </div>
                 
+                <!-- NEW: Default COGS Field -->
+                <div>
+                    <label for="global-default-cogs" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
+                        <i class="fas fa-dollar-sign"></i> Default COGS (Cost)
+                    </label>
+                    <input type="number" 
+                           id="global-default-cogs" 
+                           step="0.01" 
+                           min="0" 
+                           value="${this.defaultCogs !== null ? this.defaultCogs.toFixed(2) : ''}" 
+                           style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;"
+                           placeholder="Leave empty for no default COGS">
+                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                        Optional - Cost of goods sold per record
+                    </div>
+                </div>
+                
                 <div>
                     <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-calculator"></i> Price Estimation
@@ -506,6 +542,23 @@ class AddEditDeleteManager {
             showMessage(`Default notes updated`, 'success');
         });
         
+        // NEW: Default COGS change handler
+        document.getElementById('global-default-cogs').addEventListener('change', (e) => {
+            const value = e.target.value;
+            if (value === '' || value === null) {
+                this.defaultCogs = null;
+            } else {
+                const cogsValue = parseFloat(value);
+                if (!isNaN(cogsValue) && cogsValue >= 0) {
+                    this.defaultCogs = cogsValue;
+                } else {
+                    this.defaultCogs = null;
+                }
+            }
+            this.saveSettings();
+            showMessage(`Default COGS updated`, 'success');
+        });
+        
         // Auto-estimate checkbox handler
         document.getElementById('auto-estimate-checkbox').addEventListener('change', (e) => {
             this.autoEstimatePrice = e.target.checked;
@@ -525,6 +578,7 @@ class AddEditDeleteManager {
             this.defaultSleeveConditionId = null;
             this.defaultDiscConditionId = null;
             this.defaultNotes = null;
+            this.defaultCogs = null; // NEW: Clear COGS
             this.autoEstimatePrice = true;
             this.saveSettings();
             
@@ -532,6 +586,7 @@ class AddEditDeleteManager {
             document.getElementById('global-sleeve-condition-select').value = '';
             document.getElementById('global-disc-condition-select').value = '';
             document.getElementById('global-default-notes').value = '';
+            document.getElementById('global-default-cogs').value = '';
             document.getElementById('auto-estimate-checkbox').checked = true;
             
             showMessage('All default settings cleared', 'success');
@@ -723,6 +778,7 @@ class AddEditDeleteManager {
         }).join('');
         
         const escapedDefaultNotes = this.escapeHtml(this.defaultNotes || '');
+        const defaultCogsValue = this.defaultCogs !== null ? this.defaultCogs.toFixed(2) : '';
         
         return `
             <h3>Search Results (${resultsCount})</h3>
@@ -821,6 +877,22 @@ class AddEditDeleteManager {
                                     </button>
                                 </div>
                                 
+                                <!-- NEW: COGS Field -->
+                                <div>
+                                    <label class="form-label">
+                                        <i class="fas fa-dollar-sign"></i> COGS (Cost) $
+                                    </label>
+                                    <input type="number" 
+                                           class="form-control cogs-input" 
+                                           step="0.01" 
+                                           min="0" 
+                                           value="${defaultCogsValue}"
+                                           placeholder="Optional - Cost of goods sold">
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Optional - Your cost for this record
+                                    </div>
+                                </div>
+                                
                                 <div>
                                     <label class="form-label">
                                         <i class="fas fa-user"></i> Consignor
@@ -914,6 +986,7 @@ class AddEditDeleteManager {
              
             ${filteredResults.map((record, index) => {
                 const currentConsignorId = record.consignor_id || '';
+                const currentCogs = record.cogs !== null && record.cogs !== undefined ? parseFloat(record.cogs).toFixed(2) : '';
                 
                 const sleeveCondition = this.conditions.find(c => c.id == record.condition_sleeve_id);
                 const discCondition = this.conditions.find(c => c.id == record.condition_disc_id);
@@ -953,6 +1026,7 @@ class AddEditDeleteManager {
                                     <span><strong>Barcode:</strong> <span class="barcode-value">${record.barcode || record.id}</span></span>
                                     <span><strong>Catalog #:</strong> ${record.catalog_number || 'None'}</span>
                                     <span><strong>Price:</strong> $${(record.store_price || 0).toFixed(2)}</span>
+                                    <span><strong>COGS:</strong> ${record.cogs ? `$${parseFloat(record.cogs).toFixed(2)}` : 'Not set'}</span>
                                     <span><strong>Sleeve:</strong> ${sleeveDisplay}</span>
                                     <span><strong>Disc:</strong> ${discDisplay}</span>
                                     <span><strong>Location:</strong> ${locationDisplay}</span>
@@ -1031,6 +1105,21 @@ class AddEditDeleteManager {
                                     <button class="btn btn-sm btn-info edit-estimate-now-btn" style="margin-top: 5px; font-size: 12px; display: ${this.autoEstimatePrice ? 'none' : 'inline-block'};" data-record-id="${record.id}">
                                         <i class="fas fa-calculator"></i> Estimate Price
                                     </button>
+                                </div>
+                                
+                                <!-- NEW: COGS Field in Edit Mode -->
+                                <div>
+                                    <label class="form-label">COGS ($)</label>
+                                    <input type="number" 
+                                           class="form-control edit-cogs-input" 
+                                           data-record-id="${record.id}"
+                                           value="${currentCogs}" 
+                                           step="0.01" 
+                                           min="0"
+                                           placeholder="Cost of goods sold">
+                                    <div class="form-hint" style="font-size: 11px; color: #666; margin-top: 3px;">
+                                        Your cost for this record
+                                    </div>
                                 </div>
                                 
                                 <div>
@@ -1279,7 +1368,7 @@ class AddEditDeleteManager {
                                 <td style="padding: 4px; border: 1px solid #ddd;">${listing.condition}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;">${this.escapeHtml(listing.title.substring(0, 50))}</td>
                                 <td style="padding: 4px; border: 1px solid #ddd;"><a href="${listing.url}" target="_blank">View</a></td>
-                               </tr>`).join('')}</tbody>
+                            </tr>`).join('')}</tbody>
                     </table>
                 </div>
             </div>`;
@@ -1404,6 +1493,7 @@ class AddEditDeleteManager {
         const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
         const discConditionSelect = card.querySelector('.disc-condition-select');
         const priceInput = card.querySelector('.price-input');
+        const cogsInput = card.querySelector('.cogs-input'); // NEW: Get COGS input
         const consignorSelect = card.querySelector('.consignor-select');
         const notesInput = card.querySelector('.notes-input');
         const noSleeveCheckbox = card.querySelector('.no-original-sleeve-checkbox');
@@ -1411,6 +1501,7 @@ class AddEditDeleteManager {
         const sleeveConditionId = sleeveConditionSelect.value;
         const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
+        const cogs = cogsInput && cogsInput.value ? parseFloat(cogsInput.value) : null; // NEW: Get COGS value
         const consignorId = consignorSelect ? consignorSelect.value : this.selectedConsignorId;
         let notes = notesInput ? notesInput.value.trim() : '';
         
@@ -1449,6 +1540,7 @@ class AddEditDeleteManager {
             condition_sleeve_id: parseInt(sleeveConditionId),
             condition_disc_id: parseInt(discConditionId),
             store_price: price,
+            cogs: cogs, // NEW: Include COGS
             youtube_url: '',
             consignor_id: consignorId ? parseInt(consignorId) : null,
             status_id: 1,
@@ -1461,7 +1553,7 @@ class AddEditDeleteManager {
             if (response.status === 'success' && response.record) {
                 const recordId = response.record.id;
                 
-                showMessage(`Record added successfully! Record ID: ${recordId}. Price: $${price.toFixed(2)}`, 'success');
+                showMessage(`Record added successfully! Record ID: ${recordId}. Price: $${price.toFixed(2)}${cogs ? ` COGS: $${cogs.toFixed(2)}` : ''}`, 'success');
                 
                 await this.loadStats();
                 
@@ -1487,6 +1579,7 @@ class AddEditDeleteManager {
         const notesInput = card.querySelector('.edit-notes-input');
         const noSleeveCheckbox = card.querySelector('.edit-no-original-sleeve-checkbox');
         const priceInput = card.querySelector('.edit-price-input');
+        const cogsInput = card.querySelector('.edit-cogs-input'); // NEW: Get COGS input
         const statusSelect = card.querySelector('.edit-status-select');
         const consignorSelect = card.querySelector('.edit-consignor-select');
         
@@ -1517,6 +1610,19 @@ class AddEditDeleteManager {
                     return;
                 }
                 updates.store_price = price;
+            }
+        }
+        
+        // NEW: Handle COGS update
+        if (cogsInput) {
+            const cogsValue = cogsInput.value.trim();
+            if (cogsValue === '') {
+                updates.cogs = null;
+            } else {
+                const cogs = parseFloat(cogsValue);
+                if (!isNaN(cogs) && cogs >= 0) {
+                    updates.cogs = cogs;
+                }
             }
         }
         
