@@ -9,6 +9,9 @@ let currentLocationPrefix = null;
 let isLoading = false;
 let cancelResolve = false;
 
+// Last Seen Filter
+let lastSeenCutoffDate = null;
+
 // DOM Elements
 let tableBody = null;
 let discogsLocationSelect = null;
@@ -16,6 +19,8 @@ let discogsPostButton = null;
 let discogsStatusMessage = null;
 let discogsSearchInput = null;
 let discogsSearchButton = null;
+let lastSeenCutoffDateInput = null;
+let applyLastSeenFilterBtn = null;
 
 // Modal elements
 let progressModal = null;
@@ -31,6 +36,70 @@ let modalCancelBtn = null;
 
 function hasConsignor(record) {
     return (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null);
+}
+
+// ============================================================================
+// Helper: Get last seen cutoff date
+// ============================================================================
+
+function getLastSeenCutoffDate() {
+    if (lastSeenCutoffDateInput && lastSeenCutoffDateInput.value) {
+        return lastSeenCutoffDateInput.value;
+    }
+    // Default: 30 days ago
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date.toISOString().split('T')[0];
+}
+
+// ============================================================================
+// Helper: Check if record meets last_seen filter
+// ============================================================================
+
+function meetsLastSeenFilter(record) {
+    const cutoffDate = getLastSeenCutoffDate();
+    if (!cutoffDate) return true;
+    
+    // No last_seen date - exclude
+    if (!record.last_seen) return false;
+    
+    try {
+        const lastSeenDate = record.last_seen.split('T')[0];
+        return lastSeenDate >= cutoffDate;
+    } catch (e) {
+        console.warn('Error parsing last_seen date:', record.last_seen, e);
+        return false;
+    }
+}
+
+// ============================================================================
+// Helper: Format last_seen date for display
+// ============================================================================
+
+function formatLastSeen(lastSeen) {
+    if (!lastSeen) return '<span style="color: #dc3545;">Never</span>';
+    
+    try {
+        const lastSeenDate = new Date(lastSeen);
+        const today = new Date();
+        const daysSince = Math.floor((today - lastSeenDate) / (1000 * 60 * 60 * 24));
+        const cutoffDate = getLastSeenCutoffDate();
+        
+        if (cutoffDate) {
+            const cutoffDateObj = new Date(cutoffDate);
+            if (lastSeenDate < cutoffDateObj) {
+                return `<span style="color: #dc3545;" title="Before cutoff date">${daysSince} days ago (⚠️)</span>`;
+            }
+        }
+        
+        if (daysSince === 0) return '<span style="color: #28a745;">Today</span>';
+        if (daysSince === 1) return '<span style="color: #28a745;">Yesterday</span>';
+        if (daysSince <= 7) return `<span style="color: #ffc107;">${daysSince} days ago</span>`;
+        if (daysSince <= 30) return `<span style="color: #fd7e14;">${daysSince} days ago</span>`;
+        return `<span style="color: #dc3545;">${daysSince} days ago</span>`;
+    } catch (e) {
+        return lastSeen;
+    }
 }
 
 // ============================================================================
@@ -161,6 +230,24 @@ window.toggleMarkupRules = function() {
 };
 
 // ============================================================================
+// Last Seen Filter Handlers
+// ============================================================================
+
+function applyLastSeenFilter() {
+    if (lastSeenCutoffDateInput) {
+        lastSeenCutoffDate = lastSeenCutoffDateInput.value;
+    }
+    console.log(`📅 Last seen cutoff date set to: ${lastSeenCutoffDate || 'none'}`);
+    
+    // Re-render the table if we have records loaded
+    if (currentLocationRecords.length > 0) {
+        applyDiscogsSearchFilter();
+    }
+    
+    showDiscogsStatus(`Last seen filter set to: ${lastSeenCutoffDate || 'disabled'}`, 'info');
+}
+
+// ============================================================================
 // Load unique locations from records (stripped of counters)
 // ============================================================================
 
@@ -268,9 +355,9 @@ async function loadLocationRecords() {
             if (discogsPostButton) {
                 discogsPostButton.disabled = false;
                 discogsPostButton.style.opacity = '1';
-                // Only count store items (no consignor) for posting
+                // Only count store items (no consignor) that meet last_seen filter for posting
                 const eligibleCount = discogsFilteredRecords.filter(function(r) { 
-                    return r.status_id === 2 && !hasConsignor(r);
+                    return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r);
                 }).length;
                 discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post Entire "' + selectedLocation + '" (' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' records)';
             }
@@ -281,7 +368,7 @@ async function loadLocationRecords() {
     } catch (error) {
         console.error('Error loading location records:', error);
         if (tableBody) {
-            tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + error.message + '</td><tr>';
+            tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + error.message + '</td></tr>';
         }
         if (discogsPostButton) {
             discogsPostButton.disabled = true;
@@ -315,7 +402,7 @@ function applyDiscogsSearchFilter() {
     
     if (discogsPostButton && currentLocation) {
         const eligibleCount = discogsFilteredRecords.filter(function(r) { 
-            return r.status_id === 2 && !hasConsignor(r);
+            return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r);
         }).length;
         discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post Entire "' + currentLocation + '" (' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' records)';
         discogsPostButton.disabled = (eligibleCount === 0);
@@ -411,16 +498,18 @@ async function renderDiscogsTable() {
         
         const canPost = (record.status_id === 2);
         const hasConsignorFlag = hasConsignor(record);
+        const meetsLastSeen = meetsLastSeenFilter(record);
         let discogsPrice = null;
         let markupPercent = null;
         let priceError = null;
         
         if (canPost) {
             if (hasConsignorFlag) {
-                // Consignor items - use store price, no markup, but cannot auto-post
                 discogsPrice = record.store_price;
                 markupPercent = 0;
                 priceError = 'Consignor item - cannot auto-post';
+            } else if (!meetsLastSeen) {
+                priceError = 'Last seen before cutoff date';
             } else if (!record.created_at) {
                 priceError = 'Missing creation date';
             } else {
@@ -446,12 +535,18 @@ async function renderDiscogsTable() {
         const displayLocation = record.location || '—';
         const shortLocation = displayLocation.length > 30 ? displayLocation.substring(0, 27) + '...' : displayLocation;
         
+        const lastSeenDisplay = formatLastSeen(record.last_seen);
+        
         // Add consignor badge if applicable
         const consignorBadge = hasConsignorFlag ? '<span style="display: inline-block; background: #ffc107; color: #333; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 5px;" title="Consignor item - cannot auto-post">👤 Consignor</span>' : '';
         
-        html += '<tr style="' + (hasConsignorFlag ? 'background: #fff8e7;' : '') + '">';
+        // Add warning if last_seen fails filter
+        const lastSeenWarning = (!meetsLastSeen && record.last_seen) ? '<span style="display: inline-block; background: #dc3545; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 5px;" title="Last seen before cutoff date">⚠️ Old</span>' : '';
+        const noLastSeenWarning = (!record.last_seen) ? '<span style="display: inline-block; background: #6c757d; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 5px;" title="Never scanned">⚠️ Never</span>' : '';
+        
+        html += '<tr style="' + ((!meetsLastSeen && record.last_seen) ? 'background: #fff0f0;' : (hasConsignorFlag ? 'background: #fff8e7;' : '')) + '">';
         html += '<td style="text-align: center;">' + (imageUrl ? '<img src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(record.artist) + '" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">' : '<div style="width: 40px; height: 40px; background: #e0e0e0; border-radius: 4px; display: inline-block;"></div>') + '</td>';
-        html += '<td>' + (record.id || '—') + consignorBadge + '</td>';
+        html += '<td>' + (record.id || '—') + consignorBadge + lastSeenWarning + noLastSeenWarning + '</td>';
         html += '<td><strong>' + escapeHtml(record.artist) + '</strong></td>';
         html += '<td>' + escapeHtml(record.title) + '</td>';
         html += '<td>' + (record.catalog_number || '—') + '</td>';
@@ -460,15 +555,16 @@ async function renderDiscogsTable() {
         html += '<td>' + (record.store_price ? '$' + parseFloat(record.store_price).toFixed(2) : '—') + '</td>';
         html += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + (priceError ? '<div style="font-size: 10px; color: #dc3545;">⚠️ ' + priceError + '</div>' : '') + '</td>';
         html += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
+        html += '<td style="font-size: 11px;">' + lastSeenDisplay + '</td>';
         html += '<td title="' + escapeHtml(displayLocation) + '" style="font-size: 12px;">' + escapeHtml(shortLocation) + '</td>';
         html += '<td style="text-align: center;">';
         
-        if (canPost && discogsPrice && !hasConsignorFlag) {
-            // Normal store item - can post
+        if (canPost && discogsPrice && !hasConsignorFlag && meetsLastSeen) {
             html += '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(record.artist) + '" data-title="' + escapeHtml(record.title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + (record.disc_condition_name || '') + '" data-sleeve-condition="' + (record.sleeve_condition_name || '') + '" data-catalog="' + escapeHtml(record.catalog_number || '') + '" data-location="' + escapeHtml(record.location || '') + '" data-notes="' + escapeHtml(record.notes || '') + '" data-has-consignor="false"><i class="fab fa-discogs"></i> Post</button>';
         } else if (canPost && hasConsignorFlag) {
-            // Consignor item - cannot auto-post
             html += '<span style="color: #ffc107; font-size: 11px;" title="Consignor items must be posted manually on Discogs"><i class="fas fa-user"></i> Manual only</span>';
+        } else if (canPost && !meetsLastSeen) {
+            html += '<span style="color: #dc3545; font-size: 11px;" title="Last seen before cutoff date"><i class="fas fa-calendar-alt"></i> Too old</span>';
         } else if (canPost && !discogsPrice) {
             html += '<span style="color: #dc3545; font-size: 11px;">⚠️ No price</span>';
         } else {
@@ -514,7 +610,7 @@ async function renderDiscogsTable() {
 window.postSingleRecordToDiscogs = async function(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes, hasConsignorFlag) {
     console.log('postSingleRecordToDiscogs called', { recordId, artist, title, price, discogsPrice });
     
-    // NEW: Prevent posting consignor items
+    // Prevent posting consignor items
     if (hasConsignorFlag) {
         showDiscogsStatus('Consignor items cannot be auto-posted to Discogs. Must be posted manually.', 'error');
         return;
@@ -619,33 +715,34 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
 };
 
 // ============================================================================
-// Bulk Post All Records in Current Bin - SKIP CONSIGNOR ITEMS
+// Bulk Post All Records in Current Bin - SKIP CONSIGNOR ITEMS & LAST SEEN
 // ============================================================================
 
 async function bulkPostToDiscogs() {
-    // Only include store items (no consignor) for posting
+    // Only include store items (no consignor) that meet last_seen filter for posting
     const eligibleRecords = discogsFilteredRecords.filter(function(r) { 
-        return r.status_id === 2 && !hasConsignor(r);
+        return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r);
     });
     const consignorCount = discogsFilteredRecords.filter(function(r) { 
         return r.status_id === 2 && hasConsignor(r);
     }).length;
+    const lastSeenFilteredCount = discogsFilteredRecords.filter(function(r) { 
+        return r.status_id === 2 && !hasConsignor(r) && !meetsLastSeenFilter(r);
+    }).length;
     
     if (eligibleRecords.length === 0) {
-        if (consignorCount > 0) {
-            showDiscogsStatus('All records in this bin are consignor items. Consignor items cannot be auto-posted to Discogs.', 'warning');
-        } else {
-            showDiscogsStatus('No eligible records to post (only Active store records can be posted)', 'warning');
-        }
+        let msg = 'No eligible records to post. ';
+        if (consignorCount > 0) msg += `${consignorCount} consignor item(s) skipped. `;
+        if (lastSeenFilteredCount > 0) msg += `${lastSeenFilteredCount} record(s) skipped due to last_seen filter.`;
+        showDiscogsStatus(msg, 'warning');
         return;
     }
     
     const totalTimeMinutes = Math.ceil(eligibleRecords.length * 3 / 60);
-    let confirmMessage = '📋 Post ' + eligibleRecords.length + ' store record(s) from bin "' + currentLocation + '" to Discogs?\n\n';
-    if (consignorCount > 0) {
-        confirmMessage += '⚠️ ' + consignorCount + ' consignor item(s) will be SKIPPED (cannot auto-post)\n\n';
-    }
-    confirmMessage += '⏱️ Estimated total time: ~' + totalTimeMinutes + ' minute(s)\n\nContinue?';
+    let confirmMessage = `📋 Post ${eligibleRecords.length} store record(s) from bin "${currentLocation}" to Discogs?\n\n`;
+    if (consignorCount > 0) confirmMessage += `⚠️ ${consignorCount} consignor item(s) will be SKIPPED (cannot auto-post)\n`;
+    if (lastSeenFilteredCount > 0) confirmMessage += `⚠️ ${lastSeenFilteredCount} record(s) will be SKIPPED (last_seen before cutoff)\n`;
+    confirmMessage += `⏱️ Estimated total time: ~${totalTimeMinutes} minute(s)\n\nContinue?`;
     
     if (!confirm(confirmMessage)) {
         return;
@@ -655,6 +752,9 @@ async function bulkPostToDiscogs() {
     appendToModalLog('🚀 Starting bulk post for ' + eligibleRecords.length + ' store records from bin "' + currentLocation + '"...', 'info');
     if (consignorCount > 0) {
         appendToModalLog('⚠️ Skipping ' + consignorCount + ' consignor item(s) (cannot auto-post)', 'warning');
+    }
+    if (lastSeenFilteredCount > 0) {
+        appendToModalLog(`⚠️ Skipping ${lastSeenFilteredCount} record(s) (last_seen before cutoff date)`, 'warning');
     }
     appendToModalLog('⏱️ 3-second delay between requests for reliability', 'warning');
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
@@ -779,6 +879,9 @@ async function bulkPostToDiscogs() {
     if (consignorCount > 0) {
         appendToModalLog(`   👤 Consignor items skipped: ${consignorCount}`, 'warning');
     }
+    if (lastSeenFilteredCount > 0) {
+        appendToModalLog(`   📅 Last seen filter skipped: ${lastSeenFilteredCount}`, 'warning');
+    }
     
     if (failedRecords.length > 0 && failedRecords.length <= 20) {
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
@@ -807,7 +910,7 @@ async function bulkPostToDiscogs() {
 }
 
 // ============================================================================
-// REPOST ENTIRE STORE TO DISCOGS - ONLY STORE ITEMS (NO CONSIGNORS)
+// REPOST ENTIRE STORE TO DISCOGS - ONLY STORE ITEMS (NO CONSIGNORS) + LAST SEEN
 // ============================================================================
 
 window.repostEntireStoreToDiscogs = async function() {
@@ -836,32 +939,41 @@ window.repostEntireStoreToDiscogs = async function() {
         
         const allActiveRecords = data.records || [];
         
-        // Filter: Must have location AND be store-owned (no consignor)
+        // Filter: Must have location AND be store-owned (no consignor) AND meet last_seen filter
         const eligibleRecords = allActiveRecords.filter(record => {
             const hasConsignorFlag = hasConsignor(record);
             return record.location && 
                    record.location.trim() !== '' &&
                    record.location !== 'null' &&
                    record.location !== 'None' &&
-                   !hasConsignorFlag;
+                   !hasConsignorFlag &&
+                   meetsLastSeenFilter(record);
         });
         
         const skippedNoLocation = allActiveRecords.filter(r => (!r.location || r.location.trim() === '')).length;
         const skippedConsignor = allActiveRecords.filter(r => hasConsignor(r)).length;
+        const skippedLastSeen = allActiveRecords.filter(r => {
+            return r.location && 
+                   r.location.trim() !== '' &&
+                   !hasConsignor(r) &&
+                   !meetsLastSeenFilter(r);
+        }).length;
         
         if (eligibleRecords.length === 0) {
             let msg = `No eligible store records found. `;
             if (skippedNoLocation > 0) msg += `${skippedNoLocation} record(s) have no location. `;
-            if (skippedConsignor > 0) msg += `${skippedConsignor} consignor record(s) cannot be auto-posted.`;
+            if (skippedConsignor > 0) msg += `${skippedConsignor} consignor record(s) cannot be auto-posted. `;
+            if (skippedLastSeen > 0) msg += `${skippedLastSeen} record(s) skipped due to last_seen filter.`;
             showDiscogsStatus(msg, 'warning');
             return;
         }
         
         const totalTimeHours = Math.ceil(eligibleRecords.length * 3 / 3600);
         let confirmMsg = `📋 REPOST ENTIRE STORE to Discogs?\n\n`;
-        confirmMsg += `Store records with location: ${eligibleRecords.length}\n`;
+        confirmMsg += `Store records with location AND recent last_seen: ${eligibleRecords.length}\n`;
         confirmMsg += `Skipped (no location): ${skippedNoLocation}\n`;
         confirmMsg += `Skipped (consignor items): ${skippedConsignor}\n`;
+        confirmMsg += `Skipped (last_seen before cutoff): ${skippedLastSeen}\n`;
         confirmMsg += `⚠️ Each record takes ~3 seconds\n`;
         confirmMsg += `⏱️ Estimated time: ~${totalTimeHours} hour(s)\n\n`;
         confirmMsg += `Continue?`;
@@ -874,6 +986,7 @@ window.repostEntireStoreToDiscogs = async function() {
         appendToModalLog('🚀 Starting REPOST ENTIRE STORE for ' + eligibleRecords.length + ' store records...', 'info');
         appendToModalLog(`⚠️ Skipped ${skippedNoLocation} record(s) with missing location`, 'warning');
         appendToModalLog(`⚠️ Skipped ${skippedConsignor} consignor item(s) (cannot auto-post)`, 'warning');
+        appendToModalLog(`⚠️ Skipped ${skippedLastSeen} record(s) (last_seen before cutoff date)`, 'warning');
         appendToModalLog('⏱️ Validating and posting in one pass (3 seconds per record)', 'info');
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
         
@@ -1145,7 +1258,7 @@ function renderMarkupRules(rules) {
     if (!tbody) return;
     
     if (!rules || rules.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="padding: 30px; text-align: center; color: #999;">⚠️ No rules configured. Add your first rule above.</td></tr>';
+        tbody.innerHTML = '<td><td colspan="4" style="padding: 30px; text-align: center; color: #999;">⚠️ No rules configured. Add your first rule above.</td></tr>';
         if (warning) warning.style.display = 'block';
         return;
     }
@@ -1271,6 +1384,21 @@ window.closeProgressModal = closeProgressModal;
 window.refreshDiscogsLocations = loadLocations;
 
 // ============================================================================
+// Initialize default cutoff date (30 days ago)
+// ============================================================================
+
+function initializeLastSeenDate() {
+    if (lastSeenCutoffDateInput) {
+        const date = new Date();
+        date.setDate(date.getDate() - 30);
+        const defaultDate = date.toISOString().split('T')[0];
+        lastSeenCutoffDateInput.value = defaultDate;
+        lastSeenCutoffDate = defaultDate;
+        console.log(`📅 Default last seen cutoff date set to: ${defaultDate} (30 days ago)`);
+    }
+}
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
@@ -1283,6 +1411,8 @@ window.initDiscogsTab = function() {
     discogsStatusMessage = document.getElementById('discogs-status-message');
     discogsSearchInput = document.getElementById('discogs-search-input');
     discogsSearchButton = document.getElementById('discogs-search-button');
+    lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
+    applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
     
     if (!tableBody) {
         console.error('Table body element not found!');
@@ -1292,6 +1422,15 @@ window.initDiscogsTab = function() {
     if (!discogsLocationSelect) {
         console.error('Location select element not found!');
         return;
+    }
+    
+    // Initialize last seen date picker
+    initializeLastSeenDate();
+    
+    if (applyLastSeenFilterBtn) {
+        applyLastSeenFilterBtn.onclick = function() {
+            applyLastSeenFilter();
+        };
     }
     
     discogsLocationSelect.onchange = function() {
@@ -1347,4 +1486,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('✅ discogs.js loaded - Bin-based bulk posting (consignor items are SKIPPED)');
+console.log('✅ discogs.js loaded - Location-based bulk posting with last_seen filter, consignor items SKIPPED');
