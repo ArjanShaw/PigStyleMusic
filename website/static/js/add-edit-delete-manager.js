@@ -1,34 +1,25 @@
 // ============================================================================
 // add-edit-delete-manager.js - Add/Edit/Delete Tab Functionality
 // ============================================================================
-// ⚠️ CRITICAL RULE - ABSOLUTELY NO FALLBACK PRICES ⚠️
-// NEVER use default/fallback prices for price estimation.
-// If price estimation fails, show the error to the user and let them enter manually.
-// DO NOT auto-populate with 19.99 or any other default value.
-// If Discogs/eBay APIs fail or return no data, the price field should remain empty.
-// The user must see the error and decide what to do.
+// PRICE ESTIMATION: Uses /api/price-estimate-v3 (Discogs-only algorithm)
 // ============================================================================
 
-// Note: Genre functionality has been removed. Discogs genre is now stored as raw text
-// in the discogs_genre_raw field and displayed read-only on price tags.
-
-// Add/Edit/Delete Manager Class
 class AddEditDeleteManager {
     constructor() {
         this.currentSearchType = 'add';
         this.currentSearchField = 'all';
         this.currentResults = [];
         this.conditions = [];
-        this.statuses = []; // Will be loaded from database
+        this.statuses = [];
         this.consignors = [];
-        this.minimumPrice = null; // MUST be loaded from config
+        this.minimumPrice = null;
         this.selectedConsignorId = null;
         this.defaultSleeveConditionId = null;
         this.defaultDiscConditionId = null;
         this.defaultNotes = null;
-        this.defaultCogs = null; // NEW: Default COGS value
+        this.defaultCogs = null;
         this.autoEstimatePrice = true;
-        this.storePriceMultiplier = null; // MUST be loaded from config
+        this.storePriceMultiplier = null;
         
         this.init();
     }
@@ -38,7 +29,7 @@ class AddEditDeleteManager {
         await this.loadStats();
         await this.loadConditions();
         await this.loadConsignors();
-        await this.loadStatuses(); // Load statuses from database
+        await this.loadStatuses();
         await this.loadStorePriceMultiplier();
         await this.loadCommissionRate();
         this.loadSavedSettings();
@@ -53,7 +44,6 @@ class AddEditDeleteManager {
                 this.statuses = response.statuses;
                 console.log('LOAD_STATUSES: Statuses loaded from database:', this.statuses);
             } else {
-                console.error('LOAD_STATUSES: Invalid response');
                 this.statuses = [];
             }
         } catch (error) {
@@ -146,19 +136,17 @@ class AddEditDeleteManager {
             this.minimumPrice = null;
         }
     }
+    
     async loadStats() {
         try {
-            // Get total records
             const response = await APIUtils.get('/records/count');
             const recordsCount = response.count || 0;
             document.getElementById('total-records').textContent = recordsCount;
             
-            // ADD THIS: Get NEW records count (status_id = 1)
             const newResponse = await APIUtils.get('/records/count?status_id=1');
             const newCount = newResponse.count || 0;
             document.getElementById('new-records-count').textContent = newCount;
 
-            // Store capacity (unchanged)
             const configResponse = await APIUtils.get('/config/STORE_CAPACITY');
             const capacity = parseInt(configResponse.config_value);
             const fillPercentage = (recordsCount / capacity * 100).toFixed(1);
@@ -169,7 +157,6 @@ class AddEditDeleteManager {
             console.error('Error loading stats:', error);
         }
     }
-
 
     async loadLastAddedRecord() {
         try {
@@ -250,7 +237,6 @@ class AddEditDeleteManager {
                 console.log('LOAD_SETTINGS: Loaded default notes:', this.defaultNotes);
             }
             
-            // NEW: Load default COGS
             const savedDefaultCogs = localStorage.getItem('add_record_default_cogs');
             if (savedDefaultCogs !== null && savedDefaultCogs !== '') {
                 this.defaultCogs = parseFloat(savedDefaultCogs);
@@ -299,7 +285,6 @@ class AddEditDeleteManager {
                 localStorage.removeItem('add_record_default_notes');
             }
             
-            // NEW: Save default COGS
             if (this.defaultCogs !== null && this.defaultCogs !== '') {
                 localStorage.setItem('add_record_default_cogs', this.defaultCogs.toString());
             } else {
@@ -336,19 +321,16 @@ class AddEditDeleteManager {
         globalSettings.style.overflow = 'hidden';
         globalSettings.style.border = '1px solid #dee2e6';
         
-        // Build consignor options
         const consignorOptions = this.consignors.map(consignor => {
             const selected = consignor.id === this.selectedConsignorId ? 'selected' : '';
             return `<option value="${consignor.id}" ${selected}>${consignor.username}${consignor.flag_color ? ` (${consignor.flag_color})` : ''}</option>`;
         }).join('');
         
-        // Build condition options for sleeve
         const conditionOptions = this.conditions.map(condition => {
             const selected = condition.id === this.defaultSleeveConditionId ? 'selected' : '';
             return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
         }).join('');
         
-        // Build condition options for disc
         const discConditionOptions = this.conditions.map(condition => {
             const selected = condition.id === this.defaultDiscConditionId ? 'selected' : '';
             return `<option value="${condition.id}" ${selected}>${condition.display_name || condition.condition_name}</option>`;
@@ -431,7 +413,6 @@ class AddEditDeleteManager {
                     </div>
                 </div>
                 
-                <!-- NEW: Default COGS Field -->
                 <div>
                     <label for="global-default-cogs" style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; color: #333;">
                         <i class="fas fa-dollar-sign"></i> Default COGS (Cost)
@@ -511,7 +492,6 @@ class AddEditDeleteManager {
             searchSection.appendChild(globalSettings);
         }
         
-        // Consignor change handler
         document.getElementById('global-consignor-select').addEventListener('change', (e) => {
             const value = e.target.value;
             this.selectedConsignorId = value ? parseInt(value) : null;
@@ -519,7 +499,6 @@ class AddEditDeleteManager {
             showMessage(`Default consignor updated`, 'success');
         });
         
-        // Sleeve condition change handler
         document.getElementById('global-sleeve-condition-select').addEventListener('change', (e) => {
             const value = e.target.value;
             this.defaultSleeveConditionId = value ? parseInt(value) : null;
@@ -527,7 +506,6 @@ class AddEditDeleteManager {
             showMessage(`Default sleeve condition updated`, 'success');
         });
         
-        // Disc condition change handler
         document.getElementById('global-disc-condition-select').addEventListener('change', (e) => {
             const value = e.target.value;
             this.defaultDiscConditionId = value ? parseInt(value) : null;
@@ -535,14 +513,12 @@ class AddEditDeleteManager {
             showMessage(`Default disc condition updated`, 'success');
         });
         
-        // Default notes change handler
         document.getElementById('global-default-notes').addEventListener('change', (e) => {
             this.defaultNotes = e.target.value;
             this.saveSettings();
             showMessage(`Default notes updated`, 'success');
         });
         
-        // NEW: Default COGS change handler
         document.getElementById('global-default-cogs').addEventListener('change', (e) => {
             const value = e.target.value;
             if (value === '' || value === null) {
@@ -559,26 +535,23 @@ class AddEditDeleteManager {
             showMessage(`Default COGS updated`, 'success');
         });
         
-        // Auto-estimate checkbox handler
         document.getElementById('auto-estimate-checkbox').addEventListener('change', (e) => {
             this.autoEstimatePrice = e.target.checked;
             this.saveSettings();
             showMessage(`Auto-estimate ${this.autoEstimatePrice ? 'enabled' : 'disabled'}`, 'success');
         });
         
-        // Save multiplier button
         const saveMultiplierBtn = document.getElementById('save-multiplier-btn');
         if (saveMultiplierBtn) {
             saveMultiplierBtn.addEventListener('click', () => this.saveStorePriceMultiplier());
         }
         
-        // Clear all defaults button
         document.getElementById('clear-defaults-btn').addEventListener('click', () => {
             this.selectedConsignorId = null;
             this.defaultSleeveConditionId = null;
             this.defaultDiscConditionId = null;
             this.defaultNotes = null;
-            this.defaultCogs = null; // NEW: Clear COGS
+            this.defaultCogs = null;
             this.autoEstimatePrice = true;
             this.saveSettings();
             
@@ -794,12 +767,13 @@ class AddEditDeleteManager {
                 }
                 
                 const discogsGenreRaw = record.genre_raw || '';
+                const catalogNumber = record.catalog_number || '';
                 
                 const defaultSleeveSelected = this.defaultSleeveConditionId ? this.defaultSleeveConditionId : '';
                 const defaultDiscSelected = this.defaultDiscConditionId ? this.defaultDiscConditionId : '';
                 
                 return `
-                    <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}" data-artist="${record.artist}" data-format="${record.format || ''}">
+                    <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${index}" data-artist="${record.artist}" data-format="${record.format || ''}" data-catalog="${catalogNumber}" data-title="${record.title}">
                         <div class="record-header">
                             ${record.image_url ? `
                                 <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image" 
@@ -816,7 +790,7 @@ class AddEditDeleteManager {
                                     ${discogsGenreRaw ? `<span><strong>Discogs Genre:</strong> ${discogsGenreRaw}</span>` : ''}
                                     ${record.format ? `<span><strong>Format:</strong> ${record.format}</span>` : ''}
                                     ${record.country ? `<span><strong>Country:</strong> ${record.country}</span>` : ''}
-                                    ${record.catalog_number ? `<span><strong>Catalog #:</strong> ${record.catalog_number}</span>` : ''}
+                                    ${catalogNumber ? `<span><strong>Catalog #:</strong> ${catalogNumber}</span>` : ''}
                                     ${discogsIdentifiers ? `<span style="grid-column: span 2;"><strong>Identifiers:</strong> ${discogsIdentifiers.substring(0, 100)}${discogsIdentifiers.length > 100 ? '...' : ''}</span>` : ''}
                                 </div>
                             </div>
@@ -877,7 +851,6 @@ class AddEditDeleteManager {
                                     </button>
                                 </div>
                                 
-                                <!-- NEW: COGS Field -->
                                 <div>
                                     <label class="form-label">
                                         <i class="fas fa-dollar-sign"></i> COGS (Cost) $
@@ -1010,7 +983,7 @@ class AddEditDeleteManager {
                 ` : '';
                 
                 return `
-                    <div class="record-card" data-record-id="${record.id}" data-index="${index}">
+                    <div class="record-card" data-record-id="${record.id}" data-index="${index}" data-catalog="${record.catalog_number || ''}" data-artist="${record.artist}" data-title="${record.title}">
                         <div class="record-header">
                             ${record.image_url ? `
                                 <img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image"
@@ -1107,7 +1080,6 @@ class AddEditDeleteManager {
                                     </button>
                                 </div>
                                 
-                                <!-- NEW: COGS Field in Edit Mode -->
                                 <div>
                                     <label class="form-label">COGS ($)</label>
                                     <input type="number" 
@@ -1186,7 +1158,7 @@ class AddEditDeleteManager {
         if (!record) return;
         
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice && this.storePriceMultiplier !== null) {
-            await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
+            await this.estimatePriceWithNewEndpoint(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
         }
     }
 
@@ -1212,7 +1184,7 @@ class AddEditDeleteManager {
         if (!record) return;
         
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice && this.storePriceMultiplier !== null) {
-            await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
+            await this.estimatePriceWithNewEndpoint(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
         }
     }
 
@@ -1241,10 +1213,13 @@ class AddEditDeleteManager {
         
         if (!record) return;
         
-        await this.estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
+        await this.estimatePriceWithNewEndpoint(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
     }
 
-    async estimatePriceAndUpdateUI(record, sleeveConditionId, discConditionId, card, recordId, isEditMode) {
+    // ============================================================================
+    // NEW PRICE ESTIMATION - Uses /api/price-estimate-v3
+    // ============================================================================
+    async estimatePriceWithNewEndpoint(record, sleeveConditionId, discConditionId, card, recordId, isEditMode) {
         let priceInput;
         if (isEditMode) {
             priceInput = card.querySelector('.edit-price-input');
@@ -1264,122 +1239,102 @@ class AddEditDeleteManager {
             return;
         }
         
-        const hasExistingValue = priceInput.value && priceInput.value.trim() !== '' && !isNaN(parseFloat(priceInput.value));
-        const originalValue = priceInput.value;
+        // Get condition names from IDs
+        const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
+        const discCond = this.conditions.find(c => c.id == discConditionId);
+        
+        if (!sleeveCond || !discCond) {
+            showMessage('Invalid condition selected', 'error');
+            return;
+        }
+        
+        const mediaConditionName = discCond.display_name || discCond.condition_name;
+        const sleeveConditionName = sleeveCond.display_name || sleeveCond.condition_name;
+        
+        // Get catalog number from card
+        const catalogNumber = card.getAttribute('data-catalog') || record.catalog_number || '';
+        
+        if (!catalogNumber) {
+            showMessage('Catalog number is required for price estimation', 'error');
+            return;
+        }
+        
+        console.log('Estimating price with new endpoint:', {
+            catalog_number: catalogNumber,
+            media_condition: mediaConditionName,
+            sleeve_condition: sleeveConditionName
+        });
+        
         priceInput.disabled = true;
         
-        const priceContainer = priceInput.parentElement;
-        const tempOverlay = document.createElement('div');
-        tempOverlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.1) 100%);
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #000;
-            font-weight: bold;
-            z-index: 10;
-            animation: pulse 2s infinite;
-        `;
-        tempOverlay.textContent = hasExistingValue ? 'Calculating advised price...' : 'Estimating...';
-        priceContainer.style.position = 'relative';
-        priceContainer.appendChild(tempOverlay);
-        
-        const estimate = await this.estimatePriceForRecord(record, sleeveConditionId, discConditionId);
-        
-        tempOverlay.remove();
-        priceInput.disabled = false;
-        
-        if (estimate.success && estimate.final_price !== null) {
-            const finalPrice = estimate.final_price;
-            priceInput.value = parseFloat(finalPrice).toFixed(2);
-            priceInput.classList.add('price-estimated');
+        try {
+            const response = await APIUtils.post('/api/price-estimate-v3', {
+                catalog_number: catalogNumber,
+                media_condition: mediaConditionName,
+                sleeve_condition: sleeveConditionName
+            });
             
-            const existingHints = priceInput.parentElement.querySelectorAll('.estimation-hint');
-            existingHints.forEach(hint => hint.remove());
+            priceInput.disabled = false;
             
-            const hint = document.createElement('div');
-            hint.className = 'estimation-hint';
-            hint.style.cssText = 'margin-top: 5px; padding: 8px; background: #e9ecef; border-radius: 4px; font-size: 12px;';
-            
-            if (hasExistingValue && Math.abs(parseFloat(originalValue) - finalPrice) > 0.01) {
-                hint.innerHTML = `
-                    <i class="fas fa-lightbulb"></i>
-                    <strong>Advised Price:</strong> $${finalPrice.toFixed(2)} (Your entry: $${parseFloat(originalValue).toFixed(2)})
-                    <button class="btn btn-small" style="margin-left: 10px; padding: 2px 8px;" onclick="this.closest('.estimation-hint').remove(); this.closest('.form-group').querySelector('input').value = '${originalValue}';">Keep mine</button>
-                `;
+            if (response.status === 'success' && response.estimated_price) {
+                const estimatedPrice = response.estimated_price;
+                
+                // Apply store price multiplier
+                let finalPrice = estimatedPrice * this.storePriceMultiplier;
+                
+                // Round down to .99
+                const dollars = Math.floor(finalPrice);
+                if (dollars < 1) {
+                    finalPrice = 0.99;
+                } else {
+                    finalPrice = (dollars - 1) + 0.99;
+                }
+                
+                // Apply minimum price
+                finalPrice = Math.max(finalPrice, this.minimumPrice);
+                
+                priceInput.value = finalPrice.toFixed(2);
+                priceInput.classList.add('price-estimated');
+                
+                console.log(`Price estimated: $${finalPrice.toFixed(2)} (base: $${estimatedPrice})`);
             } else {
-                hint.innerHTML = `<i class="fas fa-bolt"></i> <strong>Advised Price:</strong> $${finalPrice.toFixed(2)} <button class="btn btn-small" style="margin-left: 10px; padding: 2px 8px;" onclick="this.closest('.estimation-hint').remove();">Dismiss</button>`;
+                showMessage(response.error || 'Price estimation failed. Please enter manually.', 'error');
             }
-            
-            priceInput.parentElement.appendChild(hint);
-            this.showPriceCalculationDetails(estimate, recordId, finalPrice);
-        } else {
-            if (!hasExistingValue) {
-                priceInput.value = '';
-            }
-            const errorMsg = estimate.error || 'Could not estimate price. Please enter manually.';
-            showMessage(errorMsg, 'error');
-            this.showPriceCalculationDetails(estimate, recordId, null);
+        } catch (error) {
+            priceInput.disabled = false;
+            console.error('Price estimate error:', error);
+            showMessage('Price estimation failed. Please enter manually.', 'error');
         }
     }
 
+    // ============================================================================
+    // DEPRECATED METHODS - Keep for compatibility but not used
+    // These methods are no longer called. They remain to prevent errors
+    // if something still references them.
+    // ============================================================================
+    
+    async estimatePriceForRecord(record, sleeveConditionId, discConditionId) {
+        console.warn('estimatePriceForRecord is deprecated. Use estimatePriceWithNewEndpoint instead.');
+        return { success: false, error: 'Deprecated' };
+    }
+
+    async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
+        console.warn('estimatePriceFromBothApis is deprecated.');
+        return { success: false, error: 'Deprecated' };
+    }
+
+    async fetchDiscogsPriceSuggestions(discogsId) {
+        console.warn('fetchDiscogsPriceSuggestions is deprecated.');
+        return { success: false, error: 'Deprecated' };
+    }
+
+    async searchEbayListings(query, limit = 50) {
+        console.warn('searchEbayListings is deprecated.');
+        return { success: false, error: 'Deprecated' };
+    }
+
     showPriceCalculationDetails(estimate, recordId, finalPrice) {
-        const calculationContainer = document.getElementById(`calculation-${recordId}`);
-        if (!calculationContainer) return;
-        
-        let html = `<div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">`;
-        
-        if (finalPrice !== null) {
-            html += `<div style="margin-bottom: 15px; padding: 10px; background: #d4edda; border-radius: 4px;"><strong>💰 Final Advised Price: $${finalPrice.toFixed(2)} (from ${estimate.price_source || 'unknown'})</strong></div>`;
-        } else if (estimate.error) {
-            html += `<div style="margin-bottom: 15px; padding: 10px; background: #f8d7da; border-radius: 4px; color: #721c24;"><strong>❌ ${estimate.error}</strong></div>`;
-        } else {
-            html += `<div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-radius: 4px;"><strong>⚠️ No price estimate available</strong></div>`;
-        }
-        
-        if (estimate.calculation_steps && estimate.calculation_steps.length > 0) {
-            html += `<div style="margin-bottom: 15px;"><strong>🧮 Price Calculation Steps:</strong>${estimate.calculation_steps.map(step => `<div style="margin-top: 5px; font-family: monospace; font-size: 12px;">${step}</div>`).join('')}</div>`;
-        }
-        
-        if (estimate.ebay_summary && Object.keys(estimate.ebay_summary).length > 0) {
-            html += `<div style="margin-bottom: 15px;"><strong>🛒 eBay Summary:</strong><div style="margin-top: 8px; padding: 10px; background: white; border-radius: 4px;">
-                <div>Total Listings: ${estimate.ebay_summary.total_listings || 0}</div>
-                <div>Condition-matched: ${estimate.ebay_summary.condition_listings || 0}</div>
-                <div>Condition Median: $${(estimate.ebay_summary.condition_median || 0).toFixed(2)}</div>
-                <div>Generic Median: $${(estimate.ebay_summary.generic_median || 0).toFixed(2)}</div>
-                <div>Price Range: $${(estimate.ebay_summary.price_range?.min || 0).toFixed(2)} - $${(estimate.ebay_summary.price_range?.max || 0).toFixed(2)}</div>
-            </div></div>`;
-        }
-        
-        if (estimate.ebay_listings && estimate.ebay_listings.length > 0) {
-            html += `<div style="margin-bottom: 15px;"><strong>📊 eBay Listings (${estimate.ebay_listings.length}):</strong>
-                <div style="max-height: 300px; overflow-y: auto; margin-top: 8px;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                        <thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Total</th><th style="padding: 6px; border: 1px solid #ddd;">Condition</th><th style="padding: 6px; border: 1px solid #ddd;">Title</th><th style="padding: 6px; border: 1px solid #ddd;">Link</th></tr></thead>
-                        <tbody>${estimate.ebay_listings.slice(0, 10).map(listing => `
-                            <tr style="${listing.matches_condition ? 'background: #d4edda;' : ''}">
-                                <td style="padding: 4px; border: 1px solid #ddd;">$${listing.total.toFixed(2)}</td>
-                                <td style="padding: 4px; border: 1px solid #ddd;">${listing.condition}</td>
-                                <td style="padding: 4px; border: 1px solid #ddd;">${this.escapeHtml(listing.title.substring(0, 50))}</td>
-                                <td style="padding: 4px; border: 1px solid #ddd;"><a href="${listing.url}" target="_blank">View</a></td>
-                            </tr>`).join('')}</tbody>
-                    </table>
-                </div>
-            </div>`;
-        }
-        
-        if (estimate.discogs_response) {
-            html += `<div style="margin-bottom: 15px;"><strong style="color: #28a745;">📤 Discogs Response:</strong><pre style="background: #e9ecef; padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 11px; max-height: 200px;">${this.escapeHtml(JSON.stringify(estimate.discogs_response, null, 2))}</pre></div>`;
-        }
-        
-        html += `</div>`;
-        calculationContainer.innerHTML = html;
+        // No longer used - kept empty for compatibility
     }
 
     addConditionChangeListeners() {
@@ -1493,7 +1448,7 @@ class AddEditDeleteManager {
         const sleeveConditionSelect = card.querySelector('.sleeve-condition-select');
         const discConditionSelect = card.querySelector('.disc-condition-select');
         const priceInput = card.querySelector('.price-input');
-        const cogsInput = card.querySelector('.cogs-input'); // NEW: Get COGS input
+        const cogsInput = card.querySelector('.cogs-input');
         const consignorSelect = card.querySelector('.consignor-select');
         const notesInput = card.querySelector('.notes-input');
         const noSleeveCheckbox = card.querySelector('.no-original-sleeve-checkbox');
@@ -1501,7 +1456,7 @@ class AddEditDeleteManager {
         const sleeveConditionId = sleeveConditionSelect.value;
         const discConditionId = discConditionSelect.value;
         const price = parseFloat(priceInput.value);
-        const cogs = cogsInput && cogsInput.value ? parseFloat(cogsInput.value) : null; // NEW: Get COGS value
+        const cogs = cogsInput && cogsInput.value ? parseFloat(cogsInput.value) : null;
         const consignorId = consignorSelect ? consignorSelect.value : this.selectedConsignorId;
         let notes = notesInput ? notesInput.value.trim() : '';
         
@@ -1540,7 +1495,7 @@ class AddEditDeleteManager {
             condition_sleeve_id: parseInt(sleeveConditionId),
             condition_disc_id: parseInt(discConditionId),
             store_price: price,
-            cogs: cogs, // NEW: Include COGS
+            cogs: cogs,
             youtube_url: '',
             consignor_id: consignorId ? parseInt(consignorId) : null,
             status_id: 1,
@@ -1579,7 +1534,7 @@ class AddEditDeleteManager {
         const notesInput = card.querySelector('.edit-notes-input');
         const noSleeveCheckbox = card.querySelector('.edit-no-original-sleeve-checkbox');
         const priceInput = card.querySelector('.edit-price-input');
-        const cogsInput = card.querySelector('.edit-cogs-input'); // NEW: Get COGS input
+        const cogsInput = card.querySelector('.edit-cogs-input');
         const statusSelect = card.querySelector('.edit-status-select');
         const consignorSelect = card.querySelector('.edit-consignor-select');
         
@@ -1613,7 +1568,6 @@ class AddEditDeleteManager {
             }
         }
         
-        // NEW: Handle COGS update
         if (cogsInput) {
             const cogsValue = cogsInput.value.trim();
             if (cogsValue === '') {
@@ -1636,7 +1590,7 @@ class AddEditDeleteManager {
             updates.status_id = newStatusId;
             
             if ((newStatusId === 3 || newStatusId === 4) && oldStatusId !== newStatusId) {
-                const todayMST = this.getMSTDate();  // ✅ Uses local MST date
+                const todayMST = this.getMSTDate();
                 updates.date_sold = todayMST;
                 console.log(`Status changed to ${newStatusId}, setting date_sold to ${todayMST} (MST)`);
             }
@@ -1698,247 +1652,6 @@ class AddEditDeleteManager {
         `;
     }
 
-    // ============================================================================
-    // PRICE ESTIMATION METHODS
-    // ============================================================================
-
-    async estimatePriceForRecord(record, sleeveConditionId, discConditionId) {
-        let conditionForEstimate = '';
-        
-        if (sleeveConditionId && discConditionId) {
-            const sleeveCond = this.conditions.find(c => c.id == sleeveConditionId);
-            const discCond = this.conditions.find(c => c.id == discConditionId);
-            
-            if (sleeveCond && discCond) {
-                if (sleeveCond.quality_index >= discCond.quality_index) {
-                    conditionForEstimate = sleeveCond.display_name || sleeveCond.condition_name;
-                } else {
-                    conditionForEstimate = discCond.display_name || discCond.condition_name;
-                }
-            }
-        }
-        
-        if (!conditionForEstimate) {
-            return { success: false, final_price: null, calculation_steps: ['No condition selected'], error: 'Please select sleeve and disc conditions first.' };
-        }
-        
-        return await this.estimatePriceFromBothApis(
-            record.discogs_id, conditionForEstimate, record.artist, record.title, record.format || ''
-        );
-    }
-
-    async fetchDiscogsPriceSuggestions(discogsId) {
-        try {
-            console.log(`📀 Fetching Discogs price suggestions for release ID: ${discogsId}`);
-            
-            const url = `${AppConfig.baseUrl}/api/discogs/price-suggestions/${discogsId}`;
-            
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const data = await response.json();
-            
-            return {
-                success: true,
-                data: data,
-                request: { url: url, method: 'GET' }
-            };
-        } catch (error) {
-            console.error('Error fetching Discogs price suggestions:', error);
-            return { success: false, error: error.message };
-        }
-    }
-
-    async searchEbayListings(query, limit = 50) {
-        try {
-            console.log(`🛒 Searching eBay for: ${query}`);
-            
-            const url = `${AppConfig.baseUrl}/api/ebay/search`;
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: query, limit: limit })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const data = await response.json();
-            
-            return {
-                success: true,
-                data: data,
-                request: { url: url, method: 'POST', body: { query: query, limit: limit } }
-            };
-        } catch (error) {
-            console.error('Error searching eBay:', error);
-            return { success: false, error: error.message };
-        }
-    }
-
-    mapConditionToDiscogs(conditionName) {
-        const mapping = {
-            'Mint': 'Mint (M)',
-            'Mint (M)': 'Mint (M)',
-            'Near Mint': 'Near Mint (NM or M-)',
-            'Near Mint (NM or M-)': 'Near Mint (NM or M-)',
-            'Very Good Plus': 'Very Good Plus (VG+)',
-            'Very Good Plus (VG+)': 'Very Good Plus (VG+)',
-            'Very Good': 'Very Good (VG)',
-            'Very Good (VG)': 'Very Good (VG)',
-            'Good Plus': 'Good Plus (G+)',
-            'Good Plus (G+)': 'Good Plus (G+)',
-            'Good': 'Good (G)',
-            'Good (G)': 'Good (G)',
-            'Fair': 'Fair (F)',
-            'Fair (F)': 'Fair (F)',
-            'Poor': 'Poor (P)',
-            'Poor (P)': 'Poor (P)'
-        };
-        return mapping[conditionName] || conditionName;
-    }
-
-    extractDiscogsPrice(suggestions, conditionName) {
-        if (!suggestions) return null;
-        
-        const discogsCondition = this.mapConditionToDiscogs(conditionName);
-        
-        if (suggestions[discogsCondition] && suggestions[discogsCondition].value) {
-            return parseFloat(suggestions[discogsCondition].value);
-        }
-        
-        const firstKey = Object.keys(suggestions)[0];
-        if (firstKey && suggestions[firstKey].value) {
-            return parseFloat(suggestions[firstKey].value);
-        }
-        
-        return null;
-    }
-
-    getFormatKeyword(formatType) {
-        if (!formatType) return 'vinyl';
-        const formatLower = formatType.toLowerCase();
-        if (formatLower.includes('cd')) return 'cd';
-        if (formatLower.includes('cassette')) return 'cassette';
-        return 'vinyl';
-    }
-
-    extractEbayPriceAndListings(ebayData, condition, formatType = '') {
-        const items = ebayData.itemSummaries || [];
-        
-        if (items.length === 0) {
-            return { estimated_price: null, listings: [], summary: {} };
-        }
-        
-        const getMediaKeywords = (format) => {
-            const formatLower = format.toLowerCase();
-            if (formatLower.includes('cd')) return ['cd', 'compact disc'];
-            if (formatLower.includes('cassette')) return ['cassette', 'tape'];
-            return ['vinyl', 'lp', 'record', '12"', '7"'];
-        };
-        
-        const mediaKeywords = getMediaKeywords(formatType);
-        
-        const getConditionTerms = (cond) => {
-            const condLower = cond.toLowerCase();
-            const mapping = {
-                'mint': ['mint', 'new', 'sealed', 'brand new'],
-                'near mint': ['near mint', 'nm', 'm-', 'near-mint'],
-                'very good plus': ['very good plus', 'vg+', 'vg plus'],
-                'very good': ['very good', 'vg'],
-                'good plus': ['good plus', 'g+', 'g plus'],
-                'good': ['good', 'g'],
-                'fair': ['fair', 'f'],
-                'poor': ['poor', 'p']
-            };
-            for (const [key, terms] of Object.entries(mapping)) {
-                if (condLower.includes(key)) return terms;
-            }
-            return [];
-        };
-        
-        const conditionTerms = getConditionTerms(condition);
-        
-        const processedListings = [];
-        for (const item of items) {
-            const title = item.title || '';
-            const titleLower = title.toLowerCase();
-            
-            const isCorrectMedia = mediaKeywords.some(keyword => titleLower.includes(keyword));
-            if (!isCorrectMedia) continue;
-            
-            let price = 0;
-            if (item.price && item.price.value) price = parseFloat(item.price.value);
-            if (price <= 0) continue;
-            
-            let shippingCost = 0;
-            if (item.shippingOptions && item.shippingOptions.length > 0) {
-                const shipping = item.shippingOptions[0].shippingCost;
-                if (shipping && shipping.value) shippingCost = parseFloat(shipping.value);
-            }
-            
-            const totalPrice = price + shippingCost;
-            const itemCondition = (item.condition || '').toLowerCase();
-            const matchesCondition = conditionTerms.some(term => itemCondition.includes(term));
-            
-            processedListings.push({
-                title: title,
-                price: price,
-                shipping: shippingCost,
-                total: totalPrice,
-                condition: item.condition || 'Unknown',
-                url: item.itemWebUrl || '',
-                matches_condition: matchesCondition
-            });
-        }
-        
-        if (processedListings.length === 0) {
-            return { estimated_price: null, listings: [], summary: {} };
-        }
-        
-        processedListings.sort((a, b) => a.total - b.total);
-        
-        const allTotals = processedListings.map(l => l.total);
-        const genericMedian = this.calculateMedian(allTotals);
-        
-        const conditionListings = processedListings.filter(l => l.matches_condition);
-        let conditionMedian = null;
-        if (conditionListings.length > 0) {
-            const conditionTotals = conditionListings.map(l => l.total);
-            conditionMedian = this.calculateMedian(conditionTotals);
-        }
-        
-        const estimatedPrice = conditionMedian !== null ? conditionMedian : genericMedian;
-        
-        return {
-            estimated_price: estimatedPrice,
-            listings: processedListings.slice(0, 20),
-            summary: {
-                total_listings: processedListings.length,
-                condition_listings: conditionListings.length,
-                generic_median: genericMedian,
-                condition_median: conditionMedian,
-                price_range: { min: Math.min(...allTotals), max: Math.max(...allTotals) },
-                average_price: allTotals.reduce((a, b) => a + b, 0) / allTotals.length
-            }
-        };
-    }
-
-    calculateMedian(numbers) {
-        if (numbers.length === 0) return null;
-        const sorted = [...numbers].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
-        return sorted[mid];
-    }
     getMSTDate() {
         const now = new Date();
         const year = now.getFullYear();
@@ -1946,156 +1659,6 @@ class AddEditDeleteManager {
         const day = String(now.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     }
-
-    roundDownTo99(price) {
-        const dollars = Math.floor(price);
-        if (dollars === 0) return 0.99;
-        return (dollars - 1) + 0.99;
-    }
-    async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
-        const result = {
-            success: false,
-            discogs_price: null,
-            ebay_price: null,
-            final_price: null,
-            price_source: null,
-            calculation_steps: [],
-            discogs_request: null,
-            discogs_response: null,
-            ebay_request: null,
-            ebay_response: null,
-            ebay_listings: [],
-            ebay_summary: {},
-            error: null
-        };
-
-        if (this.storePriceMultiplier === null) {
-            result.error = 'Store price multiplier not configured';
-            result.calculation_steps.push('❌ Store price multiplier not configured');
-            return result;
-        }
-
-        const multiplier = this.storePriceMultiplier;
-        result.calculation_steps.push(`💰 Store Price Ratio: ${(multiplier * 100).toFixed(0)}%`);
-
-        if (discogsId) {
-            result.calculation_steps.push(`📀 Fetching Discogs price suggestions for release ID: ${discogsId}`);
-            result.calculation_steps.push(`🎚️ Selected condition: ${conditionName}`);
-
-            const discogsResult = await this.fetchDiscogsPriceSuggestions(discogsId);
-            
-            if (discogsResult.request) result.discogs_request = discogsResult.request;
-            
-            if (discogsResult.success && discogsResult.data) {
-                result.discogs_response = discogsResult.data;
-                result.calculation_steps.push('✅ Discogs API call successful');
-                
-                const discogsPrice = this.extractDiscogsPrice(discogsResult.data, conditionName);
-                if (discogsPrice) {
-                    result.discogs_price = discogsPrice;
-                    result.calculation_steps.push(`💰 Discogs advised price for "${conditionName}": $${discogsPrice.toFixed(2)}`);
-                } else {
-                    result.calculation_steps.push(`⚠️ No price found for condition "${conditionName}" in Discogs suggestions`);
-                }
-            } else {
-                result.calculation_steps.push(`❌ Discogs API call failed: ${discogsResult.error || 'Unknown error'}`);
-            }
-        } else {
-            result.calculation_steps.push(`⚠️ No Discogs ID available - skipping Discogs`);
-        }
-        
-        const searchQuery = `${artist} ${title} ${this.getFormatKeyword(formatType)}`;
-        result.calculation_steps.push(`🛒 Searching eBay for: "${searchQuery}"`);
-        
-        const ebayResult = await this.searchEbayListings(searchQuery, 50);
-        
-        if (ebayResult.request) result.ebay_request = ebayResult.request;
-        
-        if (ebayResult.success && ebayResult.data) {
-            result.ebay_response = ebayResult.data;
-            result.calculation_steps.push('✅ eBay API call successful');
-            
-            const ebayAnalysis = this.extractEbayPriceAndListings(ebayResult.data, conditionName, formatType);
-            
-            if (ebayAnalysis.estimated_price) {
-                result.ebay_price = ebayAnalysis.estimated_price;
-                result.ebay_listings = ebayAnalysis.listings;
-                result.ebay_summary = ebayAnalysis.summary;
-                
-                if (ebayAnalysis.summary.condition_median) {
-                    result.calculation_steps.push(`💰 eBay condition-matched median: $${ebayAnalysis.summary.condition_median.toFixed(2)} (${ebayAnalysis.summary.condition_listings} listings)`);
-                } else {
-                    result.calculation_steps.push(`💰 eBay generic median: $${ebayAnalysis.summary.generic_median.toFixed(2)} (${ebayAnalysis.summary.total_listings} total listings)`);
-                }
-            } else {
-                result.calculation_steps.push(`⚠️ No valid eBay listings found`);
-            }
-        } else {
-            result.calculation_steps.push(`❌ eBay API call failed: ${ebayResult.error || 'Unknown error'}`);
-        }
-        
-        let marketPrice = null;
-        let priceSource = null;
-        
-        // CHANGED: Now takes AVERAGE instead of MINIMUM
-        if (result.discogs_price !== null && result.ebay_price !== null) {
-            marketPrice = (result.discogs_price + result.ebay_price) / 2;
-            priceSource = 'average';
-            
-            const maxPrice = Math.max(result.discogs_price, result.ebay_price);
-            const minPrice = Math.min(result.discogs_price, result.ebay_price);
-            
-            if (minPrice > 0 && (maxPrice / minPrice) > 2.0) {
-                result.calculation_steps.push(`⚠️ Price discrepancy warning: ${(maxPrice/minPrice).toFixed(1)}x difference between sources`);
-            }
-            
-            result.calculation_steps.push(`📊 Price comparison: Discogs $${result.discogs_price.toFixed(2)} vs eBay $${result.ebay_price.toFixed(2)}`);
-            result.calculation_steps.push(`  → Market price (average): $${marketPrice.toFixed(2)} (from Discogs $${result.discogs_price.toFixed(2)} + eBay $${result.ebay_price.toFixed(2)})`);
-            
-        } else if (result.discogs_price !== null) {
-            marketPrice = result.discogs_price;
-            priceSource = 'discogs';
-            result.calculation_steps.push(`📊 Using only Discogs price: $${marketPrice.toFixed(2)}`);
-            
-        } else if (result.ebay_price !== null) {
-            marketPrice = result.ebay_price;
-            priceSource = 'ebay';
-            result.calculation_steps.push(`📊 Using only eBay price: $${marketPrice.toFixed(2)}`);
-            
-        } else {
-            result.success = false;
-            result.error = 'No price data available from Discogs or eBay. Please enter price manually.';
-            result.calculation_steps.push(`❌ NO PRICE DATA: Discogs price: ${result.discogs_price}, eBay price: ${result.ebay_price}`);
-            result.calculation_steps.push(`❌ NO FALLBACK PRICE WILL BE SET - User must enter manually.`);
-            return result;
-        }
-        
-        result.calculation_steps.push(``);
-        result.calculation_steps.push(`💰 Applying store price ratio:`);
-        result.calculation_steps.push(`  → Market price: $${marketPrice.toFixed(2)}`);
-        result.calculation_steps.push(`  → Ratio: ${multiplier.toFixed(2)} (${(multiplier * 100).toFixed(0)}%)`);
-        
-        const multipliedPrice = marketPrice * multiplier;
-        result.calculation_steps.push(`  → Ratio price: $${multipliedPrice.toFixed(2)}`);
-        
-        const roundedPrice = this.roundDownTo99(multipliedPrice);
-        result.calculation_steps.push(`  → Rounded down to .99: $${roundedPrice.toFixed(2)}`);
-        
-        let finalPrice = roundedPrice;
-        if (this.minimumPrice !== null && finalPrice < this.minimumPrice) {
-            finalPrice = this.minimumPrice;
-            result.calculation_steps.push(`  → Minimum store price applied ($${this.minimumPrice.toFixed(2)})`);
-        }
-        
-        result.calculation_steps.push(`✨ FINAL ADVISED PRICE: $${finalPrice.toFixed(2)}`);
-        
-        result.final_price = finalPrice;
-        result.price_source = priceSource;
-        result.success = true;
-        
-        return result;
-    }
-     
 }
 
 // Initialize when tab is activated
