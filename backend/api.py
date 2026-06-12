@@ -5432,6 +5432,35 @@ def get_records_by_location():
 
 # ==================== MARKUP RULES ENDPOINTS ====================
 
+@app.route('/api/stats/created-at-distribution', methods=['GET'])
+def get_created_at_distribution_stats():
+    """Get distribution of records by created_at month"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get all records grouped by month of creation
+    cursor.execute('''
+        SELECT 
+            strftime('%Y-%m', created_at) as month,
+            COUNT(*) as count
+        FROM records
+        WHERE created_at IS NOT NULL
+        GROUP BY strftime('%Y-%m', created_at)
+        ORDER BY month ASC
+    ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    months = [row['month'] for row in results]
+    counts = [row['count'] for row in results]
+    
+    return jsonify({
+        'status': 'success',
+        'months': months,
+        'counts': counts
+    })
+
 @app.route('/api/markup-rules', methods=['GET'])
 def get_markup_rules():
     """Get all markup rules"""

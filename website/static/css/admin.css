@@ -3453,3 +3453,58 @@ select.form-control option {
     margin-right: 4px;
 }
 
+/* Constrain Stats tab width to match Add/Edit/Delete behavior */
+#stats-tab {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Optional: Make all tab content consistent */
+.tab-content {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* But keep Add/Edit/Delete's tighter internal spacing */
+#add-edit-delete-tab .stats-row {
+    max-width: 100%;
+}
+
+/* For Stats tab - keep internal components from stretching too wide */
+#stats-tab .stats-grid-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+#stats-tab canvas {
+    max-width: 100%;
+    height: auto;
+}
+/* Stats Tab Width Constraint - Match Add/Edit/Delete style */
+#stats-tab {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Stats grid container - keep charts properly sized */
+#stats-tab .stats-grid-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Ensure canvas elements don't overflow */
+#stats-tab canvas {
+    max-width: 100%;
+    height: auto;
+}
+
+/* No data message styling for charts */
+.no-genre-data,
+.no-lastseen-data,
+.no-createdat-data {
+    text-align: center;
+    color: #999;
+    padding: 40px;
+    font-style: italic;
+}
