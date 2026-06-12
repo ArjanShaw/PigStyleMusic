@@ -16,8 +16,8 @@ async function loadStatsData() {
             throw new Error('AppConfig not loaded');
         }
         
-        // Fetch all stats
-        const [topArtistsRes, salesOverTimeRes, salesDiscogsTimeRes, topGenresRes, lastSeenDistRes] = await Promise.all([
+        // Fetch all stats including created_at distribution
+        const [topArtistsRes, salesOverTimeRes, salesDiscogsTimeRes, topGenresRes, lastSeenDistRes, createdAtDistRes] = await Promise.all([
             fetch(AppConfig.baseUrl + '/api/stats/top-artists', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -37,6 +37,10 @@ async function loadStatsData() {
             fetch(AppConfig.baseUrl + '/api/stats/last-seen-distribution', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+            }),
+            fetch(AppConfig.baseUrl + '/api/stats/created-at-distribution', {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
             })
         ]);
         
@@ -45,12 +49,14 @@ async function loadStatsData() {
         const salesDiscogsTime = await salesDiscogsTimeRes.json();
         const topGenres = await topGenresRes.json();
         const lastSeenDistribution = await lastSeenDistRes.json();
+        const createdAtDistribution = await createdAtDistRes.json();
         
         console.log('📊 Top Artists:', topArtists);
         console.log('📊 Sales Over Time (Store):', salesOverTime);
         console.log('📊 Sales Over Time (Discogs):', salesDiscogsTime);
         console.log('📊 Top Genres:', topGenres);
         console.log('📊 Last Seen Distribution:', lastSeenDistribution);
+        console.log('📊 Created At Distribution:', createdAtDistribution);
         
         if (topArtists.status !== 'success') {
             throw new Error('Top artists: ' + (topArtists.error || 'Unknown error'));
@@ -66,6 +72,7 @@ async function loadStatsData() {
         renderSalesOverTimeChart(salesOverTime, salesDiscogsTime);
         renderTopGenresChart(topGenres);
         renderLastSeenDistributionChart(lastSeenDistribution);
+        renderCreatedAtDistributionChart(createdAtDistribution);
         
         // Load artist table (replaces the bar chart)
         loadArtistsTable(topArtists);
@@ -427,7 +434,96 @@ function renderLastSeenDistributionChart(data) {
     });
 }
 
-// NEW FUNCTION: Load artists into table
+// NEW FUNCTION: Render Created At Distribution Chart
+function renderCreatedAtDistributionChart(data) {
+    const canvas = document.getElementById('createdAtChart');
+    if (!canvas) return;
+    
+    if (charts.createdAt) {
+        charts.createdAt.destroy();
+    }
+    
+    if (!data.months || data.months.length === 0 || data.counts.length === 0) {
+        canvas.style.display = 'none';
+        const container = canvas.parentElement;
+        const existingMsg = container.querySelector('.no-createdat-data');
+        if (!existingMsg) {
+            const msg = document.createElement('p');
+            msg.className = 'no-createdat-data';
+            msg.style.textAlign = 'center';
+            msg.style.color = '#999';
+            msg.style.padding = '40px';
+            msg.innerHTML = 'No records created date data available.';
+            container.appendChild(msg);
+        }
+        return;
+    }
+    
+    // Remove any "no data" message if it exists
+    const container = canvas.parentElement;
+    const existingMsg = container.querySelector('.no-createdat-data');
+    if (existingMsg) existingMsg.remove();
+    
+    canvas.style.display = 'block';
+    
+    charts.createdAt = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: data.months,
+            datasets: [{
+                label: 'Records Created',
+                data: data.counts,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Number of Records'
+                    },
+                    ticks: {
+                        stepSize: 1,
+                        precision: 0
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Month Created'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 12
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `Records: ${context.raw}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Load artists into table
 function loadArtistsTable(data) {
     const tbody = document.getElementById('artistsTableBody');
     if (!tbody) {
