@@ -5384,7 +5384,7 @@ def get_records_by_location():
             SELECT 
                 r.id, r.artist, r.title, r.barcode, r.image_url, 
                 r.catalog_number, r.store_price, r.location, 
-                r.status_id, r.notes, r.created_at,
+                r.status_id, r.notes, r.created_at, r.last_seen,   -- ✅ ADDED last_seen
                 COALESCE(cs.condition_name, '') as sleeve_condition_name,
                 COALESCE(cd.condition_name, '') as disc_condition_name,
                 COALESCE(s.status_name, '') as status_name
@@ -5414,6 +5414,7 @@ def get_records_by_location():
                 'status_name': record['status_name'],
                 'notes': record['notes'],
                 'created_at': record['created_at'],
+                'last_seen': record['last_seen'],   # ✅ ADDED last_seen to output
                 'sleeve_condition_name': record['sleeve_condition_name'],
                 'disc_condition_name': record['disc_condition_name']
             })
@@ -5428,7 +5429,6 @@ def get_records_by_location():
     except Exception as e:
         app.logger.error(f"Error getting records by location: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 # ==================== MARKUP RULES ENDPOINTS ====================
 
