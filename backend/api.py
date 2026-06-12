@@ -23,7 +23,6 @@ import threading
 import uuid
 from functools import wraps
 from discogs_handler import DiscogsHandler 
-from handlers.price_advise_handler import PriceAdviseHandler
 import hmac
 import traceback
 import subprocess
@@ -3460,177 +3459,6 @@ def get_dropoff_records():
 
 
 # ==================== PRICE ESTIMATE ENDPOINT ====================
-
-@app.route('/api/price-estimate', methods=['POST'])
-def price_estimate():
-    """Get price estimate for a record using Discogs and eBay APIs with store price multiplier"""
-    try:
-        data = request.json
-        
-        # Validate required fields
-        required_fields = ['artist', 'title', 'condition']
-        for field in required_fields:
-            if not data.get(field):
-                raise ValueError(f"Missing required field: {field}")
-        
-        artist = data.get('artist')
-        title = data.get('title')
-        condition = data.get('condition')
-        discogs_genre = data.get('discogs_genre', '')
-        discogs_id = data.get('discogs_id', '')
-        discogs_format = data.get('discogs_format', '')
-        
-        app.logger.info(f"Price estimate called: {artist} - {title} - Condition: {condition} - Format: {discogs_format} - Discogs ID: {discogs_id}")
-        
-        # Validate that we have a Discogs ID (required for price estimation)
-        if not discogs_id:
-            raise ValueError("Discogs ID is required for price estimation. Please search for the record first.")
-        
-        # Get credentials from environment
-        discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
-        if not discogs_token:
-            raise RuntimeError("DISCOGS_USER_TOKEN not configured in environment")
-        
-        ebay_client_id = os.environ.get('EBAY_CLIENT_ID')
-        ebay_client_secret = os.environ.get('EBAY_CLIENT_SECRET')
-        
-        # Get store price multiplier from config
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('STORE_PRICE_ESTIMATED_MULTIPLIER',))
-        row = cursor.fetchone()
-        store_price_multiplier = float(row['config_value']) if row else 0.7
-        conn.close()
-        
-        app.logger.info(f"Using store price multiplier: {store_price_multiplier}")
-        
-        # Initialize the PriceAdviseHandler with multiplier
-        price_advisor = PriceAdviseHandler(
-            discogs_token=discogs_token,
-            ebay_client_id=ebay_client_id,
-            ebay_client_secret=ebay_client_secret,
-            store_price_multiplier=store_price_multiplier
-        )
-        
-        # Get price estimate from Discogs and eBay
-        result = price_advisor.get_price_estimate(
-            artist=artist,
-            title=title,
-            selected_condition=condition,
-            discogs_genre=discogs_genre,
-            discogs_id=discogs_id,
-            discogs_format=discogs_format
-        )
-        
-        # Check if the estimate was successful
-        if not result.get('success'):
-            error_msg = result.get('error', 'Price estimation failed')
-            raise RuntimeError(f"Price estimation failed: {error_msg}")
-        
-        # Check if we got a valid price
-        estimated_price = result.get('estimated_price')
-        if estimated_price is None or estimated_price <= 0:
-            raise RuntimeError(f"No valid price estimate received. Discogs price: {result.get('discogs_price')}, eBay price: {result.get('ebay_price')}")
-        
-        # Get minimum price from config
-        min_price = None
-        try:
-            cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', ('MIN_STORE_PRICE',))
-            row = cursor.fetchone()
-            if row:
-                min_price = float(row['config_value'])
-        except Exception as e:
-            app.logger.error(f"Failed to load MIN_STORE_PRICE: {e}")
-            raise RuntimeError("Store minimum price configuration not found")
-        
-        if min_price is None:
-            raise RuntimeError("MIN_STORE_PRICE not configured in database")
-        
-        # Round DOWN to nearest .99 (store pricing rule)
-        def round_down_to_99(price):
-            """Round any price DOWN to nearest .99 below it"""
-            import math
-            price_float = float(price)
-            dollars = math.floor(price_float)
-            cents = price_float - dollars
-            if abs(cents - 0.99) < 0.01:
-                return dollars + 0.99
-            if dollars == 0:
-                return 0.99
-            return (dollars - 1) + 0.99
-        
-        multiplied_price = result.get('estimated_price', estimated_price)
-        rounded_price = round_down_to_99(multiplied_price)
-        
-        # Apply minimum price (store rule)
-        final_price = max(rounded_price, min_price)
-        
-        # Build calculation steps from the handler's result
-        calculation_steps = result.get('calculation_steps', [])
-        if not calculation_steps:
-            calculation_steps = result.get('calculation', [])
-        
-        # Add rounding information to calculation steps
-        if multiplied_price != final_price:
-            calculation_steps.append(f"💰 Applying store pricing rules:")
-            calculation_steps.append(f"  → Price after multiplier: ${multiplied_price:.2f}")
-            calculation_steps.append(f"  → Rounded down to .99: ${rounded_price:.2f}")
-        if final_price == min_price and multiplied_price < min_price:
-            calculation_steps.append(f"  → Minimum store price ${min_price:.2f} applied")
-        
-        # Prepare response
-        response_data = {
-            'status': 'success',
-            'success': True,
-            'estimated_price': final_price,
-            'original_estimated_price': estimated_price,
-            'multiplied_price': multiplied_price,
-            'market_price': result.get('market_price'),
-            'rounded_price': rounded_price,
-            'minimum_price': min_price,
-            'store_price_multiplier': store_price_multiplier,
-            'price': final_price,
-            'price_source': result.get('price_source', 'unknown'),
-            'calculation': calculation_steps,
-            'ebay_summary': result.get('ebay_summary', {}),
-            'ebay_listings': result.get('ebay_listings', []),
-            'ebay_listings_count': len(result.get('ebay_listings', [])),
-            'discogs_price': result.get('discogs_price'),
-            'ebay_price': result.get('ebay_price'),
-            'price_discrepancy_warning': result.get('price_discrepancy_warning', False),
-            'warning_message': result.get('warning_message', '')
-        }
-        
-        return jsonify(response_data)
-        
-    except ValueError as e:
-        app.logger.error(f"Price estimate validation error: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'success': False,
-            'error': str(e),
-            'error_type': 'validation_error'
-        }), 400
-        
-    except RuntimeError as e:
-        app.logger.error(f"Price estimate runtime error: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'success': False,
-            'error': str(e),
-            'error_type': 'configuration_error'
-        }), 500
-        
-    except Exception as e:
-        app.logger.error(f"Price estimate unexpected error: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({
-            'status': 'error',
-            'success': False,
-            'error': f"Unexpected error: {str(e)}",
-            'error_type': 'unexpected_error'
-        }), 500
-
  
 @app.route('/api/discogs/price-suggestions/<release_id>', methods=['GET'])
 def discogs_price_suggestions_proxy(release_id):
@@ -5713,6 +5541,275 @@ def calculate_markup():
     except Exception as e:
         app.logger.error(f"Error calculating markup: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/price-estimate-v3', methods=['POST'])
+def price_estimate_v3():
+    """Self-contained Discogs price estimator - no external class dependencies, NO FALLBACKS"""
+    import requests
+    import re
+    from enum import Enum
+    from typing import Tuple
+    
+    # Log the incoming request
+    app.logger.info("=" * 60)
+    app.logger.info("🔍 PRICE ESTIMATE V3 CALLED")
+    app.logger.info(f"Request data: {request.json}")
+    
+    # ============================================
+    # CONDITION ENUM (defined inside endpoint)
+    # ============================================
+    class Condition(Enum):
+        MINT = "Mint (M)"
+        NEAR_MINT = "Near Mint (NM)"
+        VERY_GOOD_PLUS = "Very Good Plus (VG+)"
+        VERY_GOOD = "Very Good (VG)"
+        GOOD = "Good (G)"
+        FAIR = "Fair (F)"
+        POOR = "Poor (P)"
+        
+        @classmethod
+        def from_string(cls, condition_str: str):
+            """Convert string to Condition enum - NO FALLBACK, raises error if not found"""
+            # Try direct match first (comparing enum values)
+            for condition in cls:
+                if condition.value.lower() == condition_str.lower():
+                    app.logger.info(f"   Direct match: '{condition_str}' -> {condition.value}")
+                    return condition
+            
+            # Try cleaning parentheses and matching
+            cleaned = condition_str.lower().strip()
+            cleaned = re.sub(r'\s*\([^)]*\)', '', cleaned).strip()
+            
+            # Exact matches after cleaning
+            exact_matches = {
+                'mint': cls.MINT, 'm': cls.MINT,
+                'nm': cls.NEAR_MINT, 'near mint': cls.NEAR_MINT,
+                'vg+': cls.VERY_GOOD_PLUS, 'vgplus': cls.VERY_GOOD_PLUS, 'very good plus': cls.VERY_GOOD_PLUS,
+                'vg': cls.VERY_GOOD, 'very good': cls.VERY_GOOD,
+                'g+': cls.GOOD, 'good plus': cls.GOOD,
+                'g': cls.GOOD, 'good': cls.GOOD,
+                'f': cls.FAIR, 'fair': cls.FAIR,
+                'p': cls.POOR, 'poor': cls.POOR
+            }
+            
+            if cleaned in exact_matches:
+                result = exact_matches[cleaned]
+                app.logger.info(f"   Cleaned match: '{condition_str}' -> cleaned: '{cleaned}' -> {result.value}")
+                return result
+            
+            # NO FALLBACK - raise error if condition not found
+            raise ValueError(f"Unknown condition: '{condition_str}'. Valid conditions: Mint, Near Mint, Very Good Plus, Very Good, Good, Fair, Poor")
+    
+    # ============================================
+    # HELPER FUNCTIONS
+    # ============================================
+    def get_condition_multiplier(media_condition: Condition, sleeve_condition: Condition) -> float:
+        multipliers = {
+            Condition.MINT: 1.35, Condition.NEAR_MINT: 1.00,
+            Condition.VERY_GOOD_PLUS: 0.80, Condition.VERY_GOOD: 0.55,
+            Condition.GOOD: 0.25, Condition.FAIR: 0.15, Condition.POOR: 0.08
+        }
+        media_mult = multipliers.get(media_condition)
+        sleeve_mult = multipliers.get(sleeve_condition)
+        
+        # NO FALLBACK - if multiplier not found, raise error
+        if media_mult is None:
+            raise ValueError(f"No multiplier defined for media condition: {media_condition.value}")
+        if sleeve_mult is None:
+            raise ValueError(f"No multiplier defined for sleeve condition: {sleeve_condition.value}")
+        
+        return round((media_mult * 0.7) + (sleeve_mult * 0.3), 3)
+    
+    def calculate_demand_adjustment(wants: int, haves: int) -> Tuple[float, float]:
+        if haves == 0:
+            return 1.0, 0.0
+        ratio = wants / haves
+        if ratio >= 2.0: adjustment = 1.25
+        elif ratio >= 1.5: adjustment = 1.15
+        elif ratio >= 1.0: adjustment = 1.05
+        elif ratio >= 0.5: adjustment = 1.00
+        elif ratio >= 0.2: adjustment = 0.95
+        else: adjustment = 0.85
+        return adjustment, ratio
+    
+    def calculate_confidence(num_sales: int, want_have_ratio: float) -> float:
+        sales_confidence = min(num_sales / 30.0, 1.0) * 70
+        if 0.5 <= want_have_ratio <= 2.0: ratio_confidence = 30
+        elif 0.2 <= want_have_ratio <= 5.0: ratio_confidence = 15
+        else: ratio_confidence = 5
+        return min(sales_confidence + ratio_confidence, 100)
+    
+    # ============================================
+    # MAIN LOGIC
+    # ============================================
+    try:
+        data = request.json
+        catalog_number = data.get('catalog_number', '').strip()
+        media_condition = data.get('media_condition', '').strip()
+        sleeve_condition = data.get('sleeve_condition', '').strip()
+        
+        # DEBUG: Log what was received
+        app.logger.info(f"📥 RECEIVED PARAMETERS:")
+        app.logger.info(f"   catalog_number: '{catalog_number}'")
+        app.logger.info(f"   media_condition: '{media_condition}'")
+        app.logger.info(f"   sleeve_condition: '{sleeve_condition}'")
+        
+        # Validation
+        if not catalog_number:
+            app.logger.error("❌ catalog_number is missing")
+            return jsonify({'status': 'error', 'error': 'catalog_number is required'}), 400
+        if not media_condition:
+            app.logger.error("❌ media_condition is missing")
+            return jsonify({'status': 'error', 'error': 'media_condition is required'}), 400
+        if not sleeve_condition:
+            app.logger.error("❌ sleeve_condition is missing")
+            return jsonify({'status': 'error', 'error': 'sleeve_condition is required'}), 400
+        
+        # Get Discogs token
+        discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
+        if not discogs_token:
+            app.logger.error("❌ DISCOGS_USER_TOKEN not configured")
+            return jsonify({'status': 'error', 'error': 'DISCOGS_USER_TOKEN not configured'}), 500
+        
+        headers = {
+            'User-Agent': 'PigStyleMusic/1.0',
+            'Authorization': f'Discogs token={discogs_token}'
+        }
+        
+        # Step 1: Search for release by catalog number
+        app.logger.info(f"🔍 Searching Discogs for catalog: {catalog_number}")
+        search_url = "https://api.discogs.com/database/search"
+        params = {'q': catalog_number, 'type': 'release', 'per_page': 5}
+        
+        search_response = requests.get(search_url, headers=headers, params=params, timeout=10)
+        app.logger.info(f"   Search response status: {search_response.status_code}")
+        
+        if search_response.status_code != 200:
+            app.logger.error(f"❌ Discogs search failed: {search_response.status_code}")
+            return jsonify({'status': 'error', 'error': f'Discogs search failed: {search_response.status_code}'}), 500
+        
+        search_data = search_response.json()
+        results = search_data.get('results', [])
+        
+        if not results:
+            app.logger.error(f"❌ No release found for catalog: {catalog_number}")
+            return jsonify({'status': 'error', 'error': f'No release found for catalog: {catalog_number}'}), 404
+        
+        # Find exact catalog match
+        release = None
+        for result in results:
+            catno = result.get('catno', '')
+            if catalog_number.lower() in [c.lower() for c in catno.split(',')]:
+                release = result
+                break
+        
+        if not release:
+            release = results[0]
+            app.logger.warning(f"⚠️ No exact catalog match, using first result: {release.get('catno', '')}")
+        
+        release_id = release['id']
+        release_title = release.get('title', 'Unknown')
+        app.logger.info(f"✅ Found release: {release_title} (ID: {release_id})")
+        
+        # Step 2: Get release stats
+        stats_url = f"https://api.discogs.com/releases/{release_id}/stats"
+        stats_response = requests.get(stats_url, headers=headers, timeout=10)
+        stats = stats_response.json() if stats_response.status_code == 200 else None
+        app.logger.info(f"📊 Stats response status: {stats_response.status_code}")
+        
+        # Step 3: Get marketplace stats
+        marketplace_url = f"https://api.discogs.com/marketplace/stats/{release_id}"
+        marketplace_response = requests.get(marketplace_url, headers=headers, timeout=10)
+        marketplace = marketplace_response.json() if marketplace_response.status_code == 200 else None
+        app.logger.info(f"💰 Marketplace response status: {marketplace_response.status_code}")
+        
+        # Step 4: Calculate base price
+        fallback_price = 20.0
+        
+        if marketplace and 'median' in marketplace:
+            base_median_price = marketplace['median']
+            num_sales = marketplace.get('num_sales', 0)
+            app.logger.info(f"📈 Base median price from marketplace: ${base_median_price}")
+        elif stats:
+            community_rating = stats.get('community', {}).get('rating', {}).get('average', 3.5)
+            base_median_price = fallback_price * (community_rating / 3.0)
+            num_sales = 0
+            app.logger.info(f"📈 Base price estimated from rating: ${base_median_price}")
+        else:
+            base_median_price = fallback_price
+            num_sales = 0
+            app.logger.info(f"📈 Using fallback price: ${base_median_price}")
+        
+        # Step 5: Parse conditions from user input - THIS WILL THROW ERROR IF CONDITION NOT FOUND
+        app.logger.info(f"🎚️ Parsing conditions - Media: '{media_condition}', Sleeve: '{sleeve_condition}'")
+        try:
+            media_cond = Condition.from_string(media_condition)
+            sleeve_cond = Condition.from_string(sleeve_condition)
+        except ValueError as e:
+            app.logger.error(f"❌ Condition parsing error: {str(e)}")
+            return jsonify({'status': 'error', 'error': str(e)}), 400
+        
+        app.logger.info(f"   Parsed media: {media_cond.value}")
+        app.logger.info(f"   Parsed sleeve: {sleeve_cond.value}")
+        
+        # Step 6: Calculate condition multiplier - THIS WILL THROW ERROR IF MULTIPLIER NOT FOUND
+        try:
+            condition_mult = get_condition_multiplier(media_cond, sleeve_cond)
+        except ValueError as e:
+            app.logger.error(f"❌ Multiplier error: {str(e)}")
+            return jsonify({'status': 'error', 'error': str(e)}), 400
+        
+        app.logger.info(f"📊 Condition multiplier: {condition_mult}")
+        
+        # Step 7: Calculate demand adjustment
+        wants = stats.get('community', {}).get('want', 0) if stats else 0
+        haves = stats.get('community', {}).get('have', 0) if stats else 0
+        demand_adjust, want_have_ratio = calculate_demand_adjustment(wants, haves)
+        app.logger.info(f"📊 Demand adjustment: {demand_adjust} (Want/Have ratio: {want_have_ratio:.2f})")
+        
+        # Step 8: Calculate final price
+        estimated_price = base_median_price * condition_mult * demand_adjust
+        app.logger.info(f"💰 Estimated price: ${estimated_price:.2f}")
+        
+        # Step 9: Calculate price range
+        condition_variance = 1.0 - (condition_mult / 1.35)
+        price_range_low = estimated_price * (0.85 - (condition_variance * 0.15))
+        price_range_high = estimated_price * (1.15 + (condition_variance * 0.15))
+        
+        # Step 10: Calculate confidence
+        confidence = calculate_confidence(num_sales, want_have_ratio)
+        
+        # Step 11: Return result
+        result = {
+            'status': 'success',
+            'catalog_number': catalog_number,
+            'release_id': release_id,
+            'release_title': release_title,
+            'media_condition_input': media_condition,
+            'sleeve_condition_input': sleeve_condition,
+            'media_condition_parsed': media_cond.value,
+            'sleeve_condition_parsed': sleeve_cond.value,
+            'estimated_price': round(estimated_price, 2),
+            'price_range_low': round(price_range_low, 2),
+            'price_range_high': round(price_range_high, 2),
+            'confidence_score': round(confidence, 1),
+            'condition_multiplier': condition_mult,
+            'demand_adjustment': round(demand_adjust, 2),
+            'base_median_price': round(base_median_price, 2),
+            'want_have_ratio': round(want_have_ratio, 2),
+            'num_sales': num_sales
+        }
+        
+        app.logger.info(f"✅ Returning result: estimated_price = ${result['estimated_price']}")
+        app.logger.info("=" * 60)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"❌ Price estimate error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

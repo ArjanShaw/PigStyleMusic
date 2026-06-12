@@ -103,7 +103,7 @@ const AppConfig = {
         
         // Price & Commission
         priceAdvice: '/api/price-advice',
-        priceEstimate: '/api/price-estimate',
+        priceEstimate: '/api/price-estimate-v3',  // ✅ UPDATED to new endpoint
         commissionRate: '/api/commission-rate',
         
         // Consignment
@@ -980,8 +980,7 @@ const addAuthStyles = () => {
             display: flex;
             align-items: center;
             padding: 10px 15px;
-            color: #333 !important;  // Add !important here
-
+            color: #333 !important;
             text-decoration: none;
             border-bottom: 1px solid #eee;
             transition: background 0.2s;
