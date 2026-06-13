@@ -31,6 +31,9 @@ import discogs_client
 from flask import session, request, jsonify
 from functools import wraps
 from werkzeug.utils import secure_filename
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
@@ -64,6 +67,10 @@ SQUARE_APPLICATION_ID = os.environ.get('SQUARE_APPLICATION_ID')
 SQUARE_ACCESS_TOKEN = os.environ.get('SQUARE_ACCESS_TOKEN')
 DISCOGS_USER_TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
 DISCOGS_USER_AGENT = os.environ.get('DISCOGS_USER_AGENT')
+
+# Gmail Configuration
+GMAIL_USER = os.environ.get('GMAIL_USER', 'pigstyle.loveland@gmail.com')
+GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
 
 
 # CORS Configuration
@@ -142,6 +149,57 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+# ==================== EMAIL HELPER FUNCTIONS ====================
+
+def send_email(to_email, subject, body, from_name="PigStyle Music"):
+    """
+    Send a plain text email using Gmail SMTP
+    
+    Args:
+        to_email (str): Recipient email address
+        subject (str): Email subject line
+        body (str): Plain text email body
+        from_name (str): Display name for sender (default: "PigStyle Music")
+    
+    Returns:
+        tuple: (success boolean, message string)
+    """
+    if not GMAIL_APP_PASSWORD:
+        app.logger.error("GMAIL_APP_PASSWORD not configured - cannot send email")
+        return False, "Email not configured. Please set GMAIL_APP_PASSWORD in environment."
+    
+    if not to_email or not subject or not body:
+        return False, "Missing required email fields (to_email, subject, or body)"
+    
+    try:
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = f"{from_name} <{GMAIL_USER}>"
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        
+        # Attach plain text body
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Send via Gmail SMTP
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+        
+        app.logger.info(f"Email sent successfully to {to_email}: {subject}")
+        return True, "Email sent successfully"
+        
+    except smtplib.SMTPAuthenticationError:
+        app.logger.error("SMTP Authentication failed - check GMAIL_APP_PASSWORD")
+        return False, "Authentication failed: Invalid Gmail app password"
+    except smtplib.SMTPException as e:
+        app.logger.error(f"SMTP error sending email: {str(e)}")
+        return False, f"SMTP error: {str(e)}"
+    except Exception as e:
+        app.logger.error(f"Unexpected error sending email: {str(e)}")
+        return False, f"Error: {str(e)}"
 
 # ==================== SQUARE API HELPER FUNCTIONS ====================
 
@@ -1295,6 +1353,42 @@ def order_complete():
                 cursor.execute(f'UPDATE records SET status_id = 3, date_sold = CURRENT_DATE WHERE id IN ({placeholders})', record_ids)
             
             conn.commit()
+            
+            # Send order confirmation email if customer email exists
+            try:
+                cursor.execute('SELECT customer_name, customer_email, order_number, total FROM orders WHERE id = ?', (order_id,))
+                order_details = cursor.fetchone()
+                
+                if order_details and order_details['customer_email']:
+                    email_body = f"""Thank you for your order from PigStyle Music!
+
+Order Number: {order_details['order_number']}
+Customer: {order_details['customer_name']}
+Total: ${float(order_details['total']):.2f}
+
+Your order has been confirmed and will be processed soon.
+
+Records purchased:
+"""
+                    # Add record details
+                    cursor.execute('SELECT record_title, record_artist, price_at_time FROM order_items WHERE order_id = ?', (order_id,))
+                    items = cursor.fetchall()
+                    for item in items:
+                        email_body += f"  - {item['record_artist']} - {item['record_title']} (${float(item['price_at_time']):.2f})\n"
+                    
+                    email_body += """
+
+Thank you for shopping at PigStyle Music!
+
+Questions? Reply to this email or contact us at the store.
+
+- PigStyle Music Team
+"""
+                    send_email(order_details['customer_email'], f"Order Confirmation - {order_details['order_number']}", email_body)
+            except Exception as email_error:
+                app.logger.error(f"Failed to send order confirmation email: {str(email_error)}")
+                # Don't fail the order completion if email fails
+            
             return jsonify({'status': 'success', 'message': f'Order completed, {len(record_ids)} records marked as sold'})
             
         except Exception as e:
@@ -4631,6 +4725,128 @@ def delete_sticky_note(note_id):
     except Exception as e:
         app.logger.error(f"Error deleting sticky note: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== EMAIL ENDPOINTS ====================
+
+@app.route('/api/send-email', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def api_send_email():
+    """
+    Send a generic email (admin only)
+    
+    Request body:
+    {
+        "to_email": "customer@example.com",
+        "subject": "Your order is ready",
+        "body": "Plain text message here..."
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        to_email = data.get('to_email', '').strip()
+        subject = data.get('subject', '').strip()
+        body = data.get('body', '').strip()
+        
+        # Validate required fields
+        if not to_email:
+            return jsonify({'status': 'error', 'error': 'Recipient email (to_email) is required'}), 400
+        if not subject:
+            return jsonify({'status': 'error', 'error': 'Subject is required'}), 400
+        if not body:
+            return jsonify({'status': 'error', 'error': 'Email body is required'}), 400
+        
+        # Basic email validation
+        if '@' not in to_email or '.' not in to_email:
+            return jsonify({'status': 'error', 'error': 'Invalid email address format'}), 400
+        
+        # Send the email
+        success, message = send_email(to_email, subject, body)
+        
+        if success:
+            app.logger.info(f"Admin {session.get('username')} sent email to {to_email}: {subject}")
+            return jsonify({
+                'status': 'success',
+                'message': message,
+                'to_email': to_email,
+                'subject': subject
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': message
+            }), 500
+        
+    except Exception as e:
+        app.logger.error(f"Error in send_email endpoint: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/test-email', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def api_test_email():
+    """
+    Send a test email to verify configuration (admin only)
+    
+    Request body:
+    {
+        "to_email": "your-test-email@gmail.com"  # optional, defaults to store email
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        to_email = data.get('to_email', GMAIL_USER)
+        
+        # Test email content
+        subject = "PigStyle Music - Email Test"
+        body = f"""This is a test email from PigStyle Music API.
+
+Your email configuration is working correctly!
+
+Sent by: {session.get('username', 'Admin')}
+Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+If you received this, your Gmail SMTP settings are correct.
+
+- PigStyle Music System
+"""
+        
+        success, message = send_email(to_email, subject, body)
+        
+        if success:
+            return jsonify({
+                'status': 'success',
+                'message': f'Test email sent to {to_email}',
+                'to_email': to_email
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': message
+            }), 500
+        
+    except Exception as e:
+        app.logger.error(f"Error in test email endpoint: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/email/status', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def api_email_status():
+    """Check if email is configured (admin only)"""
+    is_configured = bool(GMAIL_APP_PASSWORD)
+    return jsonify({
+        'status': 'success',
+        'configured': is_configured,
+        'from_email': GMAIL_USER if is_configured else None,
+        'message': 'Email is configured and ready' if is_configured else 'Email not configured - set GMAIL_APP_PASSWORD'
+    })
 
 # ==================== ADMIN DATABASE QUERY ENDPOINTS ====================
 
