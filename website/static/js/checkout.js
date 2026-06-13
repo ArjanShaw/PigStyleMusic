@@ -134,20 +134,7 @@ window.clearCustomSalePrice = function() {
 // Validation Functions
 // ============================================================================
 
-function validateConsignorCommission(item) {
-    if (item.consignor_id && item.consignor_id !== 1) {
-        if (!item.commission_rate && item.commission_rate !== 0) {
-            throw new Error(
-                `Consignor item missing commission rate: ${item.artist || 'Unknown'} - ${item.title || 'Unknown'} (ID: ${item.id})`
-            );
-        }
-        if (isNaN(parseFloat(item.commission_rate))) {
-            throw new Error(
-                `Invalid commission rate for consignor item: ${item.artist || 'Unknown'} - ${item.title || 'Unknown'} (Rate: ${item.commission_rate})`
-            );
-        }
-    }
-}
+ 
 
 function validateItemPrice(item) {
     const price = parseFloat(item.store_price);
@@ -2089,7 +2076,6 @@ window.processCashPayment = async function() {
                 }
             } else {
                 try {
-                    validateConsignorCommission(item);
                     
                     const todayMST = getLocalMSTDate();
                     
