@@ -5811,5 +5811,200 @@ def price_estimate_v3():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/stats/sales-history', methods=['POST'])
+def get_sales_history():
+    """Get sales history - two levels: by artist, and by artist+title"""
+    try:
+        data = request.json
+        artist = data.get('artist', '').strip()
+        title = data.get('title', '').strip()
+        
+        app.logger.info("=" * 60)
+        app.logger.info(f"📊 Sales history requested for: '{artist}' - '{title}'")
+        
+        if not artist:
+            return jsonify({
+                'status': 'error',
+                'error': 'artist is required'
+            }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # ============================================
+        # LEVEL 1: ARTIST-LEVEL SALES
+        # How many times has this artist sold ANY record?
+        # ============================================
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_sold,
+                COUNT(DISTINCT title) as unique_titles,
+                MAX(date_sold) as last_sold_date,
+                AVG(store_price) as avg_sold_price,
+                MIN(store_price) as min_sold_price,
+                MAX(store_price) as max_sold_price,
+                SUM(store_price) as total_revenue
+            FROM records
+            WHERE artist LIKE ? 
+              AND status_id IN (3, 4)
+              AND date_sold IS NOT NULL
+        ''', (f'%{artist}%',))
+        
+        artist_stats = cursor.fetchone()
+        
+        # Get top selling titles for this artist
+        cursor.execute('''
+            SELECT 
+                title,
+                COUNT(*) as sold_count,
+                MAX(date_sold) as last_sold,
+                AVG(store_price) as avg_price
+            FROM records
+            WHERE artist LIKE ? 
+              AND status_id IN (3, 4)
+              AND date_sold IS NOT NULL
+              AND title IS NOT NULL
+              AND title != ''
+            GROUP BY title
+            ORDER BY sold_count DESC
+            LIMIT 5
+        ''', (f'%{artist}%',))
+        
+        top_titles = cursor.fetchall()
+        
+        # ============================================
+        # LEVEL 2: ARTIST + TITLE LEVEL
+        # How many times has this specific record sold?
+        # ============================================
+        title_stats = {
+            'total_sold': 0,
+            'last_sold_date': None,
+            'avg_sold_price': None,
+            'min_sold_price': None,
+            'max_sold_price': None,
+            'total_revenue': 0
+        }
+        
+        if title:
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_sold,
+                    MAX(date_sold) as last_sold_date,
+                    AVG(store_price) as avg_sold_price,
+                    MIN(store_price) as min_sold_price,
+                    MAX(store_price) as max_sold_price,
+                    SUM(store_price) as total_revenue
+                FROM records
+                WHERE artist LIKE ? 
+                  AND title LIKE ?
+                  AND status_id IN (3, 4)
+                  AND date_sold IS NOT NULL
+            ''', (f'%{artist}%', f'%{title}%'))
+            
+            title_stats = cursor.fetchone()
+            
+            # Get condition breakdown for this specific title
+            cursor.execute('''
+                SELECT 
+                    dc.condition_name,
+                    dc.display_name,
+                    COUNT(*) as sold_count
+                FROM records r
+                JOIN d_condition dc ON r.condition_disc_id = dc.id
+                WHERE r.artist LIKE ? 
+                  AND r.title LIKE ?
+                  AND r.status_id IN (3, 4)
+                GROUP BY r.condition_disc_id
+                ORDER BY sold_count DESC
+            ''', (f'%{artist}%', f'%{title}%'))
+            
+            condition_breakdown = cursor.fetchall()
+            
+            # Get recent sales for this specific title
+            cursor.execute('''
+                SELECT 
+                    r.id,
+                    r.store_price,
+                    r.date_sold,
+                    dc.condition_name as condition
+                FROM records r
+                JOIN d_condition dc ON r.condition_disc_id = dc.id
+                WHERE r.artist LIKE ? 
+                  AND r.title LIKE ?
+                  AND r.status_id IN (3, 4)
+                  AND r.date_sold IS NOT NULL
+                ORDER BY r.date_sold DESC
+                LIMIT 5
+            ''', (f'%{artist}%', f'%{title}%'))
+            
+            recent_sales = cursor.fetchall()
+        else:
+            condition_breakdown = []
+            recent_sales = []
+        
+        conn.close()
+        
+        # Format response
+        result = {
+            'status': 'success',
+            'artist': artist,
+            'title': title if title else None,
+            # Artist-level stats
+            'artist_stats': {
+                'total_sold': artist_stats['total_sold'] if artist_stats['total_sold'] else 0,
+                'unique_titles': artist_stats['unique_titles'] if artist_stats['unique_titles'] else 0,
+                'last_sold_date': artist_stats['last_sold_date'] if artist_stats['last_sold_date'] else None,
+                'avg_sold_price': round(float(artist_stats['avg_sold_price']), 2) if artist_stats['avg_sold_price'] else None,
+                'min_sold_price': round(float(artist_stats['min_sold_price']), 2) if artist_stats['min_sold_price'] else None,
+                'max_sold_price': round(float(artist_stats['max_sold_price']), 2) if artist_stats['max_sold_price'] else None,
+                'total_revenue': round(float(artist_stats['total_revenue']), 2) if artist_stats['total_revenue'] else 0,
+                'top_titles': [
+                    {
+                        'title': row['title'],
+                        'sold_count': row['sold_count'],
+                        'last_sold': row['last_sold'],
+                        'avg_price': round(float(row['avg_price']), 2) if row['avg_price'] else None
+                    } for row in top_titles
+                ]
+            },
+            # Title-level stats (only if title provided)
+            'title_stats': {
+                'total_sold': title_stats['total_sold'] if title_stats['total_sold'] else 0,
+                'last_sold_date': title_stats['last_sold_date'] if title_stats['last_sold_date'] else None,
+                'avg_sold_price': round(float(title_stats['avg_sold_price']), 2) if title_stats['avg_sold_price'] else None,
+                'min_sold_price': round(float(title_stats['min_sold_price']), 2) if title_stats['min_sold_price'] else None,
+                'max_sold_price': round(float(title_stats['max_sold_price']), 2) if title_stats['max_sold_price'] else None,
+                'total_revenue': round(float(title_stats['total_revenue']), 2) if title_stats['total_revenue'] else 0,
+                'condition_breakdown': [
+                    {
+                        'condition_name': row['condition_name'],
+                        'display_name': row['display_name'],
+                        'sold_count': row['sold_count']
+                    } for row in condition_breakdown
+                ] if title else [],
+                'recent_sales': [
+                    {
+                        'id': row['id'],
+                        'price': float(row['store_price']),
+                        'date_sold': row['date_sold'],
+                        'condition': row['condition']
+                    } for row in recent_sales
+                ] if title else []
+            }
+        }
+        
+        app.logger.info(f"✅ Artist total sold: {result['artist_stats']['total_sold']}")
+        if title:
+            app.logger.info(f"✅ Title total sold: {result['title_stats']['total_sold']}")
+        app.logger.info("=" * 60)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error getting sales history: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

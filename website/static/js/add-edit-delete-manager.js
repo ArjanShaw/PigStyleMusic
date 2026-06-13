@@ -2,6 +2,7 @@
 // add-edit-delete-manager.js - Add/Edit/Delete Tab Functionality
 // ============================================================================
 // PRICE ESTIMATION: Uses /api/price-estimate-v3 (Discogs-only algorithm)
+// SALES HISTORY: Shows artist-level and title-level sales history
 // ============================================================================
 
 class AddEditDeleteManager {
@@ -903,7 +904,11 @@ class AddEditDeleteManager {
                                 </div>
                             </div>
                             
+                            <!-- Price Calculation Container -->
                             <div id="calculation-${record.discogs_id || record.id}" class="calculation-container" style="margin-top: 15px;"></div>
+                            
+                            <!-- Sales History Container -->
+                            <div id="sales-history-${record.discogs_id || record.id}" class="sales-history-container" style="margin-top: 10px;"></div>
                             
                             <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
                                 <button class="btn btn-primary add-record-btn">
@@ -1010,6 +1015,7 @@ class AddEditDeleteManager {
                         </div>
                         
                         <div id="calculation-${record.id}" class="calculation-container" style="margin: 15px 0;"></div>
+                        <div id="sales-history-${record.id}" class="sales-history-container" style="margin: 10px 0;"></div>
                         
                         <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
@@ -1157,6 +1163,11 @@ class AddEditDeleteManager {
         
         if (!record) return;
         
+        // Fetch sales history when conditions are selected
+        if (sleeveConditionId && discConditionId) {
+            await this.fetchAndDisplaySalesHistory(record, card);
+        }
+        
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice && this.storePriceMultiplier !== null) {
             await this.estimatePriceWithNewEndpoint(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
         }
@@ -1182,6 +1193,11 @@ class AddEditDeleteManager {
         }
         
         if (!record) return;
+        
+        // Fetch sales history when conditions are selected
+        if (sleeveConditionId && discConditionId) {
+            await this.fetchAndDisplaySalesHistory(record, card);
+        }
         
         if (sleeveConditionId && discConditionId && this.autoEstimatePrice && this.storePriceMultiplier !== null) {
             await this.estimatePriceWithNewEndpoint(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
@@ -1213,11 +1229,161 @@ class AddEditDeleteManager {
         
         if (!record) return;
         
+        await this.fetchAndDisplaySalesHistory(record, card);
         await this.estimatePriceWithNewEndpoint(record, sleeveConditionId, discConditionId, card, recordId, isEditMode);
     }
 
     // ============================================================================
-    // NEW PRICE ESTIMATION - Uses /api/price-estimate-v3
+    // SALES HISTORY - Artist level + Title level
+    // ============================================================================
+    async fetchAndDisplaySalesHistory(record, card) {
+        const artist = card.getAttribute('data-artist') || record.artist || '';
+        const title = card.getAttribute('data-title') || record.title || '';
+        
+        if (!artist) {
+            console.log('Cannot fetch sales history: missing artist');
+            return;
+        }
+        
+        const containerId = `sales-history-${record.discogs_id || record.id}`;
+        const container = document.getElementById(containerId);
+        
+        if (!container) return;
+        
+        // Show loading
+        container.innerHTML = '<div style="padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 12px;"><i class="fas fa-spinner fa-spin"></i> Loading sales history...</div>';
+        
+        try {
+            const response = await APIUtils.post('/api/stats/sales-history', {
+                artist: artist,
+                title: title
+            });
+            
+            if (response.status === 'success') {
+                this.displaySalesHistory(container, response);
+            } else {
+                container.innerHTML = `<div style="padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 12px; color: #856404;">
+                    <i class="fas fa-exclamation-triangle"></i> Error loading sales history: ${response.error || 'Unknown error'}
+                </div>`;
+            }
+        } catch (error) {
+            console.error('Error fetching sales history:', error);
+            container.innerHTML = `<div style="padding: 10px; background: #f8d7da; border-radius: 4px; font-size: 12px; color: #721c24;">
+                <i class="fas fa-exclamation-triangle"></i> Failed to load sales history
+            </div>`;
+        }
+    }
+    
+    displaySalesHistory(container, data) {
+        const artistStats = data.artist_stats;
+        const titleStats = data.title_stats;
+        const hasTitle = data.title && data.title !== '';
+        
+        // Artist level stats
+        const artistTotalSold = artistStats.total_sold;
+        
+        if (artistTotalSold === 0) {
+            container.innerHTML = `<div style="padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 12px; color: #666;">
+                <i class="fas fa-chart-line"></i> No sales history for "${this.escapeHtml(data.artist)}"
+            </div>`;
+            return;
+        }
+        
+        // Build top titles HTML
+        let topTitlesHtml = '';
+        if (artistStats.top_titles && artistStats.top_titles.length > 0) {
+            topTitlesHtml = '<div style="margin-top: 8px;"><strong>Top Selling Titles:</strong><ul style="margin: 5px 0 0 20px; font-size: 11px;">';
+            for (const title of artistStats.top_titles) {
+                topTitlesHtml += `<li><strong>${this.escapeHtml(title.title)}</strong>: ${title.sold_count} sold (avg $${title.avg_price})</li>`;
+            }
+            topTitlesHtml += '</ul></div>';
+        }
+        
+        // Build title-level HTML if title exists
+        let titleLevelHtml = '';
+        if (hasTitle && titleStats.total_sold > 0) {
+            let conditionBreakdownHtml = '';
+            if (titleStats.condition_breakdown && titleStats.condition_breakdown.length > 0) {
+                conditionBreakdownHtml = '<div style="margin-top: 8px;"><strong>By Condition:</strong><div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px;">';
+                for (const cond of titleStats.condition_breakdown) {
+                    const percent = Math.round((cond.sold_count / titleStats.total_sold) * 100);
+                    conditionBreakdownHtml += `<span style="background: #e9ecef; padding: 2px 8px; border-radius: 12px; font-size: 11px;">
+                        ${cond.display_name || cond.condition_name}: ${cond.sold_count} (${percent}%)
+                    </span>`;
+                }
+                conditionBreakdownHtml += '</div></div>';
+            }
+            
+            let recentSalesHtml = '';
+            if (titleStats.recent_sales && titleStats.recent_sales.length > 0) {
+                recentSalesHtml = '<div style="margin-top: 8px;"><strong>Recent Sales:</strong><ul style="margin: 5px 0 0 20px; font-size: 11px;">';
+                for (const sale of titleStats.recent_sales.slice(0, 3)) {
+                    recentSalesHtml += `<li>${sale.date_sold}: $${sale.price} (${sale.condition})</li>`;
+                }
+                if (titleStats.recent_sales.length > 3) {
+                    recentSalesHtml += `<li><em>+${titleStats.recent_sales.length - 3} more...</em></li>`;
+                }
+                recentSalesHtml += '</ul></div>';
+            }
+            
+            titleLevelHtml = `
+                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #ccc;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <strong><i class="fas fa-record-vinyl"></i> "${this.escapeHtml(data.title)}"</strong>
+                            <span style="margin-left: 8px; font-size: 14px; font-weight: bold; color: #28a745;">${titleStats.total_sold} sold</span>
+                        </div>
+                        <div style="font-size: 11px; color: #666;">
+                            Last sold: ${titleStats.last_sold_date || 'Never'}
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; display: flex; gap: 15px; flex-wrap: wrap;">
+                        <span><strong>Avg Price:</strong> $${titleStats.avg_sold_price || 'N/A'}</span>
+                        <span><strong>Price Range:</strong> $${titleStats.min_sold_price || 'N/A'} - $${titleStats.max_sold_price || 'N/A'}</span>
+                        <span><strong>Total Revenue:</strong> $${titleStats.total_revenue || '0'}</span>
+                    </div>
+                    ${conditionBreakdownHtml}
+                    ${recentSalesHtml}
+                </div>
+            `;
+        } else if (hasTitle && titleStats.total_sold === 0) {
+            titleLevelHtml = `
+                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #ccc;">
+                    <div style="color: #999; font-size: 12px;">
+                        <i class="fas fa-info-circle"></i> No sales yet for "${this.escapeHtml(data.title)}"
+                    </div>
+                </div>
+            `;
+        }
+        
+        container.innerHTML = `
+            <div style="padding: 12px; background: #e8f4fd; border-left: 4px solid #007bff; border-radius: 4px; font-size: 12px;">
+                <!-- Artist Level -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <strong><i class="fas fa-user"></i> ${this.escapeHtml(data.artist)}</strong>
+                            <span style="margin-left: 8px; font-size: 16px; font-weight: bold; color: #28a745;">${artistTotalSold} total sales</span>
+                        </div>
+                        <div style="font-size: 11px; color: #666;">
+                            Last sold: ${artistStats.last_sold_date || 'Never'}
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; display: flex; gap: 15px; flex-wrap: wrap;">
+                        <span><strong>Avg Price:</strong> $${artistStats.avg_sold_price || 'N/A'}</span>
+                        <span><strong>Price Range:</strong> $${artistStats.min_sold_price || 'N/A'} - $${artistStats.max_sold_price || 'N/A'}</span>
+                        <span><strong>Unique Titles:</strong> ${artistStats.unique_titles}</span>
+                        <span><strong>Total Revenue:</strong> $${artistStats.total_revenue || '0'}</span>
+                    </div>
+                    ${topTitlesHtml}
+                </div>
+                ${titleLevelHtml}
+            </div>
+        `;
+    }
+
+    // ============================================================================
+    // PRICE ESTIMATION - Uses /api/price-estimate-v3
     // ============================================================================
     async estimatePriceWithNewEndpoint(record, sleeveConditionId, discConditionId, card, recordId, isEditMode) {
         let priceInput;
@@ -1305,36 +1471,6 @@ class AddEditDeleteManager {
             console.error('Price estimate error:', error);
             showMessage('Price estimation failed. Please enter manually.', 'error');
         }
-    }
-
-    // ============================================================================
-    // DEPRECATED METHODS - Keep for compatibility but not used
-    // These methods are no longer called. They remain to prevent errors
-    // if something still references them.
-    // ============================================================================
-    
-    async estimatePriceForRecord(record, sleeveConditionId, discConditionId) {
-        console.warn('estimatePriceForRecord is deprecated. Use estimatePriceWithNewEndpoint instead.');
-        return { success: false, error: 'Deprecated' };
-    }
-
-    async estimatePriceFromBothApis(discogsId, conditionName, artist, title, formatType = '') {
-        console.warn('estimatePriceFromBothApis is deprecated.');
-        return { success: false, error: 'Deprecated' };
-    }
-
-    async fetchDiscogsPriceSuggestions(discogsId) {
-        console.warn('fetchDiscogsPriceSuggestions is deprecated.');
-        return { success: false, error: 'Deprecated' };
-    }
-
-    async searchEbayListings(query, limit = 50) {
-        console.warn('searchEbayListings is deprecated.');
-        return { success: false, error: 'Deprecated' };
-    }
-
-    showPriceCalculationDetails(estimate, recordId, finalPrice) {
-        // No longer used - kept empty for compatibility
     }
 
     addConditionChangeListeners() {
