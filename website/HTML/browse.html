@@ -609,8 +609,10 @@
         <div>
             <a href="/browse" style="color: #ff6b6b; text-decoration: none;">Browse</a>
             <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
-            <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
             <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
+            <a href="#" id="subscribe-alert-link" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-bell"></i> Record Alerts
+            </a>
             <div id="auth-section"></div>
             <div id="cartToggleContainer" style="display: none;">
                 <div class="cart-icon-wrapper" id="cartToggle">
@@ -693,6 +695,51 @@
 
     <div class="cart-overlay" id="cartOverlay"></div>
 
+    <!-- Subscription Modal -->
+    <div id="subscribe-modal" class="subscribe-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 5000; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90%; overflow-y: auto;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;"><i class="fas fa-bell"></i> Get Notified When We Get Records You Want!</h3>
+                <button class="subscribe-modal-close" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer;">&times;</button>
+            </div>
+            <div style="padding: 25px;">
+                <p>Enter your email and what you're looking for. We'll email you when matching records arrive!</p>
+                
+                <form id="subscribe-form">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-envelope"></i> Your Email *</label>
+                        <input type="email" id="subscribe-email" required placeholder="you@example.com" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-microphone"></i> Artist</label>
+                        <input type="text" id="subscribe-artist" placeholder="e.g., Bruce Springsteen" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-music"></i> Album Title</label>
+                        <input type="text" id="subscribe-title" placeholder="e.g., Born to Run" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-barcode"></i> Catalog Number</label>
+                        <input type="text" id="subscribe-catalog" placeholder="e.g., JC 33795" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+                    
+                    <div style="font-size: 12px; color: #666; margin-bottom: 20px; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+                        <i class="fas fa-info-circle"></i> Enter at least one search term (artist, title, or catalog number)
+                    </div>
+                    
+                    <button type="submit" class="subscribe-submit-btn" style="width: 100%; padding: 14px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer;">
+                        <i class="fas fa-bell"></i> Subscribe
+                    </button>
+                </form>
+                
+                <div id="subscribe-message" style="display: none; margin-top: 15px; padding: 12px; border-radius: 4px;"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let allRecords = [];
         let availableGenres = [];
@@ -705,6 +752,125 @@
         let cart = { items: [], total: 0 };
         let shippingCost = 0;
         let taxRate = 0;
+
+        // Subscription Modal Functions
+        const subscribeModal = document.getElementById('subscribe-modal');
+        const subscribeLink = document.getElementById('subscribe-alert-link');
+        const subscribeClose = document.querySelector('.subscribe-modal-close');
+        const subscribeForm = document.getElementById('subscribe-form');
+        const subscribeMessage = document.getElementById('subscribe-message');
+
+        function openSubscribeModal() {
+            if (subscribeModal) {
+                subscribeModal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeSubscribeModal() {
+            if (subscribeModal) {
+                subscribeModal.style.display = 'none';
+                document.body.style.overflow = '';
+                if (subscribeMessage) subscribeMessage.style.display = 'none';
+                if (subscribeForm) subscribeForm.reset();
+            }
+        }
+
+        if (subscribeLink) {
+            subscribeLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                openSubscribeModal();
+            });
+        }
+
+        if (subscribeClose) {
+            subscribeClose.addEventListener('click', closeSubscribeModal);
+        }
+
+        if (subscribeModal) {
+            subscribeModal.addEventListener('click', function(e) {
+                if (e.target === subscribeModal) closeSubscribeModal();
+            });
+        }
+
+        function showSubscribeMessage(message, type) {
+            if (!subscribeMessage) return;
+            subscribeMessage.textContent = message;
+            subscribeMessage.style.display = 'block';
+            subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
+            subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
+            subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
+        }
+
+        if (subscribeForm) {
+            subscribeForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const email = document.getElementById('subscribe-email').value.trim();
+                const artist = document.getElementById('subscribe-artist').value.trim();
+                const title = document.getElementById('subscribe-title').value.trim();
+                const catalog_number = document.getElementById('subscribe-catalog').value.trim();
+                
+                if (!artist && !title && !catalog_number) {
+                    showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
+                    return;
+                }
+                
+                if (!email || !email.includes('@') || !email.includes('.')) {
+                    showSubscribeMessage('Please enter a valid email address', 'error');
+                    return;
+                }
+                
+                const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
+                
+                try {
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const apiUrl = isLocalhost 
+                        ? 'http://localhost:5000/api/subscribe'
+                        : `https://${window.location.hostname}/api/subscribe`;
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            email: email,
+                            artist: artist,
+                            title: title,
+                            catalog_number: catalog_number
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data.status === 'success') {
+                        if (data.already_subscribed) {
+                            showSubscribeMessage(data.message, 'info');
+                        } else {
+                            showSubscribeMessage('Thank you for subscribing! We\'ll email you when matching records arrive.', 'success');
+                        }
+                        subscribeForm.reset();
+                        
+                        setTimeout(() => {
+                            closeSubscribeModal();
+                        }, 3000);
+                    } else {
+                        showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
+                    }
+                    
+                } catch (error) {
+                    console.error('Subscription error:', error);
+                    showSubscribeMessage('Network error. Please try again.', 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
+                }
+            });
+        }
 
         function extractGenreFromLocation(location) {
             if (!location || location === 'NULL') return null;
