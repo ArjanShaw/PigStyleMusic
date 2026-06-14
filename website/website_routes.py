@@ -15,10 +15,7 @@ def index():
 @app.route('/inventory')
 def inventory():
     return send_from_directory('HTML', 'inventory.html')
-
-@app.route('/streaming')
-def streaming():
-    return send_from_directory('HTML', 'streaming.html')
+ 
 
 @app.route('/consignment')
 def consignment():

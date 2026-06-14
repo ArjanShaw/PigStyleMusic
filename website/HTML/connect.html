@@ -223,7 +223,7 @@
             font-size: 12px;
         }
         
-        .form-group input, .form-group select, .form-group textarea {
+        .form-group input, .form-group textarea {
             padding: 12px;
             border-radius: 8px;
             border: 2px solid #eee;
@@ -235,98 +235,14 @@
             box-sizing: border-box;
         }
         
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+        .form-group input:focus, .form-group textarea:focus {
             outline: none;
             border-color: #ff6b6b;
         }
         
         .form-group textarea {
             resize: vertical;
-            min-height: 100px;
-        }
-        
-        .radio-group {
-            display: flex;
-            gap: 25px;
-            margin-top: 5px;
-            flex-wrap: wrap;
-        }
-        
-        .radio-group label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-weight: normal;
-            color: #333;
-            cursor: pointer;
-            padding: 8px 15px;
-            background: #f8f9fa;
-            border-radius: 25px;
-            transition: background 0.2s;
-        }
-        
-        .radio-group label:hover {
-            background: #fff0f0;
-        }
-        
-        .radio-group input {
-            margin: 0;
-            width: auto;
-            accent-color: #ff6b6b;
-        }
-        
-        .event-options {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-top: 10px;
-        }
-        
-        .event-option {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        
-        .event-option:hover {
-            background: #fff0f0;
-        }
-        
-        .event-option input {
-            margin: 0;
-            cursor: pointer;
-            width: 18px;
-            height: 18px;
-            accent-color: #ff6b6b;
-        }
-        
-        .event-option label {
-            cursor: pointer;
-            margin: 0;
-            color: #333;
-            font-size: 14px;
-        }
-        
-        .custom-event {
-            margin-top: 12px;
-            display: none;
-        }
-        
-        .custom-event.active {
-            display: block;
-        }
-        
-        .custom-event input {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #eee;
-            border-radius: 8px;
-            box-sizing: border-box;
+            min-height: 120px;
         }
         
         .submit-btn {
@@ -401,6 +317,149 @@
             margin-bottom: 5px;
         }
         
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 3500;
+            color: white;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Subscription Modal Styles */
+        .subscribe-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .subscribe-modal.active {
+            display: flex;
+        }
+        
+        .subscribe-modal-content {
+            background: white;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        
+        .subscribe-modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .subscribe-modal-header h3 {
+            margin: 0;
+            font-size: 1.3rem;
+        }
+        
+        .subscribe-modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .subscribe-modal-close:hover {
+            opacity: 0.8;
+        }
+        
+        .subscribe-modal-body {
+            padding: 25px;
+        }
+        
+        .subscribe-form-group {
+            margin-bottom: 20px;
+        }
+        
+        .subscribe-form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .subscribe-form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        
+        .subscribe-form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .subscribe-form-hint {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 20px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .subscribe-submit-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .subscribe-submit-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .subscribe-submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        body.modal-open {
+            overflow: hidden;
+        }
+        
         @media (max-width: 768px) {
             .connect-grid {
                 grid-template-columns: 1fr;
@@ -419,11 +478,6 @@
             .info-card, .feedback-card {
                 padding: 20px;
             }
-            
-            .radio-group {
-                flex-direction: column;
-                gap: 10px;
-            }
         }
     </style>
 </head>
@@ -434,20 +488,68 @@
         <div class="background-overlay"></div>
     </div>
     
-    <!-- Navbar - Matches exactly the style from merchandise.html and other pages -->
+    <!-- Navbar - Matches exactly the style from other pages -->
     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
         <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
             <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
         </a>
         <div style="display: flex; gap: 20px; align-items: center;">
             <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
-            <a href="/merch" style="color: white; text-decoration: none;">Merch</a>
-            <a href="/streaming" style="color: white; text-decoration: none;">Stream</a>
+            <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
             <a href="/connect" style="color: #ff6b6b; text-decoration: none; font-weight: bold;">Connect</a>
+            <a href="#" id="subscribe-alert-link" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-bell"></i> Record Alerts
+            </a>
             <div id="auth-section">
             </div>
         </div>
     </nav>
+    
+    <!-- Subscription Modal -->
+    <div id="subscribe-modal" class="subscribe-modal">
+        <div class="subscribe-modal-content">
+            <div class="subscribe-modal-header">
+                <h3><i class="fas fa-bell"></i> Get Notified When We Get Records You Want!</h3>
+                <button class="subscribe-modal-close">&times;</button>
+            </div>
+            <div class="subscribe-modal-body">
+                <p>Enter your email and what you're looking for. We'll email you when matching records arrive!</p>
+                
+                <form id="subscribe-form">
+                    <div class="subscribe-form-group">
+                        <label for="subscribe-email"><i class="fas fa-envelope"></i> Your Email *</label>
+                        <input type="email" id="subscribe-email" required placeholder="you@example.com">
+                    </div>
+                    
+                    <div class="subscribe-form-group">
+                        <label for="subscribe-artist"><i class="fas fa-microphone"></i> Artist</label>
+                        <input type="text" id="subscribe-artist" placeholder="e.g., Bruce Springsteen">
+                    </div>
+                    
+                    <div class="subscribe-form-group">
+                        <label for="subscribe-title"><i class="fas fa-music"></i> Album Title</label>
+                        <input type="text" id="subscribe-title" placeholder="e.g., Born to Run">
+                    </div>
+                    
+                    <div class="subscribe-form-group">
+                        <label for="subscribe-catalog"><i class="fas fa-barcode"></i> Catalog Number</label>
+                        <input type="text" id="subscribe-catalog" placeholder="e.g., JC 33795">
+                    </div>
+                    
+                    <div class="subscribe-form-hint">
+                        <i class="fas fa-info-circle"></i> Enter at least one search term (artist, title, or catalog number)
+                    </div>
+                    
+                    <button type="submit" class="subscribe-submit-btn">
+                        <i class="fas fa-bell"></i> Subscribe
+                    </button>
+                </form>
+                
+                <div id="subscribe-message" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="../static/js/app-config.js"></script>
     
     <div class="connect-page-container">
@@ -482,66 +584,26 @@
                 </div>
             </div>
             
-            <!-- Feedback & Poll Card -->
+            <!-- Simplified Feedback Card - General Only -->
             <div class="feedback-card">
-                <h2><i class="fas fa-comments"></i> Share Your Thoughts</h2>
+                <h2><i class="fas fa-comments"></i> Send Us a Message</h2>
                 <form id="feedbackForm" class="feedback-form">
-                    <!-- Name row - label left, input fills rest -->
                     <div class="form-group">
                         <label>Name <span class="optional">(optional)</span></label>
                         <input type="text" id="nameInput" placeholder="Your name">
                     </div>
                     
-                    <!-- Contact Info row - label left, input fills rest -->
                     <div class="form-group">
                         <label>Contact Info <span class="optional">(optional)</span></label>
                         <input type="text" id="contactInfo" placeholder="Email or phone number">
                     </div>
                     
                     <div class="form-group">
-                        <label>Feedback Type</label>
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="feedbackType" value="general" checked> General Feedback
-                            </label>
-                            <label>
-                                <input type="radio" name="feedbackType" value="event"> Event Suggestion
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group" id="eventOptionsGroup" style="display: none;">
-                        <label>Event Suggestions</label>
-                        <div class="event-options" id="eventOptions">
-                            <div class="event-option">
-                                <input type="radio" name="eventChoice" value="open_mic" id="openMic">
-                                <label for="openMic">🎤 Open Mic Night</label>
-                            </div>
-                            <div class="event-option">
-                                <input type="radio" name="eventChoice" value="bring_record" id="bringRecord">
-                                <label for="bringRecord">🎵 Bring Your Favorite Record - Listening Evening</label>
-                            </div>
-                            <div class="event-option">
-                                <input type="radio" name="eventChoice" value="78s" id="seventyEights">
-                                <label for="seventyEights">📀 78's Listening Evening</label>
-                            </div>
-                            <div class="event-option">
-                                <input type="radio" name="eventChoice" value="custom" id="customEvent">
-                                <label for="customEvent">✨ Custom Event Idea</label>
-                            </div>
-                        </div>
-                        <div class="custom-event" id="customEventInput">
-                            <input type="text" id="customEventName" placeholder="Enter your event idea...">
-                        </div>
-                        <div class="optional-note" id="eventOptionalNote">Note: Selecting an event is enough - additional feedback is optional.</div>
-                    </div>
-                    
-                    <div class="form-group" id="feedbackContentGroup">
-                        <label>Your Feedback <span id="feedbackRequired" class="required">*</span></label>
+                        <label>Your Message <span class="required">*</span></label>
                         <textarea id="feedbackContent" placeholder="Tell us what you think. Suggestions for events, music, store improvements, or just say hello."></textarea>
                     </div>
                     
-                    <button type="submit" class="submit-btn">Submit Feedback</button>
+                    <button type="submit" class="submit-btn">Send Message</button>
                     <div id="message" class="message"></div>
                 </form>
             </div>
@@ -553,58 +615,145 @@
     </div>
 
     <script>
+        // Subscription Modal Functions
+        const subscribeModal = document.getElementById('subscribe-modal');
+        const subscribeLink = document.getElementById('subscribe-alert-link');
+        const subscribeClose = document.querySelector('.subscribe-modal-close');
+        const subscribeForm = document.getElementById('subscribe-form');
+        const subscribeMessage = document.getElementById('subscribe-message');
+
+        function showNotification(msg, type) {
+            const n = document.createElement('div');
+            n.className = 'notification';
+            n.textContent = msg;
+            n.style.background = type === 'error' ? '#dc3545' : '#28a745';
+            document.body.appendChild(n);
+            setTimeout(() => n.remove(), 3000);
+        }
+
+        function openSubscribeModal() {
+            if (subscribeModal) {
+                subscribeModal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeSubscribeModal() {
+            if (subscribeModal) {
+                subscribeModal.style.display = 'none';
+                document.body.style.overflow = '';
+                if (subscribeMessage) subscribeMessage.style.display = 'none';
+                if (subscribeForm) subscribeForm.reset();
+            }
+        }
+
+        if (subscribeLink) {
+            subscribeLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                openSubscribeModal();
+            });
+        }
+
+        if (subscribeClose) {
+            subscribeClose.addEventListener('click', closeSubscribeModal);
+        }
+
+        if (subscribeModal) {
+            subscribeModal.addEventListener('click', function(e) {
+                if (e.target === subscribeModal) closeSubscribeModal();
+            });
+        }
+
+        function showSubscribeMessage(message, type) {
+            if (!subscribeMessage) return;
+            subscribeMessage.textContent = message;
+            subscribeMessage.style.display = 'block';
+            subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
+            subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
+            subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
+            subscribeMessage.style.borderRadius = '4px';
+            subscribeMessage.style.padding = '12px';
+            subscribeMessage.style.marginTop = '15px';
+        }
+
+        if (subscribeForm) {
+            subscribeForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const email = document.getElementById('subscribe-email').value.trim();
+                const artist = document.getElementById('subscribe-artist').value.trim();
+                const title = document.getElementById('subscribe-title').value.trim();
+                const catalog_number = document.getElementById('subscribe-catalog').value.trim();
+                
+                if (!artist && !title && !catalog_number) {
+                    showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
+                    return;
+                }
+                
+                if (!email || !email.includes('@') || !email.includes('.')) {
+                    showSubscribeMessage('Please enter a valid email address', 'error');
+                    return;
+                }
+                
+                const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
+                
+                try {
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const apiUrl = isLocalhost 
+                        ? 'http://localhost:5000/api/subscribe'
+                        : `https://${window.location.hostname}/api/subscribe`;
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            email: email,
+                            artist: artist,
+                            title: title,
+                            catalog_number: catalog_number
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data.status === 'success') {
+                        if (data.already_subscribed) {
+                            showSubscribeMessage(data.message, 'info');
+                        } else {
+                            showSubscribeMessage('Thank you for subscribing! We\'ll email you when matching records arrive.', 'success');
+                        }
+                        subscribeForm.reset();
+                        
+                        setTimeout(() => {
+                            closeSubscribeModal();
+                        }, 3000);
+                    } else {
+                        showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
+                    }
+                    
+                } catch (error) {
+                    console.error('Subscription error:', error);
+                    showSubscribeMessage('Network error. Please try again.', 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
+                }
+            });
+        }
+
+        // Feedback Form - Simplified (General Only)
         document.addEventListener('DOMContentLoaded', function() {
             const feedbackForm = document.getElementById('feedbackForm');
-            const feedbackTypeRadios = document.querySelectorAll('input[name="feedbackType"]');
-            const eventOptionsGroup = document.getElementById('eventOptionsGroup');
             const feedbackContent = document.getElementById('feedbackContent');
-            const feedbackRequired = document.getElementById('feedbackRequired');
-            const customEventInput = document.getElementById('customEventInput');
-            const customEventName = document.getElementById('customEventName');
             const messageDiv = document.getElementById('message');
             const nameInput = document.getElementById('nameInput');
             const contactInfoInput = document.getElementById('contactInfo');
-            const eventRadios = document.querySelectorAll('input[name="eventChoice"]');
             
-            // Show/hide event options based on feedback type
-            feedbackTypeRadios.forEach(radio => {
-                radio.addEventListener('change', function() {
-                    if (this.value === 'event') {
-                        eventOptionsGroup.style.display = 'block';
-                        feedbackContent.placeholder = 'Additional comments (optional)';
-                        feedbackRequired.style.display = 'none';
-                        feedbackContent.required = false;
-                    } else {
-                        eventOptionsGroup.style.display = 'none';
-                        feedbackContent.placeholder = 'Tell us what you think. Suggestions for events, music, store improvements, or just say hello.';
-                        feedbackRequired.style.display = 'inline';
-                        feedbackContent.required = true;
-                    }
-                });
-            });
-            
-            // Handle custom event option
-            const customRadio = document.getElementById('customEvent');
-            customRadio.addEventListener('change', function() {
-                if (this.checked) {
-                    customEventInput.classList.add('active');
-                } else {
-                    customEventInput.classList.remove('active');
-                }
-            });
-            
-            // Handle other radio selections
-            eventRadios.forEach(radio => {
-                if (radio.id !== 'customEvent') {
-                    radio.addEventListener('change', function() {
-                        if (this.checked) {
-                            customEventInput.classList.remove('active');
-                        }
-                    });
-                }
-            });
-            
-            // Combine name and contact info into one string
             function getCombinedContactInfo() {
                 const name = nameInput.value.trim();
                 const contact = contactInfoInput.value.trim();
@@ -619,69 +768,25 @@
                 return '';
             }
             
-            // Submit feedback
             feedbackForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
                 messageDiv.className = 'message';
                 messageDiv.style.display = 'none';
                 
-                const feedbackType = document.querySelector('input[name="feedbackType"]:checked').value;
+                const content = feedbackContent.value.trim();
                 const combinedContactInfo = getCombinedContactInfo();
-                let content = feedbackContent.value.trim();
-                let eventName = '';
                 
-                // Validate based on feedback type
-                if (feedbackType === 'general') {
-                    if (!content) {
-                        showMessage('Please enter your feedback', 'error');
-                        return;
-                    }
-                } else if (feedbackType === 'event') {
-                    const selectedEvent = document.querySelector('input[name="eventChoice"]:checked');
-                    if (!selectedEvent) {
-                        showMessage('Please select an event option', 'error');
-                        return;
-                    }
-                    
-                    const eventValue = selectedEvent.value;
-                    if (eventValue === 'custom') {
-                        eventName = customEventName.value.trim();
-                        if (!eventName) {
-                            showMessage('Please enter your custom event idea', 'error');
-                            return;
-                        }
-                        // For custom events, content is required (the event name is already captured)
-                        if (!content) {
-                            content = `Custom event suggestion: ${eventName}`;
-                        } else {
-                            content = `Custom event suggestion: ${eventName} - ${content}`;
-                        }
-                    } else {
-                        const eventLabels = {
-                            'open_mic': 'Open Mic Night',
-                            'bring_record': 'Bring Your Favorite Record - Listening Evening',
-                            '78s': "78's Listening Evening"
-                        };
-                        eventName = eventLabels[eventValue] || eventValue;
-                        // For predefined events, content is optional
-                        if (!content) {
-                            content = `Interested in: ${eventName}`;
-                        } else {
-                            content = `${eventName} - ${content}`;
-                        }
-                    }
+                if (!content) {
+                    showMessage('Please enter your message', 'error');
+                    return;
                 }
                 
                 const payload = {
-                    type_of_feedback: feedbackType,
+                    type_of_feedback: 'general',
                     content: content,
                     contact_info: combinedContactInfo
                 };
-                
-                if (feedbackType === 'event' && eventName) {
-                    payload.event_name = eventName;
-                }
                 
                 try {
                     const isLocalhost = window.location.hostname === 'localhost' || 
@@ -701,14 +806,8 @@
                     const result = await response.json();
                     
                     if (result.status === 'success') {
-                        showMessage('Thank you for your feedback!', 'success');
+                        showMessage('Thank you for your message!', 'success');
                         feedbackForm.reset();
-                        eventOptionsGroup.style.display = 'none';
-                        customEventInput.classList.remove('active');
-                        document.querySelector('input[name="feedbackType"][value="general"]').checked = true;
-                        feedbackContent.placeholder = 'Tell us what you think. Suggestions for events, music, store improvements, or just say hello.';
-                        feedbackRequired.style.display = 'inline';
-                        feedbackContent.required = true;
                     } else {
                         showMessage('Error: ' + (result.error || 'Something went wrong'), 'error');
                     }
