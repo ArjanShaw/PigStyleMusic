@@ -41,6 +41,7 @@
     let printQueueBtn = null;
     let markActiveQueueBtn = null;
     let cancelRangeBtn = null;
+    let bulkDeleteQueueBtn = null;
 
     // COGS Batch Elements
     let batchCogsAmount = null;
@@ -79,6 +80,7 @@
         printQueueBtn = document.getElementById('print-queue-btn');
         markActiveQueueBtn = document.getElementById('mark-active-queue-btn');
         cancelRangeBtn = document.getElementById('cancel-range-btn');
+        bulkDeleteQueueBtn = document.getElementById('bulk-delete-queue-btn');
         
         // Get COGS Batch elements
         batchCogsAmount = document.getElementById('batch-cogs-amount');
@@ -202,6 +204,7 @@
         if (printQueueBtn) printQueueBtn.addEventListener('click', () => generatePDF(printQueue));
         if (markActiveQueueBtn) markActiveQueueBtn.addEventListener('click', markQueueAsActive);
         if (cancelRangeBtn) cancelRangeBtn.addEventListener('click', cancelRangeSelection);
+        if (bulkDeleteQueueBtn) bulkDeleteQueueBtn.addEventListener('click', deleteSelectedFromQueue);
         
         // COGS Batch button
         if (applyBatchCogsBtn) {
@@ -247,7 +250,7 @@
                 },
                 body: JSON.stringify({ 
                     batch_cogs: amount,
-                    record_ids: printQueue.map(r => r.id)  // ← Only selected records in queue
+                    record_ids: printQueue.map(r => r.id)
                 })
             });
             
@@ -379,17 +382,15 @@
                 showStatus('Error loading records: ' + error.message, 'error');
             }
             if (recordsBody) {
-                recordsBody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding:40px;">Error loading records: ${error.message}</td></tr>`;
+                recordsBody.innerHTML = `<tr><td colspan="14" style="text-align:center; padding:40px;">Error loading records: ${error.message}</td></tr>`;
             }
         } finally {
             if (loadingDiv) loadingDiv.style.display = 'none';
         }
     }
 
-    // FIXED: Use API counts instead of filtering allRecords
     async function updateStats() {
         try {
-            // Get total count
             const totalResponse = await fetch(`${AppConfig.baseUrl}/records/count`, {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
@@ -404,7 +405,6 @@
                 console.log(`📊 Total records: ${total}`);
             }
             
-            // Get NEW records count (status_id = 1)
             const newResponse = await fetch(`${AppConfig.baseUrl}/records/count?status_id=1`, {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
@@ -419,7 +419,6 @@
                 console.log(`📊 New records (status_id=1): ${newCount}`);
             }
             
-            // Get ACTIVE records count (status_id = 2)
             const activeResponse = await fetch(`${AppConfig.baseUrl}/records/count?status_id=2`, {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
@@ -434,7 +433,6 @@
                 console.log(`📊 Active records (status_id=2): ${activeCount}`);
             }
             
-            // Get SOLD records count (status_id = 3)
             const soldResponse = await fetch(`${AppConfig.baseUrl}/records/count?status_id=3`, {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
@@ -451,7 +449,6 @@
             
         } catch (error) {
             console.error('Error fetching fresh stats:', error);
-            // Fallback to local filtering
             const total = allRecords.length;
             const inactive = allRecords.filter(r => r.status_id === 1).length;
             const active = allRecords.filter(r => r.status_id === 2).length;
@@ -469,7 +466,6 @@
         
         let filtered = [...allRecords];
         
-        // Apply status filter
         const statusMap = {
             'all': null,
             'new': 1,
@@ -489,7 +485,6 @@
             console.log('No status filter, all', filtered.length, 'records');
         }
         
-        // Apply user filter (consignor)
         const selectedUserId = userSelect ? userSelect.value : 'all';
         if (selectedUserId !== 'all') {
             filtered = filtered.filter(record => record.consignor_id == selectedUserId);
@@ -498,7 +493,6 @@
         
         filteredRecords = filtered;
         
-        // Sort by created_at (newest first)
         filteredRecords.sort((a, b) => {
             const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
             const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
@@ -561,7 +555,6 @@
         if (showingEndSpan) showingEndSpan.textContent = end;
         if (totalFilteredSpan) totalFilteredSpan.textContent = totalRecords;
         
-        // Update button states
         const firstPageBtn = document.getElementById('first-page-btn');
         const prevPageBtn = document.getElementById('prev-page-btn');
         const nextPageBtn = document.getElementById('next-page-btn');
@@ -583,7 +576,6 @@
         renderRecords();
         updatePagination();
         
-        // Scroll to top of table
         const container = document.querySelector('.records-table-container');
         if (container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -639,7 +631,7 @@
     }
 
     // ============================================================================
-    // Render Records Table (with COGS column)
+    // Render Records Table (with COGS column and Delete button)
     // ============================================================================
 
     function renderRecords() {
@@ -657,7 +649,7 @@
         console.log('Rendering records', start+1, 'to', end, `(${pageRecords.length} records on this page)`);
         
         if (pageRecords.length === 0) {
-            recordsBody.innerHTML = '<tr><td colspan="13" style="text-align:center; padding:40px;">No records found</td></tr>';
+            recordsBody.innerHTML = '<tr><td colspan="14" style="text-align:center; padding:40px;">No records found</td></tr>';
             return;
         }
         
@@ -675,22 +667,18 @@
             const isInQueue = printQueue.some(q => q.id === record.id);
             const queuePosition = printQueue.findIndex(q => q.id === record.id);
             
-            // Use record ID as barcode if barcode column is null
             const displayBarcode = record.barcode || record.id;
             
-            // Get consignor initials
             let consignorDisplay = '';
             if (record.consignor_id && consignorMap[record.consignor_id]) {
                 consignorDisplay = consignorMap[record.consignor_id].initials || consignorMap[record.consignor_id].name;
             }
             
-            // Range selection highlighting
             let rowClass = '';
             if (isInQueue) rowClass = 'record-in-queue';
             if (fromIndex === globalIndex) rowClass += ' range-from';
             if (toIndex === globalIndex) rowClass += ' range-to';
             
-            // Check if this row is between from and to
             if (fromIndex !== null && toIndex !== null) {
                 const min = Math.min(fromIndex, toIndex);
                 const max = Math.max(fromIndex, toIndex);
@@ -727,13 +715,18 @@
                     <td style="width: 120px;"><span class="barcode-value">${displayBarcode}</span></td>
                     <td style="width: 80px;">${escapeHtml(consignorDisplay) || '—'}</td>
                     <td style="width: 100px;"><span class="status-badge ${statusClass}">${statusName}</span></td>
-                    <td style="width: 60px; text-align: center;">
-                        ${isInQueue ? 
-                            `<span class="queue-badge" style="background: #28a745; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px;">#${queuePosition + 1}</span>` : 
-                            `<button class="btn-add-queue" onclick="window.priceTagsAddToQueue(${record.id})" style="background: none; border: none; color: #28a745; cursor: pointer; font-size: 16px;">
-                                <i class="fas fa-plus-circle"></i>
-                            </button>`
-                        }
+                    <td style="width: 90px; text-align: center;">
+                        <div style="display: flex; gap: 5px; justify-content: center;">
+                            ${isInQueue ? 
+                                `<span class="queue-badge" style="background: #28a745; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px;">#${queuePosition + 1}</span>` : 
+                                `<button class="btn-add-queue" onclick="window.priceTagsAddToQueue(${record.id})" style="background: none; border: none; color: #28a745; cursor: pointer; font-size: 16px;" title="Add to Queue">
+                                    <i class="fas fa-plus-circle"></i>
+                                </button>`
+                            }
+                            <button class="btn-delete-record" onclick="window.priceTagsDeleteRecord(${record.id})" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 16px;" title="Delete Record">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `;
@@ -777,7 +770,7 @@
         if (!printQueue.some(r => r.id === record.id)) {
             printQueue.push(record);
             updateQueueDisplay();
-            renderRecords(); // Re-render to show queue badge
+            renderRecords();
             showStatus(`Added "${record.artist} - ${record.title}" to print queue`, 'success');
         } else {
             showStatus(`Record already in queue`, 'warning');
@@ -798,14 +791,14 @@
         }
         
         updateQueueDisplay();
-        renderRecords(); // Re-render to show queue badges
+        renderRecords();
         showStatus(`Added ${addedCount} records from current page to print queue`, 'success');
     }
 
     function removeFromQueue(index) {
         const removed = printQueue.splice(index, 1)[0];
         updateQueueDisplay();
-        renderRecords(); // Re-render to update badges
+        renderRecords();
         showStatus(`Removed "${removed.artist} - ${removed.title}" from queue`, 'info');
     }
 
@@ -815,7 +808,7 @@
         if (confirm(`Clear ${printQueue.length} records from print queue?`)) {
             printQueue = [];
             updateQueueDisplay();
-            renderRecords(); // Re-render to clear badges
+            renderRecords();
             showStatus('Print queue cleared', 'info');
         }
     }
@@ -837,6 +830,7 @@
         if (clearQueueBtn) clearQueueBtn.disabled = count === 0;
         if (printQueueBtn) printQueueBtn.disabled = count === 0;
         if (markActiveQueueBtn) markActiveQueueBtn.disabled = false;
+        if (bulkDeleteQueueBtn) bulkDeleteQueueBtn.disabled = count === 0;
         
         if (!queueContentDiv) return;
         
@@ -857,7 +851,6 @@
             const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
             const profit = (record.store_price && record.cogs) ? `$${(record.store_price - record.cogs).toFixed(2)}` : '—';
             const genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim().substring(0, 25) : '';
-            // Use record ID as barcode if barcode column is null
             const displayBarcode = record.barcode || record.id;
             
             html += `
@@ -892,7 +885,165 @@
     }
 
     // ============================================================================
-    // PDF Generation (always starts at row 1, col 1)
+    // Delete Record Functionality
+    // ============================================================================
+
+    async function deleteRecord(recordId) {
+        const record = allRecords.find(r => r.id === recordId);
+        if (!record) {
+            showStatus('Record not found', 'error');
+            return;
+        }
+        
+        const confirmed = confirm(
+            `⚠️ DELETE RECORD #${recordId}\n\n` +
+            `Artist: ${record.artist}\n` +
+            `Title: ${record.title}\n` +
+            `Price: $${record.store_price ? record.store_price.toFixed(2) : 'N/A'}\n` +
+            `Status: ${getStatusName(record.status_id)}\n\n` +
+            `Are you sure you want to permanently delete this record?\n` +
+            `This action CANNOT be undone!`
+        );
+        
+        if (!confirmed) return;
+        
+        if (loadingDiv) loadingDiv.style.display = 'block';
+        
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/records/${recordId}`, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showStatus(`✅ Record #${recordId} deleted successfully`, 'success');
+                
+                const indexInAll = allRecords.findIndex(r => r.id === recordId);
+                if (indexInAll !== -1) allRecords.splice(indexInAll, 1);
+                
+                const indexInFiltered = filteredRecords.findIndex(r => r.id === recordId);
+                if (indexInFiltered !== -1) filteredRecords.splice(indexInFiltered, 1);
+                
+                const queueIndex = printQueue.findIndex(r => r.id === recordId);
+                if (queueIndex !== -1) printQueue.splice(queueIndex, 1);
+                
+                totalRecords = filteredRecords.length;
+                
+                const totalPages = getTotalPages();
+                if (currentPage > totalPages && currentPage > 1) {
+                    currentPage = totalPages;
+                }
+                
+                updateStats();
+                updatePagination();
+                renderRecords();
+                updateQueueDisplay();
+            } else {
+                throw new Error(data.error || 'Delete failed');
+            }
+            
+        } catch (error) {
+            console.error('Error deleting record:', error);
+            showStatus(`Error deleting record: ${error.message}`, 'error');
+        } finally {
+            if (loadingDiv) loadingDiv.style.display = 'none';
+        }
+    }
+
+    async function deleteSelectedFromQueue() {
+        if (printQueue.length === 0) {
+            showStatus('No records in print queue to delete', 'warning');
+            return;
+        }
+        
+        const confirmed = confirm(
+            `⚠️ BULK DELETE ${printQueue.length} RECORDS\n\n` +
+            `You are about to delete ${printQueue.length} records from the print queue.\n\n` +
+            `This will delete the following records:\n` +
+            printQueue.slice(0, 10).map((r, i) => `  ${i+1}. #${r.id}: ${r.artist} - ${r.title}`).join('\n') +
+            (printQueue.length > 10 ? `\n  ... and ${printQueue.length - 10} more` : '') +
+            `\n\n⚠️ This action CANNOT be undone!\n\n` +
+            `Are you ABSOLUTELY sure?`
+        );
+        
+        if (!confirmed) return;
+        
+        if (loadingDiv) loadingDiv.style.display = 'block';
+        
+        let deletedCount = 0;
+        let failedCount = 0;
+        const failedRecords = [];
+        
+        try {
+            for (const record of printQueue) {
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/records/${record.id}`, {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        deletedCount++;
+                        
+                        const allIndex = allRecords.findIndex(r => r.id === record.id);
+                        if (allIndex !== -1) allRecords.splice(allIndex, 1);
+                        
+                        const filteredIndex = filteredRecords.findIndex(r => r.id === record.id);
+                        if (filteredIndex !== -1) filteredRecords.splice(filteredIndex, 1);
+                    } else {
+                        failedCount++;
+                        failedRecords.push(record);
+                    }
+                } catch (err) {
+                    failedCount++;
+                    failedRecords.push(record);
+                    console.error(`Failed to delete record ${record.id}:`, err);
+                }
+            }
+            
+            printQueue = [];
+            
+            updateStats();
+            totalRecords = filteredRecords.length;
+            
+            const totalPages = getTotalPages();
+            if (currentPage > totalPages && currentPage > 1) {
+                currentPage = totalPages;
+            }
+            
+            updatePagination();
+            renderRecords();
+            updateQueueDisplay();
+            
+            if (failedCount === 0) {
+                showStatus(`✅ Successfully deleted ${deletedCount} records`, 'success');
+            } else {
+                showStatus(`⚠️ Deleted ${deletedCount} records, failed to delete ${failedCount} records`, 'warning');
+            }
+            
+        } catch (error) {
+            console.error('Error in bulk delete:', error);
+            showStatus(`Error during bulk delete: ${error.message}`, 'error');
+        } finally {
+            if (loadingDiv) loadingDiv.style.display = 'none';
+        }
+    }
+
+    // ============================================================================
+    // PDF Generation
     // ============================================================================
 
     async function generatePDF(records) {
@@ -903,7 +1054,6 @@
         console.log(`📊 Total records: ${records.length}`);
         
         try {
-            // Get configuration values
             const labelWidthMM = await getConfigValue('LABEL_WIDTH_MM');
             const labelHeightMM = await getConfigValue('LABEL_HEIGHT_MM');
             const leftMarginMM = await getConfigValue('LEFT_MARGIN_MM');
@@ -939,7 +1089,6 @@
             const cols = 4;
             const labelsPerPage = rows * cols;
             
-            // Always start at position 0 (row 1, col 1)
             let currentLabel = 0;
             let pageNumber = 0;
             
@@ -1011,7 +1160,6 @@
                 const priceY = y + priceYPosPt;
                 doc.text(priceText, priceX, priceY);
                 
-                // Use record ID as barcode if barcode column is null
                 const barcodeNum = record.barcode || record.id;
                 if (barcodeNum) {
                     try {
@@ -1040,7 +1188,6 @@
             
             console.log(`✅ Generated ${currentLabel} labels starting at position (1, 1)`);
             
-            // Open PDF in new window for printing
             const pdfBlob = doc.output('blob');
             const pdfUrl = URL.createObjectURL(pdfBlob);
             window.open(pdfUrl, '_blank');
@@ -1071,7 +1218,6 @@
             console.warn(`Error fetching config ${key}:`, error);
         }
         
-        // Return defaults
         const defaults = {
             'LABEL_WIDTH_MM': '101.6',
             'LABEL_HEIGHT_MM': '50.8',
@@ -1091,7 +1237,7 @@
     }
 
     // ============================================================================
-    // Mark as Active - Direct, No Popup
+    // Mark as Active
     // ============================================================================
 
     async function markQueueAsActive() {
@@ -1113,7 +1259,7 @@
                 },
                 body: JSON.stringify({
                     record_ids: recordIds,
-                    status_id: 2  // Active status
+                    status_id: 2
                 })
             });
             
@@ -1126,7 +1272,6 @@
             if (data.status === 'success') {
                 showStatus(`Successfully marked ${data.updated_count} records as Active`, 'success');
                 
-                // Update printQueue records status and clear queue
                 printQueue.forEach(record => {
                     record.status_id = 2;
                 });
@@ -1134,7 +1279,6 @@
                 updateQueueDisplay();
                 renderRecords();
                 
-                // Reload records to reflect changes
                 await loadRecordsForPriceTags();
             } else {
                 throw new Error(data.error || 'Failed to update status');
@@ -1160,7 +1304,6 @@
         const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
         const matchCountSpan = document.getElementById('match-count');
         
-        // Clear previous highlights
         clearLocatorHighlight();
         
         if (!searchTerm) {
@@ -1170,7 +1313,6 @@
             return;
         }
         
-        // Find matching rows
         const rows = document.querySelectorAll('#records-body tr');
         matchRows = [];
         
@@ -1179,7 +1321,7 @@
             if (cells.length >= 5) {
                 const artist = cells[3]?.textContent.toLowerCase() || '';
                 const title = cells[4]?.textContent.toLowerCase() || '';
-                const barcode = cells[9]?.textContent.toLowerCase() || '';
+                const barcode = cells[10]?.textContent.toLowerCase() || '';
                 
                 if (artist.includes(searchTerm) || title.includes(searchTerm) || barcode.includes(searchTerm)) {
                     matchRows.push(row);
@@ -1269,38 +1411,34 @@
     // Global Exports
     // ============================================================================
 
-    // Core functions
     window.initPriceTagsTab = initPriceTagsTab;
     window.loadRecordsForPriceTags = loadRecordsForPriceTags;
     window.loadConsignorsForPriceTags = loadConsignors;
     
-    // Queue management
     window.priceTagsAddToQueue = addToQueue;
     window.addAllOnPageToQueue = addAllOnPageToQueue;
     window.priceTagsRemoveFromQueue = removeFromQueue;
     window.priceTagsMoveInQueue = moveInQueue;
     window.clearQueue = clearQueue;
     
-    // Range selection
     window.priceTagsStartRangeFrom = startRangeFrom;
     window.priceTagsEndRangeTo = endRangeTo;
     window.cancelRangeSelection = cancelRangeSelection;
     
-    // Status and printing
     window.markQueueAsActive = markQueueAsActive;
     window.generatePDF = generatePDF;
     
-    // Navigation and locate
     window.goToPage = goToPage;
     window.findNextMatch = findNextMatch;
     window.clearLocatorHighlight = clearLocatorHighlight;
     
-    // COGS Batch
     window.applyBatchCOGS = applyBatchCOGS;
-
-    console.log('✅ price-tags.js loaded - With COGS batch functionality for print queue');
     
-    // Auto-initialize when DOM is ready
+    window.priceTagsDeleteRecord = deleteRecord;
+    window.priceTagsDeleteSelectedFromQueue = deleteSelectedFromQueue;
+
+    console.log('✅ price-tags.js loaded - With COGS batch and Delete functionality');
+    
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initPriceTagsTab);
     } else {

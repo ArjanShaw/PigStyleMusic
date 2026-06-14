@@ -3145,7 +3145,7 @@
                 </button>
             </div>
         </div>
-
+        
         <!-- Price Tags Tab with Starting Position and COGS -->
         <div id="price-tags-tab" class="tab-content">
             <h2><i class="fas fa-tags"></i> Print Price Tags</h2>
@@ -3154,7 +3154,7 @@
             <div class="cogs-batch-section" style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 8px; color: white;">
                 <h3 style="margin: 0 0 10px 0;"><i class="fas fa-dollar-sign"></i> Batch COGS Assignment</h3>
                 <p style="margin: 0 0 10px 0; font-size: 13px; opacity: 0.9;">
-                    Enter the total amount you paid for selected records. COGS will be distributed proportionally based on each record's store price.
+                    Enter the total amount you paid for the selected records in your print queue. COGS will be distributed proportionally based on each record's store price.
                 </p>
                 <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 200px;">
@@ -3171,25 +3171,23 @@
                 <div id="batch-cogs-result" style="margin-top: 10px; font-size: 12px;"></div>
             </div>
             
-            <!-- Starting Position Selector -->
-            <div class="starting-position-section">
-                <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-flag-checkered" style="font-size: 24px;"></i>
-                        <span style="font-weight: bold;">Start Printing At:</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <label style="font-weight: 500;">Row:</label>
-                        <input type="number" id="print-start-row" min="1" max="15" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
-                        <label style="font-weight: 500;">Column:</label>
-                        <input type="number" id="print-start-col" min="1" max="4" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
-                        <button class="btn btn-light btn-small" onclick="updatePrintStartPosition()" style="background: white; color: #28a745;">
-                            <i class="fas fa-sync-alt"></i> Update
-                        </button>
-                    </div>
-                    <div style="font-size: 12px; opacity: 0.9;">
-                        <i class="fas fa-info-circle"></i> Price tags will start at position <strong id="print-start-display">1, 1</strong> on the sheet
-                    </div>
+            <!-- STATS CARDS -->
+            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Records</h3>
+                    <p class="stat-number" id="total-records-print" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">New Records</h3>
+                    <p class="stat-number" id="inactive-records" style="font-size: 28px; font-weight: bold; color: #dc3545; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Active Records</h3>
+                    <p class="stat-number" id="active-records" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Sold Records</h3>
+                    <p class="stat-number" id="sold-records" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
                 </div>
             </div>
             
@@ -3219,27 +3217,7 @@
                 </div>
             </div>
             
-            <!-- STATS CARDS - TOP -->
-            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Records</h3>
-                    <p class="stat-number" id="total-records-print" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">New Records</h3>
-                    <p class="stat-number" id="inactive-records" style="font-size: 28px; font-weight: bold; color: #dc3545; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Active Records</h3>
-                    <p class="stat-number" id="active-records" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Sold Records</h3>
-                    <p class="stat-number" id="sold-records" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
-                </div>
-            </div>
-            
-            <!-- SEARCH SECTION - MIDDLE -->
+            <!-- Locator Search Section -->
             <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #007bff;">
                 <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 300px;">
@@ -3252,10 +3230,10 @@
                                 class="search-input" 
                                 placeholder="Search by artist, title, or barcode..."
                                 style="flex: 1;">
-                            <button class="btn btn-info" onclick="findNextMatch()" title="Find next match">
+                            <button class="btn btn-info" onclick="window.findNextMatch()" title="Find next match">
                                 <i class="fas fa-arrow-down"></i> Find
                             </button>
-                            <button class="btn btn-secondary" onclick="clearLocatorHighlight()" title="Clear highlights">
+                            <button class="btn btn-secondary" onclick="window.clearLocatorHighlight()" title="Clear highlights">
                                 <i class="fas fa-times"></i> Clear
                             </button>
                         </div>
@@ -3273,29 +3251,28 @@
             <!-- Records Section -->
             <div id="records-section">
                 <div class="pagination" id="pagination-controls" style="margin-bottom: 15px;">
-                    <button class="page-btn" onclick="goToFirstPage()" id="first-page-btn" disabled>
+                    <button class="page-btn" id="first-page-btn" disabled>
                         <i class="fas fa-angle-double-left"></i>
                     </button>
-                    <button class="page-btn" onclick="goToPreviousPage()" id="prev-page-btn" disabled>
+                    <button class="page-btn" id="prev-page-btn" disabled>
                         <i class="fas fa-angle-left"></i>
                     </button>
                     
                     <span class="pagination-info">
-                        Page <input type="number" class="page-input" id="current-page" min="1" value="1" 
-                            onchange="goToPage(parseInt(this.value))" onblur="goToPage(parseInt(this.value))"> 
+                        Page <input type="number" class="page-input" id="current-page" min="1" value="1"> 
                         of <span id="total-pages">1</span>
                     </span>
                     
-                    <button class="page-btn" onclick="goToNextPage()" id="next-page-btn" disabled>
+                    <button class="page-btn" id="next-page-btn" disabled>
                         <i class="fas fa-angle-right"></i>
                     </button>
-                    <button class="page-btn" onclick="goToLastPage()" id="last-page-btn" disabled>
+                    <button class="page-btn" id="last-page-btn" disabled>
                         <i class="fas fa-angle-double-right"></i>
                     </button>
                     
                     <div class="records-per-page">
                         <span>Show:</span>
-                        <select id="page-size" onchange="changePageSize(parseInt(this.value))">
+                        <select id="page-size">
                             <option value="50">50</option>
                             <option value="100" selected>100</option>
                             <option value="200">200</option>
@@ -3309,21 +3286,22 @@
                     <table class="records-table" id="records-table">
                         <thead>
                             <tr>
-                                <th></th>
-                                <th>#</th>
-                                <th>Created Date</th>
+                                <th style="width: 80px;"></th>
+                                <th style="width: 60px;">#</th>
+                                <th style="width: 100px;">Created Date</th>
                                 <th>Artist</th>
                                 <th>Title</th>
-                                <th>Price</th>
-                                <th>COGS</th>
-                                <th>Profit</th>
-                                <th>Catalog #</th>
-                                <th>Discogs Genre</th>
-                                <th>Barcode</th>
-                                <th>Consignor</th>
-                                <th>Status</th>
-                                <th></th>
-                            </thead>
+                                <th style="width: 80px;">Price</th>
+                                <th style="width: 80px;">COGS</th>
+                                <th style="width: 80px;">Profit</th>
+                                <th style="width: 100px;">Catalog #</th>
+                                <th style="width: 120px;">Discogs Genre</th>
+                                <th style="width: 120px;">Barcode</th>
+                                <th style="width: 80px;">Consignor</th>
+                                <th style="width: 100px;">Status</th>
+                                <th style="width: 90px;">Actions</th>
+                            </tr>
+                        </thead>
                         <tbody id="records-body">
                             <!-- Records will be loaded here -->
                         </tbody>
@@ -3338,28 +3316,28 @@
                 </div>
                 
                 <div class="action-buttons" style="margin-top: 15px;">
-                    <button class="btn btn-primary" onclick="loadRecordsForPriceTags()">
+                    <button class="btn btn-primary" onclick="window.loadRecordsForPriceTags()">
                         <i class="fas fa-sync-alt"></i> Refresh Records
                     </button>
-                    <button class="btn btn-secondary" onclick="addAllOnPageToQueue()">
+                    <button class="btn btn-secondary" onclick="window.addAllOnPageToQueue()">
                         <i class="fas fa-plus-circle"></i> Add All on Page to Queue
                     </button>
                 </div>
                 
                 <div id="status-message" class="status-message"></div>
                 
-                <div class="loading" id="loading">
+                <div class="loading" id="loading" style="display: none;">
                     <div class="loading-spinner"></div>
                     <p>Processing...</p>
                 </div>
             </div>
             
-            <!-- PRINT QUEUE SECTION - BOTTOM -->
+            <!-- PRINT QUEUE SECTION -->
             <div class="queue-container">
                 <div class="queue-header">
                     <h3><i class="fas fa-list-ol"></i> Print Queue <span class="queue-badge" id="queue-count">0</span></h3>
                     <div class="queue-controls">
-                        <button class="btn btn-small btn-secondary" onclick="clearQueue()" id="clear-queue-btn" disabled>
+                        <button class="btn btn-small btn-secondary" id="clear-queue-btn" disabled>
                             <i class="fas fa-trash"></i> Clear Queue
                         </button>
                     </div>
@@ -3372,13 +3350,16 @@
                     </div>
                 </div>
                 <div class="queue-actions">
-                    <button class="btn btn-success" onclick="showPrintConfirmation()" id="print-queue-btn" disabled>
+                    <button class="btn btn-success" id="print-queue-btn" disabled>
                         <i class="fas fa-print"></i> Print Queue (<span id="print-queue-count">0</span>)
                     </button>
-                    <button class="btn btn-warning" onclick="showMarkActiveConfirmation()" id="mark-active-queue-btn" disabled>
+                    <button class="btn btn-warning" id="mark-active-queue-btn" disabled>
                         <i class="fas fa-check-circle"></i> Mark Queue as Active
                     </button>
-                    <button class="btn btn-secondary" onclick="cancelRangeSelection()" id="cancel-range-btn" style="display: none;">
+                    <button class="btn btn-danger" id="bulk-delete-queue-btn" disabled style="background: #dc3545; color: white;">
+                        <i class="fas fa-trash-alt"></i> Delete Queue Records
+                    </button>
+                    <button class="btn btn-secondary" id="cancel-range-btn" style="display: none;">
                         <i class="fas fa-times"></i> Cancel Range
                     </button>
                 </div>
