@@ -6221,6 +6221,123 @@ def get_sales_history():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ==================== SUBSCRIPTION ENDPOINTS ====================
+
+@app.route('/api/subscribe', methods=['POST'])
+def subscribe():
+    """Subscribe a user to email notifications for specific artists/titles"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        email = data.get('email', '').strip().lower()
+        artist = data.get('artist', '').strip()
+        title = data.get('title', '').strip()
+        catalog_number = data.get('catalog_number', '').strip()
+        
+        # Validate email
+        if not email or '@' not in email or '.' not in email:
+            return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
+        
+        # At least one search term required
+        if not artist and not title and not catalog_number:
+            return jsonify({'status': 'error', 'error': 'At least one search term (artist, title, or catalog number) is required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if subscription already exists (active)
+        cursor.execute('''
+            SELECT id FROM email_subscriptions 
+            WHERE email = ? AND artist = ? AND title = ? AND catalog_number = ? AND is_active = 1
+        ''', (email, artist or None, title or None, catalog_number or None))
+        
+        existing = cursor.fetchone()
+        
+        if existing:
+            conn.close()
+            return jsonify({'status': 'success', 'message': 'You are already subscribed to these notifications', 'already_subscribed': True}), 200
+        
+        # Insert new subscription
+        cursor.execute('''
+            INSERT INTO email_subscriptions (email, artist, title, catalog_number, created_at, is_active)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 1)
+        ''', (email, artist or None, title or None, catalog_number or None))
+        
+        subscription_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"New subscription: {email} - artist:{artist} title:{title} catalog:{catalog_number}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Subscription created successfully',
+            'subscription_id': subscription_id
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error creating subscription: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/subscriptions', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_subscriptions():
+    """Get all subscriptions (admin only)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, email, artist, title, catalog_number, created_at, is_active
+            FROM email_subscriptions
+            ORDER BY created_at DESC
+        ''')
+        
+        subscriptions = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'subscriptions': [dict(sub) for sub in subscriptions],
+            'count': len(subscriptions)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting subscriptions: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/subscriptions/<int:subscription_id>', methods=['DELETE'])
+def unsubscribe(subscription_id):
+    """Unsubscribe (deactivate a subscription)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id, email FROM email_subscriptions WHERE id = ?', (subscription_id,))
+        sub = cursor.fetchone()
+        
+        if not sub:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Subscription not found'}), 404
+        
+        # Soft delete - set is_active to 0
+        cursor.execute('UPDATE email_subscriptions SET is_active = 0 WHERE id = ?', (subscription_id,))
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Unsubscribed: {sub['email']} (ID: {subscription_id})")
+        
+        return jsonify({'status': 'success', 'message': 'Unsubscribed successfully'})
+        
+    except Exception as e:
+        app.logger.error(f"Error unsubscribing: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
