@@ -216,7 +216,7 @@
     }
 
     // ============================================================================
-    // COGS Batch Functions
+    // COGS Batch Functions - UPDATED to use printQueue
     // ============================================================================
 
     async function applyBatchCOGS() {
@@ -229,16 +229,26 @@
             return;
         }
         
+        // Check if there are records in the print queue
+        if (!printQueue || printQueue.length === 0) {
+            showStatus('No records in print queue. Please add records to the queue first.', 'error');
+            return;
+        }
+        
         if (loadingDiv) loadingDiv.style.display = 'block';
         
         try {
+            // Send batch COGS with the record IDs from the print queue
             const response = await fetch(`${AppConfig.baseUrl}/api/cogs/batch`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ batch_cogs: amount })
+                body: JSON.stringify({ 
+                    batch_cogs: amount,
+                    record_ids: printQueue.map(r => r.id)  // ← Only selected records in queue
+                })
             });
             
             const data = await response.json();
@@ -264,8 +274,22 @@
                 // Clear the input
                 batchCogsAmount.value = '';
                 
-                // Reload records to show updated COGS values
-                await loadRecordsForPriceTags();
+                // Update the COGS values in the printQueue and allRecords
+                if (data.updated_records) {
+                    data.updated_records.forEach(updated => {
+                        // Update in printQueue
+                        const queueRecord = printQueue.find(r => r.id === updated.id);
+                        if (queueRecord) queueRecord.cogs = updated.cogs;
+                        
+                        // Update in allRecords
+                        const allRecord = allRecords.find(r => r.id === updated.id);
+                        if (allRecord) allRecord.cogs = updated.cogs;
+                    });
+                    
+                    // Re-render to show updated COGS values
+                    renderRecords();
+                    updateQueueDisplay();
+                }
             } else {
                 showStatus(`❌ Error: ${data.error || 'Unknown error'}`, 'error');
                 if (batchCogsResultDiv) {
@@ -1274,7 +1298,7 @@
     // COGS Batch
     window.applyBatchCOGS = applyBatchCOGS;
 
-    console.log('✅ price-tags.js loaded - With COGS batch functionality');
+    console.log('✅ price-tags.js loaded - With COGS batch functionality for print queue');
     
     // Auto-initialize when DOM is ready
     if (document.readyState === 'loading') {

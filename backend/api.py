@@ -2660,10 +2660,13 @@ def delete_inventory_purchase(purchase_id):
 @role_required(['admin'])
 def set_batch_cogs():
     """
-    Set COGS for all NEW records (status_id = 1) by distributing a batch total
+    Set COGS for selected records by distributing a batch total
     proportionally based on each record's store_price.
     
-    Request body: { "batch_cogs": 100.00 }
+    Request body: { 
+        "batch_cogs": 100.00,
+        "record_ids": [1, 2, 3, ...]  # Array of record IDs to update
+    }
     """
     try:
         data = request.get_json()
@@ -2676,15 +2679,23 @@ def set_batch_cogs():
         if batch_cogs < 0:
             return jsonify({'status': 'error', 'error': 'batch_cogs cannot be negative'}), 400
         
+        # Get the record IDs from the request
+        record_ids = data.get('record_ids', [])
+        
+        if not record_ids or not isinstance(record_ids, list) or len(record_ids) == 0:
+            return jsonify({'status': 'error', 'error': 'No records selected. Please add records to the print queue first.'}), 400
+        
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all NEW records (status_id = 1) with their store_price
-        cursor.execute('''
+        # Get the selected records with their store_price
+        placeholders = ','.join('?' for _ in record_ids)
+        cursor.execute(f'''
             SELECT id, store_price 
             FROM records 
-            WHERE status_id = 1 AND store_price IS NOT NULL AND store_price > 0
-        ''')
+            WHERE id IN ({placeholders}) 
+            AND store_price IS NOT NULL AND store_price > 0
+        ''', record_ids)
         
         records = cursor.fetchall()
         
@@ -2692,10 +2703,10 @@ def set_batch_cogs():
             conn.close()
             return jsonify({
                 'status': 'error', 
-                'error': 'No NEW records (status_id=1) with valid store_price found'
+                'error': 'No valid records found with store_price > 0'
             }), 404
         
-        # Calculate total store price sum for all new records
+        # Calculate total store price sum for selected records
         total_store_price = sum(record['store_price'] for record in records)
         
         if total_store_price <= 0:
@@ -2708,6 +2719,7 @@ def set_batch_cogs():
         # Calculate and update COGS for each record proportionally
         records_updated = 0
         total_cogs_sum = 0
+        updated_records = []
         
         for record in records:
             # Calculate proportional COGS
@@ -2724,25 +2736,30 @@ def set_batch_cogs():
             
             records_updated += 1
             total_cogs_sum += cogs_value
+            
+            updated_records.append({
+                'id': record['id'],
+                'cogs': cogs_value
+            })
         
         conn.commit()
         conn.close()
         
         return jsonify({
             'status': 'success',
-            'message': f'Successfully distributed ${batch_cogs:.2f} across {records_updated} records',
+            'message': f'Successfully distributed ${batch_cogs:.2f} across {records_updated} selected records',
             'records_updated': records_updated,
             'batch_cogs': batch_cogs,
             'total_store_price_sum': round(total_store_price, 2),
             'total_cogs_sum': round(total_cogs_sum, 2),
-            'average_cogs': round(total_cogs_sum / records_updated, 2) if records_updated > 0 else 0
+            'average_cogs': round(total_cogs_sum / records_updated, 2) if records_updated > 0 else 0,
+            'updated_records': updated_records
         })
         
     except Exception as e:
         app.logger.error(f"Error setting batch COGS: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/cogs/summary', methods=['GET'])
 @login_required
