@@ -34,6 +34,10 @@ from werkzeug.utils import secure_filename
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+# ===== NEW IMPORTS FOR ACCOUNTING =====
+from decimal import Decimal
+import csv
+import io
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
@@ -2706,7 +2710,7 @@ def set_batch_cogs():
                 'error': 'No valid records found with store_price > 0'
             }), 404
         
-        # Calculate total store price sum for selected records
+        # Calculate total store_price sum for selected records
         total_store_price = sum(record['store_price'] for record in records)
         
         if total_store_price <= 0:
@@ -6354,6 +6358,851 @@ def unsubscribe(subscription_id):
     except Exception as e:
         app.logger.error(f"Error unsubscribing: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ============================================================
+# ============================================================
+# ACCOUNTING ENDPOINTS
+# ============================================================
+# ============================================================
+
+# ==================== ACCOUNTING: ACCOUNTS ====================
+
+@app.route('/api/accounting/accounts', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_get_accounts():
+    """Get chart of accounts for dropdowns"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, code, name, type FROM accounts ORDER BY code')
+        accounts = cursor.fetchall()
+        conn.close()
+        return jsonify({
+            'status': 'success',
+            'accounts': [dict(row) for row in accounts]
+        })
+    except Exception as e:
+        app.logger.error(f"Error fetching accounts: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: DASHBOARD ====================
+
+@app.route('/api/accounting/dashboard', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_dashboard():
+    """Get dashboard stats: revenue, COGS, net profit, pending sync, unreconciled"""
+    try:
+        today = date.today()
+        month_start = today.replace(day=1).isoformat()
+        month_end = today.isoformat()
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Revenue for this month (orders with payments)
+        cursor.execute('''
+            SELECT COALESCE(SUM(ol.sale_price), 0) as revenue
+            FROM order_lines ol
+            JOIN orders o ON ol.order_id = o.id
+            WHERE o.order_date >= ? AND o.order_date <= ?
+              AND o.payment_status = 'paid'
+        ''', (month_start, month_end))
+        revenue = cursor.fetchone()['revenue'] or 0
+        
+        # COGS for this month (from records sold)
+        cursor.execute('''
+            SELECT COALESCE(SUM(r.cogs), 0) as cogs
+            FROM records r
+            JOIN order_lines ol ON ol.inventory_id = r.id
+            JOIN orders o ON ol.order_id = o.id
+            WHERE o.order_date >= ? AND o.order_date <= ?
+              AND o.payment_status = 'paid'
+        ''', (month_start, month_end))
+        cogs = cursor.fetchone()['cogs'] or 0
+        
+        net_profit = revenue - cogs
+        
+        # Pending sync: orders that are paid but not accounted
+        cursor.execute('''
+            SELECT COUNT(*) as pending
+            FROM orders
+            WHERE payment_status = 'paid' AND (is_accounted IS NULL OR is_accounted = 0)
+        ''')
+        pending_sync = cursor.fetchone()['pending'] or 0
+        
+        # Unreconciled: payments without a match
+        cursor.execute('''
+            SELECT COUNT(*) as unreconciled
+            FROM payments p
+            LEFT JOIN reconciliation_matches rm ON rm.source_type = 'payment' AND rm.source_id = p.id
+            WHERE rm.id IS NULL
+        ''')
+        unreconciled = cursor.fetchone()['unreconciled'] or 0
+        
+        # Recent journal entries (last 5)
+        cursor.execute('''
+            SELECT je.id, je.transaction_date, je.description,
+                   COALESCE(SUM(jl.debit_amount), 0) as debit_total,
+                   COALESCE(SUM(jl.credit_amount), 0) as credit_total
+            FROM journal_entries je
+            LEFT JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            GROUP BY je.id
+            ORDER BY je.transaction_date DESC, je.id DESC
+            LIMIT 5
+        ''')
+        recent = cursor.fetchall()
+        recent_entries = []
+        for row in recent:
+            recent_entries.append({
+                'id': row['id'],
+                'date': row['transaction_date'],
+                'description': row['description'],
+                'debit_total': row['debit_total'] / 100.0,
+                'credit_total': row['credit_total'] / 100.0
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'revenue': float(revenue),
+            'cogs': float(cogs),
+            'net_profit': float(net_profit),
+            'pending_sync': pending_sync,
+            'unreconciled': unreconciled,
+            'recent_entries': recent_entries
+        })
+    except Exception as e:
+        app.logger.error(f"Dashboard error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: JOURNAL ====================
+
+@app.route('/api/accounting/journal', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_get_journal():
+    """Get paginated journal entries with filters"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        account_id = request.args.get('account_id', type=int)
+        search = request.args.get('search', '').strip()
+        
+        offset = (page - 1) * per_page
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        query = '''
+            SELECT 
+                je.id, je.transaction_date, je.description, je.source_type, je.source_id,
+                jl.debit_amount, jl.credit_amount,
+                da.code as debit_code, da.name as debit_name,
+                ca.code as credit_code, ca.name as credit_name
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            LEFT JOIN accounts da ON da.id = jl.account_id AND jl.debit_amount > 0
+            LEFT JOIN accounts ca ON ca.id = jl.account_id AND jl.credit_amount > 0
+            WHERE 1=1
+        '''
+        params = []
+        
+        if date_from:
+            query += ' AND je.transaction_date >= ?'
+            params.append(date_from)
+        if date_to:
+            query += ' AND je.transaction_date <= ?'
+            params.append(date_to)
+        if account_id:
+            query += ' AND jl.account_id = ?'
+            params.append(account_id)
+        if search:
+            query += ' AND (je.description LIKE ? OR je.source_id LIKE ?)'
+            search_term = f'%{search}%'
+            params.extend([search_term, search_term])
+        
+        # Get total count
+        count_query = query.replace(
+            'SELECT je.id, je.transaction_date, je.description, je.source_type, je.source_id, jl.debit_amount, jl.credit_amount, da.code as debit_code, da.name as debit_name, ca.code as credit_code, ca.name as credit_name',
+            'SELECT COUNT(DISTINCT je.id) as total'
+        )
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()['total']
+        
+        query += ' ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        entries_dict = {}
+        for row in rows:
+            eid = row['id']
+            if eid not in entries_dict:
+                entries_dict[eid] = {
+                    'id': eid,
+                    'transaction_date': row['transaction_date'],
+                    'description': row['description'],
+                    'source_type': row['source_type'],
+                    'source_id': row['source_id'],
+                    'debit_account': None,
+                    'debit_amount': 0,
+                    'credit_account': None,
+                    'credit_amount': 0
+                }
+            if row['debit_amount']:
+                entries_dict[eid]['debit_account'] = f"{row['debit_code']} - {row['debit_name']}"
+                entries_dict[eid]['debit_amount'] = row['debit_amount'] / 100.0
+            if row['credit_amount']:
+                entries_dict[eid]['credit_account'] = f"{row['credit_code']} - {row['credit_name']}"
+                entries_dict[eid]['credit_amount'] = row['credit_amount'] / 100.0
+        
+        entries = list(entries_dict.values())
+        
+        return jsonify({
+            'status': 'success',
+            'entries': entries,
+            'total': total,
+            'page': page,
+            'per_page': per_page
+        })
+    except Exception as e:
+        app.logger.error(f"Journal error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: MANUAL ENTRY ====================
+
+@app.route('/api/accounting/manual', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_post_manual():
+    """Post a manual journal entry"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        date_str = data.get('date')
+        description = data.get('description', '').strip()
+        lines = data.get('lines', [])
+        
+        if not date_str or not lines:
+            return jsonify({'status': 'error', 'error': 'Date and lines are required'}), 400
+        
+        total_debit = 0
+        total_credit = 0
+        for line in lines:
+            debit = float(line.get('debit', 0))
+            credit = float(line.get('credit', 0))
+            if debit > 0 and credit > 0:
+                return jsonify({'status': 'error', 'error': 'A line cannot have both debit and credit'}), 400
+            if debit == 0 and credit == 0:
+                return jsonify({'status': 'error', 'error': 'Line must have either debit or credit'}), 400
+            total_debit += debit
+            total_credit += credit
+        
+        if abs(total_debit - total_credit) > 0.001:
+            return jsonify({'status': 'error', 'error': 'Debits and credits must balance'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (date_str, description, 'manual', 'admin'))
+        entry_id = cursor.lastrowid
+        
+        for line in lines:
+            debit_cents = int(round(float(line.get('debit', 0)) * 100))
+            credit_cents = int(round(float(line.get('credit', 0)) * 100))
+            account_id = int(line.get('account_id'))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, debit_cents, credit_cents))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Manual journal entry posted',
+            'entry_id': entry_id
+        })
+    except Exception as e:
+        app.logger.error(f"Manual entry error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: SYNC ====================
+
+def process_order_for_accounting(order, conn, cursor):
+    """Helper function to create journal entries for a single order."""
+    order_id = order['id']
+    
+    # Get order lines with inventory COGS
+    cursor.execute('''
+        SELECT ol.id, ol.inventory_id, ol.sale_price, r.cogs
+        FROM order_lines ol
+        JOIN records r ON ol.inventory_id = r.id
+        WHERE ol.order_id = ?
+    ''', (order_id,))
+    lines = cursor.fetchall()
+    
+    # Get payments
+    cursor.execute('''
+        SELECT id, source, gross_amount
+        FROM payments
+        WHERE order_id = ?
+    ''', (order_id,))
+    payments = cursor.fetchall()
+    
+    # Get fees
+    cursor.execute('''
+        SELECT id, fee_type, amount, source
+        FROM fees
+        WHERE order_id = ?
+    ''', (order_id,))
+    fees = cursor.fetchall()
+    
+    # Get shipping info
+    cursor.execute('''
+        SELECT shipping_charged, postage_cost
+        FROM shipments
+        WHERE order_id = ?
+    ''', (order_id,))
+    shipping = cursor.fetchone()
+    
+    payment_source = None
+    if payments:
+        payment_source = payments[0]['source']
+    else:
+        payment_source = 'cash'
+    
+    account_map = {
+        'cash': '1010',
+        'paypal': '1020',
+        'square': '1030'
+    }
+    debit_account_code = account_map.get(payment_source, '1010')
+    
+    cursor.execute('SELECT id, code FROM accounts')
+    accounts = {row['code']: row['id'] for row in cursor.fetchall()}
+    
+    total_sales = sum(line['sale_price'] for line in lines) if lines else 0
+    total_cogs = sum(line['cogs'] or 0 for line in lines) if lines else 0
+    
+    shipping_charged = shipping['shipping_charged'] if shipping else 0
+    postage_cost = shipping['postage_cost'] if shipping else 0
+    
+    total_fees = sum(fee['amount'] for fee in fees) if fees else 0
+    
+    cursor.execute('''
+        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+        VALUES (?, ?, ?, ?)
+    ''', (order['order_date'], f"Sale - Order {order_id}", 'order', order_id))
+    entry_id = cursor.lastrowid
+    
+    # Revenue entry
+    debit_amount = total_sales + shipping_charged
+    if debit_amount > 0:
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts.get(debit_account_code), int(round(debit_amount * 100)), 0))
+    
+    if total_sales > 0:
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts['4000'], 0, int(round(total_sales * 100))))
+    
+    if shipping_charged > 0:
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts['4010'], 0, int(round(shipping_charged * 100))))
+    
+    # COGS entry
+    if total_cogs > 0:
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts['5000'], int(round(total_cogs * 100)), 0))
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts['1050'], 0, int(round(total_cogs * 100))))
+    
+    # Shipping expense
+    if postage_cost > 0:
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts['5010'], int(round(postage_cost * 100)), 0))
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts.get(debit_account_code), 0, int(round(postage_cost * 100))))
+    
+    # Fees
+    if total_fees > 0:
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts['5020'], int(round(total_fees * 100)), 0))
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts.get(debit_account_code), 0, int(round(total_fees * 100))))
+    
+    cursor.execute('UPDATE orders SET is_accounted = 1 WHERE id = ?', (order_id,))
+    conn.commit()
+
+@app.route('/api/accounting/sync', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_run_sync():
+    """Process all paid orders that are not yet accounted"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT o.id, o.order_date, o.total, o.shipping_charged, o.tax_total,
+                   o.channel, o.external_order_id
+            FROM orders o
+            WHERE o.payment_status = 'paid' AND (o.is_accounted IS NULL OR o.is_accounted = 0)
+        ''')
+        orders = cursor.fetchall()
+        
+        processed = 0
+        for order in orders:
+            try:
+                process_order_for_accounting(order, conn, cursor)
+                processed += 1
+            except Exception as e:
+                app.logger.error(f"Error processing order {order['id']}: {str(e)}")
+                continue
+        
+        conn.close()
+        return jsonify({
+            'status': 'success',
+            'processed': processed
+        })
+    except Exception as e:
+        app.logger.error(f"Sync error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: RECONCILIATION UPLOAD ====================
+
+@app.route('/api/accounting/reconcile/upload', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_upload_bank():
+    """Upload a bank CSV and store transactions"""
+    try:
+        data = request.json
+        bank_account_id = data.get('bank_account_id')
+        transactions = data.get('transactions', [])
+        
+        if not bank_account_id or not transactions:
+            return jsonify({'status': 'error', 'error': 'Missing bank_account_id or transactions'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        inserted = 0
+        skipped = 0
+        
+        for tx in transactions:
+            date_val = tx.get('Date') or tx.get('date') or tx.get('Transaction Date')
+            amount_val = tx.get('Amount') or tx.get('amount') or tx.get('Deposit') or tx.get('Withdrawal')
+            description = tx.get('Description') or tx.get('description') or tx.get('Memo') or ''
+            external_id = tx.get('Transaction ID') or tx.get('transaction_id') or tx.get('ID') or None
+            
+            if not date_val or not amount_val:
+                continue
+            
+            try:
+                amount_clean = str(amount_val).replace('$', '').replace(',', '').strip()
+                amount_cents = int(round(float(amount_clean) * 100))
+            except:
+                continue
+            
+            try:
+                if isinstance(date_val, str) and '/' in date_val:
+                    parts = date_val.split('/')
+                    if len(parts) == 3:
+                        m, d, y = parts
+                        if len(y) == 2:
+                            y = '20' + y
+                        date_obj = datetime.strptime(f"{y}-{m}-{d}", '%Y-%m-%d')
+                    else:
+                        continue
+                else:
+                    date_obj = datetime.strptime(date_val.split('T')[0], '%Y-%m-%d')
+                date_str = date_obj.strftime('%Y-%m-%d')
+            except:
+                continue
+            
+            if external_id:
+                cursor.execute('SELECT id FROM bank_transactions WHERE external_id = ?', (external_id,))
+                if cursor.fetchone():
+                    skipped += 1
+                    continue
+            else:
+                cursor.execute('''
+                    SELECT id FROM bank_transactions 
+                    WHERE bank_account_id = ? AND transaction_date = ? AND amount = ? AND description = ?
+                ''', (bank_account_id, date_str, amount_cents, description[:100]))
+                if cursor.fetchone():
+                    skipped += 1
+                    continue
+            
+            cursor.execute('''
+                INSERT INTO bank_transactions (bank_account_id, transaction_date, amount, description, external_id)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (bank_account_id, date_str, amount_cents, description[:255], external_id))
+            inserted += 1
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'inserted': inserted,
+            'skipped': skipped
+        })
+    except Exception as e:
+        app.logger.error(f"Upload error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: RECONCILIATION STATUS ====================
+
+@app.route('/api/accounting/reconcile/status', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_reconcile_status():
+    """Get expected payments, bank deposits, and unmatched items"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT p.id as payment_id, p.order_id, p.transaction_date as date, p.gross_amount as amount,
+                   CASE WHEN rm.id IS NOT NULL THEN 'matched' ELSE 'pending' END as status
+            FROM payments p
+            LEFT JOIN reconciliation_matches rm ON rm.source_type = 'payment' AND rm.source_id = p.id
+            ORDER BY p.transaction_date DESC
+        ''')
+        expected = cursor.fetchall()
+        expected_list = [{
+            'payment_id': row['payment_id'],
+            'order_id': row['order_id'],
+            'date': row['date'],
+            'amount': row['amount'] / 100.0,
+            'status': row['status']
+        } for row in expected]
+        
+        cursor.execute('''
+            SELECT bt.id, bt.transaction_date as date, bt.amount, bt.description,
+                   CASE WHEN rm.id IS NOT NULL THEN 'matched' ELSE 'unmatched' END as status
+            FROM bank_transactions bt
+            LEFT JOIN reconciliation_matches rm ON rm.bank_transaction_id = bt.id
+            WHERE bt.amount > 0
+            ORDER BY bt.transaction_date DESC
+        ''')
+        deposits = cursor.fetchall()
+        deposits_list = [{
+            'id': row['id'],
+            'date': row['date'],
+            'amount': row['amount'] / 100.0,
+            'description': row['description'],
+            'matched': row['status'] == 'matched'
+        } for row in deposits]
+        
+        unmatched = []
+        cursor.execute('''
+            SELECT p.id, p.transaction_date, p.gross_amount, 'payment' as type, p.order_id
+            FROM payments p
+            LEFT JOIN reconciliation_matches rm ON rm.source_type = 'payment' AND rm.source_id = p.id
+            WHERE rm.id IS NULL
+        ''')
+        for row in cursor.fetchall():
+            unmatched.append({
+                'id': row['id'],
+                'type': 'payment',
+                'date': row['transaction_date'],
+                'amount': row['gross_amount'] / 100.0
+            })
+        cursor.execute('''
+            SELECT bt.id, bt.transaction_date, bt.amount, 'deposit' as type
+            FROM bank_transactions bt
+            LEFT JOIN reconciliation_matches rm ON rm.bank_transaction_id = bt.id
+            WHERE rm.id IS NULL AND bt.amount > 0
+        ''')
+        for row in cursor.fetchall():
+            unmatched.append({
+                'id': row['id'],
+                'type': 'deposit',
+                'date': row['transaction_date'],
+                'amount': row['amount'] / 100.0
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'expected': expected_list,
+            'deposits': deposits_list,
+            'unmatched': unmatched
+        })
+    except Exception as e:
+        app.logger.error(f"Reconciliation status error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: AUTO-MATCH ====================
+
+@app.route('/api/accounting/reconcile/auto-match', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_auto_match():
+    """Attempt to automatically match expected payments with bank deposits"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT p.id, p.transaction_date, p.gross_amount
+            FROM payments p
+            LEFT JOIN reconciliation_matches rm ON rm.source_type = 'payment' AND rm.source_id = p.id
+            WHERE rm.id IS NULL
+        ''')
+        payments = cursor.fetchall()
+        
+        cursor.execute('''
+            SELECT bt.id, bt.transaction_date, bt.amount
+            FROM bank_transactions bt
+            LEFT JOIN reconciliation_matches rm ON rm.bank_transaction_id = bt.id
+            WHERE rm.id IS NULL AND bt.amount > 0
+        ''')
+        deposits = cursor.fetchall()
+        
+        matched_count = 0
+        for pay in payments:
+            pay_date = datetime.strptime(pay['transaction_date'], '%Y-%m-%d')
+            pay_amount = pay['gross_amount']
+            for dep in deposits:
+                dep_date = datetime.strptime(dep['transaction_date'], '%Y-%m-%d')
+                delta = abs((pay_date - dep_date).days)
+                if delta <= 3 and dep['amount'] == pay_amount:
+                    cursor.execute('''
+                        INSERT INTO reconciliation_matches (bank_transaction_id, source_type, source_id, matched_amount)
+                        VALUES (?, ?, ?, ?)
+                    ''', (dep['id'], 'payment', pay['id'], pay_amount))
+                    matched_count += 1
+                    deposits = [d for d in deposits if d['id'] != dep['id']]
+                    break
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'matched': matched_count
+        })
+    except Exception as e:
+        app.logger.error(f"Auto-match error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: REPORTS ====================
+
+@app.route('/api/accounting/reports', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_reports():
+    """Generate financial reports: pll, balance-sheet, batch-profit, order-economics"""
+    try:
+        report_type = request.args.get('type', 'pll')
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        if report_type == 'pll':
+            # Profit & Loss: summarize revenue and expense accounts
+            cursor.execute('''
+                SELECT 
+                    a.code,
+                    a.name,
+                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
+                FROM accounts a
+                LEFT JOIN journal_lines jl ON jl.account_id = a.id
+                LEFT JOIN journal_entries je ON je.id = jl.journal_entry_id
+                WHERE a.type IN ('revenue', 'expense')
+                  AND (? IS NULL OR je.transaction_date >= ?)
+                  AND (? IS NULL OR je.transaction_date <= ?)
+                GROUP BY a.id
+                ORDER BY a.type DESC, a.code
+            ''', (date_from, date_from, date_to, date_to))
+            rows = cursor.fetchall()
+            report_data = []
+            total_revenue = 0
+            total_expense = 0
+            for row in rows:
+                balance = row['balance'] / 100.0
+                report_data.append({
+                    'Account': f"{row['code']} - {row['name']}",
+                    'Balance': balance
+                })
+                if row['type'] == 'revenue':
+                    total_revenue += balance
+                else:
+                    total_expense += balance
+            summary = f"Total Revenue: ${total_revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${total_revenue - total_expense:.2f}"
+            
+        elif report_type == 'batch-profit':
+            # Batch profitability: group records by batch
+            cursor.execute('''
+                SELECT 
+                    b.id as batch_id,
+                    b.seller_name,
+                    b.start_datetime as acquisition_date,
+                    b.total_cost,
+                    COUNT(r.id) as total_records,
+                    SUM(CASE WHEN r.status_id = 3 THEN r.store_price ELSE 0 END) as revenue,
+                    SUM(CASE WHEN r.status_id = 3 THEN r.cogs ELSE 0 END) as cogs
+                FROM batches b
+                LEFT JOIN records r ON r.batch_id = b.id
+                GROUP BY b.id
+                ORDER BY b.start_datetime DESC
+            ''')
+            rows = cursor.fetchall()
+            report_data = []
+            for row in rows:
+                revenue = row['revenue'] or 0
+                cogs = row['cogs'] or 0
+                profit = revenue - cogs
+                roi = (profit / row['total_cost'] * 100) if row['total_cost'] and row['total_cost'] > 0 else 0
+                report_data.append({
+                    'Batch ID': row['batch_id'],
+                    'Seller': row['seller_name'] or 'Unknown',
+                    'Acquired': row['acquisition_date'],
+                    'Total Cost': row['total_cost'] or 0,
+                    'Records': row['total_records'] or 0,
+                    'Revenue': revenue,
+                    'COGS': cogs,
+                    'Profit': profit,
+                    'ROI %': round(roi, 1)
+                })
+            summary = f"Total Batches: {len(report_data)}"
+            
+        elif report_type == 'order-economics':
+            # Per-order economics
+            cursor.execute('''
+                SELECT 
+                    o.id as order_id,
+                    o.order_date,
+                    o.channel,
+                    o.total as order_total,
+                    COALESCE(SUM(ol.sale_price), 0) as item_revenue,
+                    COALESCE(o.shipping_charged, 0) as shipping_charged,
+                    COALESCE(SUM(r.cogs), 0) as cogs,
+                    COALESCE(SUM(f.amount), 0) as fees,
+                    COALESCE(s.postage_cost, 0) as shipping_cost
+                FROM orders o
+                LEFT JOIN order_lines ol ON ol.order_id = o.id
+                LEFT JOIN records r ON ol.inventory_id = r.id
+                LEFT JOIN fees f ON f.order_id = o.id
+                LEFT JOIN shipments s ON s.order_id = o.id
+                WHERE o.payment_status = 'paid'
+                  AND (? IS NULL OR o.order_date >= ?)
+                  AND (? IS NULL OR o.order_date <= ?)
+                GROUP BY o.id
+                ORDER BY o.order_date DESC
+            ''', (date_from, date_from, date_to, date_to))
+            rows = cursor.fetchall()
+            report_data = []
+            total_profit = 0
+            for row in rows:
+                profit = row['item_revenue'] + row['shipping_charged'] - row['cogs'] - row['fees'] - row['shipping_cost']
+                total_profit += profit
+                report_data.append({
+                    'Order ID': row['order_id'][:12] + '...' if row['order_id'] else '',
+                    'Date': row['order_date'],
+                    'Channel': row['channel'],
+                    'Revenue': row['item_revenue'],
+                    'Shipping Charged': row['shipping_charged'],
+                    'COGS': row['cogs'],
+                    'Fees': row['fees'],
+                    'Shipping Cost': row['shipping_cost'],
+                    'Net Profit': profit
+                })
+            summary = f"Total Orders: {len(report_data)} | Total Net Profit: ${total_profit:.2f}"
+            
+        elif report_type == 'balance-sheet':
+            # Balance Sheet: assets, liabilities, equity
+            cursor.execute('''
+                SELECT 
+                    a.type,
+                    a.code,
+                    a.name,
+                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
+                FROM accounts a
+                LEFT JOIN journal_lines jl ON jl.account_id = a.id
+                LEFT JOIN journal_entries je ON je.id = jl.journal_entry_id
+                WHERE a.type IN ('asset', 'liability', 'equity')
+                  AND (? IS NULL OR je.transaction_date >= ?)
+                  AND (? IS NULL OR je.transaction_date <= ?)
+                GROUP BY a.id
+                ORDER BY a.type, a.code
+            ''', (date_from, date_from, date_to, date_to))
+            rows = cursor.fetchall()
+            report_data = []
+            total_assets = 0
+            total_liabilities = 0
+            total_equity = 0
+            for row in rows:
+                balance = row['balance'] / 100.0
+                report_data.append({
+                    'Type': row['type'],
+                    'Account': f"{row['code']} - {row['name']}",
+                    'Balance': balance
+                })
+                if row['type'] == 'asset':
+                    total_assets += balance
+                elif row['type'] == 'liability':
+                    total_liabilities += balance
+                else:
+                    total_equity += balance
+            summary = f"Total Assets: ${total_assets:.2f} | Total Liabilities: ${total_liabilities:.2f} | Total Equity: ${total_equity:.2f} | (Assets = Liabilities + Equity: {abs(total_assets - (total_liabilities + total_equity)) < 0.01})"
+        else:
+            return jsonify({'status': 'error', 'error': 'Invalid report type'}), 400
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'report': report_data,
+            'summary': summary,
+            'type': report_type
+        })
+    except Exception as e:
+        app.logger.error(f"Report error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ============================================================
+# END OF ACCOUNTING ENDPOINTS
+# ============================================================
 
 
 if __name__ == '__main__':
