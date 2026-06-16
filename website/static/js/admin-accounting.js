@@ -12,74 +12,79 @@ let currentReportData = null;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    const accountingTab = document.getElementById('accounting-tab');
-    if (accountingTab) {
-        // Sub-tab switching
-        document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
-            tab.addEventListener('click', function() {
-                const sub = this.dataset.subtab;
-                document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => t.classList.remove('active'));
-                this.classList.add('active');
-                document.querySelectorAll('#accounting-tab .sub-tab-content').forEach(c => c.classList.remove('active'));
-                const target = document.getElementById('sub-' + sub);
-                if (target) target.classList.add('active');
-                if (sub === 'dashboard') loadDashboard();
-                else if (sub === 'journal') loadJournalEntries();
-                else if (sub === 'reconcile') loadReconciliationStatus();
-            });
-        });
+    const accountingContainer = document.querySelector('.admin-container');
+    if (!accountingContainer) return; // not on accounting page
 
-        // Bank upload drag & drop
-        const uploadArea = document.getElementById('bank-upload-area');
-        const fileInput = document.getElementById('bank-file-input');
-        if (uploadArea && fileInput) {
-            uploadArea.addEventListener('click', () => fileInput.click());
-            uploadArea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                uploadArea.classList.add('dragover');
-            });
-            uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
-            uploadArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                uploadArea.classList.remove('dragover');
-                if (e.dataTransfer.files.length) {
-                    fileInput.files = e.dataTransfer.files;
-                    handleBankUpload(fileInput.files[0]);
-                }
-            });
-            fileInput.addEventListener('change', function() {
-                if (this.files.length) handleBankUpload(this.files[0]);
-            });
-        }
-
-        // Pagination for journal
-        document.getElementById('journal-prev')?.addEventListener('click', () => {
-            if (journalCurrentPage > 1) { journalCurrentPage--; loadJournalEntries(); }
+    // Sub-tab switching
+    document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const sub = this.dataset.subtab;
+            // Remove active class from all sub-tabs
+            document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            // Remove active class from all sub-tab content
+            document.querySelectorAll('.sub-tab-content').forEach(c => c.classList.remove('active'));
+            const target = document.getElementById('sub-' + sub);
+            if (target) target.classList.add('active');
+            if (sub === 'dashboard') loadDashboard();
+            else if (sub === 'journal') loadJournalEntries();
+            else if (sub === 'reconcile') loadReconciliationStatus();
         });
-        document.getElementById('journal-next')?.addEventListener('click', () => {
-            const totalPages = Math.ceil(journalTotalEntries / journalPageSize);
-            if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
-        });
+    });
 
-        // Manual entry – auto‑balance check
-        document.addEventListener('input', function(e) {
-            if (e.target.closest('.manual-entry-row')) {
-                updateManualBalance();
+    // Bank upload drag & drop
+    const uploadArea = document.getElementById('bank-upload-area');
+    const fileInput = document.getElementById('bank-file-input');
+    if (uploadArea && fileInput) {
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleBankUpload(fileInput.files[0]);
             }
         });
-
-        // Load accounts into dropdowns
-        loadAccountSelects();
-
-        // Load default date range for reports
-        const today = new Date().toISOString().split('T')[0];
-        const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-        document.getElementById('report-date-from').value = firstDay;
-        document.getElementById('report-date-to').value = today;
-        document.getElementById('manual-date').value = today;
-        document.getElementById('journal-date-from').value = firstDay;
-        document.getElementById('journal-date-to').value = today;
+        fileInput.addEventListener('change', function() {
+            if (this.files.length) handleBankUpload(this.files[0]);
+        });
     }
+
+    // Pagination for journal
+    document.getElementById('journal-prev')?.addEventListener('click', () => {
+        if (journalCurrentPage > 1) { journalCurrentPage--; loadJournalEntries(); }
+    });
+    document.getElementById('journal-next')?.addEventListener('click', () => {
+        const totalPages = Math.ceil(journalTotalEntries / journalPageSize);
+        if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
+    });
+
+    // Manual entry – auto‑balance check
+    document.addEventListener('input', function(e) {
+        if (e.target.closest('.manual-entry-row')) {
+            updateManualBalance();
+        }
+    });
+
+    // Load accounts into dropdowns
+    loadAccountSelects();
+
+    // Load default date range for reports
+    const today = new Date().toISOString().split('T')[0];
+    const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    document.getElementById('report-date-from').value = firstDay;
+    document.getElementById('report-date-to').value = today;
+    document.getElementById('manual-date').value = today;
+    document.getElementById('journal-date-from').value = firstDay;
+    document.getElementById('journal-date-to').value = today;
+
+    // Load dashboard by default
+    loadDashboard();
 });
 
 // ============================================================
@@ -88,7 +93,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function loadDashboard() {
     try {
-        const res = await fetch('/api/accounting/dashboard', {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/dashboard`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
@@ -121,7 +126,7 @@ async function runAccountingSync() {
     const status = document.getElementById('sync-status');
     status.textContent = '⏳ Running sync...';
     try {
-        const res = await fetch('/api/accounting/sync', {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/sync`, {
             method: 'POST',
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -144,7 +149,7 @@ async function runAccountingSync() {
 
 async function loadAccountSelects() {
     try {
-        const res = await fetch('/api/accounting/accounts', {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
@@ -190,7 +195,7 @@ async function loadJournalEntries() {
     if (search) params.append('search', search);
 
     try {
-        const res = await fetch('/api/accounting/journal?' + params.toString(), {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal?${params.toString()}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
@@ -261,7 +266,7 @@ function exportJournalCSV() {
     const search = document.getElementById('journal-search').value.trim();
     if (search) params.append('search', search);
 
-    fetch('/api/accounting/journal?' + params.toString(), {
+    fetch(`${AppConfig.baseUrl}/api/accounting/journal?${params.toString()}`, {
         credentials: 'include',
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
     })
@@ -370,7 +375,7 @@ async function submitManualEntry() {
     const status = document.getElementById('manual-status');
     status.textContent = '⏳ Posting...';
     try {
-        const res = await fetch('/api/accounting/manual', {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/manual`, {
             method: 'POST',
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
@@ -423,7 +428,7 @@ function handleBankUpload(file) {
             });
         }
         try {
-            const res = await fetch('/api/accounting/reconcile/upload', {
+            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/upload`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
@@ -448,7 +453,7 @@ function handleBankUpload(file) {
 
 async function loadReconciliationStatus() {
     try {
-        const res = await fetch('/api/accounting/reconcile/status', {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/status`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
@@ -519,7 +524,7 @@ function renderUnmatched(unmatched) {
 
 async function runAutoMatch() {
     try {
-        const res = await fetch('/api/accounting/reconcile/auto-match', {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/auto-match`, {
             method: 'POST',
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -555,7 +560,7 @@ async function runReport() {
         const params = new URLSearchParams({ type: reportType });
         if (dateFrom) params.append('date_from', dateFrom);
         if (dateTo) params.append('date_to', dateTo);
-        const res = await fetch('/api/accounting/reports?' + params.toString(), {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?${params.toString()}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
