@@ -9,7 +9,7 @@ import base64
 from flask import Flask, jsonify, request, session, redirect, send_from_directory
 from flask_cors import CORS
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta,date
 import hashlib
 import secrets
 import re
@@ -6359,6 +6359,7 @@ def unsubscribe(subscription_id):
         app.logger.error(f"Error unsubscribing: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 # ============================================================
 # ============================================================
 # ACCOUNTING ENDPOINTS
@@ -6387,7 +6388,6 @@ def accounting_get_accounts():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== ACCOUNTING: DASHBOARD ====================
-
 @app.route('/api/accounting/dashboard', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6401,23 +6401,23 @@ def accounting_dashboard():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Revenue for this month (orders with payments)
+        # Revenue for this month - using order_items and price_at_time
         cursor.execute('''
-            SELECT COALESCE(SUM(ol.sale_price), 0) as revenue
-            FROM order_lines ol
-            JOIN orders o ON ol.order_id = o.id
-            WHERE o.order_date >= ? AND o.order_date <= ?
+            SELECT COALESCE(SUM(oi.price_at_time), 0) as revenue
+            FROM order_items oi
+            JOIN orders o ON oi.order_id = o.id
+            WHERE o.created_at >= ? AND o.created_at <= ?
               AND o.payment_status = 'paid'
         ''', (month_start, month_end))
         revenue = cursor.fetchone()['revenue'] or 0
         
-        # COGS for this month (from records sold)
+        # COGS for this month - using records.cogs joined via order_items.record_id
         cursor.execute('''
             SELECT COALESCE(SUM(r.cogs), 0) as cogs
             FROM records r
-            JOIN order_lines ol ON ol.inventory_id = r.id
-            JOIN orders o ON ol.order_id = o.id
-            WHERE o.order_date >= ? AND o.order_date <= ?
+            JOIN order_items oi ON oi.record_id = r.id
+            JOIN orders o ON oi.order_id = o.id
+            WHERE o.created_at >= ? AND o.created_at <= ?
               AND o.payment_status = 'paid'
         ''', (month_start, month_end))
         cogs = cursor.fetchone()['cogs'] or 0
@@ -6432,14 +6432,17 @@ def accounting_dashboard():
         ''')
         pending_sync = cursor.fetchone()['pending'] or 0
         
-        # Unreconciled: payments without a match
-        cursor.execute('''
-            SELECT COUNT(*) as unreconciled
-            FROM payments p
-            LEFT JOIN reconciliation_matches rm ON rm.source_type = 'payment' AND rm.source_id = p.id
-            WHERE rm.id IS NULL
-        ''')
-        unreconciled = cursor.fetchone()['unreconciled'] or 0
+        # Unreconciled: payments without a match (if table exists)
+        try:
+            cursor.execute('''
+                SELECT COUNT(*) as unreconciled
+                FROM payments p
+                LEFT JOIN reconciliation_matches rm ON rm.source_type = 'payment' AND rm.source_id = p.id
+                WHERE rm.id IS NULL
+            ''')
+            unreconciled = cursor.fetchone()['unreconciled'] or 0
+        except:
+            unreconciled = 0
         
         # Recent journal entries (last 5)
         cursor.execute('''
@@ -6476,8 +6479,8 @@ def accounting_dashboard():
         })
     except Exception as e:
         app.logger.error(f"Dashboard error: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 # ==================== ACCOUNTING: JOURNAL ====================
 
 @app.route('/api/accounting/journal', methods=['GET'])
@@ -6526,13 +6529,14 @@ def accounting_get_journal():
             search_term = f'%{search}%'
             params.extend([search_term, search_term])
         
-        # Get total count
+        # Get total count - with defensive check
         count_query = query.replace(
             'SELECT je.id, je.transaction_date, je.description, je.source_type, je.source_id, jl.debit_amount, jl.credit_amount, da.code as debit_code, da.name as debit_name, ca.code as credit_code, ca.name as credit_name',
             'SELECT COUNT(DISTINCT je.id) as total'
         )
         cursor.execute(count_query, params)
-        total = cursor.fetchone()['total']
+        result = cursor.fetchone()
+        total = result['total'] if result else 0
         
         query += ' ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
         params.extend([per_page, offset])
@@ -6574,6 +6578,7 @@ def accounting_get_journal():
         })
     except Exception as e:
         app.logger.error(f"Journal error: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== ACCOUNTING: MANUAL ENTRY ====================
@@ -6646,14 +6651,14 @@ def process_order_for_accounting(order, conn, cursor):
     """Helper function to create journal entries for a single order."""
     order_id = order['id']
     
-    # Get order lines with inventory COGS
+    # Get order items with inventory COGS - using order_items and records
     cursor.execute('''
-        SELECT ol.id, ol.inventory_id, ol.sale_price, r.cogs
-        FROM order_lines ol
-        JOIN records r ON ol.inventory_id = r.id
-        WHERE ol.order_id = ?
+        SELECT oi.id, oi.record_id, oi.price_at_time, r.cogs
+        FROM order_items oi
+        JOIN records r ON oi.record_id = r.id
+        WHERE oi.order_id = ?
     ''', (order_id,))
-    lines = cursor.fetchall()
+    items = cursor.fetchall()
     
     # Get payments
     cursor.execute('''
@@ -6695,8 +6700,8 @@ def process_order_for_accounting(order, conn, cursor):
     cursor.execute('SELECT id, code FROM accounts')
     accounts = {row['code']: row['id'] for row in cursor.fetchall()}
     
-    total_sales = sum(line['sale_price'] for line in lines) if lines else 0
-    total_cogs = sum(line['cogs'] or 0 for line in lines) if lines else 0
+    total_sales = sum(item['price_at_time'] for item in items) if items else 0
+    total_cogs = sum(item['cogs'] or 0 for item in items) if items else 0
     
     shipping_charged = shipping['shipping_charged'] if shipping else 0
     postage_cost = shipping['postage_cost'] if shipping else 0
@@ -6706,7 +6711,7 @@ def process_order_for_accounting(order, conn, cursor):
     cursor.execute('''
         INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
         VALUES (?, ?, ?, ?)
-    ''', (order['order_date'], f"Sale - Order {order_id}", 'order', order_id))
+    ''', (order['created_at'], f"Sale - Order {order_id}", 'order', order_id))
     entry_id = cursor.lastrowid
     
     # Revenue entry
@@ -6775,7 +6780,7 @@ def accounting_run_sync():
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT o.id, o.order_date, o.total, o.shipping_charged, o.tax_total,
+            SELECT o.id, o.created_at, o.total, o.shipping_charged, o.tax_total,
                    o.channel, o.external_order_id
             FROM orders o
             WHERE o.payment_status = 'paid' AND (o.is_accounted IS NULL OR o.is_accounted = 0)
@@ -7023,6 +7028,7 @@ def accounting_auto_match():
 
 # ==================== ACCOUNTING: REPORTS ====================
 
+
 @app.route('/api/accounting/reports', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -7042,6 +7048,7 @@ def accounting_reports():
                 SELECT 
                     a.code,
                     a.name,
+                    a.type,
                     COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
                 FROM accounts a
                 LEFT JOIN journal_lines jl ON jl.account_id = a.id
@@ -7105,28 +7112,28 @@ def accounting_reports():
             summary = f"Total Batches: {len(report_data)}"
             
         elif report_type == 'order-economics':
-            # Per-order economics
+            # Per-order economics - using order_items and price_at_time
             cursor.execute('''
                 SELECT 
                     o.id as order_id,
-                    o.order_date,
+                    o.created_at as order_date,
                     o.channel,
                     o.total as order_total,
-                    COALESCE(SUM(ol.sale_price), 0) as item_revenue,
+                    COALESCE(SUM(oi.price_at_time), 0) as item_revenue,
                     COALESCE(o.shipping_charged, 0) as shipping_charged,
                     COALESCE(SUM(r.cogs), 0) as cogs,
                     COALESCE(SUM(f.amount), 0) as fees,
                     COALESCE(s.postage_cost, 0) as shipping_cost
                 FROM orders o
-                LEFT JOIN order_lines ol ON ol.order_id = o.id
-                LEFT JOIN records r ON ol.inventory_id = r.id
+                LEFT JOIN order_items oi ON oi.order_id = o.id
+                LEFT JOIN records r ON oi.record_id = r.id
                 LEFT JOIN fees f ON f.order_id = o.id
                 LEFT JOIN shipments s ON s.order_id = o.id
                 WHERE o.payment_status = 'paid'
-                  AND (? IS NULL OR o.order_date >= ?)
-                  AND (? IS NULL OR o.order_date <= ?)
+                  AND (? IS NULL OR o.created_at >= ?)
+                  AND (? IS NULL OR o.created_at <= ?)
                 GROUP BY o.id
-                ORDER BY o.order_date DESC
+                ORDER BY o.created_at DESC
             ''', (date_from, date_from, date_to, date_to))
             rows = cursor.fetchall()
             report_data = []
@@ -7198,7 +7205,6 @@ def accounting_reports():
         app.logger.error(f"Report error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 # ============================================================
 # END OF ACCOUNTING ENDPOINTS
