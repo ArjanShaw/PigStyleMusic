@@ -7422,9 +7422,9 @@ def plaid_create_link_token():
         request_obj = LinkTokenCreateRequest(
             client_name="PigStyle Music",
             language="en",
-            country_codes=[CountryCode.US],
+            country_codes=[CountryCode('US')],
             user=LinkTokenCreateRequestUser(client_user_id=str(session['user_id'])),
-            products=[Products.TRANSACTIONS],
+            products=[Products('transactions')],
             redirect_uri=redirect_uri,
             webhook="https://www.example.com/webhook"  # optional
         )
