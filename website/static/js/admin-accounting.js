@@ -32,7 +32,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (sub === 'dashboard') loadDashboard();
             else if (sub === 'journal') loadJournalEntries();
             else if (sub === 'reconcile') loadReconciliationStatus();
-            else if (sub === 'bank') loadBankTransactions();  // NEW
+            else if (sub === 'bank') {
+                loadBankTransactions();
+                checkBankConnection();  // NEW: check connection status
+            }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
                     window.loadOrders();
@@ -74,7 +77,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
-    // Pagination for bank transactions (NEW)
+    // Pagination for bank transactions
     document.getElementById('bank-prev')?.addEventListener('click', () => {
         if (bankCurrentPage > 1) { bankCurrentPage--; loadBankTransactions(); }
     });
@@ -101,8 +104,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('manual-date').value = today;
     document.getElementById('journal-date-from').value = firstDay;
     document.getElementById('journal-date-to').value = today;
-    document.getElementById('bank-date-from').value = firstDay;   // NEW
-    document.getElementById('bank-date-to').value = today;       // NEW
+    document.getElementById('bank-date-from').value = firstDay;
+    document.getElementById('bank-date-to').value = today;
 
     // Load dashboard by default
     loadDashboard();
@@ -651,8 +654,73 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (NEW)
+// BANK TRANSACTIONS (UPDATED with Connect & Status)
 // ============================================================
+
+async function checkBankConnection() {
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/plaid/status`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        const statusEl = document.getElementById('bank-connection-status');
+        const connectBtn = document.getElementById('connect-bank-btn');
+        if (data.connected) {
+            statusEl.innerHTML = '✅ Connected';
+            connectBtn.style.display = 'none';
+        } else {
+            statusEl.innerHTML = '⚠️ Not connected';
+            connectBtn.style.display = 'inline-block';
+        }
+    } catch (e) {
+        console.error('Failed to check bank connection:', e);
+    }
+}
+
+async function connectBank() {
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/plaid/create-link-token`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (!data.link_token) {
+            alert('Failed to get link token: ' + (data.error || 'Unknown error'));
+            return;
+        }
+        const linkToken = data.link_token;
+        const handler = Plaid.create({
+            token: linkToken,
+            onSuccess: async (public_token, metadata) => {
+                // Exchange public token for access token
+                const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/exchange`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ public_token })
+                });
+                const exchangeData = await exchangeRes.json();
+                if (exchangeData.status === 'success') {
+                    alert('Bank connected successfully!');
+                    checkBankConnection();
+                    loadBankTransactions(); // refresh transactions
+                } else {
+                    alert('Failed to connect bank: ' + (exchangeData.error || 'Unknown error'));
+                }
+            },
+            onExit: (err, metadata) => {
+                if (err) {
+                    alert('Error: ' + (err.display_message || err.error_message || 'Unknown error'));
+                }
+            }
+        });
+        handler.open();
+    } catch (e) {
+        alert('Failed to initiate bank connection: ' + e.message);
+    }
+}
 
 async function loadBankTransactions() {
     const body = document.getElementById('bank-body');
@@ -730,8 +798,7 @@ async function syncBankTransactions() {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            const count = data.added || data.count || 0;
-            status.textContent = `✅ Synced ${count} new transactions.`;
+            status.textContent = '✅ Sync triggered. Refreshing...';
             loadBankTransactions(); // refresh list
         } else {
             status.textContent = '❌ ' + (data.error || 'Sync failed');
