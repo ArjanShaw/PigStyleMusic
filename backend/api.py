@@ -7407,16 +7407,18 @@ def set_plaid_access_token(token, item_id=None, institution_name=None):
 def plaid_create_link_token():
     """Generate a link token for the frontend to initialize Plaid Link."""
     try:
+        from plaid.model.country_code import CountryCode
+        from plaid.model.products import Products
+
         client = get_plaid_client()
-        # Use the redirect URI you added in the Plaid Dashboard
         redirect_uri = "https://www.pigstylemusic.com/accounting"  # must match exactly
 
         request_obj = LinkTokenCreateRequest(
             client_name="PigStyle Music",
             language="en",
-            country_codes=['US'],                # plain string – works with plaid-python 40.0.0
+            country_codes=[CountryCode('US')],        # Use the enum constructor
             user=LinkTokenCreateRequestUser(client_user_id=str(session['user_id'])),
-            products=['transactions'],           # plain string
+            products=[Products('transactions')],      # Use the enum constructor
             redirect_uri=redirect_uri,
             webhook="https://www.example.com/webhook"
         )
@@ -7425,6 +7427,7 @@ def plaid_create_link_token():
     except Exception as e:
         app.logger.error(f"Link token error: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/plaid/exchange', methods=['POST'])
 @login_required
