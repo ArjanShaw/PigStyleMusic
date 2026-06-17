@@ -1986,9 +1986,7 @@
              <div class="tab" data-tab="custom-labels">
                 <i class="fas fa-tag"></i> Custom Labels
             </div>
-            <div class="tab" data-tab="orders">
-                <i class="fas fa-shopping-bag"></i> Orders
-            </div>
+            <!-- Orders tab removed – now in Accounting -->
             <div class="tab" data-tab="db-query">
                 <i class="fas fa-database"></i> DB Query
             </div>
@@ -3360,138 +3358,6 @@
                         <i class="fas fa-times"></i> Cancel Range
                     </button>
                 </div>
-            </div>
-        </div>
-
-        <!-- Orders Tab -->
-        <div id="orders-tab" class="tab-content">
-            <h2><i class="fas fa-shopping-bag"></i> Order Management</h2>
-            
-            <!-- Stats Cards -->
-            <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Orders</h3>
-                    <p class="stat-number" id="total-orders" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Revenue</h3>
-                    <p class="stat-number" id="total-revenue" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">$0.00</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Pending</h3>
-                    <p class="stat-number" id="pending-orders" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
-                </div>
-                <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Paid</h3>
-                    <p class="stat-number" id="paid-orders" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
-                </div>
-            </div>
-            
-            <!-- Filters -->
-            <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
-                <div class="filter-group" style="flex: 2;">
-                    <label for="orders-search"><i class="fas fa-search"></i> Search:</label>
-                    <input type="text" id="orders-search" class="filter-select" placeholder="Search by order ID, customer, or items..." style="width: 100%;">
-                </div>
-                <div class="filter-group" style="flex: 1;">
-                    <label for="orders-status-filter"><i class="fas fa-filter"></i> Status:</label>
-                    <select id="orders-status-filter" class="filter-select" style="width: 100%;">
-                        <option value="all">All Orders</option>
-                        <option value="pending">Pending</option>
-                        <option value="paid">Paid</option>
-                        <option value="cancelled">Cancelled</option>
-                    </select>
-                </div>
-                <div class="filter-group" style="flex: 0 0 auto;">
-                    <button class="btn btn-primary" onclick="searchOrders()">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                    <button class="btn btn-secondary" onclick="clearOrdersSearch()">
-                        <i class="fas fa-times"></i> Clear
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Orders Table -->
-            <div class="records-table-container">
-                <table class="records-table" id="orders-table">
-                    <thead>
-                        <tr>
-                            <th onclick="sortOrders('id')" id="sort-id" style="cursor: pointer;">ID <span class="sort-indicator"></span></th>
-                            <th onclick="sortOrders('square_order_id')" id="sort-square_order_id" style="cursor: pointer;">Order ID</th>
-                            <th onclick="sortOrders('created_at')" id="sort-created_at" style="cursor: pointer;">Date</th>
-                            <th onclick="sortOrders('customer_email')" id="sort-customer_email" style="cursor: pointer;">Customer Email</th>
-                            <th onclick="sortOrders('customer_name')" id="sort-customer_name" style="cursor: pointer;">Customer Name</th>
-                            <th>Items</th>
-                            <th onclick="sortOrders('total')" id="sort-total" style="cursor: pointer;">Total</th>
-                            <th onclick="sortOrders('status')" id="sort-status" style="cursor: pointer;">Status</th>
-                            <th>Actions</th>
-                        </thead>
-                    <tbody id="orders-body">
-                        <!-- Orders will be loaded here -->
-                        <td colspan="9" style="text-align:center; padding:40px;">Loading orders...</td>
-                    </tbody>
-                </table>
-                <div id="orders-empty" style="display: none; text-align: center; padding: 40px;">
-                    <i class="fas fa-shopping-bag" style="font-size: 48px; margin-bottom: 15px; color: #ccc;"></i>
-                    <p>No orders found</p>
-                </div>
-            </div>
-            
-            <!-- Pagination -->
-            <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <button class="page-btn" onclick="goToOrdersPage(1)" id="orders-first-btn" disabled>
-                    <i class="fas fa-angle-double-left"></i>
-                </button>
-                <button class="page-btn" onclick="goToOrdersPage(ordersCurrentPage - 1)" id="orders-prev-btn" disabled>
-                    <i class="fas fa-angle-left"></i>
-                </button>
-                
-                <span class="pagination-info">
-                    Page <input type="number" class="page-input" id="orders-current-page" min="1" value="1" 
-                        onchange="goToOrdersPage(parseInt(this.value))" onblur="goToOrdersPage(parseInt(this.value))" 
-                        style="width: 50px; text-align: center;"> 
-                    of <span id="orders-total-pages">1</span>
-                </span>
-                
-                <button class="page-btn" onclick="goToOrdersPage(ordersCurrentPage + 1)" id="orders-next-btn" disabled>
-                    <i class="fas fa-angle-right"></i>
-                </button>
-                <button class="page-btn" onclick="goToOrdersPage(Math.ceil(filteredOrders.length / ordersPageSize))" id="orders-last-btn" disabled>
-                    <i class="fas fa-angle-double-right"></i>
-                </button>
-                
-                <div class="records-per-page" style="margin-left: auto;">
-                    <span>Show:</span>
-                    <select id="orders-page-size" onchange="changeOrdersPageSize(parseInt(this.value))">
-                        <option value="10">10</option>
-                        <option value="20" selected>20</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-            </div>
-            
-            <!-- Pagination Info -->
-            <div style="margin-top: 10px; color: #666; font-size: 14px;">
-                Showing <span id="orders-showing-start">0</span>-<span id="orders-showing-end">0</span> 
-                of <span id="orders-total-filtered">0</span> orders
-            </div>
-            
-            <!-- Action Buttons -->
-            <div class="action-buttons" style="margin-top: 20px;">
-                <button class="btn btn-primary" onclick="refreshOrders()">
-                    <i class="fas fa-sync-alt"></i> Refresh
-                </button>
-                <button class="btn btn-success" onclick="exportOrdersToCSV()">
-                    <i class="fas fa-download"></i> Export to CSV
-                </button>
-            </div>
-            
-            <!-- Loading Indicator -->
-            <div class="loading" id="orders-loading" style="display: none;">
-                <div class="loading-spinner"></div>
-                <p>Loading orders...</p>
             </div>
         </div>
 
