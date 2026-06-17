@@ -12,23 +12,28 @@ let currentReportData = null;
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    const accountingContainer = document.querySelector('.admin-container');
+    const accountingContainer = document.getElementById('accounting-container');
     if (!accountingContainer) return; // not on accounting page
 
     // Sub-tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
-            // Remove active class from all sub-tabs
             document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => t.classList.remove('active'));
             this.classList.add('active');
-            // Remove active class from all sub-tab content
-            document.querySelectorAll('.sub-tab-content').forEach(c => c.classList.remove('active'));
+            // CORRECTED: Use the container ID to target sub-tab contents
+            document.querySelectorAll('#accounting-container .sub-tab-content').forEach(c => c.classList.remove('active'));
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
             if (sub === 'dashboard') loadDashboard();
             else if (sub === 'journal') loadJournalEntries();
             else if (sub === 'reconcile') loadReconciliationStatus();
+            else if (sub === 'orders') {
+                if (typeof window.loadOrders === 'function') {
+                    window.loadOrders();
+                    window.loadOrderStats();
+                }
+            }
         });
     });
 
@@ -254,6 +259,7 @@ function resetJournalFilters() {
 }
 
 function exportJournalCSV() {
+    // Simple export – re‑fetch with larger limit
     const params = new URLSearchParams();
     params.append('page', 1);
     params.append('per_page', 9999);

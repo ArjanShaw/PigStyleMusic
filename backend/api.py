@@ -6645,74 +6645,99 @@ def accounting_post_manual():
         app.logger.error(f"Manual entry error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-# ==================== ACCOUNTING: SYNC ====================
 
 def process_order_for_accounting(order, conn, cursor):
     """Helper function to create journal entries for a single order."""
+    # Convert sqlite3.Row to dict for safe .get() usage
+    order = dict(order)
     order_id = order['id']
+    app.logger.info(f"  → Processing order {order_id}")
     
-    # Get order items with inventory COGS - using order_items and records
+    # Get order items with inventory COGS
     cursor.execute('''
         SELECT oi.id, oi.record_id, oi.price_at_time, r.cogs
         FROM order_items oi
-        JOIN records r ON oi.record_id = r.id
+        LEFT JOIN records r ON oi.record_id = r.id
         WHERE oi.order_id = ?
     ''', (order_id,))
     items = cursor.fetchall()
+    app.logger.info(f"    Found {len(items)} order items")
     
-    # Get payments
-    cursor.execute('''
-        SELECT id, source, gross_amount
-        FROM payments
-        WHERE order_id = ?
-    ''', (order_id,))
-    payments = cursor.fetchall()
+    # Get payments (table may be missing)
+    try:
+        cursor.execute('SELECT id, source, gross_amount FROM payments WHERE order_id = ?', (order_id,))
+        payments = cursor.fetchall()
+    except sqlite3.OperationalError:
+        app.logger.warning("    Payments table missing – using cash default")
+        payments = []
     
-    # Get fees
-    cursor.execute('''
-        SELECT id, fee_type, amount, source
-        FROM fees
-        WHERE order_id = ?
-    ''', (order_id,))
-    fees = cursor.fetchall()
+    # Get fees (table may be missing)
+    try:
+        cursor.execute('SELECT id, fee_type, amount, source FROM fees WHERE order_id = ?', (order_id,))
+        fees = cursor.fetchall()
+    except sqlite3.OperationalError:
+        app.logger.warning("    Fees table missing – skipping fees")
+        fees = []
     
-    # Get shipping info
-    cursor.execute('''
-        SELECT shipping_charged, postage_cost
-        FROM shipments
-        WHERE order_id = ?
-    ''', (order_id,))
-    shipping = cursor.fetchone()
+    # Get shipping info – handle missing table gracefully
+    shipping = None
+    try:
+        cursor.execute('SELECT shipping_charged, postage_cost FROM shipments WHERE order_id = ?', (order_id,))
+        shipping = cursor.fetchone()
+        if shipping:
+            # Convert to dict if needed
+            shipping = dict(shipping)
+    except sqlite3.OperationalError:
+        app.logger.warning("    Shipments table missing – using order shipping_cost")
+        shipping = None
     
-    payment_source = None
-    if payments:
-        payment_source = payments[0]['source']
-    else:
-        payment_source = 'cash'
+    # Determine payment source
+    payment_source = payments[0]['source'] if payments else 'cash'
+    app.logger.info(f"    Payment source: {payment_source}")
     
+    # Map payment source to account code
     account_map = {
         'cash': '1010',
         'paypal': '1020',
-        'square': '1030'
+        'square': '1030',
+        'discogs': '1020',
+        'giftcard': '1010'
     }
     debit_account_code = account_map.get(payment_source, '1010')
     
+    # Get account IDs
     cursor.execute('SELECT id, code FROM accounts')
     accounts = {row['code']: row['id'] for row in cursor.fetchall()}
     
+    # Verify required accounts exist
+    required = ['4000', '1050', '5000', '4010', '5010', '5020', '2010']
+    missing = [code for code in required if code not in accounts]
+    if missing:
+        raise KeyError(f"Missing account codes: {missing}")
+    
     total_sales = sum(item['price_at_time'] for item in items) if items else 0
     total_cogs = sum(item['cogs'] or 0 for item in items) if items else 0
+    app.logger.info(f"    Total sales: {total_sales}, Total COGS: {total_cogs}")
     
-    shipping_charged = shipping['shipping_charged'] if shipping else 0
-    postage_cost = shipping['postage_cost'] if shipping else 0
+    # Shipping – use shipment record if available, else fallback to order
+    if shipping:
+        shipping_charged = shipping.get('shipping_charged', 0) or 0
+        postage_cost = shipping.get('postage_cost', 0) or 0
+    else:
+        shipping_charged = order.get('shipping_charged', 0) or 0
+        postage_cost = 0
+    app.logger.info(f"    Shipping charged: {shipping_charged}, Postage cost: {postage_cost}")
     
-    total_fees = sum(fee['amount'] for fee in fees) if fees else 0
+    tax_total = order.get('tax_total', 0) or 0
+    total_fees = sum(fee['amount'] or 0 for fee in fees) if fees else 0
     
+    # Create journal entry
     cursor.execute('''
         INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
         VALUES (?, ?, ?, ?)
     ''', (order['created_at'], f"Sale - Order {order_id}", 'order', order_id))
     entry_id = cursor.lastrowid
+    app.logger.info(f"    Created journal entry {entry_id}")
     
     # Revenue entry
     debit_amount = total_sales + shipping_charged
@@ -6720,14 +6745,16 @@ def process_order_for_accounting(order, conn, cursor):
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
-        ''', (entry_id, accounts.get(debit_account_code), int(round(debit_amount * 100)), 0))
+        ''', (entry_id, accounts[debit_account_code], int(round(debit_amount * 100)), 0))
     
+    # Credit Sales Revenue
     if total_sales > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts['4000'], 0, int(round(total_sales * 100))))
     
+    # Credit Shipping Revenue
     if shipping_charged > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -6754,7 +6781,18 @@ def process_order_for_accounting(order, conn, cursor):
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
-        ''', (entry_id, accounts.get(debit_account_code), 0, int(round(postage_cost * 100))))
+        ''', (entry_id, accounts[debit_account_code], 0, int(round(postage_cost * 100))))
+    
+    # Sales Tax
+    if tax_total > 0:
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts[debit_account_code], int(round(tax_total * 100)), 0))
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts['2010'], 0, int(round(tax_total * 100))))
     
     # Fees
     if total_fees > 0:
@@ -6765,45 +6803,39 @@ def process_order_for_accounting(order, conn, cursor):
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
-        ''', (entry_id, accounts.get(debit_account_code), 0, int(round(total_fees * 100))))
+        ''', (entry_id, accounts[debit_account_code], 0, int(round(total_fees * 100))))
     
     cursor.execute('UPDATE orders SET is_accounted = 1 WHERE id = ?', (order_id,))
     conn.commit()
+    app.logger.info(f"    ✅ Order {order_id} marked as accounted")
+
 
 @app.route('/api/accounting/sync', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def accounting_run_sync():
     """Process all paid orders that are not yet accounted"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT o.id, o.created_at, o.total, o.shipping_charged, o.tax_total,
-                   o.channel, o.external_order_id
-            FROM orders o
-            WHERE o.payment_status = 'paid' AND (o.is_accounted IS NULL OR o.is_accounted = 0)
-        ''')
-        orders = cursor.fetchall()
-        
-        processed = 0
-        for order in orders:
-            try:
-                process_order_for_accounting(order, conn, cursor)
-                processed += 1
-            except Exception as e:
-                app.logger.error(f"Error processing order {order['id']}: {str(e)}")
-                continue
-        
-        conn.close()
-        return jsonify({
-            'status': 'success',
-            'processed': processed
-        })
-    except Exception as e:
-        app.logger.error(f"Sync error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT o.id, o.created_at, o.total, 
+               o.shipping_cost as shipping_charged, 
+               o.tax as tax_total,
+               o.channel, o.external_order_id
+        FROM orders o
+        WHERE o.payment_status = 'paid' AND (o.is_accounted IS NULL OR o.is_accounted = 0)
+    ''')
+    orders = cursor.fetchall()
+    
+    processed = 0
+    for order in orders:
+        process_order_for_accounting(order, conn, cursor)
+        processed += 1
+    
+    conn.close()
+    return jsonify({'status': 'success', 'processed': processed})
+
 
 # ==================== ACCOUNTING: RECONCILIATION UPLOAD ====================
 
@@ -7203,6 +7235,80 @@ def accounting_reports():
         })
     except Exception as e:
         app.logger.error(f"Report error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/checkout/create-order', methods=['POST'])
+@login_required
+def create_order_from_checkout():
+    """Create an order from checkout (Cash, Square, Gift Card, Discogs)"""
+    try:
+        data = request.json
+        order = data.get('order')
+        items = data.get('items', [])
+        payment = data.get('payment')
+        
+        if not order or not items or not payment:
+            return jsonify({'status': 'error', 'error': 'Missing order, items, or payment data'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Insert order
+        cursor.execute('''
+            INSERT INTO orders (
+                id, order_number, customer_name, customer_email, shipping_method,
+                shipping_cost, subtotal, tax, total, payment_status, order_status,
+                created_at, updated_at, channel, is_accounted, external_order_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            order['id'], order['order_number'], order['customer_name'], order['customer_email'],
+            order['shipping_method'], order['shipping_cost'], order['subtotal'], order['tax'],
+            order['total'], order['payment_status'], order['order_status'],
+            order['created_at'], order['updated_at'], order['channel'],
+            order.get('is_accounted', 0), order.get('external_order_id')
+        ))
+        
+        order_id = order['id']
+        
+        # Insert order items
+        for item in items:
+            cursor.execute('''
+                INSERT INTO order_items (
+                    order_id, record_id, record_title, record_artist,
+                    record_condition, price_at_time, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (
+                order_id,
+                item.get('record_id'),
+                item.get('record_title'),
+                item.get('record_artist'),
+                item.get('record_condition'),
+                item.get('price_at_time')
+            ))
+        
+        # Insert payment (amount in cents)
+        cursor.execute('''
+            INSERT INTO payments (
+                order_id, source, gross_amount, transaction_date, external_transaction_id
+            ) VALUES (?, ?, ?, ?, ?)
+        ''', (
+            order_id,
+            payment['source'],
+            int(round(payment['gross_amount'] * 100)),
+            payment['transaction_date'],
+            payment.get('external_transaction_id')
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'order_id': order_id
+        })
+    except Exception as e:
+        app.logger.error(f"Checkout order creation error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
