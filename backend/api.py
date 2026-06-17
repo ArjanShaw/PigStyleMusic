@@ -6513,7 +6513,6 @@ def accounting_dashboard():
 @login_required
 @role_required(['admin'])
 def accounting_get_journal():
-    """Get paginated journal entries with filters"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
@@ -6521,80 +6520,86 @@ def accounting_get_journal():
         date_to = request.args.get('date_to')
         account_id = request.args.get('account_id', type=int)
         search = request.args.get('search', '').strip()
-        
         offset = (page - 1) * per_page
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
-        query = '''
-            SELECT 
-                je.id, je.transaction_date, je.description, je.source_type, je.source_id,
-                jl.debit_amount, jl.credit_amount,
-                da.code as debit_code, da.name as debit_name,
-                ca.code as credit_code, ca.name as credit_name
-            FROM journal_entries je
-            JOIN journal_lines jl ON jl.journal_entry_id = je.id
-            LEFT JOIN accounts da ON da.id = jl.account_id AND jl.debit_amount > 0
-            LEFT JOIN accounts ca ON ca.id = jl.account_id AND jl.credit_amount > 0
+
+        # Build the base query for journal entries
+        entry_query = '''
+            SELECT id, transaction_date, description, source_type, source_id
+            FROM journal_entries
             WHERE 1=1
         '''
         params = []
-        
+
         if date_from:
-            query += ' AND je.transaction_date >= ?'
+            entry_query += ' AND transaction_date >= ?'
             params.append(date_from)
         if date_to:
-            query += ' AND je.transaction_date <= ?'
+            entry_query += ' AND transaction_date <= ?'
             params.append(date_to)
-        if account_id:
-            query += ' AND jl.account_id = ?'
-            params.append(account_id)
         if search:
-            query += ' AND (je.description LIKE ? OR je.source_id LIKE ?)'
+            entry_query += ' AND (description LIKE ? OR source_id LIKE ?)'
             search_term = f'%{search}%'
-            params.extend([search_term, search_term])
-        
-        # Get total count - with defensive check
-        count_query = query.replace(
-            'SELECT je.id, je.transaction_date, je.description, je.source_type, je.source_id, jl.debit_amount, jl.credit_amount, da.code as debit_code, da.name as debit_name, ca.code as credit_code, ca.name as credit_name',
-            'SELECT COUNT(DISTINCT je.id) as total'
+            params.append(search_term)
+            params.append(search_term)
+
+        # Get total count
+        count_query = entry_query.replace(
+            'SELECT id, transaction_date, description, source_type, source_id',
+            'SELECT COUNT(*) as total'
         )
         cursor.execute(count_query, params)
-        result = cursor.fetchone()
-        total = result['total'] if result else 0
-        
-        query += ' ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
+        total = cursor.fetchone()['total']
+
+        # Get paginated entries
+        entry_query += ' ORDER BY transaction_date DESC, id DESC LIMIT ? OFFSET ?'
         params.extend([per_page, offset])
-        
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+        cursor.execute(entry_query, params)
+        entries_rows = cursor.fetchall()
+
+        # For each entry, fetch its lines
+        entries = []
+        for entry in entries_rows:
+            lines_query = '''
+                SELECT jl.id, jl.account_id, jl.debit_amount, jl.credit_amount,
+                       a.code, a.name, a.type
+                FROM journal_lines jl
+                LEFT JOIN accounts a ON a.id = jl.account_id
+                WHERE jl.journal_entry_id = ?
+            '''
+            cursor.execute(lines_query, (entry['id'],))
+            lines = cursor.fetchall()
+
+            debit_total = 0
+            credit_total = 0
+            debit_account = ''
+            credit_account = ''
+
+            for line in lines:
+                if line['debit_amount'] and line['debit_amount'] > 0:
+                    debit_total += line['debit_amount'] / 100.0
+                    if line['code']:
+                        debit_account = f"{line['code']} - {line['name']}"
+                if line['credit_amount'] and line['credit_amount'] > 0:
+                    credit_total += line['credit_amount'] / 100.0
+                    if line['code']:
+                        credit_account = f"{line['code']} - {line['name']}"
+
+            entries.append({
+                'id': entry['id'],
+                'transaction_date': entry['transaction_date'],
+                'description': entry['description'] or '',
+                'source_type': entry['source_type'] or '',
+                'source_id': entry['source_id'] or '',
+                'debit_account': debit_account,
+                'debit_amount': debit_total,
+                'credit_account': credit_account,
+                'credit_amount': credit_total
+            })
+
         conn.close()
-        
-        entries_dict = {}
-        for row in rows:
-            eid = row['id']
-            if eid not in entries_dict:
-                entries_dict[eid] = {
-                    'id': eid,
-                    'transaction_date': row['transaction_date'],
-                    'description': row['description'],
-                    'source_type': row['source_type'],
-                    'source_id': row['source_id'],
-                    'debit_account': None,
-                    'debit_amount': 0,
-                    'credit_account': None,
-                    'credit_amount': 0
-                }
-            if row['debit_amount']:
-                entries_dict[eid]['debit_account'] = f"{row['debit_code']} - {row['debit_name']}"
-                entries_dict[eid]['debit_amount'] = row['debit_amount'] / 100.0
-            if row['credit_amount']:
-                entries_dict[eid]['credit_account'] = f"{row['credit_code']} - {row['credit_name']}"
-                entries_dict[eid]['credit_amount'] = row['credit_amount'] / 100.0
-        
-        entries = list(entries_dict.values())
-        
         return jsonify({
             'status': 'success',
             'entries': entries,
@@ -6604,8 +6609,9 @@ def accounting_get_journal():
         })
     except Exception as e:
         app.logger.error(f"Journal error: {str(e)}")
-        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 
 # ==================== ACCOUNTING: MANUAL ENTRY ====================
 
