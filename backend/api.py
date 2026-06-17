@@ -1310,10 +1310,9 @@ def process_checkout():
         app.logger.error(f"Checkout error: {str(e)}")
         return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500
 
-
 @app.route('/api/order/complete', methods=['POST'])
 def order_complete():
-    """Update order status and mark records as sold after successful payment"""
+    """Update order status and mark records as sold after successful payment, then auto‑account."""
     try:
         data = request.json
         transaction_id = data.get('transaction_id')
@@ -1356,6 +1355,26 @@ def order_complete():
                 placeholders = ','.join('?' for _ in record_ids)
                 cursor.execute(f'UPDATE records SET status_id = 3, date_sold = CURRENT_DATE WHERE id IN ({placeholders})', record_ids)
             
+            # ---- NEW: Auto‑account for this order ----
+            # Re‑fetch the full order to get all columns (including shipping_charged alias)
+            cursor.execute('''
+                SELECT o.id, o.created_at, o.total, 
+                       o.shipping_cost as shipping_charged, 
+                       o.tax as tax_total,
+                       o.channel, o.external_order_id
+                FROM orders o
+                WHERE o.id = ?
+            ''', (order_id,))
+            order = cursor.fetchone()
+            if order:
+                try:
+                    process_order_for_accounting(order, conn, cursor)
+                    # The function sets is_accounted = 1 internally
+                except Exception as e:
+                    app.logger.error(f"Auto‑accounting failed for order {order_id}: {str(e)}")
+                    # We don't rollback here – the order is still completed; we just log
+            # ---- End of auto‑accounting ----
+            
             conn.commit()
             
             # Send order confirmation email if customer email exists
@@ -1374,7 +1393,6 @@ Your order has been confirmed and will be processed soon.
 
 Records purchased:
 """
-                    # Add record details
                     cursor.execute('SELECT record_title, record_artist, price_at_time FROM order_items WHERE order_id = ?', (order_id,))
                     items = cursor.fetchall()
                     for item in items:
@@ -1391,7 +1409,6 @@ Questions? Reply to this email or contact us at the store.
                     send_email(order_details['customer_email'], f"Order Confirmation - {order_details['order_number']}", email_body)
             except Exception as email_error:
                 app.logger.error(f"Failed to send order confirmation email: {str(email_error)}")
-                # Don't fail the order completion if email fails
             
             return jsonify({'status': 'success', 'message': f'Order completed, {len(record_ids)} records marked as sold'})
             
@@ -1404,7 +1421,6 @@ Questions? Reply to this email or contact us at the store.
     except Exception as e:
         app.logger.error(f"Order complete error: {str(e)}")
         return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500
-
 
 # ==================== SQUARE TERMINAL ENDPOINTS ====================
 
@@ -7238,10 +7254,11 @@ def accounting_reports():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/checkout/create-order', methods=['POST'])
 @login_required
 def create_order_from_checkout():
-    """Create an order from checkout (Cash, Square, Gift Card, Discogs)"""
+    """Create an order from checkout (Cash, Square, Gift Card, Discogs) and auto‑account."""
     try:
         data = request.json
         order = data.get('order')
@@ -7301,6 +7318,26 @@ def create_order_from_checkout():
         ))
         
         conn.commit()
+        
+        # ---- NEW: Auto‑account for this order ----
+        # Re‑fetch the order to get the shipping_cost alias and other fields
+        cursor.execute('''
+            SELECT o.id, o.created_at, o.total, 
+                   o.shipping_cost as shipping_charged, 
+                   o.tax as tax_total,
+                   o.channel, o.external_order_id
+            FROM orders o
+            WHERE o.id = ?
+        ''', (order_id,))
+        new_order = cursor.fetchone()
+        if new_order:
+            try:
+                process_order_for_accounting(new_order, conn, cursor)
+            except Exception as e:
+                app.logger.error(f"Auto‑accounting failed for checkout order {order_id}: {str(e)}")
+                # Order is already committed, we just log the error
+        # ---- End of auto‑accounting ----
+        
         conn.close()
         
         return jsonify({
