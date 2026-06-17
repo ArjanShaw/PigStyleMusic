@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'reconcile') loadReconciliationStatus();
             else if (sub === 'bank') {
                 loadBankTransactions();
-                checkBankConnection();  // NEW: check connection status
+                checkBankConnection();  // NEW
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
@@ -109,6 +109,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load dashboard by default
     loadDashboard();
+
+    // ---- Handle OAuth redirect from Plaid ----
+    const urlParams = new URLSearchParams(window.location.search);
+    const publicToken = urlParams.get('public_token');
+    if (publicToken) {
+        fetch('/api/plaid/exchange', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({public_token: publicToken})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Bank connected successfully!');
+                window.history.replaceState({}, document.title, window.location.pathname);
+                checkBankConnection();
+                loadBankTransactions();
+            } else {
+                alert('Failed to connect bank: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            alert('Error: ' + err.message);
+        });
+    }
 });
 
 // ============================================================
@@ -691,32 +717,9 @@ async function connectBank() {
             return;
         }
         const linkToken = data.link_token;
-        const handler = Plaid.create({
-            token: linkToken,
-            onSuccess: async (public_token, metadata) => {
-                // Exchange public token for access token
-                const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/exchange`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ public_token })
-                });
-                const exchangeData = await exchangeRes.json();
-                if (exchangeData.status === 'success') {
-                    alert('Bank connected successfully!');
-                    checkBankConnection();
-                    loadBankTransactions(); // refresh transactions
-                } else {
-                    alert('Failed to connect bank: ' + (exchangeData.error || 'Unknown error'));
-                }
-            },
-            onExit: (err, metadata) => {
-                if (err) {
-                    alert('Error: ' + (err.display_message || err.error_message || 'Unknown error'));
-                }
-            }
-        });
-        handler.open();
+        // Open Plaid Link in a new tab for OAuth redirect
+        const plaidUrl = `https://cdn.plaid.com/link/v2/stable/link.html?linkToken=${linkToken}&isOAuth=true`;
+        window.open(plaidUrl, '_blank');
     } catch (e) {
         alert('Failed to initiate bank connection: ' + e.message);
     }

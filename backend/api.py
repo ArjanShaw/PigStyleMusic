@@ -48,8 +48,6 @@ from plaid.model.transactions_get_request_options import TransactionsGetRequestO
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
-from plaid.model.country_code import CountryCode
-from plaid.model.products import Products
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
@@ -7390,7 +7388,6 @@ def set_plaid_access_token(token, item_id=None, institution_name=None):
     """Store access token and related info in app_config."""
     conn = get_db()
     cursor = conn.cursor()
-    # Ensure the config keys exist; if not, insert them.
     cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_access_token', '')")
     cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_item_id', '')")
     cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_institution_name', '')")
@@ -7411,22 +7408,17 @@ def plaid_create_link_token():
     """Generate a link token for the frontend to initialize Plaid Link."""
     try:
         client = get_plaid_client()
-        env = os.environ.get('PLAID_ENV', 'sandbox')
-        # Use the production domain for redirect URI
-        base_url = "https://www.pigstylemusic.com"
-        if env == 'sandbox':
-            redirect_uri = f"{base_url}/admin"  # not used for sandbox, but required
-        else:
-            redirect_uri = f"{base_url}/admin"  # set to your actual frontend route
+        # Use the redirect URI you added in the Plaid Dashboard
+        redirect_uri = "https://www.pigstylemusic.com/accounting"  # must match exactly
 
         request_obj = LinkTokenCreateRequest(
             client_name="PigStyle Music",
             language="en",
-            country_codes=[CountryCode('US')],
+            country_codes=['US'],                # plain string – works with plaid-python 40.0.0
             user=LinkTokenCreateRequestUser(client_user_id=str(session['user_id'])),
-            products=[Products('transactions')],
+            products=['transactions'],           # plain string
             redirect_uri=redirect_uri,
-            webhook="https://www.example.com/webhook"  # optional
+            webhook="https://www.example.com/webhook"
         )
         response = client.link_token_create(request_obj)
         return jsonify({'link_token': response['link_token']})
@@ -7449,8 +7441,6 @@ def plaid_exchange_token():
         exchange_response = client.item_public_token_exchange(exchange_request)
         access_token = exchange_response['access_token']
         item_id = exchange_response['item_id']
-        # Optionally, get institution name
-        # You might want to store it; we'll just store the token
         set_plaid_access_token(access_token, item_id)
         return jsonify({'status': 'success', 'message': 'Bank connected successfully'})
     except Exception as e:
@@ -7498,11 +7488,10 @@ def fetch_bank_transactions(date_from=None, date_to=None):
     except plaid.ApiException as e:
         # If token is invalid, clear it so user can reconnect
         if e.status == 400 and 'INVALID_ACCESS_TOKEN' in e.body:
-            set_plaid_access_token('')  # clear token
+            set_plaid_access_token('')
             raise Exception("Access token expired or invalid. Please reconnect your bank.")
         raise
 
-    # Format transactions
     result = []
     for tx in transactions:
         result.append({
@@ -7516,10 +7505,7 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         })
     return result
 
-# Override the existing bank-transactions and sync endpoints to use the new fetch function
-# (They are already defined earlier, but we need to ensure they call the above function.
-#  We'll re-define them here to override.)
-
+# Override the existing bank-transactions and sync endpoints
 @app.route('/api/accounting/bank-transactions', methods=['GET'])
 @login_required
 @role_required(['admin'])
