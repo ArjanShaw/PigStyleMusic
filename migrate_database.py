@@ -8,7 +8,7 @@ It checks each table/column before creating/altering, so it is safe to run multi
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "records.db")  # Adjust path as needed
+DB_PATH = "backend/data/records.db"  # Adjust path as needed
 
 def get_existing_tables(cursor):
     """Return a set of existing table names."""
