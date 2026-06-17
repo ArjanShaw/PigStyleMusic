@@ -6413,6 +6413,28 @@ def accounting_get_accounts():
         app.logger.error(f"Error fetching accounts: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ==================== COGS ASSUMPTION RATE HELPER ====================
+
+def get_cogs_assumption_rate():
+    """Get the COGS assumption rate from app_config, default 0.3."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'cogs_assumption_rate'")
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        try:
+            return float(row['config_value'])
+        except:
+            return 0.3
+    # If key doesn't exist, create it with default
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value, description) VALUES ('cogs_assumption_rate', '0.3', 'COGS assumption rate for records without actual COGS')")
+    conn.commit()
+    conn.close()
+    return 0.3
+
 # ==================== ACCOUNTING: DASHBOARD ====================
 @app.route('/api/accounting/dashboard', methods=['GET'])
 @login_required
@@ -6437,18 +6459,25 @@ def accounting_dashboard():
         ''', (month_start, month_end))
         revenue = cursor.fetchone()['revenue'] or 0
         
-        # COGS for this month - using records.cogs joined via order_items.record_id
+        # COGS – use assumption for records with NULL cogs
+        rate = get_cogs_assumption_rate()
         cursor.execute('''
-            SELECT COALESCE(SUM(r.cogs), 0) as cogs
-            FROM records r
-            JOIN order_items oi ON oi.record_id = r.id
+            SELECT oi.price_at_time, r.cogs
+            FROM order_items oi
+            JOIN records r ON oi.record_id = r.id
             JOIN orders o ON oi.order_id = o.id
             WHERE o.created_at >= ? AND o.created_at <= ?
               AND o.payment_status = 'paid'
         ''', (month_start, month_end))
-        cogs = cursor.fetchone()['cogs'] or 0
+        rows = cursor.fetchall()
+        total_cogs = 0
+        for row in rows:
+            if row['cogs'] is not None:
+                total_cogs += row['cogs']
+            else:
+                total_cogs += row['price_at_time'] * rate
         
-        net_profit = revenue - cogs
+        net_profit = revenue - total_cogs
         
         # Pending sync: orders that are paid but not accounted
         cursor.execute('''
@@ -6497,7 +6526,7 @@ def accounting_dashboard():
         return jsonify({
             'status': 'success',
             'revenue': float(revenue),
-            'cogs': float(cogs),
+            'cogs': float(total_cogs),
             'net_profit': float(net_profit),
             'pending_sync': pending_sync,
             'unreconciled': unreconciled,
@@ -6507,6 +6536,7 @@ def accounting_dashboard():
         app.logger.error(f"Dashboard error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 # ==================== ACCOUNTING: JOURNAL ====================
 
 @app.route('/api/accounting/journal', methods=['GET'])
@@ -6610,8 +6640,6 @@ def accounting_get_journal():
     except Exception as e:
         app.logger.error(f"Journal error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
 
 # ==================== ACCOUNTING: MANUAL ENTRY ====================
 
@@ -7107,37 +7135,75 @@ def accounting_reports():
         cursor = conn.cursor()
         
         if report_type == 'pll':
-            # Profit & Loss: summarize revenue and expense accounts
+            rate = get_cogs_assumption_rate()
+            
+            # 1. Revenue from order_items
             cursor.execute('''
-                SELECT 
-                    a.code,
-                    a.name,
-                    a.type,
-                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
-                FROM accounts a
-                LEFT JOIN journal_lines jl ON jl.account_id = a.id
-                LEFT JOIN journal_entries je ON je.id = jl.journal_entry_id
-                WHERE a.type IN ('revenue', 'expense')
+                SELECT COALESCE(SUM(oi.price_at_time), 0) as revenue
+                FROM order_items oi
+                JOIN orders o ON oi.order_id = o.id
+                WHERE o.payment_status = 'paid'
+                  AND (? IS NULL OR o.created_at >= ?)
+                  AND (? IS NULL OR o.created_at <= ?)
+            ''', (date_from, date_from, date_to, date_to))
+            revenue = cursor.fetchone()['revenue']
+            
+            # 2. COGS (assumed for NULL cogs)
+            cursor.execute('''
+                SELECT COALESCE(SUM(
+                    CASE WHEN r.cogs IS NULL THEN oi.price_at_time * ? ELSE r.cogs END
+                ), 0) as cogs
+                FROM order_items oi
+                JOIN records r ON oi.record_id = r.id
+                JOIN orders o ON oi.order_id = o.id
+                WHERE o.payment_status = 'paid'
+                  AND (? IS NULL OR o.created_at >= ?)
+                  AND (? IS NULL OR o.created_at <= ?)
+            ''', (rate, date_from, date_from, date_to, date_to))
+            cogs = cursor.fetchone()['cogs']
+            
+            # 3. Other expenses (from journal_lines, excluding COGS account 5000)
+            cursor.execute('''
+                SELECT a.code, a.name,
+                       COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
+                FROM journal_lines jl
+                JOIN journal_entries je ON jl.journal_entry_id = je.id
+                JOIN accounts a ON jl.account_id = a.id
+                WHERE a.type = 'expense'
+                  AND a.code != '5000'   -- exclude COGS account
                   AND (? IS NULL OR je.transaction_date >= ?)
                   AND (? IS NULL OR je.transaction_date <= ?)
                 GROUP BY a.id
-                ORDER BY a.type DESC, a.code
+                ORDER BY a.code
             ''', (date_from, date_from, date_to, date_to))
-            rows = cursor.fetchall()
+            expense_rows = cursor.fetchall()
+            
             report_data = []
-            total_revenue = 0
-            total_expense = 0
-            for row in rows:
+            total_revenue = revenue
+            total_expense = cogs
+            
+            # Add revenue line
+            report_data.append({
+                'Account': 'Sales Revenue',
+                'Balance': revenue   # positive
+            })
+            # Add COGS line
+            report_data.append({
+                'Account': 'COGS (Assumed)',
+                'Balance': cogs      # positive
+            })
+            
+            # Add other expense lines
+            for row in expense_rows:
                 balance = row['balance'] / 100.0
                 report_data.append({
                     'Account': f"{row['code']} - {row['name']}",
                     'Balance': balance
                 })
-                if row['type'] == 'revenue':
-                    total_revenue += balance
-                else:
-                    total_expense += balance
-            summary = f"Total Revenue: ${total_revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${total_revenue - total_expense:.2f}"
+                total_expense += balance
+            
+            net_profit = total_revenue - total_expense
+            summary = f"Total Revenue: ${total_revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${net_profit:.2f}"
             
         elif report_type == 'batch-profit':
             # Batch profitability: group records by batch
