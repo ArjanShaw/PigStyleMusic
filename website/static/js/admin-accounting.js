@@ -7,6 +7,11 @@ const journalPageSize = 20;
 let journalTotalEntries = 0;
 let currentReportData = null;
 
+// Bank transactions pagination
+let bankCurrentPage = 1;
+const bankPageSize = 20;
+let bankTotalEntries = 0;
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -21,13 +26,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const sub = this.dataset.subtab;
             document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => t.classList.remove('active'));
             this.classList.add('active');
-            // CORRECTED: Use the container ID to target sub-tab contents
             document.querySelectorAll('#accounting-container .sub-tab-content').forEach(c => c.classList.remove('active'));
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
             if (sub === 'dashboard') loadDashboard();
             else if (sub === 'journal') loadJournalEntries();
             else if (sub === 'reconcile') loadReconciliationStatus();
+            else if (sub === 'bank') loadBankTransactions();  // NEW
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
                     window.loadOrders();
@@ -69,6 +74,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
+    // Pagination for bank transactions (NEW)
+    document.getElementById('bank-prev')?.addEventListener('click', () => {
+        if (bankCurrentPage > 1) { bankCurrentPage--; loadBankTransactions(); }
+    });
+    document.getElementById('bank-next')?.addEventListener('click', () => {
+        const totalPages = Math.ceil(bankTotalEntries / bankPageSize);
+        if (bankCurrentPage < totalPages) { bankCurrentPage++; loadBankTransactions(); }
+    });
+
     // Manual entry – auto‑balance check
     document.addEventListener('input', function(e) {
         if (e.target.closest('.manual-entry-row')) {
@@ -79,7 +93,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load accounts into dropdowns
     loadAccountSelects();
 
-    // Load default date range for reports
+    // Load default date range for reports and bank
     const today = new Date().toISOString().split('T')[0];
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     document.getElementById('report-date-from').value = firstDay;
@@ -87,6 +101,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('manual-date').value = today;
     document.getElementById('journal-date-from').value = firstDay;
     document.getElementById('journal-date-to').value = today;
+    document.getElementById('bank-date-from').value = firstDay;   // NEW
+    document.getElementById('bank-date-to').value = today;       // NEW
 
     // Load dashboard by default
     loadDashboard();
@@ -259,7 +275,6 @@ function resetJournalFilters() {
 }
 
 function exportJournalCSV() {
-    // Simple export – re‑fetch with larger limit
     const params = new URLSearchParams();
     params.append('page', 1);
     params.append('per_page', 9999);
@@ -633,4 +648,95 @@ function exportReportCSV() {
     a.download = 'report.csv';
     a.click();
     window.URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// BANK TRANSACTIONS (NEW)
+// ============================================================
+
+async function loadBankTransactions() {
+    const body = document.getElementById('bank-body');
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
+
+    const params = new URLSearchParams();
+    params.append('page', bankCurrentPage);
+    params.append('per_page', bankPageSize);
+    const from = document.getElementById('bank-date-from').value;
+    const to = document.getElementById('bank-date-to').value;
+    if (from) params.append('date_from', from);
+    if (to) params.append('date_to', to);
+    const search = document.getElementById('bank-search').value.trim();
+    if (search) params.append('search', search);
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) throw new Error('Failed to load bank transactions');
+        const data = await res.json();
+        if (data.status === 'success') {
+            bankTotalEntries = data.total || data.transactions?.length || 0;
+            renderBankTransactions(data.transactions || []);
+            updateBankPagination();
+        } else {
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
+        }
+    } catch (err) {
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+    }
+}
+
+function renderBankTransactions(transactions) {
+    const body = document.getElementById('bank-body');
+    if (!transactions || transactions.length === 0) {
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        return;
+    }
+    let html = '';
+    transactions.forEach(t => {
+        const amount = parseFloat(t.amount) || 0;
+        const isDebit = amount < 0;
+        const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
+        const status = t.status || (t.pending ? 'Pending' : 'Posted');
+        const category = t.category || '';
+        html += `<tr>
+            <td>${t.date || ''}</td>
+            <td>${t.description || ''}</td>
+            <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
+            <td>${category}</td>
+            <td><span class="status-badge ${status === 'Pending' ? 'warning' : 'active'}">${status}</span></td>
+        </tr>`;
+    });
+    body.innerHTML = html;
+}
+
+function updateBankPagination() {
+    const totalPages = Math.ceil(bankTotalEntries / bankPageSize);
+    document.getElementById('bank-pagination-info').textContent = `Showing ${bankTotalEntries} entries (Page ${bankCurrentPage} of ${totalPages || 1})`;
+    document.getElementById('bank-prev').disabled = bankCurrentPage <= 1;
+    document.getElementById('bank-next').disabled = bankCurrentPage >= totalPages || totalPages === 0;
+    document.getElementById('bank-page-info').textContent = `Page ${bankCurrentPage}`;
+}
+
+async function syncBankTransactions() {
+    const status = document.getElementById('bank-sync-status');
+    status.textContent = '⏳ Syncing...';
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/sync`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const count = data.added || data.count || 0;
+            status.textContent = `✅ Synced ${count} new transactions.`;
+            loadBankTransactions(); // refresh list
+        } else {
+            status.textContent = '❌ ' + (data.error || 'Sync failed');
+        }
+    } catch (err) {
+        status.textContent = '❌ Error: ' + err.message;
+    }
 }

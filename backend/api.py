@@ -9,7 +9,7 @@ import base64
 from flask import Flask, jsonify, request, session, redirect, send_from_directory
 from flask_cors import CORS
 import sqlite3
-from datetime import datetime, timedelta,date
+from datetime import datetime, timedelta, date
 import hashlib
 import secrets
 import re
@@ -34,10 +34,22 @@ from werkzeug.utils import secure_filename
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
 # ===== NEW IMPORTS FOR ACCOUNTING =====
 from decimal import Decimal
 import csv
 import io
+
+# ===== NEW IMPORTS FOR PLAID =====
+import plaid
+from plaid.api import plaid_api
+from plaid.model.transactions_get_request import TransactionsGetRequest
+from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
+from plaid.model.link_token_create_request import LinkTokenCreateRequest
+from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.model.country_code import CountryCode
+from plaid.model.products import Products
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
@@ -7348,6 +7360,207 @@ def create_order_from_checkout():
         app.logger.error(f"Checkout order creation error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ===== PLAID INTEGRATION =====
+# Helper functions for Plaid client and token storage
+
+def get_plaid_client():
+    """Initialize Plaid client using environment credentials."""
+    client_id = os.environ.get('PLAID_CLIENT_ID')
+    secret = os.environ.get('PLAID_SECRET')
+    env = os.environ.get('PLAID_ENV', 'sandbox')
+    if not client_id or not secret:
+        raise Exception("PLAID_CLIENT_ID or PLAID_SECRET not configured")
+    host = plaid.Environment.Production if env == 'production' else plaid.Environment.Sandbox
+    configuration = plaid.Configuration(host=host, api_key={'clientId': client_id, 'secret': secret})
+    api_client = plaid.ApiClient(configuration)
+    return plaid_api.PlaidApi(api_client)
+
+def get_plaid_access_token():
+    """Retrieve stored access token from app_config."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_access_token'")
+    row = cursor.fetchone()
+    conn.close()
+    return row['config_value'] if row else None
+
+def set_plaid_access_token(token, item_id=None, institution_name=None):
+    """Store access token and related info in app_config."""
+    conn = get_db()
+    cursor = conn.cursor()
+    # Ensure the config keys exist; if not, insert them.
+    cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_access_token', '')")
+    cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_item_id', '')")
+    cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_institution_name', '')")
+    cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'plaid_access_token'", (token,))
+    if item_id:
+        cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'plaid_item_id'", (item_id,))
+    if institution_name:
+        cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'plaid_institution_name'", (institution_name,))
+    conn.commit()
+    conn.close()
+
+# ===== Plaid API endpoints =====
+
+@app.route('/api/plaid/create-link-token', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def plaid_create_link_token():
+    """Generate a link token for the frontend to initialize Plaid Link."""
+    try:
+        client = get_plaid_client()
+        env = os.environ.get('PLAID_ENV', 'sandbox')
+        # Use the production domain for redirect URI
+        base_url = "https://www.pigstylemusic.com"
+        if env == 'sandbox':
+            redirect_uri = f"{base_url}/admin"  # not used for sandbox, but required
+        else:
+            redirect_uri = f"{base_url}/admin"  # set to your actual frontend route
+
+        request_obj = LinkTokenCreateRequest(
+            client_name="PigStyle Music",
+            language="en",
+            country_codes=[CountryCode.US],
+            user=LinkTokenCreateRequestUser(client_user_id=str(session['user_id'])),
+            products=[Products.TRANSACTIONS],
+            redirect_uri=redirect_uri,
+            webhook="https://www.example.com/webhook"  # optional
+        )
+        response = client.link_token_create(request_obj)
+        return jsonify({'link_token': response['link_token']})
+    except Exception as e:
+        app.logger.error(f"Link token error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/plaid/exchange', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def plaid_exchange_token():
+    """Exchange public token for access token and store it."""
+    data = request.json
+    public_token = data.get('public_token')
+    if not public_token:
+        return jsonify({'error': 'No public_token'}), 400
+    try:
+        client = get_plaid_client()
+        exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
+        exchange_response = client.item_public_token_exchange(exchange_request)
+        access_token = exchange_response['access_token']
+        item_id = exchange_response['item_id']
+        # Optionally, get institution name
+        # You might want to store it; we'll just store the token
+        set_plaid_access_token(access_token, item_id)
+        return jsonify({'status': 'success', 'message': 'Bank connected successfully'})
+    except Exception as e:
+        app.logger.error(f"Exchange error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/plaid/status', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def plaid_status():
+    token = get_plaid_access_token()
+    return jsonify({'connected': bool(token)})
+
+# ===== Updated bank transaction functions (using stored token) =====
+
+def fetch_bank_transactions(date_from=None, date_to=None):
+    """Fetch transactions using stored access token."""
+    access_token = get_plaid_access_token()
+    if not access_token:
+        raise Exception("No Plaid access token found. Please connect your bank account.")
+
+    client = get_plaid_client()
+    if not client:
+        raise Exception("Plaid client not initialized")
+
+    if not date_to:
+        end_date = datetime.now().date()
+    else:
+        end_date = datetime.strptime(date_to, '%Y-%m-%d').date()
+
+    if not date_from:
+        start_date = end_date - timedelta(days=30)
+    else:
+        start_date = datetime.strptime(date_from, '%Y-%m-%d').date()
+
+    request = TransactionsGetRequest(
+        access_token=access_token,
+        start_date=start_date,
+        end_date=end_date,
+        options=TransactionsGetRequestOptions(count=500, offset=0)
+    )
+    try:
+        response = client.transactions_get(request)
+        transactions = response['transactions']
+    except plaid.ApiException as e:
+        # If token is invalid, clear it so user can reconnect
+        if e.status == 400 and 'INVALID_ACCESS_TOKEN' in e.body:
+            set_plaid_access_token('')  # clear token
+            raise Exception("Access token expired or invalid. Please reconnect your bank.")
+        raise
+
+    # Format transactions
+    result = []
+    for tx in transactions:
+        result.append({
+            'id': tx['transaction_id'],
+            'date': tx['date'],
+            'amount': tx['amount'],
+            'description': tx.get('name', ''),
+            'category': tx.get('category', [''])[0] if tx.get('category') else '',
+            'pending': tx.get('pending', False),
+            'status': 'pending' if tx.get('pending', False) else 'posted'
+        })
+    return result
+
+# Override the existing bank-transactions and sync endpoints to use the new fetch function
+# (They are already defined earlier, but we need to ensure they call the above function.
+#  We'll re-define them here to override.)
+
+@app.route('/api/accounting/bank-transactions', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_get_bank_transactions():
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        search = request.args.get('search', '').strip()
+
+        all_tx = fetch_bank_transactions(date_from, date_to)
+
+        if search:
+            search_lower = search.lower()
+            all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
+
+        all_tx.sort(key=lambda x: x['date'], reverse=True)
+        total = len(all_tx)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated = all_tx[start:end]
+
+        return jsonify({
+            'status': 'success',
+            'transactions': paginated,
+            'total': total,
+            'page': page,
+            'per_page': per_page
+        })
+    except Exception as e:
+        app.logger.error(f"Error fetching bank transactions: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/accounting/bank/sync', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_bank_sync():
+    # Just return success; the GET will fetch fresh data
+    return jsonify({'status': 'success', 'message': 'Sync triggered'})
+
 
 # ============================================================
 # END OF ACCOUNTING ENDPOINTS

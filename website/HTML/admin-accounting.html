@@ -18,7 +18,6 @@
             padding: 0;
         }
 
-        /* Use the same container styles as the main admin panel */
         .admin-container {
             max-width: 1400px;
             margin: 0 auto;
@@ -35,7 +34,6 @@
             gap: 12px;
         }
 
-        /* Sub-tabs */
         .sub-tabs {
             display: flex;
             gap: 5px;
@@ -78,7 +76,6 @@
             display: block;
         }
 
-        /* Stats Cards */
         .accounting-stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -105,7 +102,6 @@
         .accounting-stat-card.danger { border-left-color: #dc3545; }
         .accounting-stat-card.success { border-left-color: #28a745; }
 
-        /* Journal Table */
         .journal-table-container {
             overflow-x: auto;
             max-height: 500px;
@@ -129,7 +125,6 @@
             padding: 8px 12px;
             border-bottom: 1px solid #eee;
         }
-        /* === FIX: Add text color for journal table === */
         .journal-table th,
         .journal-table td {
             color: #333 !important;
@@ -137,7 +132,6 @@
         .journal-table .debit { color: #28a745; font-weight: 600; }
         .journal-table .credit { color: #dc3545; font-weight: 600; }
 
-        /* Manual Entry */
         .manual-entry-row {
             display: flex;
             gap: 10px;
@@ -165,7 +159,6 @@
         .balance-indicator.balanced { background: #d4edda; color: #155724; }
         .balance-indicator.unbalanced { background: #f8d7da; color: #721c24; }
 
-        /* Reconciliation */
         .reconciliation-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -209,7 +202,6 @@
             background: #f0fff0;
         }
 
-        /* Reports */
         .report-selector {
             display: flex;
             gap: 15px;
@@ -308,6 +300,28 @@
         }
         .status-badge.active { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .status-badge.removed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status-badge.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .bank-table-container {
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        /* Order table styles (reused from admin.css) */
+        .records-table-container { overflow-x: auto; }
+        .records-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .records-table th { background: #f8f9fa; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 5; }
+        .records-table td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+        .page-btn { padding: 6px 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .page-input { width: 50px; text-align: center; padding: 4px; border: 1px solid #ddd; border-radius: 4px; }
+        .pagination-info { display: flex; align-items: center; gap: 8px; }
+        .sort-indicator { font-size: 12px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-number { font-size: 28px; font-weight: bold; margin: 0; }
+        .filter-controls { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
+        .filter-group { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+        .filter-select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -336,6 +350,8 @@
                 <button class="sub-tab" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
                 <button class="sub-tab" data-subtab="adjustments"><i class="fas fa-pencil-alt"></i> Adjustments</button>
                 <button class="sub-tab" data-subtab="reconcile"><i class="fas fa-handshake"></i> Reconciliation</button>
+                <!-- NEW Bank Tab -->
+                <button class="sub-tab" data-subtab="bank"><i class="fas fa-university"></i> Bank</button>
                 <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
@@ -507,6 +523,53 @@
                 </div>
             </div>
 
+            <!-- NEW Bank Transactions Sub-tab -->
+            <div id="sub-bank" class="sub-tab-content">
+                <h4><i class="fas fa-university"></i> Bank Transactions</h4>
+                <p class="text-muted">View and sync transactions from your connected bank account (FNBO).</p>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
+                    <div class="form-group">
+                        <label>Date From</label>
+                        <input type="date" id="bank-date-from">
+                    </div>
+                    <div class="form-group">
+                        <label>Date To</label>
+                        <input type="date" id="bank-date-to">
+                    </div>
+                    <div class="form-group">
+                        <label>Search</label>
+                        <input type="text" id="bank-search" placeholder="Description...">
+                    </div>
+                    <button class="btn btn-primary" onclick="loadBankTransactions()"><i class="fas fa-search"></i> Filter</button>
+                    <button class="btn btn-success" onclick="syncBankTransactions()"><i class="fas fa-sync-alt"></i> Sync Now</button>
+                    <span id="bank-sync-status" class="text-muted"></span>
+                </div>
+                <div class="bank-table-container">
+                    <table class="journal-table" id="bank-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Amount</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bank-body">
+                            <tr><td colspan="5" style="text-align:center; padding:40px;">Loading transactions...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <span id="bank-pagination-info">Showing 0 entries</span>
+                    <div>
+                        <button class="btn btn-sm btn-secondary" id="bank-prev" disabled>Prev</button>
+                        <span id="bank-page-info">Page 1</span>
+                        <button class="btn btn-sm btn-secondary" id="bank-next" disabled>Next</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Reports Sub-tab -->
             <div id="sub-reports" class="sub-tab-content">
                 <h4><i class="fas fa-chart-pie"></i> Financial Reports</h4>
@@ -540,28 +603,26 @@
             <div id="sub-orders" class="sub-tab-content">
                 <h2><i class="fas fa-shopping-bag"></i> Order Management</h2>
                 
-                <!-- Stats Cards -->
-                <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
-                    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                <div class="stats-grid" style="margin-bottom: 20px;">
+                    <div class="stat-card">
                         <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Orders</h3>
-                        <p class="stat-number" id="total-orders" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
+                        <p class="stat-number" id="total-orders" style="color: #007bff;">0</p>
                     </div>
-                    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div class="stat-card">
                         <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Revenue</h3>
-                        <p class="stat-number" id="total-revenue" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">$0.00</p>
+                        <p class="stat-number" id="total-revenue" style="color: #28a745;">$0.00</p>
                     </div>
-                    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div class="stat-card">
                         <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Pending</h3>
-                        <p class="stat-number" id="pending-orders" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">0</p>
+                        <p class="stat-number" id="pending-orders" style="color: #ffc107;">0</p>
                     </div>
-                    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div class="stat-card">
                         <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Paid</h3>
-                        <p class="stat-number" id="paid-orders" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
+                        <p class="stat-number" id="paid-orders" style="color: #28a745;">0</p>
                     </div>
                 </div>
                 
-                <!-- Filters -->
-                <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                <div class="filter-controls" style="margin-bottom: 20px;">
                     <div class="filter-group" style="flex: 2;">
                         <label for="orders-search"><i class="fas fa-search"></i> Search:</label>
                         <input type="text" id="orders-search" class="filter-select" placeholder="Search by order ID, customer, or items..." style="width: 100%;">
@@ -585,7 +646,6 @@
                     </div>
                 </div>
                 
-                <!-- Orders Table -->
                 <div class="records-table-container">
                     <table class="records-table" id="orders-table">
                         <thead>
@@ -611,7 +671,6 @@
                     </div>
                 </div>
                 
-                <!-- Pagination -->
                 <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                     <button class="page-btn" onclick="goToOrdersPage(1)" id="orders-first-btn" disabled>
                         <i class="fas fa-angle-double-left"></i>
@@ -645,13 +704,11 @@
                     </div>
                 </div>
                 
-                <!-- Pagination Info -->
                 <div style="margin-top: 10px; color: #666; font-size: 14px;">
                     Showing <span id="orders-showing-start">0</span>-<span id="orders-showing-end">0</span> 
                     of <span id="orders-total-filtered">0</span> orders
                 </div>
                 
-                <!-- Action Buttons -->
                 <div class="action-buttons" style="margin-top: 20px;">
                     <button class="btn btn-primary" onclick="refreshOrders()">
                         <i class="fas fa-sync-alt"></i> Refresh
@@ -661,7 +718,6 @@
                     </button>
                 </div>
                 
-                <!-- Loading Indicator -->
                 <div class="loading" id="orders-loading" style="display: none;">
                     <div class="loading-spinner"></div>
                     <p>Loading orders...</p>
