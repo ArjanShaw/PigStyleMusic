@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'reconcile') loadReconciliationStatus();
             else if (sub === 'bank') {
                 loadBankTransactions();
-                checkBankConnection();  // NEW
+                checkBankConnection();
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load dashboard by default
     loadDashboard();
 
-    // ---- Handle OAuth redirect from Plaid ----
+    // ---- Handle OAuth redirect from Plaid (fallback) ----
     const urlParams = new URLSearchParams(window.location.search);
     const publicToken = urlParams.get('public_token');
     if (publicToken) {
@@ -648,7 +648,8 @@ function renderReport(data, type) {
     });
     html += '</tbody></table>';
     if (data.summary) {
-        html += `<div style="margin-top:15px; background:#f0f0f0; padding:10px; border-radius:4px;">
+        // Added class and explicit color to ensure black text
+        html += `<div style="margin-top:15px; background:#f0f0f0; padding:10px; border-radius:4px; color:#333;" class="summary-text">
             <strong>Summary:</strong> ${data.summary}
         </div>`;
     }
@@ -704,8 +705,6 @@ async function checkBankConnection() {
     }
 }
 
-
-
 async function connectBank() {
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/plaid/create-link-token`, {
@@ -721,9 +720,8 @@ async function connectBank() {
         const linkToken = data.link_token;
         const handler = Plaid.create({
             token: linkToken,
-            isOAuth: true,   // Enables OAuth redirect flow
+            isOAuth: true,
             onSuccess: async (public_token, metadata) => {
-                // Exchange public token for access token
                 const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/exchange`, {
                     method: 'POST',
                     credentials: 'include',
@@ -828,7 +826,7 @@ async function syncBankTransactions() {
         const data = await res.json();
         if (data.status === 'success') {
             status.textContent = '✅ Sync triggered. Refreshing...';
-            loadBankTransactions(); // refresh list
+            loadBankTransactions();
         } else {
             status.textContent = '❌ ' + (data.error || 'Sync failed');
         }
