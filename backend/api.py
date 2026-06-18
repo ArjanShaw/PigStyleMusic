@@ -7780,13 +7780,24 @@ def accounting_get_account_transactions():
             query += ' AND je.transaction_date <= ?'
             params.append(date_to)
 
-        # Get total count
-        count_query = query.replace(
-            'SELECT jl.id, jl.journal_entry_id, jl.account_id, jl.debit_amount, jl.credit_amount, je.transaction_date, je.description as journal_description, je.source_type, je.source_id, a.code as account_code, a.name as account_name',
-            'SELECT COUNT(*) as total'
-        )
-        cursor.execute(count_query, params)
-        total = cursor.fetchone()['total']
+        # Get total count - simplified to avoid string replacement issues
+        count_query = '''
+            SELECT COUNT(*) as total
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.journal_entry_id = je.id
+            WHERE jl.account_id = ?
+        '''
+        count_params = [account_id]
+        if date_from:
+            count_query += ' AND je.transaction_date >= ?'
+            count_params.append(date_from)
+        if date_to:
+            count_query += ' AND je.transaction_date <= ?'
+            count_params.append(date_to)
+            
+        cursor.execute(count_query, count_params)
+        result = cursor.fetchone()
+        total = result['total'] if result else 0
 
         # Get paginated results
         query += ' ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
@@ -7794,8 +7805,7 @@ def accounting_get_account_transactions():
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-        # Get running balance (sum of all transactions up to the last returned date)
-        # For simplicity, we calculate the balance from all transactions for this account
+        # Get running balance - handle None values properly
         balance_query = '''
             SELECT 
                 COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
@@ -7813,24 +7823,25 @@ def accounting_get_account_transactions():
 
         cursor.execute(balance_query, balance_params)
         balance_row = cursor.fetchone()
-        balance = balance_row['balance'] / 100.0 if balance_row else 0
+        balance = balance_row['balance'] / 100.0 if balance_row and balance_row['balance'] is not None else 0
 
-        # Format results
+        # Format results - safely handle None values
         transactions = []
         for row in rows:
+            row_dict = dict(row) if row else {}
             transactions.append({
-                'id': row['id'],
-                'journal_entry_id': row['journal_entry_id'],
-                'account_id': row['account_id'],
-                'account_code': row['account_code'],
-                'account_name': row['account_name'],
-                'transaction_date': row['transaction_date'],
-                'journal_description': row['journal_description'] or '',
-                'description': row['journal_description'] or '',
-                'debit_amount': row['debit_amount'] / 100.0 if row['debit_amount'] else 0,
-                'credit_amount': row['credit_amount'] / 100.0 if row['credit_amount'] else 0,
-                'source_type': row['source_type'] or '',
-                'source_id': row['source_id'] or ''
+                'id': row_dict.get('id'),
+                'journal_entry_id': row_dict.get('journal_entry_id'),
+                'account_id': row_dict.get('account_id'),
+                'account_code': row_dict.get('account_code', ''),
+                'account_name': row_dict.get('account_name', ''),
+                'transaction_date': row_dict.get('transaction_date', ''),
+                'journal_description': row_dict.get('journal_description') or '',
+                'description': row_dict.get('journal_description') or '',
+                'debit_amount': (row_dict.get('debit_amount') or 0) / 100.0,
+                'credit_amount': (row_dict.get('credit_amount') or 0) / 100.0,
+                'source_type': row_dict.get('source_type') or '',
+                'source_id': row_dict.get('source_id') or ''
             })
 
         conn.close()
