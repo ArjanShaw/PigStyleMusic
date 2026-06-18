@@ -7753,6 +7753,7 @@ def accounting_get_account_transactions():
             return jsonify({'status': 'error', 'error': 'Account not found'}), 404
 
         # Build the query for journal lines with this account
+        # Use date() function to handle date comparisons regardless of format
         query = '''
             SELECT 
                 jl.id,
@@ -7773,11 +7774,12 @@ def accounting_get_account_transactions():
         '''
         params = [account_id]
 
+        # Handle date filters - use date() function to normalize
         if date_from:
-            query += ' AND je.transaction_date >= ?'
+            query += ' AND date(je.transaction_date) >= date(?)'
             params.append(date_from)
         if date_to:
-            query += ' AND je.transaction_date <= ?'
+            query += ' AND date(je.transaction_date) <= date(?)'
             params.append(date_to)
 
         # Get total count
@@ -7789,10 +7791,10 @@ def accounting_get_account_transactions():
         '''
         count_params = [account_id]
         if date_from:
-            count_query += ' AND je.transaction_date >= ?'
+            count_query += ' AND date(je.transaction_date) >= date(?)'
             count_params.append(date_from)
         if date_to:
-            count_query += ' AND je.transaction_date <= ?'
+            count_query += ' AND date(je.transaction_date) <= date(?)'
             count_params.append(date_to)
             
         cursor.execute(count_query, count_params)
@@ -7815,30 +7817,24 @@ def accounting_get_account_transactions():
         '''
         balance_params = [account_id]
         if date_from:
-            balance_query += ' AND je.transaction_date >= ?'
+            balance_query += ' AND date(je.transaction_date) >= date(?)'
             balance_params.append(date_from)
         if date_to:
-            balance_query += ' AND je.transaction_date <= ?'
+            balance_query += ' AND date(je.transaction_date) <= date(?)'
             balance_params.append(date_to)
 
         cursor.execute(balance_query, balance_params)
         balance_row = cursor.fetchone()
         balance = balance_row['balance'] / 100.0 if balance_row and balance_row['balance'] is not None else 0
 
-        # Format results - safely handle None values
+        # Format results
         transactions = []
         for row in rows:
             row_dict = dict(row) if row else {}
             
-            # Get debit and credit amounts (handle None)
+            # Get debit and credit amounts
             debit = row_dict.get('debit_amount') or 0
             credit = row_dict.get('credit_amount') or 0
-            
-            # For display purposes, show both debit and credit
-            # If the account is an expense account and has a credit, convert to debit for display
-            # This makes it easier to read
-            display_debit = debit / 100.0
-            display_credit = credit / 100.0
             
             transactions.append({
                 'id': row_dict.get('id'),
@@ -7849,8 +7845,8 @@ def accounting_get_account_transactions():
                 'transaction_date': row_dict.get('transaction_date', ''),
                 'journal_description': row_dict.get('journal_description') or '',
                 'description': row_dict.get('journal_description') or '',
-                'debit_amount': display_debit,
-                'credit_amount': display_credit,
+                'debit_amount': debit / 100.0,
+                'credit_amount': credit / 100.0,
                 'source_type': row_dict.get('source_type') or '',
                 'source_id': row_dict.get('source_id') or ''
             })

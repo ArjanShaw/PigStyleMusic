@@ -133,8 +133,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('journal-date-to').value = today;
     document.getElementById('bank-date-from').value = firstDay;
     document.getElementById('bank-date-to').value = today;
-    document.getElementById('account-tx-date-from').value = firstDay;
-    document.getElementById('account-tx-date-to').value = today;
+    document.getElementById('account-tx-date-from').value =  '';
+    document.getElementById('account-tx-date-to').value = '';
 
     // Load dashboard by default
     loadDashboard();
@@ -450,6 +450,8 @@ async function loadAccountTransactions() {
     params.append('account_id', accountId);
     params.append('page', accountTxCurrentPage);
     params.append('per_page', accountTxPageSize);
+    
+    // Only add date filters if they have values
     const from = document.getElementById('account-tx-date-from').value;
     const to = document.getElementById('account-tx-date-to').value;
     if (from) params.append('date_from', from);
@@ -463,7 +465,7 @@ async function loadAccountTransactions() {
         if (!res.ok) throw new Error('Failed to load account transactions');
         const data = await res.json();
         if (data.status === 'success') {
-            accountTxTotalEntries = data.total;
+            accountTxTotalEntries = data.total || 0;
             currentAccountBalance = data.balance || 0;
             renderAccountTransactions(data.transactions || []);
             updateAccountTxPagination();
@@ -472,9 +474,11 @@ async function loadAccountTransactions() {
             body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
+        console.error('Error loading account transactions:', err);
         body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
+
 
 function renderAccountTransactions(transactions) {
     const body = document.getElementById('account-tx-body');
