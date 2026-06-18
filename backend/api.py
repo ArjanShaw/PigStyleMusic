@@ -7728,11 +7728,14 @@ def accounting_bank_sync():
     # Just return success; the GET will fetch fresh data
     return jsonify({'status': 'success', 'message': 'Sync triggered'})
 
+
 @app.route('/api/accounting/bank/apply-filter', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def accounting_apply_filter():
-    """Apply a pattern filter to unprocessed bank transactions and create journal entries."""
+    """Apply a pattern filter to bank transactions and create journal entries.
+    Only unprocessed transactions are applied; processed ones are reported.
+    """
     data = request.json
     pattern = data.get('pattern', '').strip()
     account_id = data.get('account_id')
@@ -7750,26 +7753,39 @@ def accounting_apply_filter():
         conn.close()
         return jsonify({'status': 'error', 'error': 'Account not found'}), 400
 
-    # Get unprocessed withdrawals (amount > 0) containing pattern (case-insensitive)
     pattern_upper = pattern.upper()
+    # Get all matching transactions (both processed and unprocessed)
     cursor.execute('''
-        SELECT id, transaction_date, amount, description
+        SELECT id, transaction_date, amount, description, processed
         FROM bank_transactions
-        WHERE processed = 0 AND amount > 0 AND UPPER(description) LIKE ?
+        WHERE amount > 0 AND UPPER(description) LIKE ?
     ''', (f'%{pattern_upper}%',))
-    transactions = cursor.fetchall()
+    all_matching = cursor.fetchall()
+
+    unprocessed = [t for t in all_matching if t['processed'] == 0]
+    processed_matches = [t for t in all_matching if t['processed'] == 1]
 
     if dry_run:
         conn.close()
         return jsonify({
             'status': 'success',
-            'count': len(transactions),
-            'transactions': [{'description': t['description'], 'amount': t['amount']} for t in transactions]
+            'unprocessed_count': len(unprocessed),
+            'processed_count': len(processed_matches),
+            'transactions': [{'description': t['description'], 'amount': t['amount']} for t in unprocessed]
         })
 
-    # Process matched transactions
+    if not unprocessed:
+        conn.close()
+        return jsonify({
+            'status': 'success',
+            'count': 0,
+            'processed_count': len(processed_matches),
+            'message': f'All {len(processed_matches)} matching transactions are already processed.'
+        })
+
+    # Process only unprocessed transactions
     processed_count = 0
-    for tx in transactions:
+    for tx in unprocessed:
         amount_cents = int(round(tx['amount'] * 100))
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
@@ -7795,11 +7811,12 @@ def accounting_apply_filter():
 
     conn.commit()
     conn.close()
-    return jsonify({'status': 'success', 'count': processed_count})
-# ============================================================
-# END OF ACCOUNTING ENDPOINTS
-# ============================================================
-
+    return jsonify({
+        'status': 'success',
+        'count': processed_count,
+        'processed_count': len(processed_matches),
+        'message': f'Applied to {processed_count} transactions. {len(processed_matches)} were already processed.'
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
