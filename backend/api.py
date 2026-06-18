@@ -7729,12 +7729,14 @@ def accounting_bank_sync():
     return jsonify({'status': 'success', 'message': 'Sync triggered'})
 
 
+
 @app.route('/api/accounting/bank/apply-filter', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def accounting_apply_filter():
-    """Apply a pattern filter to bank transactions and create journal entries.
-    Only unprocessed transactions are applied; processed ones are reported.
+    """Apply a pattern filter to bank transactions (both positive and negative).
+    For negative amounts (expense): debit selected account, credit cash.
+    For positive amounts (income): debit cash, credit selected account.
     """
     data = request.json
     pattern = data.get('pattern', '').strip()
@@ -7748,17 +7750,19 @@ def accounting_apply_filter():
     cursor = conn.cursor()
 
     # Verify account exists
-    cursor.execute('SELECT id FROM accounts WHERE id = ?', (account_id,))
-    if not cursor.fetchone():
+    cursor.execute('SELECT id, type FROM accounts WHERE id = ?', (account_id,))
+    account_row = cursor.fetchone()
+    if not account_row:
         conn.close()
         return jsonify({'status': 'error', 'error': 'Account not found'}), 400
+    account_type = account_row['type']  # 'asset', 'liability', 'revenue', 'expense', etc.
 
     pattern_upper = pattern.upper()
-    # Get all matching transactions (both processed and unprocessed)
+    # Match any transaction (both signs) with the pattern
     cursor.execute('''
         SELECT id, transaction_date, amount, description, processed
         FROM bank_transactions
-        WHERE amount > 0 AND UPPER(description) LIKE ?
+        WHERE UPPER(description) LIKE ?
     ''', (f'%{pattern_upper}%',))
     all_matching = cursor.fetchall()
 
@@ -7771,7 +7775,11 @@ def accounting_apply_filter():
             'status': 'success',
             'unprocessed_count': len(unprocessed),
             'processed_count': len(processed_matches),
-            'transactions': [{'description': t['description'], 'amount': t['amount']} for t in unprocessed]
+            'transactions': [{
+                'description': t['description'],
+                'amount': t['amount'],          # keep original sign
+                'type': 'expense' if t['amount'] < 0 else 'income'
+            } for t in unprocessed]
         })
 
     if not unprocessed:
@@ -7783,28 +7791,48 @@ def accounting_apply_filter():
             'message': f'All {len(processed_matches)} matching transactions are already processed.'
         })
 
-    # Process only unprocessed transactions
     processed_count = 0
     for tx in unprocessed:
-        amount_cents = int(round(tx['amount'] * 100))
+        amount_cents = int(round(tx['amount'] * 100))  # keep sign
+        is_expense = amount_cents < 0
+        abs_amount = abs(amount_cents)
+
+        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
-        ''', (tx['transaction_date'], f"Bank expense: {tx['description']}", 'bank_transaction', tx['id']))
+        ''', (tx['transaction_date'], f"Bank transaction: {tx['description']}", 'bank_transaction', tx['id']))
         entry_id = cursor.lastrowid
 
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, account_id, amount_cents, 0))
-
+        # Get cash account (1010)
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
         cash_row = cursor.fetchone()
-        if cash_row:
+        if not cash_row:
+            conn.rollback()
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
+        cash_id = cash_row['id']
+
+        if is_expense:
+            # Debit the selected account, Credit cash
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_row['id'], 0, amount_cents))
+            ''', (entry_id, account_id, abs_amount, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, 0, abs_amount))
+        else:
+            # Debit cash, Credit the selected account
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, abs_amount, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, abs_amount))
 
         cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (tx['id'],))
         processed_count += 1
@@ -7817,7 +7845,6 @@ def accounting_apply_filter():
         'processed_count': len(processed_matches),
         'message': f'Applied to {processed_count} transactions. {len(processed_matches)} were already processed.'
     })
-
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
