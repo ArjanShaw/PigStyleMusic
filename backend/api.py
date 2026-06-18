@@ -3569,218 +3569,201 @@ def get_dropoff_records():
     return jsonify({'status': 'success', 'records': records_list})
 
 
-# ==================== PRICE ESTIMATE ENDPOINT ====================
+# ==================== PRICE ESTIMATE ENDPOINT - NO FALLBACKS, NO TRY/CATCH ====================
  
 @app.route('/api/discogs/price-suggestions/<release_id>', methods=['GET'])
 def discogs_price_suggestions_proxy(release_id):
     """Proxy endpoint to fetch Discogs price suggestions"""
-    try:
-        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
-        if not TOKEN:
-            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
-        
-        headers = {
-            'Authorization': f'Discogs token={TOKEN}',
-            'User-Agent': 'PigStyleMusic/1.0'
-        }
-        
-        url = f"https://api.discogs.com/marketplace/price_suggestions/{release_id}"
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code != 200:
-            return jsonify({'status': 'error', 'error': f'Discogs API returned {response.status_code}'}), response.status_code
-        
-        return jsonify(response.json())
-        
-    except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+    TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+    if not TOKEN:
+        return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+    
+    headers = {
+        'Authorization': f'Discogs token={TOKEN}',
+        'User-Agent': 'PigStyleMusic/1.0'
+    }
+    
+    url = f"https://api.discogs.com/marketplace/price_suggestions/{release_id}"
+    
+    response = requests.get(url, headers=headers, timeout=10)
+    
+    if response.status_code != 200:
+        return jsonify({'status': 'error', 'error': f'Discogs API returned {response.status_code}'}), response.status_code
+    
+    return jsonify(response.json())
 
 
 @app.route('/api/ebay/search', methods=['POST'])
 def ebay_search_proxy():
     """Proxy endpoint to search eBay listings"""
-    try:
-        data = request.get_json()
-        
-        if not data or 'query' not in data:
-            return jsonify({'status': 'error', 'error': 'query required'}), 400
-        
-        search_query = data.get('query')
-        limit = data.get('limit', 50)
-        
-        ebay_client_id = os.environ.get('EBAY_CLIENT_ID')
-        ebay_client_secret = os.environ.get('EBAY_CLIENT_SECRET')
-        
-        if not ebay_client_id or not ebay_client_secret:
-            return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
-        
-        # Get OAuth token
-        token_url = "https://api.ebay.com/identity/v1/oauth2/token"
-        token_headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        token_data = {
-            'grant_type': 'client_credentials',
-            'scope': 'https://api.ebay.com/oauth/api_scope'
-        }
-        
-        token_response = requests.post(
-            token_url, 
-            headers=token_headers, 
-            data=token_data, 
-            auth=(ebay_client_id, ebay_client_secret), 
-            timeout=10
-        )
-        
-        if token_response.status_code != 200:
-            return jsonify({'status': 'error', 'error': 'Failed to get eBay access token'}), 500
-        
-        access_token = token_response.json().get('access_token')
-        
-        # Search eBay
-        search_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json'
-        }
-        params = {
-            'q': search_query,
-            'limit': limit,
-            'filter': 'conditions:{NEW|USED}',
-            'sort': 'price'
-        }
-        
-        response = requests.get(search_url, headers=headers, params=params, timeout=15)
-        
-        if response.status_code != 200:
-            return jsonify({
-                'status': 'error',
-                'error': f'eBay API returned {response.status_code}'
-            }), response.status_code
-        
-        return jsonify(response.json())
-        
-    except Exception as e:
-        app.logger.error(f"eBay search error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+    data = request.get_json()
+    
+    if not data or 'query' not in data:
+        return jsonify({'status': 'error', 'error': 'query required'}), 400
+    
+    search_query = data.get('query')
+    limit = data.get('limit', 50)
+    
+    ebay_client_id = os.environ.get('EBAY_CLIENT_ID')
+    ebay_client_secret = os.environ.get('EBAY_CLIENT_SECRET')
+    
+    if not ebay_client_id or not ebay_client_secret:
+        return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
+    
+    # Get OAuth token
+    token_url = "https://api.ebay.com/identity/v1/oauth2/token"
+    token_headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    token_data = {
+        'grant_type': 'client_credentials',
+        'scope': 'https://api.ebay.com/oauth/api_scope'
+    }
+    
+    token_response = requests.post(
+        token_url, 
+        headers=token_headers, 
+        data=token_data, 
+        auth=(ebay_client_id, ebay_client_secret), 
+        timeout=10
+    )
+    
+    if token_response.status_code != 200:
+        return jsonify({'status': 'error', 'error': 'Failed to get eBay access token'}), 500
+    
+    access_token = token_response.json().get('access_token')
+    
+    # Search eBay
+    search_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+    params = {
+        'q': search_query,
+        'limit': limit,
+        'filter': 'conditions:{NEW|USED}',
+        'sort': 'price'
+    }
+    
+    response = requests.get(search_url, headers=headers, params=params, timeout=15)
+    
+    if response.status_code != 200:
+        return jsonify({
+            'status': 'error',
+            'error': f'eBay API returned {response.status_code}'
+        }), response.status_code
+    
+    return jsonify(response.json())
 
         
 @app.route('/api/discogs/search', methods=['GET'])
 def discogs_search_proxy():
-    try:
-        search_term = request.args.get('q', '')
+    search_term = request.args.get('q', '')
+    
+    if not search_term:
+        return jsonify({'status': 'error', 'error': 'Search term required'}), 400
+    
+    TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+    if not TOKEN:
+        return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+    
+    headers = {
+        'Authorization': f'Discogs token={TOKEN}',
+        'User-Agent': 'PigStyleMusic/1.0'
+    }
+    
+    response = requests.get(
+        'https://api.discogs.com/database/search',
+        headers=headers,
+        params={'q': search_term, 'type': 'release', 'per_page': 20}
+    )
+    
+    if response.status_code != 200:
+        return jsonify({'status': 'error', 'error': 'Discogs search failed'}), response.status_code
+    
+    data = response.json()
+    results = []
+    
+    for item in data.get('results', []):
+        # Get artist from response or extract from title
+        artist = item.get('artist', '')
+        title = item.get('title', '')
         
-        if not search_term:
-            return jsonify({'status': 'error', 'error': 'Search term required'}), 400
+        # If artist is missing or "Unknown", try to extract from title
+        if not artist or artist == 'Unknown':
+            if title and ' - ' in title:
+                parts = title.split(' - ', 1)
+                artist = parts[0].strip()
+                title = parts[1].strip() if len(parts) > 1 else title
+                print(f"Extracted artist '{artist}' from title")
         
-        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
-        if not TOKEN:
-            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+        # Handle artist being a list
+        if isinstance(artist, list):
+            artist = artist[0] if artist else 'Unknown'
         
-        headers = {
-            'Authorization': f'Discogs token={TOKEN}',
-            'User-Agent': 'PigStyleMusic/1.0'
-        }
+        # Final fallback
+        if not artist or artist == 'Unknown':
+            artist = 'Unknown Artist'
         
-        response = requests.get(
-            'https://api.discogs.com/database/search',
-            headers=headers,
-            params={'q': search_term, 'type': 'release', 'per_page': 20}
-        )
+        # Get raw genre string
+        genre_list = item.get('genre', [])
+        raw_genre = ', '.join(genre_list) if genre_list else ''
         
-        if response.status_code != 200:
-            return jsonify({'status': 'error', 'error': 'Discogs search failed'}), response.status_code
-        
-        data = response.json()
-        results = []
-        
-        for item in data.get('results', []):
-            # Get artist from response or extract from title
-            artist = item.get('artist', '')
-            title = item.get('title', '')
-            
-            # If artist is missing or "Unknown", try to extract from title
-            if not artist or artist == 'Unknown':
-                if title and ' - ' in title:
-                    parts = title.split(' - ', 1)
-                    artist = parts[0].strip()
-                    title = parts[1].strip() if len(parts) > 1 else title
-                    print(f"Extracted artist '{artist}' from title")
-            
-            # Handle artist being a list
-            if isinstance(artist, list):
-                artist = artist[0] if artist else 'Unknown'
-            
-            # Final fallback
-            if not artist or artist == 'Unknown':
-                artist = 'Unknown Artist'
-            
-            # Get raw genre string
-            genre_list = item.get('genre', [])
-            raw_genre = ', '.join(genre_list) if genre_list else ''
-            
-            results.append({
-                'artist': artist,
-                'title': title,
-                'year': item.get('year'),
-                'genre_raw': raw_genre,
-                'format': item.get('format', [''])[0] if item.get('format') else '',
-                'country': item.get('country'),
-                'image_url': item.get('thumb', ''),
-                'catalog_number': item.get('catno', ''),
-                'discogs_id': item.get('id'),
-                'barcode': item.get('barcode', [''])[0] if item.get('barcode') else ''
-            })
-        
-        return jsonify({'status': 'success', 'results': results, 'count': len(results)})
-        
-    except Exception as e:
-        app.logger.error(f"Discogs search error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+        results.append({
+            'artist': artist,
+            'title': title,
+            'year': item.get('year'),
+            'genre_raw': raw_genre,
+            'format': item.get('format', [''])[0] if item.get('format') else '',
+            'country': item.get('country'),
+            'image_url': item.get('thumb', ''),
+            'catalog_number': item.get('catno', ''),
+            'discogs_id': item.get('id'),
+            'barcode': item.get('barcode', [''])[0] if item.get('barcode') else ''
+        })
+    
+    return jsonify({'status': 'success', 'results': results, 'count': len(results)})
 
 
 @app.route('/catalog/records', methods=['GET'])
 def get_catalog_records():
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'INVENTORY_CUTOFF_DAYS'")
-        cutoff_row = cursor.fetchone()
-        cutoff_days = int(cutoff_row['config_value']) if cutoff_row else 30
-        query = """
-            SELECT r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number, r.store_price, r.youtube_url, r.consignor_id,
-            r.commission_rate, r.created_at, r.status_id, ds.status_name as status_name,
-            r.date_sold, r.condition_sleeve_id, cs.condition_name as condition_sleeve,
-            r.condition_disc_id, cd.condition_name as condition_disc, r.last_seen,
-            r.discogs_listing_id, r.discogs_listed_date, r.location, r.discogs_genre_raw
-            FROM records r
-            LEFT JOIN d_status ds ON r.status_id = ds.id
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            WHERE (r.last_seen >= DATE('now', '-' || ? || ' days') OR r.last_seen IS NULL)
-            ORDER BY r.created_at DESC
-        """
-        cursor.execute(query, (cutoff_days,))
-        rows = cursor.fetchall()
-        records = []
-        for row in rows:
-            record = {
-                'id': row['id'], 'artist': row['artist'], 'title': row['title'],
-                'barcode': row['barcode'], 'image_url': row['image_url'],
-                'catalog_number': row['catalog_number'], 'store_price': row['store_price'],
-                'youtube_url': row['youtube_url'], 'consignor_id': row['consignor_id'],
-                'commission_rate': row['commission_rate'], 'created_at': row['created_at'],
-                'status_id': row['status_id'], 'status_name': row['status_name'],
-                'date_sold': row['date_sold'], 'condition_sleeve_id': row['condition_sleeve_id'],
-                'condition_sleeve': row['condition_sleeve'], 'condition_disc_id': row['condition_disc_id'],
-                'condition_disc': row['condition_disc'], 'last_seen': row['last_seen'],
-                'discogs_listing_id': row['discogs_listing_id'], 'discogs_listed_date': row['discogs_listed_date'],
-                'location': row['location'] if row['location'] else 'Check with staff',
-                'discogs_genre_raw': row['discogs_genre_raw'] or ''
-            }
-            records.append(record)
-        return jsonify({'status': 'success', 'records': records, 'total': len(records), 'cutoff_days': cutoff_days})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'INVENTORY_CUTOFF_DAYS'")
+    cutoff_row = cursor.fetchone()
+    cutoff_days = int(cutoff_row['config_value']) if cutoff_row else 30
+    query = """
+        SELECT r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number, r.store_price, r.youtube_url, r.consignor_id,
+        r.commission_rate, r.created_at, r.status_id, ds.status_name as status_name,
+        r.date_sold, r.condition_sleeve_id, cs.condition_name as condition_sleeve,
+        r.condition_disc_id, cd.condition_name as condition_disc, r.last_seen,
+        r.discogs_listing_id, r.discogs_listed_date, r.location, r.discogs_genre_raw
+        FROM records r
+        LEFT JOIN d_status ds ON r.status_id = ds.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+        WHERE (r.last_seen >= DATE('now', '-' || ? || ' days') OR r.last_seen IS NULL)
+        ORDER BY r.created_at DESC
+    """
+    cursor.execute(query, (cutoff_days,))
+    rows = cursor.fetchall()
+    records = []
+    for row in rows:
+        record = {
+            'id': row['id'], 'artist': row['artist'], 'title': row['title'],
+            'barcode': row['barcode'], 'image_url': row['image_url'],
+            'catalog_number': row['catalog_number'], 'store_price': row['store_price'],
+            'youtube_url': row['youtube_url'], 'consignor_id': row['consignor_id'],
+            'commission_rate': row['commission_rate'], 'created_at': row['created_at'],
+            'status_id': row['status_id'], 'status_name': row['status_name'],
+            'date_sold': row['date_sold'], 'condition_sleeve_id': row['condition_sleeve_id'],
+            'condition_sleeve': row['condition_sleeve'], 'condition_disc_id': row['condition_disc_id'],
+            'condition_disc': row['condition_disc'], 'last_seen': row['last_seen'],
+            'discogs_listing_id': row['discogs_listing_id'], 'discogs_listed_date': row['discogs_listed_date'],
+            'location': row['location'] if row['location'] else 'Check with staff',
+            'discogs_genre_raw': row['discogs_genre_raw'] or ''
+        }
+        records.append(record)
+    return jsonify({'status': 'success', 'records': records, 'total': len(records), 'cutoff_days': cutoff_days})
 
 
 @app.route('/catalog/grouped-by-release', methods=['GET'])
@@ -5778,271 +5761,184 @@ def calculate_markup():
 
 @app.route('/api/price-estimate-v3', methods=['POST'])
 def price_estimate_v3():
-    """Self-contained Discogs price estimator - no external class dependencies, NO FALLBACKS"""
+    """Price estimate - uses Discogs price suggestions directly"""
     import requests
     import re
-    from enum import Enum
-    from typing import Tuple
     
-    # Log the incoming request
     app.logger.info("=" * 60)
     app.logger.info("🔍 PRICE ESTIMATE V3 CALLED")
-    app.logger.info(f"Request data: {request.json}")
     
-    # ============================================
-    # CONDITION ENUM (defined inside endpoint)
-    # ============================================
-    class Condition(Enum):
-        MINT = "Mint (M)"
-        NEAR_MINT = "Near Mint (NM)"
-        VERY_GOOD_PLUS = "Very Good Plus (VG+)"
-        VERY_GOOD = "Very Good (VG)"
-        GOOD = "Good (G)"
-        FAIR = "Fair (F)"
-        POOR = "Poor (P)"
-        
-        @classmethod
-        def from_string(cls, condition_str: str):
-            """Convert string to Condition enum - NO FALLBACK, raises error if not found"""
-            # Try direct match first (comparing enum values)
-            for condition in cls:
-                if condition.value.lower() == condition_str.lower():
-                    app.logger.info(f"   Direct match: '{condition_str}' -> {condition.value}")
-                    return condition
-            
-            # Try cleaning parentheses and matching
-            cleaned = condition_str.lower().strip()
-            cleaned = re.sub(r'\s*\([^)]*\)', '', cleaned).strip()
-            
-            # Exact matches after cleaning
-            exact_matches = {
-                'mint': cls.MINT, 'm': cls.MINT,
-                'nm': cls.NEAR_MINT, 'near mint': cls.NEAR_MINT,
-                'vg+': cls.VERY_GOOD_PLUS, 'vgplus': cls.VERY_GOOD_PLUS, 'very good plus': cls.VERY_GOOD_PLUS,
-                'vg': cls.VERY_GOOD, 'very good': cls.VERY_GOOD,
-                'g+': cls.GOOD, 'good plus': cls.GOOD,
-                'g': cls.GOOD, 'good': cls.GOOD,
-                'f': cls.FAIR, 'fair': cls.FAIR,
-                'p': cls.POOR, 'poor': cls.POOR
-            }
-            
-            if cleaned in exact_matches:
-                result = exact_matches[cleaned]
-                app.logger.info(f"   Cleaned match: '{condition_str}' -> cleaned: '{cleaned}' -> {result.value}")
-                return result
-            
-            # NO FALLBACK - raise error if condition not found
-            raise ValueError(f"Unknown condition: '{condition_str}'. Valid conditions: Mint, Near Mint, Very Good Plus, Very Good, Good, Fair, Poor")
+    data = request.json
+    catalog_number = data.get('catalog_number', '').strip()
+    media_condition = data.get('media_condition', '').strip()
+    sleeve_condition = data.get('sleeve_condition', '').strip()
     
-    # ============================================
-    # HELPER FUNCTIONS
-    # ============================================
-    def get_condition_multiplier(media_condition: Condition, sleeve_condition: Condition) -> float:
-        multipliers = {
-            Condition.MINT: 1.35, Condition.NEAR_MINT: 1.00,
-            Condition.VERY_GOOD_PLUS: 0.80, Condition.VERY_GOOD: 0.55,
-            Condition.GOOD: 0.25, Condition.FAIR: 0.15, Condition.POOR: 0.08
-        }
-        media_mult = multipliers.get(media_condition)
-        sleeve_mult = multipliers.get(sleeve_condition)
-        
-        # NO FALLBACK - if multiplier not found, raise error
-        if media_mult is None:
-            raise ValueError(f"No multiplier defined for media condition: {media_condition.value}")
-        if sleeve_mult is None:
-            raise ValueError(f"No multiplier defined for sleeve condition: {sleeve_condition.value}")
-        
-        return round((media_mult * 0.7) + (sleeve_mult * 0.3), 3)
+    # Validation
+    if not catalog_number:
+        return jsonify({'status': 'error', 'error': 'catalog_number is required'}), 400
+    if not media_condition:
+        return jsonify({'status': 'error', 'error': 'media_condition is required'}), 400
+    if not sleeve_condition:
+        return jsonify({'status': 'error', 'error': 'sleeve_condition is required'}), 400
     
-    def calculate_demand_adjustment(wants: int, haves: int) -> Tuple[float, float]:
-        if haves == 0:
-            return 1.0, 0.0
-        ratio = wants / haves
-        if ratio >= 2.0: adjustment = 1.25
-        elif ratio >= 1.5: adjustment = 1.15
-        elif ratio >= 1.0: adjustment = 1.05
-        elif ratio >= 0.5: adjustment = 1.00
-        elif ratio >= 0.2: adjustment = 0.95
-        else: adjustment = 0.85
-        return adjustment, ratio
+    # Get Discogs token
+    discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
+    if not discogs_token:
+        return jsonify({'status': 'error', 'error': 'DISCOGS_USER_TOKEN not configured'}), 500
     
-    def calculate_confidence(num_sales: int, want_have_ratio: float) -> float:
-        sales_confidence = min(num_sales / 30.0, 1.0) * 70
-        if 0.5 <= want_have_ratio <= 2.0: ratio_confidence = 30
-        elif 0.2 <= want_have_ratio <= 5.0: ratio_confidence = 15
-        else: ratio_confidence = 5
-        return min(sales_confidence + ratio_confidence, 100)
+    headers = {
+        'User-Agent': 'PigStyleMusic/1.0',
+        'Authorization': f'Discogs token={discogs_token}'
+    }
     
-    # ============================================
-    # MAIN LOGIC
-    # ============================================
-    try:
-        data = request.json
-        catalog_number = data.get('catalog_number', '').strip()
-        media_condition = data.get('media_condition', '').strip()
-        sleeve_condition = data.get('sleeve_condition', '').strip()
-        
-        # DEBUG: Log what was received
-        app.logger.info(f"📥 RECEIVED PARAMETERS:")
-        app.logger.info(f"   catalog_number: '{catalog_number}'")
-        app.logger.info(f"   media_condition: '{media_condition}'")
-        app.logger.info(f"   sleeve_condition: '{sleeve_condition}'")
-        
-        # Validation
-        if not catalog_number:
-            app.logger.error("❌ catalog_number is missing")
-            return jsonify({'status': 'error', 'error': 'catalog_number is required'}), 400
-        if not media_condition:
-            app.logger.error("❌ media_condition is missing")
-            return jsonify({'status': 'error', 'error': 'media_condition is required'}), 400
-        if not sleeve_condition:
-            app.logger.error("❌ sleeve_condition is missing")
-            return jsonify({'status': 'error', 'error': 'sleeve_condition is required'}), 400
-        
-        # Get Discogs token
-        discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
-        if not discogs_token:
-            app.logger.error("❌ DISCOGS_USER_TOKEN not configured")
-            return jsonify({'status': 'error', 'error': 'DISCOGS_USER_TOKEN not configured'}), 500
-        
-        headers = {
-            'User-Agent': 'PigStyleMusic/1.0',
-            'Authorization': f'Discogs token={discogs_token}'
-        }
-        
-        # Step 1: Search for release by catalog number
-        app.logger.info(f"🔍 Searching Discogs for catalog: {catalog_number}")
-        search_url = "https://api.discogs.com/database/search"
-        params = {'q': catalog_number, 'type': 'release', 'per_page': 5}
-        
-        search_response = requests.get(search_url, headers=headers, params=params, timeout=10)
-        app.logger.info(f"   Search response status: {search_response.status_code}")
-        
-        if search_response.status_code != 200:
-            app.logger.error(f"❌ Discogs search failed: {search_response.status_code}")
-            return jsonify({'status': 'error', 'error': f'Discogs search failed: {search_response.status_code}'}), 500
-        
-        search_data = search_response.json()
-        results = search_data.get('results', [])
-        
-        if not results:
-            app.logger.error(f"❌ No release found for catalog: {catalog_number}")
-            return jsonify({'status': 'error', 'error': f'No release found for catalog: {catalog_number}'}), 404
-        
-        # Find exact catalog match
-        release = None
-        for result in results:
-            catno = result.get('catno', '')
-            if catalog_number.lower() in [c.lower() for c in catno.split(',')]:
-                release = result
-                break
-        
-        if not release:
-            release = results[0]
-            app.logger.warning(f"⚠️ No exact catalog match, using first result: {release.get('catno', '')}")
-        
-        release_id = release['id']
-        release_title = release.get('title', 'Unknown')
-        app.logger.info(f"✅ Found release: {release_title} (ID: {release_id})")
-        
-        # Step 2: Get release stats
-        stats_url = f"https://api.discogs.com/releases/{release_id}/stats"
-        stats_response = requests.get(stats_url, headers=headers, timeout=10)
-        stats = stats_response.json() if stats_response.status_code == 200 else None
-        app.logger.info(f"📊 Stats response status: {stats_response.status_code}")
-        
-        # Step 3: Get marketplace stats
-        marketplace_url = f"https://api.discogs.com/marketplace/stats/{release_id}"
-        marketplace_response = requests.get(marketplace_url, headers=headers, timeout=10)
-        marketplace = marketplace_response.json() if marketplace_response.status_code == 200 else None
-        app.logger.info(f"💰 Marketplace response status: {marketplace_response.status_code}")
-        
-        # Step 4: Calculate base price
-        fallback_price = 20.0
-        
-        if marketplace and 'median' in marketplace:
-            base_median_price = marketplace['median']
-            num_sales = marketplace.get('num_sales', 0)
-            app.logger.info(f"📈 Base median price from marketplace: ${base_median_price}")
-        elif stats:
-            community_rating = stats.get('community', {}).get('rating', {}).get('average', 3.5)
-            base_median_price = fallback_price * (community_rating / 3.0)
-            num_sales = 0
-            app.logger.info(f"📈 Base price estimated from rating: ${base_median_price}")
-        else:
-            base_median_price = fallback_price
-            num_sales = 0
-            app.logger.info(f"📈 Using fallback price: ${base_median_price}")
-        
-        # Step 5: Parse conditions from user input - THIS WILL THROW ERROR IF CONDITION NOT FOUND
-        app.logger.info(f"🎚️ Parsing conditions - Media: '{media_condition}', Sleeve: '{sleeve_condition}'")
-        try:
-            media_cond = Condition.from_string(media_condition)
-            sleeve_cond = Condition.from_string(sleeve_condition)
-        except ValueError as e:
-            app.logger.error(f"❌ Condition parsing error: {str(e)}")
-            return jsonify({'status': 'error', 'error': str(e)}), 400
-        
-        app.logger.info(f"   Parsed media: {media_cond.value}")
-        app.logger.info(f"   Parsed sleeve: {sleeve_cond.value}")
-        
-        # Step 6: Calculate condition multiplier - THIS WILL THROW ERROR IF MULTIPLIER NOT FOUND
-        try:
-            condition_mult = get_condition_multiplier(media_cond, sleeve_cond)
-        except ValueError as e:
-            app.logger.error(f"❌ Multiplier error: {str(e)}")
-            return jsonify({'status': 'error', 'error': str(e)}), 400
-        
-        app.logger.info(f"📊 Condition multiplier: {condition_mult}")
-        
-        # Step 7: Calculate demand adjustment
-        wants = stats.get('community', {}).get('want', 0) if stats else 0
-        haves = stats.get('community', {}).get('have', 0) if stats else 0
-        demand_adjust, want_have_ratio = calculate_demand_adjustment(wants, haves)
-        app.logger.info(f"📊 Demand adjustment: {demand_adjust} (Want/Have ratio: {want_have_ratio:.2f})")
-        
-        # Step 8: Calculate final price
-        estimated_price = base_median_price * condition_mult * demand_adjust
-        app.logger.info(f"💰 Estimated price: ${estimated_price:.2f}")
-        
-        # Step 9: Calculate price range
-        condition_variance = 1.0 - (condition_mult / 1.35)
-        price_range_low = estimated_price * (0.85 - (condition_variance * 0.15))
-        price_range_high = estimated_price * (1.15 + (condition_variance * 0.15))
-        
-        # Step 10: Calculate confidence
-        confidence = calculate_confidence(num_sales, want_have_ratio)
-        
-        # Step 11: Return result
-        result = {
-            'status': 'success',
-            'catalog_number': catalog_number,
-            'release_id': release_id,
-            'release_title': release_title,
-            'media_condition_input': media_condition,
-            'sleeve_condition_input': sleeve_condition,
-            'media_condition_parsed': media_cond.value,
-            'sleeve_condition_parsed': sleeve_cond.value,
-            'estimated_price': round(estimated_price, 2),
-            'price_range_low': round(price_range_low, 2),
-            'price_range_high': round(price_range_high, 2),
-            'confidence_score': round(confidence, 1),
-            'condition_multiplier': condition_mult,
-            'demand_adjustment': round(demand_adjust, 2),
-            'base_median_price': round(base_median_price, 2),
-            'want_have_ratio': round(want_have_ratio, 2),
-            'num_sales': num_sales
-        }
-        
-        app.logger.info(f"✅ Returning result: estimated_price = ${result['estimated_price']}")
-        app.logger.info("=" * 60)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        app.logger.error(f"❌ Price estimate error: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+    # Step 1: Search for release
+    app.logger.info(f"🔍 Searching for catalog: {catalog_number}")
+    search_url = "https://api.discogs.com/database/search"
+    params = {'q': catalog_number, 'type': 'release', 'per_page': 10}
+    
+    search_response = requests.get(search_url, headers=headers, params=params, timeout=10)
+    
+    if search_response.status_code != 200:
+        return jsonify({'status': 'error', 'error': f'Discogs search failed: {search_response.status_code}'}), 500
+    
+    search_data = search_response.json()
+    results = search_data.get('results', [])
+    
+    if not results:
+        return jsonify({'status': 'error', 'error': f'No release found for catalog: {catalog_number}'}), 404
+    
+    # Find exact catalog match
+    release = None
+    catalog_normalized = catalog_number.lower().replace(' ', '').replace('-', '')
+    
+    for result in results:
+        catno = result.get('catno', '').lower().replace(' ', '').replace('-', '')
+        if catalog_normalized in catno:
+            release = result
+            break
+    
+    if not release:
+        return jsonify({
+            'status': 'error',
+            'error': f'No exact match for: {catalog_number}',
+            'suggestions': [r.get('catno', '') for r in results[:5]]
+        }), 404
+    
+    release_id = release['id']
+    app.logger.info(f"✅ Found release ID: {release_id}")
+    
+    # Step 2: Get price suggestions - THIS RETURNS CONDITION-SPECIFIC PRICES!
+    app.logger.info(f"💰 Getting price suggestions for release: {release_id}")
+    price_url = f"https://api.discogs.com/marketplace/price_suggestions/{release_id}"
+    
+    price_response = requests.get(price_url, headers=headers, timeout=10)
+    
+    if price_response.status_code != 200:
+        return jsonify({
+            'status': 'error',
+            'error': f'Failed to get price suggestions: {price_response.status_code}'
+        }), 500
+    
+    price_data = price_response.json()
+    
+    if not price_data:
+        return jsonify({
+            'status': 'error',
+            'error': f'No price data available for release {release_id}'
+        }), 404
+    
+    # Step 3: Get the price for the specific condition
+    # Map user-friendly condition names to Discogs condition names
+    condition_map = {
+        'mint': 'Mint (M)',
+        'near mint': 'Near Mint (NM or M-)',
+        'very good plus': 'Very Good Plus (VG+)',
+        'very good': 'Very Good (VG)',
+        'good plus': 'Good Plus (G+)',
+        'good': 'Good (G)',
+        'fair': 'Fair (F)',
+        'poor': 'Poor (P)'
+    }
+    
+    # Clean the media condition input
+    media_clean = media_condition.lower().strip()
+    media_clean = re.sub(r'\s*\([^)]*\)', '', media_clean).strip()
+    
+    # Find matching condition key
+    condition_key = None
+    for key in condition_map:
+        if key in media_clean:
+            condition_key = condition_map[key]
+            break
+    
+    if not condition_key:
+        return jsonify({
+            'status': 'error',
+            'error': f'Unknown condition: {media_condition}',
+            'valid_conditions': list(condition_map.values())
+        }), 400
+    
+    # Get the price for the condition
+    if condition_key not in price_data:
+        return jsonify({
+            'status': 'error',
+            'error': f'No price data for condition: {condition_key}',
+            'available_conditions': list(price_data.keys())
+        }), 404
+    
+    condition_price = price_data[condition_key]
+    estimated_price = condition_price.get('value')
+    
+    if estimated_price is None or estimated_price == 0:
+        return jsonify({
+            'status': 'error',
+            'error': f'Price is $0 for condition: {condition_key}'
+        }), 404
+    
+    app.logger.info(f"💰 Price for {condition_key}: ${estimated_price}")
+    
+    # Step 4: Get community stats for confidence
+    stats_url = f"https://api.discogs.com/releases/{release_id}/stats"
+    stats_response = requests.get(stats_url, headers=headers, timeout=10)
+    stats = stats_response.json() if stats_response.status_code == 200 else {}
+    
+    wants = stats.get('community', {}).get('want', 0)
+    haves = stats.get('community', {}).get('have', 0)
+    
+    # Calculate confidence based on community data
+    confidence = 50  # Base confidence
+    if wants > 0:
+        confidence += 10
+    if haves > 0:
+        confidence += 10
+    if wants > 100:
+        confidence += 10
+    if haves > 100:
+        confidence += 10
+    
+    # Get min and max prices from all conditions
+    all_prices = [data.get('value', 0) for data in price_data.values() if data.get('value')]
+    min_price = min(all_prices) if all_prices else estimated_price
+    max_price = max(all_prices) if all_prices else estimated_price
+    
+    result = {
+        'status': 'success',
+        'catalog_number': catalog_number,
+        'release_id': release_id,
+        'condition': condition_key,
+        'estimated_price': round(estimated_price, 2),
+        'price_range_low': round(min_price, 2),
+        'price_range_high': round(max_price, 2),
+        'confidence_score': min(confidence, 100),
+        'condition_multiplier': 1.0,  # Not needed since Discogs gives condition-specific prices
+        'demand_adjustment': 1.0,  # Not needed
+        'base_median_price': round(estimated_price, 2),
+        'want_have_ratio': round(wants / haves, 2) if haves > 0 else 0,
+        'num_sales': 0  # Not available from price_suggestions
+    }
+    
+    app.logger.info(f"✅ Returning price: ${result['estimated_price']}")
+    return jsonify(result)
 
 @app.route('/api/stats/sales-history', methods=['POST'])
 def get_sales_history():
