@@ -11,6 +11,7 @@ let currentReportData = null;
 let bankCurrentPage = 1;
 const bankPageSize = 20;
 let bankTotalEntries = 0;
+let bankShowAll = false;
 
 // Account transactions pagination
 let accountTxCurrentPage = 1;
@@ -121,24 +122,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Load default date range for reports and bank
+    // Load default date range for reports
     const today = new Date().toISOString().split('T')[0];
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-    document.getElementById('report-date-from').value = '';
-    document.getElementById('report-date-to').value = '';
-    document.getElementById('manual-date').value = '';
-    document.getElementById('journal-date-from').value = '';
-    document.getElementById('journal-date-to').value = '';
-    document.getElementById('bank-date-from').value = '';
-    document.getElementById('bank-date-to').value = ''
+    document.getElementById('report-date-from').value = firstDay;
+    document.getElementById('report-date-to').value = today;
+    document.getElementById('manual-date').value = today;
+    document.getElementById('journal-date-from').value = firstDay;
+    document.getElementById('journal-date-to').value = today;
     
-    // Account transactions - leave date filters empty to show all
+    // Bank and Account Transactions - leave date filters empty to show all
+    document.getElementById('bank-date-from').value = '';
+    document.getElementById('bank-date-to').value = '';
     document.getElementById('account-tx-date-from').value = '';
     document.getElementById('account-tx-date-to').value = '';
 
     // Load all dropdowns
     loadAccountSelects();
     loadAccountSelectsForTransactions();
+    loadAccountSelectsForBank();
 
     // Load dashboard by default
     loadDashboard();
@@ -1067,6 +1069,12 @@ async function connectBank() {
     }
 }
 
+function toggleBankShowAll() {
+    bankShowAll = document.getElementById('bank-show-all').checked;
+    bankCurrentPage = 1;
+    loadBankTransactions();
+}
+
 async function loadBankTransactions() {
     const body = document.getElementById('bank-body');
     body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
@@ -1083,6 +1091,11 @@ async function loadBankTransactions() {
     
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
+    
+    // Add processed filter - only show unprocessed by default
+    if (!bankShowAll) {
+        params.append('processed', 'false');
+    }
 
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
@@ -1095,6 +1108,7 @@ async function loadBankTransactions() {
             bankTotalEntries = data.total || data.transactions?.length || 0;
             renderBankTransactions(data.transactions || []);
             updateBankPagination();
+            updateBankCounts(data);
         } else {
             body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
@@ -1103,11 +1117,14 @@ async function loadBankTransactions() {
     }
 }
 
-
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        if (!bankShowAll) {
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">🎉 All transactions have been processed! Check "Show all transactions" to view them.</td></tr>';
+        } else {
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        }
         return;
     }
     let html = '';
@@ -1115,25 +1132,45 @@ function renderBankTransactions(transactions) {
         const amount = parseFloat(t.amount) || 0;
         const isDebit = amount < 0;
         const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
-        const status = t.status || (t.pending ? 'Pending' : 'Posted');
+        const status = t.processed ? '✅ Processed' : '⏳ Pending';
+        const statusClass = t.processed ? 'active' : 'warning';
         const category = t.category || '';
         html += `<tr>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>${category}</td>
-            <td><span class="status-badge ${status === 'Pending' ? 'warning' : 'active'}">${status}</span></td>
+            <td><span class="status-badge ${statusClass}">${status}</span></td>
         </tr>`;
     });
     body.innerHTML = html;
 }
 
+function updateBankCounts(data) {
+    const unprocessedCount = document.getElementById('bank-unprocessed-count');
+    const totalCount = document.getElementById('bank-total-count');
+    if (data.unprocessed_count !== undefined) {
+        unprocessedCount.textContent = data.unprocessed_count;
+    }
+    if (data.total_count !== undefined) {
+        totalCount.textContent = `(${data.total_count} total)`;
+    }
+}
+
 function updateBankPagination() {
-    const totalPages = Math.ceil(bankTotalEntries / bankPageSize);
-    document.getElementById('bank-pagination-info').textContent = `Showing ${bankTotalEntries} entries (Page ${bankCurrentPage} of ${totalPages || 1})`;
+    const totalPages = Math.max(1, Math.ceil(bankTotalEntries / bankPageSize));
+    document.getElementById('bank-pagination-info').textContent = `Showing ${bankTotalEntries} entries (Page ${bankCurrentPage} of ${totalPages})`;
     document.getElementById('bank-prev').disabled = bankCurrentPage <= 1;
-    document.getElementById('bank-next').disabled = bankCurrentPage >= totalPages || totalPages === 0;
+    document.getElementById('bank-next').disabled = bankCurrentPage >= totalPages;
     document.getElementById('bank-page-info').textContent = `Page ${bankCurrentPage}`;
+}
+
+function resetBankFilters() {
+    document.getElementById('bank-date-from').value = '';
+    document.getElementById('bank-date-to').value = '';
+    document.getElementById('bank-filter').value = '';
+    bankCurrentPage = 1;
+    loadBankTransactions();
 }
 
 async function syncBankTransactions() {
@@ -1183,6 +1220,8 @@ async function applyFilterToTransactions() {
         const params = new URLSearchParams();
         params.append('per_page', 9999);
         params.append('search', pattern);
+        // Only get unprocessed transactions
+        params.append('processed', 'false');
         const from = document.getElementById('bank-date-from').value;
         const to = document.getElementById('bank-date-to').value;
         if (from) params.append('date_from', from);
@@ -1198,11 +1237,11 @@ async function applyFilterToTransactions() {
         }
         const transactions = data.transactions || [];
         if (transactions.length === 0) {
-            statusSpan.textContent = 'ℹ️ No transactions found matching the filter.';
+            statusSpan.textContent = 'ℹ️ No unprocessed transactions found matching the filter.';
             return;
         }
 
-        const confirmMsg = `Found ${transactions.length} transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
+        const confirmMsg = `Found ${transactions.length} unprocessed transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
         if (!confirm(confirmMsg)) {
             statusSpan.textContent = '⏹️ Cancelled.';
             return;
