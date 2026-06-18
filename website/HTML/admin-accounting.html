@@ -331,14 +331,6 @@
         .pagination-info {
             color: #333 !important;
         }
-
-        /* ====== FIX: Report text visibility ====== */
-        #report-result table,
-        #report-result td,
-        #report-result th,
-        #report-result .summary-text {
-            color: #333 !important;
-        }
     </style>
 </head>
 <body>
@@ -370,6 +362,8 @@
                 <button class="sub-tab" data-subtab="bank"><i class="fas fa-university"></i> Bank</button>
                 <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
+                <!-- NEW: Rules tab -->
+                <button class="sub-tab" data-subtab="rules"><i class="fas fa-sliders-h"></i> Rules</button>
             </div>
 
             <!-- Dashboard Sub-tab -->
@@ -746,6 +740,38 @@
                 <div class="loading" id="orders-loading" style="display: none;">
                     <div class="loading-spinner"></div>
                     <p>Loading orders...</p>
+                </div>
+            </div>
+
+            <!-- ===== NEW: Rules Sub-tab ===== -->
+            <div id="sub-rules" class="sub-tab-content">
+                <h4>Bank Transaction Rules</h4>
+                <p class="text-muted">Define rules to automatically categorise bank expenses. When a bank transaction matches the pattern, it will be posted to the selected account.</p>
+                
+                <div style="margin-bottom: 15px;">
+                    <button class="btn btn-primary" onclick="showRuleForm()"><i class="fas fa-plus"></i> New Rule</button>
+                </div>
+                <div id="rules-list">
+                    <p class="text-muted">Loading rules...</p>
+                </div>
+                <div id="rule-form" style="display:none; background:#f8f9fa; padding:15px; border-radius:4px; margin-top:15px;">
+                    <h5 id="form-title">Create Rule</h5>
+                    <div class="form-group">
+                        <label>Rule Name</label>
+                        <input type="text" id="rule-name" placeholder="e.g., Stamps.com Shipping">
+                    </div>
+                    <div class="form-group">
+                        <label>Pattern</label>
+                        <input type="text" id="rule-pattern" placeholder="e.g., STAMPS.COM">
+                    </div>
+                    <div class="form-group">
+                        <label>Target Account</label>
+                        <select id="rule-account"></select>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <button class="btn btn-success" id="save-rule-btn" onclick="saveRule()"><i class="fas fa-save"></i> Save</button>
+                        <button class="btn btn-secondary" onclick="cancelRuleForm()">Cancel</button>
+                    </div>
                 </div>
             </div>
 

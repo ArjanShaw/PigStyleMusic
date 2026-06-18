@@ -7471,63 +7471,169 @@ def set_plaid_access_token(token, item_id=None, institution_name=None):
     conn.commit()
     conn.close()
 
-# ===== Plaid API endpoints =====
+# ===== CATEGORISATION RULES FUNCTIONS =====
 
-@app.route('/api/plaid/create-link-token', methods=['POST'])
+def get_categorisation_rules(active_only=True):
+    conn = get_db()
+    cursor = conn.cursor()
+    query = 'SELECT * FROM categorisation_rules'
+    if active_only:
+        query += ' WHERE active = 1'
+    cursor.execute(query)
+    rules = cursor.fetchall()
+    conn.close()
+    return rules
+
+def apply_rule(rule_id, dry_run=False):
+    """Apply a single rule to unprocessed bank transactions.
+    If dry_run=True, only return matching transactions without posting.
+    Returns dict with transactions and count.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM categorisation_rules WHERE id = ?', (rule_id,))
+    rule = cursor.fetchone()
+    if not rule:
+        raise Exception("Rule not found")
+
+    pattern = rule['pattern'].upper()
+    account_id = rule['account_id']
+
+    # Get unprocessed withdrawals (amount > 0)
+    cursor.execute('''
+        SELECT id, transaction_date, amount, description
+        FROM bank_transactions
+        WHERE processed = 0 AND amount > 0
+    ''')
+    transactions = cursor.fetchall()
+
+    matched = []
+    for tx in transactions:
+        desc = tx['description'].upper()
+        if pattern in desc:
+            matched.append(dict(tx))
+
+    if dry_run:
+        conn.close()
+        return {'transactions': matched, 'count': len(matched)}
+
+    # Process matched transactions
+    processed_count = 0
+    for tx in matched:
+        amount_cents = int(round(tx['amount'] * 100))
+        # Create journal entry
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (tx['transaction_date'], f"Bank expense: {tx['description']}", 'bank_transaction', tx['id']))
+        entry_id = cursor.lastrowid
+
+        # Debit expense account
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, account_id, amount_cents, 0))
+
+        # Credit Cash (1010)
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+        cash_row = cursor.fetchone()
+        if cash_row:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_row['id'], 0, amount_cents))
+
+        # Mark processed
+        cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (tx['id'],))
+        processed_count += 1
+
+    conn.commit()
+    conn.close()
+    return {'transactions': matched, 'count': processed_count}
+
+# ===== RULES ENDPOINTS =====
+
+@app.route('/api/accounting/rules', methods=['GET'])
 @login_required
 @role_required(['admin'])
-def plaid_create_link_token():
-    """Generate a link token for the frontend to initialize Plaid Link."""
-    try:
-        from plaid.model.country_code import CountryCode
-        from plaid.model.products import Products
+def get_rules():
+    rules = get_categorisation_rules(active_only=False)
+    return jsonify({'status': 'success', 'rules': [dict(r) for r in rules]})
 
-        client = get_plaid_client()
-        redirect_uri = "https://www.pigstylemusic.com/accounting"  # must match exactly
-
-        request_obj = LinkTokenCreateRequest(
-            client_name="PigStyle Music",
-            language="en",
-            country_codes=[CountryCode('US')],        # Use the enum constructor
-            user=LinkTokenCreateRequestUser(client_user_id=str(session['user_id'])),
-            products=[Products('transactions')],      # Use the enum constructor
-            redirect_uri=redirect_uri,
-            webhook="https://www.example.com/webhook"
-        )
-        response = client.link_token_create(request_obj)
-        return jsonify({'link_token': response['link_token']})
-    except Exception as e:
-        app.logger.error(f"Link token error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/plaid/exchange', methods=['POST'])
+@app.route('/api/accounting/rules', methods=['POST'])
 @login_required
 @role_required(['admin'])
-def plaid_exchange_token():
-    """Exchange public token for access token and store it."""
+def create_rule():
     data = request.json
-    public_token = data.get('public_token')
-    if not public_token:
-        return jsonify({'error': 'No public_token'}), 400
-    try:
-        client = get_plaid_client()
-        exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
-        exchange_response = client.item_public_token_exchange(exchange_request)
-        access_token = exchange_response['access_token']
-        item_id = exchange_response['item_id']
-        set_plaid_access_token(access_token, item_id)
-        return jsonify({'status': 'success', 'message': 'Bank connected successfully'})
-    except Exception as e:
-        app.logger.error(f"Exchange error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+    name = data.get('name')
+    pattern = data.get('pattern')
+    account_id = data.get('account_id')
+    if not name or not pattern or not account_id:
+        return jsonify({'status': 'error', 'error': 'Missing fields'}), 400
 
-@app.route('/api/plaid/status', methods=['GET'])
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO categorisation_rules (name, pattern, account_id)
+        VALUES (?, ?, ?)
+    ''', (name, pattern, account_id))
+    rule_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'id': rule_id})
+
+@app.route('/api/accounting/rules/<int:rule_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
-def plaid_status():
-    token = get_plaid_access_token()
-    return jsonify({'connected': bool(token)})
+def update_rule(rule_id):
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    updates = []
+    params = []
+    if 'name' in data:
+        updates.append('name = ?')
+        params.append(data['name'])
+    if 'pattern' in data:
+        updates.append('pattern = ?')
+        params.append(data['pattern'])
+    if 'account_id' in data:
+        updates.append('account_id = ?')
+        params.append(data['account_id'])
+    if 'active' in data:
+        updates.append('active = ?')
+        params.append(1 if data['active'] else 0)
+    if not updates:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
+    params.append(rule_id)
+    cursor.execute(f'UPDATE categorisation_rules SET {", ".join(updates)} WHERE id = ?', params)
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/accounting/rules/<int:rule_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_rule(rule_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM categorisation_rules WHERE id = ?', (rule_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/accounting/rules/<int:rule_id>/apply', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def apply_rule_endpoint(rule_id):
+    data = request.json or {}
+    dry_run = data.get('dry_run', False)
+    try:
+        result = apply_rule(rule_id, dry_run=dry_run)
+        return jsonify({'status': 'success', **result})
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ===== Updated bank transaction functions (using stored token) =====
 
