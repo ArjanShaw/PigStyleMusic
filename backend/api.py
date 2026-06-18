@@ -7728,7 +7728,74 @@ def accounting_bank_sync():
     # Just return success; the GET will fetch fresh data
     return jsonify({'status': 'success', 'message': 'Sync triggered'})
 
+@app.route('/api/accounting/bank/apply-filter', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_apply_filter():
+    """Apply a pattern filter to unprocessed bank transactions and create journal entries."""
+    data = request.json
+    pattern = data.get('pattern', '').strip()
+    account_id = data.get('account_id')
+    dry_run = data.get('dry_run', False)
 
+    if not pattern or not account_id:
+        return jsonify({'status': 'error', 'error': 'pattern and account_id required'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Verify account exists
+    cursor.execute('SELECT id FROM accounts WHERE id = ?', (account_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Account not found'}), 400
+
+    # Get unprocessed withdrawals (amount > 0) containing pattern (case-insensitive)
+    pattern_upper = pattern.upper()
+    cursor.execute('''
+        SELECT id, transaction_date, amount, description
+        FROM bank_transactions
+        WHERE processed = 0 AND amount > 0 AND UPPER(description) LIKE ?
+    ''', (f'%{pattern_upper}%',))
+    transactions = cursor.fetchall()
+
+    if dry_run:
+        conn.close()
+        return jsonify({
+            'status': 'success',
+            'count': len(transactions),
+            'transactions': [{'description': t['description'], 'amount': t['amount']} for t in transactions]
+        })
+
+    # Process matched transactions
+    processed_count = 0
+    for tx in transactions:
+        amount_cents = int(round(tx['amount'] * 100))
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (tx['transaction_date'], f"Bank expense: {tx['description']}", 'bank_transaction', tx['id']))
+        entry_id = cursor.lastrowid
+
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, account_id, amount_cents, 0))
+
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+        cash_row = cursor.fetchone()
+        if cash_row:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_row['id'], 0, amount_cents))
+
+        cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (tx['id'],))
+        processed_count += 1
+
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'count': processed_count})
 # ============================================================
 # END OF ACCOUNTING ENDPOINTS
 # ============================================================

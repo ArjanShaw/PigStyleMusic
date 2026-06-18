@@ -331,6 +331,13 @@
         .pagination-info {
             color: #333 !important;
         }
+
+        /* ====== FIX: Report text visibility ====== */
+        .report-result table th,
+        .report-result table td,
+        .report-result .summary-text {
+            color: #333 !important;
+        }
     </style>
 </head>
 <body>
@@ -362,8 +369,6 @@
                 <button class="sub-tab" data-subtab="bank"><i class="fas fa-university"></i> Bank</button>
                 <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
-                <!-- NEW: Rules tab -->
-                <button class="sub-tab" data-subtab="rules"><i class="fas fa-sliders-h"></i> Rules</button>
             </div>
 
             <!-- Dashboard Sub-tab -->
@@ -533,7 +538,7 @@
                 </div>
             </div>
 
-            <!-- Bank Transactions Sub-tab (UPDATED) -->
+            <!-- Bank Transactions Sub-tab (INTEGRATED with filter-apply) -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
                 <p class="text-muted">View and sync transactions from your connected bank account (FNBO).</p>
@@ -546,6 +551,25 @@
                     <span id="bank-connection-status" class="text-muted"></span>
                 </div>
 
+                <!-- Filter & Apply section -->
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                    <div class="form-group">
+                        <label>Pattern filter</label>
+                        <input type="text" id="bank-filter-pattern" placeholder="e.g. STAMPS.COM">
+                    </div>
+                    <div class="form-group">
+                        <label>Apply to account</label>
+                        <select id="bank-apply-account">
+                            <option value="">Select Account</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-warning" onclick="applyFilterToTransactions()">
+                        <i class="fas fa-tag"></i> Apply to filtered
+                    </button>
+                    <span id="filter-apply-status" class="text-muted"></span>
+                </div>
+
+                <!-- Date/Search filters -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
                     <div class="form-group">
                         <label>Date From</label>
@@ -556,13 +580,15 @@
                         <input type="date" id="bank-date-to">
                     </div>
                     <div class="form-group">
-                        <label>Search</label>
+                        <label>Search (additional)</label>
                         <input type="text" id="bank-search" placeholder="Description...">
                     </div>
                     <button class="btn btn-primary" onclick="loadBankTransactions()"><i class="fas fa-search"></i> Filter</button>
                     <button class="btn btn-success" onclick="syncBankTransactions()"><i class="fas fa-sync-alt"></i> Sync Now</button>
                     <span id="bank-sync-status" class="text-muted"></span>
                 </div>
+
+                <!-- Transaction table -->
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
                         <thead>
@@ -740,38 +766,6 @@
                 <div class="loading" id="orders-loading" style="display: none;">
                     <div class="loading-spinner"></div>
                     <p>Loading orders...</p>
-                </div>
-            </div>
-
-            <!-- ===== NEW: Rules Sub-tab ===== -->
-            <div id="sub-rules" class="sub-tab-content">
-                <h4>Bank Transaction Rules</h4>
-                <p class="text-muted">Define rules to automatically categorise bank expenses. When a bank transaction matches the pattern, it will be posted to the selected account.</p>
-                
-                <div style="margin-bottom: 15px;">
-                    <button class="btn btn-primary" onclick="showRuleForm()"><i class="fas fa-plus"></i> New Rule</button>
-                </div>
-                <div id="rules-list">
-                    <p class="text-muted">Loading rules...</p>
-                </div>
-                <div id="rule-form" style="display:none; background:#f8f9fa; padding:15px; border-radius:4px; margin-top:15px;">
-                    <h5 id="form-title">Create Rule</h5>
-                    <div class="form-group">
-                        <label>Rule Name</label>
-                        <input type="text" id="rule-name" placeholder="e.g., Stamps.com Shipping">
-                    </div>
-                    <div class="form-group">
-                        <label>Pattern</label>
-                        <input type="text" id="rule-pattern" placeholder="e.g., STAMPS.COM">
-                    </div>
-                    <div class="form-group">
-                        <label>Target Account</label>
-                        <select id="rule-account"></select>
-                    </div>
-                    <div style="margin-top:10px;">
-                        <button class="btn btn-success" id="save-rule-btn" onclick="saveRule()"><i class="fas fa-save"></i> Save</button>
-                        <button class="btn btn-secondary" onclick="cancelRuleForm()">Cancel</button>
-                    </div>
                 </div>
             </div>
 
