@@ -651,12 +651,11 @@
                 </div>
             </div>
 
-            <!-- Bank Transactions Sub-tab (integrated filter-apply) -->
+            <!-- Bank Transactions Sub-tab -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
                 <p class="text-muted">View and sync transactions from your connected bank account (FNBO).</p>
                 
-                <!-- Connect button and status -->
                 <div style="margin-bottom: 15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display: none;">
                         <i class="fas fa-university"></i> Connect Bank Account
@@ -664,7 +663,6 @@
                     <span id="bank-connection-status" class="text-muted"></span>
                 </div>
 
-                <!-- Filter & Apply section -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
                     <div class="form-group" style="flex: 2;">
                         <label>Filter</label>
@@ -682,7 +680,6 @@
                     <span id="filter-apply-status" class="text-muted"></span>
                 </div>
 
-                <!-- Date filters -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
                     <div class="form-group">
                         <label>Date From</label>
@@ -697,7 +694,6 @@
                     <span id="bank-sync-status" class="text-muted"></span>
                 </div>
 
-                <!-- Transaction table -->
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
                         <thead>
