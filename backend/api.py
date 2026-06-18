@@ -7548,7 +7548,8 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         end_date = datetime.strptime(date_to, '%Y-%m-%d').date()
 
     if not date_from:
-        start_date = end_date - timedelta(days=30)
+        # ✅ Fetch as far back as Plaid allows (2 years)
+        start_date = end_date - timedelta(days=730)
     else:
         start_date = datetime.strptime(date_from, '%Y-%m-%d').date()
 
