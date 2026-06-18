@@ -881,7 +881,7 @@ async function applyFilterToTransactions() {
 
     statusSpan.textContent = '⏳ Checking...';
     try {
-        // First, preview (dry run) to confirm count
+        // Preview (dry run)
         const previewRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
             method: 'POST',
             credentials: 'include',
@@ -893,11 +893,20 @@ async function applyFilterToTransactions() {
             statusSpan.textContent = '❌ Preview failed: ' + (previewData.error || 'Unknown');
             return;
         }
-        if (previewData.count === 0) {
+        const unprocessed = previewData.unprocessed_count || 0;
+        const processed = previewData.processed_count || 0;
+
+        if (unprocessed === 0 && processed === 0) {
             statusSpan.textContent = 'ℹ️ No matching transactions found.';
             return;
         }
-        const confirmMsg = `Found ${previewData.count} transactions matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
+
+        if (unprocessed === 0 && processed > 0) {
+            statusSpan.textContent = `ℹ️ All ${processed} matching transactions are already processed.`;
+            return;
+        }
+
+        const confirmMsg = `Found ${unprocessed} unprocessed transaction(s) matching "${pattern}".\n${processed} transaction(s) already processed will be skipped.\nApply to ${unprocessed} transaction(s)?`;
         if (!confirm(confirmMsg)) {
             statusSpan.textContent = '⏹️ Cancelled.';
             return;
@@ -912,7 +921,7 @@ async function applyFilterToTransactions() {
         });
         const applyData = await applyRes.json();
         if (applyData.status === 'success') {
-            statusSpan.textContent = `✅ Applied to ${applyData.count} transactions.`;
+            statusSpan.textContent = `✅ ${applyData.message}`;
             loadBankTransactions(); // refresh the table
         } else {
             statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
