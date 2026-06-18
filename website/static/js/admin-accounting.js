@@ -35,15 +35,13 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'bank') {
                 loadBankTransactions();
                 checkBankConnection();
+                loadAccountSelectsForBank(); // load accounts for the apply dropdown
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
                     window.loadOrders();
                     window.loadOrderStats();
                 }
-            }
-            else if (sub === 'rules') {
-                loadRules();
             }
         });
     });
@@ -224,6 +222,29 @@ async function loadAccountSelects() {
         }
     } catch (err) {
         console.error('Error loading accounts:', err);
+    }
+}
+
+async function loadAccountSelectsForBank() {
+    const select = document.getElementById('bank-apply-account');
+    if (!select) return;
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            select.innerHTML = '<option value="">Select Account</option>';
+            data.accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = acc.code + ' - ' + acc.name;
+                select.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.error('Failed to load accounts for bank apply:', e);
     }
 }
 
@@ -683,7 +704,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (UPDATED with Connect & Status)
+// BANK TRANSACTIONS (with integrated filter‑apply)
 // ============================================================
 
 async function checkBankConnection() {
@@ -838,195 +859,65 @@ async function syncBankTransactions() {
 }
 
 // ============================================================
-// RULES FUNCTIONS
+// INTEGRATED FILTER-APPLY (no separate Rules tab)
 // ============================================================
 
-let editingRuleId = null;
+async function applyFilterToTransactions() {
+    const patternInput = document.getElementById('bank-filter-pattern');
+    const accountSelect = document.getElementById('bank-apply-account');
+    const statusSpan = document.getElementById('filter-apply-status');
 
-async function loadRules() {
-    const container = document.getElementById('rules-list');
-    container.innerHTML = 'Loading...';
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/rules`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            if (data.rules.length === 0) {
-                container.innerHTML = '<p class="text-muted">No rules defined.</p>';
-                return;
-            }
-            let html = '<table class="journal-table"><thead><tr><th>Name</th><th>Pattern</th><th>Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
-            for (const rule of data.rules) {
-                // Fetch account name
-                let accountName = rule.account_id;
-                try {
-                    const accRes = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
-                        credentials: 'include',
-                        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-                    });
-                    const accData = await accRes.json();
-                    if (accData.status === 'success') {
-                        const acc = accData.accounts.find(a => a.id === rule.account_id);
-                        if (acc) accountName = acc.code + ' - ' + acc.name;
-                    }
-                } catch (e) {}
-                html += `<tr>
-                    <td>${rule.name}</td>
-                    <td>${rule.pattern}</td>
-                    <td>${accountName}</td>
-                    <td>${rule.active ? '✅ Active' : '⛔ Inactive'}</td>
-                    <td>
-                        <button class="btn btn-sm btn-info" onclick="previewRule(${rule.id})">Preview</button>
-                        <button class="btn btn-sm btn-success" onclick="applyRule(${rule.id})">Apply</button>
-                        <button class="btn btn-sm btn-warning" onclick="editRule(${rule.id})">Edit</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteRule(${rule.id})">Delete</button>
-                    </td>
-                </tr>`;
-            }
-            html += '</tbody></table>';
-            container.innerHTML = html;
-        } else {
-            container.innerHTML = '<p class="text-muted" style="color:red;">Failed to load rules.</p>';
-        }
-    } catch (e) {
-        container.innerHTML = '<p class="text-muted" style="color:red;">Error loading rules.</p>';
-    }
-}
+    const pattern = patternInput.value.trim();
+    const accountId = parseInt(accountSelect.value);
 
-function showRuleForm(ruleData = null) {
-    document.getElementById('rule-form').style.display = 'block';
-    document.getElementById('form-title').textContent = ruleData ? 'Edit Rule' : 'Create Rule';
-    document.getElementById('rule-name').value = ruleData ? ruleData.name : '';
-    document.getElementById('rule-pattern').value = ruleData ? ruleData.pattern : '';
-    document.getElementById('rule-account').value = ruleData ? ruleData.account_id : '';
-    editingRuleId = ruleData ? ruleData.id : null;
-    loadAccountSelectsForRules();
-}
-
-function cancelRuleForm() {
-    document.getElementById('rule-form').style.display = 'none';
-    editingRuleId = null;
-}
-
-async function saveRule() {
-    const name = document.getElementById('rule-name').value.trim();
-    const pattern = document.getElementById('rule-pattern').value.trim();
-    const account_id = parseInt(document.getElementById('rule-account').value);
-    if (!name || !pattern || !account_id) {
-        alert('Please fill all fields.');
+    if (!pattern) {
+        alert('Please enter a pattern to filter (e.g. STAMPS.COM).');
         return;
     }
-    const url = editingRuleId ? `${AppConfig.baseUrl}/api/accounting/rules/${editingRuleId}` : `${AppConfig.baseUrl}/api/accounting/rules`;
-    const method = editingRuleId ? 'PUT' : 'POST';
-    try {
-        const res = await fetch(url, {
-            method: method,
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, pattern, account_id })
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            cancelRuleForm();
-            loadRules();
-        } else {
-            alert('Error: ' + (data.error || 'Unknown error'));
-        }
-    } catch (e) {
-        alert('Error: ' + e.message);
+    if (!accountId) {
+        alert('Please select an account to apply.');
+        return;
     }
-}
 
-function editRule(ruleId) {
-    // Fetch rule details
-    fetch(`${AppConfig.baseUrl}/api/accounting/rules`, { credentials: 'include' })
-        .then(r => r.json())
-        .then(data => {
-            const rule = data.rules.find(r => r.id === ruleId);
-            if (rule) showRuleForm(rule);
-        })
-        .catch(e => alert('Error: ' + e.message));
-}
-
-async function deleteRule(ruleId) {
-    if (!confirm('Are you sure you want to delete this rule?')) return;
+    statusSpan.textContent = '⏳ Checking...';
     try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/rules/${ruleId}`, {
-            method: 'DELETE',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (res.ok) loadRules();
-        else alert('Failed to delete.');
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-}
-
-async function previewRule(ruleId) {
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/rules/${ruleId}/apply`, {
+        // First, preview (dry run) to confirm count
+        const previewRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
             method: 'POST',
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dry_run: true })
+            body: JSON.stringify({ pattern, account_id: accountId, dry_run: true })
         });
-        const data = await res.json();
-        if (data.status === 'success') {
-            if (data.count === 0) {
-                alert('No matching transactions found.');
-            } else {
-                alert(`Found ${data.count} transactions that would be affected.\nFirst few:\n${data.transactions.slice(0,5).map(t => `${t.description} - $${t.amount}`).join('\n')}`);
-            }
-        } else {
-            alert('Error: ' + data.error);
+        const previewData = await previewRes.json();
+        if (previewData.status !== 'success') {
+            statusSpan.textContent = '❌ Preview failed: ' + (previewData.error || 'Unknown');
+            return;
         }
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-}
+        if (previewData.count === 0) {
+            statusSpan.textContent = 'ℹ️ No matching transactions found.';
+            return;
+        }
+        const confirmMsg = `Found ${previewData.count} transactions matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
+        if (!confirm(confirmMsg)) {
+            statusSpan.textContent = '⏹️ Cancelled.';
+            return;
+        }
 
-async function applyRule(ruleId) {
-    if (!confirm('Apply this rule to all matching transactions now?')) return;
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/rules/${ruleId}/apply`, {
+        // Apply
+        const applyRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
             method: 'POST',
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dry_run: false })
+            body: JSON.stringify({ pattern, account_id: accountId, dry_run: false })
         });
-        const data = await res.json();
-        if (data.status === 'success') {
-            alert(`Applied to ${data.count} transactions.`);
-            loadRules();
+        const applyData = await applyRes.json();
+        if (applyData.status === 'success') {
+            statusSpan.textContent = `✅ Applied to ${applyData.count} transactions.`;
+            loadBankTransactions(); // refresh the table
         } else {
-            alert('Error: ' + data.error);
+            statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
         }
     } catch (e) {
-        alert('Error: ' + e.message);
-    }
-}
-
-async function loadAccountSelectsForRules() {
-    const select = document.getElementById('rule-account');
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            select.innerHTML = '<option value="">Select Account</option>';
-            data.accounts.forEach(acc => {
-                const opt = document.createElement('option');
-                opt.value = acc.id;
-                opt.textContent = acc.code + ' - ' + acc.name;
-                select.appendChild(opt);
-            });
-        }
-    } catch (e) {
-        console.error('Failed to load accounts for rules:', e);
+        statusSpan.textContent = '❌ Error: ' + e.message;
     }
 }
