@@ -42,6 +42,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.loadOrderStats();
                 }
             }
+            else if (sub === 'rules') {
+                loadRules();
+            }
         });
     });
 
@@ -648,7 +651,6 @@ function renderReport(data, type) {
     });
     html += '</tbody></table>';
     if (data.summary) {
-        // Added class and explicit color to ensure black text
         html += `<div style="margin-top:15px; background:#f0f0f0; padding:10px; border-radius:4px; color:#333;" class="summary-text">
             <strong>Summary:</strong> ${data.summary}
         </div>`;
@@ -832,5 +834,199 @@ async function syncBankTransactions() {
         }
     } catch (err) {
         status.textContent = '❌ Error: ' + err.message;
+    }
+}
+
+// ============================================================
+// RULES FUNCTIONS
+// ============================================================
+
+let editingRuleId = null;
+
+async function loadRules() {
+    const container = document.getElementById('rules-list');
+    container.innerHTML = 'Loading...';
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/rules`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            if (data.rules.length === 0) {
+                container.innerHTML = '<p class="text-muted">No rules defined.</p>';
+                return;
+            }
+            let html = '<table class="journal-table"><thead><tr><th>Name</th><th>Pattern</th><th>Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+            for (const rule of data.rules) {
+                // Fetch account name
+                let accountName = rule.account_id;
+                try {
+                    const accRes = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+                        credentials: 'include',
+                        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+                    });
+                    const accData = await accRes.json();
+                    if (accData.status === 'success') {
+                        const acc = accData.accounts.find(a => a.id === rule.account_id);
+                        if (acc) accountName = acc.code + ' - ' + acc.name;
+                    }
+                } catch (e) {}
+                html += `<tr>
+                    <td>${rule.name}</td>
+                    <td>${rule.pattern}</td>
+                    <td>${accountName}</td>
+                    <td>${rule.active ? '✅ Active' : '⛔ Inactive'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info" onclick="previewRule(${rule.id})">Preview</button>
+                        <button class="btn btn-sm btn-success" onclick="applyRule(${rule.id})">Apply</button>
+                        <button class="btn btn-sm btn-warning" onclick="editRule(${rule.id})">Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRule(${rule.id})">Delete</button>
+                    </td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = '<p class="text-muted" style="color:red;">Failed to load rules.</p>';
+        }
+    } catch (e) {
+        container.innerHTML = '<p class="text-muted" style="color:red;">Error loading rules.</p>';
+    }
+}
+
+function showRuleForm(ruleData = null) {
+    document.getElementById('rule-form').style.display = 'block';
+    document.getElementById('form-title').textContent = ruleData ? 'Edit Rule' : 'Create Rule';
+    document.getElementById('rule-name').value = ruleData ? ruleData.name : '';
+    document.getElementById('rule-pattern').value = ruleData ? ruleData.pattern : '';
+    document.getElementById('rule-account').value = ruleData ? ruleData.account_id : '';
+    editingRuleId = ruleData ? ruleData.id : null;
+    loadAccountSelectsForRules();
+}
+
+function cancelRuleForm() {
+    document.getElementById('rule-form').style.display = 'none';
+    editingRuleId = null;
+}
+
+async function saveRule() {
+    const name = document.getElementById('rule-name').value.trim();
+    const pattern = document.getElementById('rule-pattern').value.trim();
+    const account_id = parseInt(document.getElementById('rule-account').value);
+    if (!name || !pattern || !account_id) {
+        alert('Please fill all fields.');
+        return;
+    }
+    const url = editingRuleId ? `${AppConfig.baseUrl}/api/accounting/rules/${editingRuleId}` : `${AppConfig.baseUrl}/api/accounting/rules`;
+    const method = editingRuleId ? 'PUT' : 'POST';
+    try {
+        const res = await fetch(url, {
+            method: method,
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, pattern, account_id })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            cancelRuleForm();
+            loadRules();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+function editRule(ruleId) {
+    // Fetch rule details
+    fetch(`${AppConfig.baseUrl}/api/accounting/rules`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+            const rule = data.rules.find(r => r.id === ruleId);
+            if (rule) showRuleForm(rule);
+        })
+        .catch(e => alert('Error: ' + e.message));
+}
+
+async function deleteRule(ruleId) {
+    if (!confirm('Are you sure you want to delete this rule?')) return;
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/rules/${ruleId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (res.ok) loadRules();
+        else alert('Failed to delete.');
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+async function previewRule(ruleId) {
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/rules/${ruleId}/apply`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dry_run: true })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            if (data.count === 0) {
+                alert('No matching transactions found.');
+            } else {
+                alert(`Found ${data.count} transactions that would be affected.\nFirst few:\n${data.transactions.slice(0,5).map(t => `${t.description} - $${t.amount}`).join('\n')}`);
+            }
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+async function applyRule(ruleId) {
+    if (!confirm('Apply this rule to all matching transactions now?')) return;
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/rules/${ruleId}/apply`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dry_run: false })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert(`Applied to ${data.count} transactions.`);
+            loadRules();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+async function loadAccountSelectsForRules() {
+    const select = document.getElementById('rule-account');
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            select.innerHTML = '<option value="">Select Account</option>';
+            data.accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = acc.code + ' - ' + acc.name;
+                select.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.error('Failed to load accounts for rules:', e);
     }
 }
