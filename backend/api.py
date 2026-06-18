@@ -7531,7 +7531,7 @@ def apply_rule_endpoint(rule_id):
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-# ===== Updated bank transaction functions (using stored token) =====
+
 def fetch_bank_transactions(date_from=None, date_to=None):
     """Fetch transactions using stored access token."""
     access_token = get_plaid_access_token()
@@ -7548,78 +7548,92 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         end_date = datetime.strptime(date_to, '%Y-%m-%d').date()
 
     if not date_from:
-        # Fetch as far back as Plaid allows (typically 2 years)
-        start_date = end_date - timedelta(days=730)  # ← 2 YEARS
+        start_date = end_date - timedelta(days=30)
     else:
         start_date = datetime.strptime(date_from, '%Y-%m-%d').date()
 
-        
+    request = TransactionsGetRequest(
+        access_token=access_token,
+        start_date=start_date,
+        end_date=end_date,
+        options=TransactionsGetRequestOptions(count=500, offset=0)
+    )
+    response = client.transactions_get(request)
+    transactions = response['transactions']
+    
+    result = []
+    for tx in transactions:
+        result.append({
+            'id': tx['transaction_id'],
+            'date': tx['date'],
+            'amount': tx['amount'],
+            'description': tx.get('name', ''),
+            'category': tx.get('category', [''])[0] if tx.get('category') else '',
+            'pending': tx.get('pending', False),
+            'status': 'pending' if tx.get('pending', False) else 'posted'
+        })
+    return result
+
+
 @app.route('/api/accounting/bank-transactions', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def accounting_get_bank_transactions():
-    try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
-        search = request.args.get('search', '').strip()
-        processed_filter = request.args.get('processed')  # 'true', 'false', or None
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    search = request.args.get('search', '').strip()
+    processed_filter = request.args.get('processed')
 
-        all_tx = fetch_bank_transactions(date_from, date_to)
+    all_tx = fetch_bank_transactions(date_from, date_to)
 
-        # Get all transaction IDs that have been processed (have journal entries)
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT DISTINCT source_id 
-            FROM journal_entries 
-            WHERE source_type IN ('bank_transaction', 'plaid_transaction')
-        ''')
-        processed_ids = set(row['source_id'] for row in cursor.fetchall())
-        conn.close()
+    # Get all transaction IDs that have been processed
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DISTINCT source_id 
+        FROM journal_entries 
+        WHERE source_type IN ('bank_transaction', 'plaid_transaction')
+    ''')
+    processed_ids = set(row['source_id'] for row in cursor.fetchall())
+    conn.close()
 
-        # Mark each transaction as processed or not
-        for tx in all_tx:
-            tx['processed'] = tx['id'] in processed_ids
+    # Mark each transaction as processed or not
+    for tx in all_tx:
+        tx['processed'] = tx['id'] in processed_ids
 
-        # Filter by search term
-        if search:
-            search_lower = search.lower()
-            all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
+    # Filter by search term
+    if search:
+        search_lower = search.lower()
+        all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
 
-        # Filter by processed status
-        if processed_filter == 'false':
-            all_tx = [tx for tx in all_tx if not tx['processed']]
-        elif processed_filter == 'true':
-            all_tx = [tx for tx in all_tx if tx['processed']]
+    # Filter by processed status
+    if processed_filter == 'false':
+        all_tx = [tx for tx in all_tx if not tx['processed']]
+    elif processed_filter == 'true':
+        all_tx = [tx for tx in all_tx if tx['processed']]
 
-        total_count = len(all_tx)
-        unprocessed_count = sum(1 for tx in all_tx if not tx['processed'])
+    total_count = len(all_tx)
+    unprocessed_count = sum(1 for tx in all_tx if not tx['processed'])
 
-        # Sort by date descending
-        all_tx.sort(key=lambda x: x['date'], reverse=True)
-        
-        # Paginate
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated = all_tx[start:end]
+    # Sort by date descending
+    all_tx.sort(key=lambda x: x['date'], reverse=True)
+    
+    # Paginate
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated = all_tx[start:end]
 
-        return jsonify({
-            'status': 'success',
-            'transactions': paginated,
-            'total': len(paginated),
-            'total_count': total_count,
-            'unprocessed_count': unprocessed_count,
-            'page': page,
-            'per_page': per_page
-        })
-    except Exception as e:
-        app.logger.error(f"Error fetching bank transactions: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
+    return jsonify({
+        'status': 'success',
+        'transactions': paginated,
+        'total': len(paginated),
+        'total_count': total_count,
+        'unprocessed_count': unprocessed_count,
+        'page': page,
+        'per_page': per_page
+    })
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
