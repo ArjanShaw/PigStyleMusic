@@ -538,7 +538,7 @@
                 </div>
             </div>
 
-            <!-- Bank Transactions Sub-tab (INTEGRATED with filter-apply) -->
+            <!-- Bank Transactions Sub-tab (integrated filter-apply) -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
                 <p class="text-muted">View and sync transactions from your connected bank account (FNBO).</p>
@@ -553,9 +553,9 @@
 
                 <!-- Filter & Apply section -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
-                    <div class="form-group">
-                        <label>Pattern filter</label>
-                        <input type="text" id="bank-filter-pattern" placeholder="e.g. STAMPS.COM">
+                    <div class="form-group" style="flex: 2;">
+                        <label>Filter</label>
+                        <input type="text" id="bank-filter" placeholder="Filter by description (e.g. STAMPS.COM)">
                     </div>
                     <div class="form-group">
                         <label>Apply to account</label>
@@ -569,7 +569,7 @@
                     <span id="filter-apply-status" class="text-muted"></span>
                 </div>
 
-                <!-- Date/Search filters -->
+                <!-- Date filters -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
                     <div class="form-group">
                         <label>Date From</label>
@@ -578,10 +578,6 @@
                     <div class="form-group">
                         <label>Date To</label>
                         <input type="date" id="bank-date-to">
-                    </div>
-                    <div class="form-group">
-                        <label>Search (additional)</label>
-                        <input type="text" id="bank-search" placeholder="Description...">
                     </div>
                     <button class="btn btn-primary" onclick="loadBankTransactions()"><i class="fas fa-search"></i> Filter</button>
                     <button class="btn btn-success" onclick="syncBankTransactions()"><i class="fas fa-sync-alt"></i> Sync Now</button>

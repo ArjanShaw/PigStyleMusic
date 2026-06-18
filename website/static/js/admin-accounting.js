@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'bank') {
                 loadBankTransactions();
                 checkBankConnection();
-                loadAccountSelectsForBank(); // load accounts for the apply dropdown
+                loadAccountSelectsForBank();
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
@@ -704,7 +704,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (with integrated filter‑apply)
+// BANK TRANSACTIONS (with integrated filter-apply)
 // ============================================================
 
 async function checkBankConnection() {
@@ -783,8 +783,8 @@ async function loadBankTransactions() {
     const to = document.getElementById('bank-date-to').value;
     if (from) params.append('date_from', from);
     if (to) params.append('date_to', to);
-    const search = document.getElementById('bank-search').value.trim();
-    if (search) params.append('search', search);
+    const filter = document.getElementById('bank-filter').value.trim();
+    if (filter) params.append('search', filter);
 
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
@@ -859,19 +859,19 @@ async function syncBankTransactions() {
 }
 
 // ============================================================
-// INTEGRATED FILTER-APPLY (no separate Rules tab)
+// INTEGRATED FILTER-APPLY (using the same filter field)
 // ============================================================
 
 async function applyFilterToTransactions() {
-    const patternInput = document.getElementById('bank-filter-pattern');
+    const filterInput = document.getElementById('bank-filter');
     const accountSelect = document.getElementById('bank-apply-account');
     const statusSpan = document.getElementById('filter-apply-status');
 
-    const pattern = patternInput.value.trim();
+    const pattern = filterInput.value.trim();
     const accountId = parseInt(accountSelect.value);
 
     if (!pattern) {
-        alert('Please enter a pattern to filter (e.g. STAMPS.COM).');
+        alert('Please enter a filter pattern (e.g. STAMPS.COM).');
         return;
     }
     if (!accountId) {
