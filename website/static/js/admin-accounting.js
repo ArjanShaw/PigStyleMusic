@@ -124,13 +124,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load default date range for reports and bank
     const today = new Date().toISOString().split('T')[0];
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-    document.getElementById('report-date-from').value = firstDay;
-    document.getElementById('report-date-to').value = today;
-    document.getElementById('manual-date').value = today;
-    document.getElementById('journal-date-from').value = firstDay;
-    document.getElementById('journal-date-to').value = today;
-    document.getElementById('bank-date-from').value = firstDay;
-    document.getElementById('bank-date-to').value = today;
+    document.getElementById('report-date-from').value = '';
+    document.getElementById('report-date-to').value = '';
+    document.getElementById('manual-date').value = '';
+    document.getElementById('journal-date-from').value = '';
+    document.getElementById('journal-date-to').value = '';
+    document.getElementById('bank-date-from').value = '';
+    document.getElementById('bank-date-to').value = ''
     
     // Account transactions - leave date filters empty to show all
     document.getElementById('account-tx-date-from').value = '';
@@ -1074,10 +1074,13 @@ async function loadBankTransactions() {
     const params = new URLSearchParams();
     params.append('page', bankCurrentPage);
     params.append('per_page', bankPageSize);
+    
+    // Only add date filters if they have values
     const from = document.getElementById('bank-date-from').value;
     const to = document.getElementById('bank-date-to').value;
     if (from) params.append('date_from', from);
     if (to) params.append('date_to', to);
+    
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
 
@@ -1099,6 +1102,7 @@ async function loadBankTransactions() {
         body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
+
 
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
