@@ -7532,7 +7532,6 @@ def apply_rule_endpoint(rule_id):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ===== Updated bank transaction functions (using stored token) =====
-
 def fetch_bank_transactions(date_from=None, date_to=None):
     """Fetch transactions using stored access token."""
     access_token = get_plaid_access_token()
@@ -7549,39 +7548,12 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         end_date = datetime.strptime(date_to, '%Y-%m-%d').date()
 
     if not date_from:
-        start_date = end_date - timedelta(days=30)
+        # Fetch as far back as Plaid allows (typically 2 years)
+        start_date = end_date - timedelta(days=730)  # ← 2 YEARS
     else:
         start_date = datetime.strptime(date_from, '%Y-%m-%d').date()
 
-    request = TransactionsGetRequest(
-        access_token=access_token,
-        start_date=start_date,
-        end_date=end_date,
-        options=TransactionsGetRequestOptions(count=500, offset=0)
-    )
-    try:
-        response = client.transactions_get(request)
-        transactions = response['transactions']
-    except plaid.ApiException as e:
-        # If token is invalid, clear it so user can reconnect
-        if e.status == 400 and 'INVALID_ACCESS_TOKEN' in e.body:
-            set_plaid_access_token('')
-            raise Exception("Access token expired or invalid. Please reconnect your bank.")
-        raise
-
-    result = []
-    for tx in transactions:
-        result.append({
-            'id': tx['transaction_id'],
-            'date': tx['date'],
-            'amount': tx['amount'],
-            'description': tx.get('name', ''),
-            'category': tx.get('category', [''])[0] if tx.get('category') else '',
-            'pending': tx.get('pending', False),
-            'status': 'pending' if tx.get('pending', False) else 'posted'
-        })
-    return result
-
+        
 @app.route('/api/accounting/bank-transactions', methods=['GET'])
 @login_required
 @role_required(['admin'])
