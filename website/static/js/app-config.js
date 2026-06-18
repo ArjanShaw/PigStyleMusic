@@ -477,21 +477,13 @@ const Auth = {
     // Update navigation links based on role
     updateNavLinks() {
         const dashboardLink = document.getElementById('dashboard-nav-link');
-        const youtubeLinkerLink = document.getElementById('youtube-linker-nav-link');
-        
-        if (!dashboardLink || !youtubeLinkerLink) return;
-        
-        if (this.isLoggedIn) {
-            if (this.role === 'youtube_linker') {
-                dashboardLink.style.display = 'none';
-                youtubeLinkerLink.style.display = 'inline-block';
-            } else if (this.role === 'admin' || this.role === 'consignor') {
+        // Removed YouTube Linker reference
+        if (dashboardLink) {
+            if (this.isLoggedIn && (this.role === 'admin' || this.role === 'consignor')) {
                 dashboardLink.style.display = 'inline-block';
-                youtubeLinkerLink.style.display = 'none';
+            } else {
+                dashboardLink.style.display = 'none';
             }
-        } else {
-            dashboardLink.style.display = 'none';
-            youtubeLinkerLink.style.display = 'none';
         }
     },
     
@@ -707,11 +699,6 @@ const Auth = {
                             <i class="fas fa-caret-down"></i>
                         </button>
                         <div class="dropdown-menu" id="dropdown-menu">
-                            ${this.role === 'youtube_linker' || this.role === 'admin' ? `
-                            <a href="/youtube-linker" class="dropdown-item">
-                                <i class="fab fa-youtube"></i> YouTube Linker
-                            </a>
-                            ` : ''}
                             ${this.role === 'admin' || this.role === 'consignor' ? `
                             <a href="/dashboard" class="dropdown-item">
                                 <i class="fas fa-tachometer-alt"></i> Dashboard
@@ -720,6 +707,9 @@ const Auth = {
                             ${this.role === 'admin' ? `
                             <a href="/admin" class="dropdown-item">
                                 <i class="fas fa-cog"></i> Admin Panel
+                            </a>
+                            <a href="/admin/accounting" class="dropdown-item">
+                                <i class="fas fa-calculator"></i> Accounting
                             </a>
                             ` : ''}
                             <div class="dropdown-divider"></div>

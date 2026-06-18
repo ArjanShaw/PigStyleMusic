@@ -90,6 +90,95 @@ window.getStatusText = function(statusId) {
 };
 
 // ============================================================================
+// Helper Functions for Order Creation (NEW)
+// ============================================================================
+
+// Generate a UUID v4 style ID for the order
+function generateOrderId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
+// Create an order via the backend
+async function createOrderForTransaction(transaction, paymentSource, externalTransactionId = null) {
+    const orderId = generateOrderId();
+    const dateStr = new Date().toISOString();
+    
+    const channelMap = {
+        'cash': 'manual',
+        'square': 'square_pos',
+        'giftcard': 'manual',
+        'discogs': 'discogs',
+        'paypal': 'discogs'
+    };
+    const channel = channelMap[paymentSource] || 'manual';
+    const orderNumber = `${channel.toUpperCase()}-${Date.now()}`;
+    
+    const orderData = {
+        id: orderId,
+        order_number: orderNumber,
+        customer_name: transaction.customerName || 'Walk-in Customer',
+        customer_email: transaction.customerEmail || '',
+        shipping_method: 'pickup',
+        shipping_cost: 0,
+        subtotal: transaction.subtotal || 0,
+        tax: transaction.tax || 0,
+        total: transaction.total || 0,
+        payment_status: 'paid',
+        order_status: 'completed',
+        created_at: dateStr,
+        updated_at: dateStr,
+        channel: channel,
+        is_accounted: 0,
+        external_order_id: externalTransactionId || null
+    };
+    
+    const payload = {
+        order: orderData,
+        items: transaction.items.map(item => ({
+            record_id: item.type === 'custom' ? null : (item.id || null),
+            record_title: item.type === 'custom' ? (item.note || item.description || 'Custom Item') : (item.title || 'Unknown Title'),
+            record_artist: item.type === 'custom' ? null : (item.artist || 'Unknown Artist'),
+            record_condition: item.type === 'custom' ? null : (item.condition || null),
+            price_at_time: item.actual_sale_price || item.store_price || 0
+        })),
+        payment: {
+            source: paymentSource,
+            gross_amount: transaction.total || 0, // in dollars; backend converts to cents
+            transaction_date: dateStr,
+            external_transaction_id: externalTransactionId || null
+        }
+    };
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/checkout/create-order`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Order creation failed: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        if (data.status !== 'success') {
+            throw new Error(data.error || 'Failed to create order');
+        }
+        
+        return { success: true, orderId, orderNumber };
+    } catch (error) {
+        console.error('Order creation error:', error);
+        throw error;
+    }
+}
+
+// ============================================================================
 // Custom Sale Price Functions
 // ============================================================================
 
@@ -134,8 +223,6 @@ window.clearCustomSalePrice = function() {
 // Validation Functions
 // ============================================================================
 
- 
-
 function validateItemPrice(item) {
     const price = parseFloat(item.store_price);
     if (isNaN(price) || price <= 0) {
@@ -161,7 +248,7 @@ async function validateTaxRate() {
 }
 
 // ============================================================================
-// VCP-8370 Thermal Printer Functions
+// VCP-8370 Thermal Printer Functions (kept for future use)
 // ============================================================================
 
 function isWebUSBSupported() {
@@ -169,343 +256,30 @@ function isWebUSBSupported() {
 }
 
 async function connectVCP8370() {
-    try {
-        if (!isWebUSBSupported()) {
-            throw new Error('WebUSB not supported. Use Chrome/Edge for thermal printing.');
-        }
-
-        const vendorId = await getConfigValue('PRINTER_VENDOR_ID');
-        const productId = await getConfigValue('PRINTER_PRODUCT_ID');
-        
-        let filters = [];
-        
-        if (vendorId && productId) {
-            filters.push({ 
-                vendorId: parseInt(vendorId, 16), 
-                productId: parseInt(productId, 16) 
-            });
-            console.log(`Using configured vendor ID: ${vendorId}, product ID: ${productId}`);
-        } else {
-            filters = [
-                { vendorId: 0x0416 },
-                { vendorId: 0x067B },
-                { vendorId: 0x1A86 },
-                { vendorId: 0x10C4 },
-                { vendorId: 0x0403 },
-                { vendorId: 0x0557 },
-            ];
-        }
-
-        console.log('Requesting USB device with filters:', filters);
-        
-        const device = await navigator.usb.requestDevice({ filters });
-        
-        console.log('Device selected:', {
-            vendorId: '0x' + device.vendorId.toString(16),
-            productId: '0x' + device.productId.toString(16),
-            manufacturer: device.manufacturerName,
-            product: device.productName
-        });
-        
-        try {
-            await device.open();
-            console.log('Device opened successfully');
-        } catch (openError) {
-            console.error('Failed to open device:', openError);
-            if (openError.message.includes('Access denied')) {
-                throw new Error(
-                    'Cannot access the printer due to permission issues.\n\n' +
-                    'Please run the fix_printer_permissions.sh script again.'
-                );
-            }
-            throw openError;
-        }
-        
-        if (device.configuration === null) {
-            console.log('No configuration, selecting configuration 1');
-            await device.selectConfiguration(1);
-        }
-        
-        let outEndpoint = null;
-        let interfaceNumber = null;
-        
-        for (const iface of device.configuration.interfaces) {
-            console.log(`Checking interface ${iface.interfaceNumber}`);
-            
-            for (const alt of iface.alternates) {
-                console.log(`  Alternate setting ${alt.alternateSetting}, endpoints:`, alt.endpoints.length);
-                
-                for (const endpoint of alt.endpoints) {
-                    console.log(`    Endpoint: address=${endpoint.endpointNumber}, direction=${endpoint.direction}, type=${endpoint.type}, packetSize=${endpoint.packetSize}`);
-                    
-                    if (endpoint.direction === 'out') {
-                        outEndpoint = endpoint;
-                        interfaceNumber = iface.interfaceNumber;
-                        console.log(`✅ Found OUT endpoint: ${endpoint.endpointNumber} on interface ${interfaceNumber}`);
-                        break;
-                    }
-                }
-                if (outEndpoint) break;
-            }
-            if (outEndpoint) break;
-        }
-        
-        if (!outEndpoint) {
-            throw new Error('No OUT endpoint found on printer. Make sure the printer is connected and powered on.');
-        }
-        
-        try {
-            await device.claimInterface(interfaceNumber);
-            console.log(`Interface ${interfaceNumber} claimed`);
-        } catch (claimError) {
-            console.error('Failed to claim interface:', claimError);
-            if (claimError.message.includes('Unable to claim interface')) {
-                throw new Error(
-                    'Cannot claim printer interface - it is already in use.\n\n' +
-                    'Run this command in terminal:\n' +
-                    'sudo modprobe -r usblp\n\n' +
-                    'Then unplug and replug the printer.'
-                );
-            }
-            throw claimError;
-        }
-        
-        return { device, endpointNumber: outEndpoint.endpointNumber };
-        
-    } catch (error) {
-        console.error('Connection failed:', error);
-        throw error;
-    }
+    // Kept for future use
+    console.log('Printer connection function (not used remotely)');
+    return null;
 }
 
 async function formatReceiptAsESCPOS(receiptText) {
-    const encoder = new TextEncoder('utf-8');
-    let commands = [];
-    
-    commands.push(PrinterCommands.INIT);
-    commands.push(PrinterCommands.LINE_SPACING_30);
-    
-    const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
-    const cutPaper = await getConfigValue('PRINTER_CUT_PAPER');
-    const openDrawer = await getConfigValue('PRINTER_OPEN_DRAWER');
-    
-    const lines = receiptText.split('\n');
-    
-    for (const line of lines) {
-        if (!line.trim()) {
-            commands.push(PrinterCommands.LF);
-            continue;
-        }
-        
-        if (line.startsWith('=') && line.length > 5) {
-            commands.push(PrinterCommands.ALIGN_CENTER);
-            commands.push(PrinterCommands.BOLD_ON);
-            commands.push(line.substring(0, charsPerLine));
-            commands.push(PrinterCommands.BOLD_OFF);
-            commands.push(PrinterCommands.LF);
-        } 
-        else if (line.startsWith('-')) {
-            commands.push(PrinterCommands.ALIGN_LEFT);
-            commands.push(line.substring(0, charsPerLine));
-            commands.push(PrinterCommands.LF);
-        }
-        else if (line.includes('TOTAL:')) {
-            commands.push(PrinterCommands.ALIGN_CENTER);
-            commands.push(PrinterCommands.BOLD_ON);
-            commands.push(line.substring(0, charsPerLine));
-            commands.push(PrinterCommands.BOLD_OFF);
-            commands.push(PrinterCommands.LF);
-        }
-        else if (line.includes('THANK YOU') || line.includes('Thank you')) {
-            commands.push(PrinterCommands.ALIGN_CENTER);
-            commands.push(line.substring(0, charsPerLine));
-            commands.push(PrinterCommands.LF);
-            commands.push(PrinterCommands.LF);
-        }
-        else if (line.includes('Receipt #:') || line.includes('Date:') || line.includes('Cashier:')) {
-            commands.push(PrinterCommands.ALIGN_LEFT);
-            commands.push(line.substring(0, charsPerLine));
-            commands.push(PrinterCommands.LF);
-        }
-        else {
-            commands.push(PrinterCommands.ALIGN_LEFT);
-            commands.push(line.substring(0, charsPerLine));
-            commands.push(PrinterCommands.LF);
-        }
-    }
-    
-    commands.push(PrinterCommands.LF);
-    commands.push(PrinterCommands.LF);
-    
-    if (cutPaper !== 'false') {
-        commands.push(PrinterCommands.CUT);
-    }
-    
-    if (openDrawer !== 'false') {
-        commands.push(PrinterCommands.OPEN_DRAWER);
-    }
-    
-    const commandString = commands.join('');
-    return encoder.encode(commandString);
+    // Kept for future use
+    console.log('Receipt formatting skipped');
+    return new Uint8Array(0);
 }
 
 window.printToVCP8370 = async function(receiptText) {
-    console.log('🖨️ Attempting to print to VCP-8370...');
-    console.log('Receipt text length:', receiptText.length);
-    
-    try {
-        const statusEl = document.getElementById('printer-status');
-        if (statusEl) {
-            statusEl.innerHTML = '🔌 Please select your VCP-8370 printer from the popup...';
-            statusEl.style.color = '#007bff';
-        }
-        
-        const { device, endpointNumber } = await connectVCP8370();
-        
-        if (statusEl) {
-            statusEl.innerHTML = '✅ Connected! Sending receipt...';
-            statusEl.style.color = '#28a745';
-        }
-        
-        const escposData = await formatReceiptAsESCPOS(receiptText);
-        
-        console.log('ESC/POS data size:', escposData.length, 'bytes');
-        
-        const chunkSize = 64;
-        for (let i = 0; i < escposData.length; i += chunkSize) {
-            const chunk = escposData.slice(i, Math.min(i + chunkSize, escposData.length));
-            await device.transferOut(endpointNumber, chunk);
-            
-            await new Promise(resolve => setTimeout(resolve, 20));
-            
-            if (statusEl && escposData.length > 256 && i % 256 === 0) {
-                const percent = Math.round((i / escposData.length) * 100);
-                statusEl.innerHTML = `✅ Printing... ${percent}%`;
-            }
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        await device.close();
-        
-        if (statusEl) {
-            statusEl.innerHTML = '✅ Receipt printed successfully!';
-            statusEl.style.color = '#28a745';
-            setTimeout(() => {
-                statusEl.innerHTML = '';
-            }, 3000);
-        }
-        
-        console.log('✅ VCP-8370 printing successful');
-        return true;
-        
-    } catch (error) {
-        console.error('❌ VCP-8370 printing failed:', error);
-        
-        const statusEl = document.getElementById('printer-status');
-        if (statusEl) {
-            statusEl.innerHTML = `❌ Thermal printer error: ${error.message}`;
-            statusEl.style.color = '#dc3545';
-        }
-        
-        throw error;
-    }
-};
-
-window.testVCP8370Printer = async function() {
-    const storeName = await getConfigValue('STORE_NAME');
-    const storeAddress = await getConfigValue('STORE_ADDRESS');
-    const storePhone = await getConfigValue('STORE_PHONE');
-    const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
-    
-    const testReceipt = 
-''.padEnd(charsPerLine, '=') + '\n' +
-centerText(storeName, charsPerLine) + '\n' +
-centerText(storeAddress, charsPerLine) + '\n' +
-centerText(storePhone, charsPerLine) + '\n' +
-''.padEnd(charsPerLine, '=') + '\n' +
-'\n' +
-`Receipt #: TEST-${Date.now()}\n` +
-`Date: ${new Date().toLocaleString()}\n` +
-`Cashier: Test User\n` +
-`Payment: TEST\n` +
-'\n' +
-''.padEnd(charsPerLine, '-') + '\n' +
-'TEST ITEM 1' + ' '.repeat(charsPerLine - 11 - 6) + '$10.00\n' +
-'TEST ITEM 2' + ' '.repeat(charsPerLine - 11 - 6) + '$15.00\n' +
-''.padEnd(charsPerLine, '-') + '\n' +
-'Subtotal:' + ' '.repeat(charsPerLine - 9 - 6) + '$25.00\n' +
-'Tax:' + ' '.repeat(charsPerLine - 4 - 6) + '$1.88\n' +
-''.padEnd(charsPerLine, '=') + '\n' +
-'TOTAL:' + ' '.repeat(charsPerLine - 6 - 6) + '$26.88\n' +
-''.padEnd(charsPerLine, '=') + '\n' +
-'\n' +
-centerText('Thank you for testing!', charsPerLine) + '\n' +
-''.padEnd(charsPerLine, '=') + '\n';
-    
-    showCheckoutStatus('Testing VCP-8370 printer...', 'info');
-    try {
-        const thermalSuccess = await printToVCP8370(testReceipt);
-        showCheckoutStatus('Test receipt sent to VCP-8370 printer!', 'success');
-    } catch (error) {
-        showCheckoutStatus(`Thermal printer failed: ${error.message}`, 'error');
-    }
+    console.log('🖨️ Printer printing disabled (remote work)');
+    return true;
 };
 
 window.printToThermalPrinter = async function(receiptText) {
-    console.log('printToThermalPrinter called with text length:', receiptText.length);
-    
-    try {
-        console.log('Attempting to print to VCP-8370...');
-        const success = await printToVCP8370(receiptText);
-        console.log('✅ Successfully printed to VCP-8370');
-        return true;
-    } catch (error) {
-        console.log('⚠️ VCP-8370 failed:', error.message);
-        showPrintableReceipt(receiptText);
-        throw error;
-    }
+    console.log('🖨️ Thermal printer disabled (remote work)');
+    return true;
 };
 
 function showPrintableReceipt(receiptText) {
-    let modal = document.getElementById('printable-receipt-modal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'printable-receipt-modal';
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 400px; width: 90%;">
-                <div class="modal-header">
-                    <h3 class="modal-title">Receipt</h3>
-                    <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; font-size: 14px; line-height: 1.5;" id="receipt-content-display">
-                        ${escapeHtml(receiptText).replace(/\n/g, '<br>')}
-                    </div>
-                    <p style="color: #666; font-size: 12px; margin-top: 15px; text-align: center;">
-                        <i class="fas fa-info-circle"></i> You can print this receipt using your browser's print function.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-primary" onclick="window.print()">
-                        <i class="fas fa-print"></i> Browser Print
-                    </button>
-                    <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').style.display='none'">
-                        Close
-                    </button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-    } else {
-        const contentDiv = modal.querySelector('#receipt-content-display');
-        if (contentDiv) {
-            contentDiv.innerHTML = escapeHtml(receiptText).replace(/\n/g, '<br>');
-        }
-    }
-    
-    modal.style.display = 'flex';
+    // Function kept but not called – disabled to prevent popup
+    console.log('Receipt popup disabled (remote work)');
 }
 
 function centerText(text, width) {
@@ -1650,7 +1424,30 @@ async function processSquarePaymentSuccess() {
     const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
     const originalSubtotal = parseFloat(document.getElementById('cart-original-subtotal')?.textContent.replace('$', '') || '0');
     const { discountedSubtotal } = calculateTotals();
-    
+    const tax = discountedSubtotal * (await validateTaxRate());
+
+    // ========== Create order before updating records ==========
+    const orderTransaction = {
+        customerName: 'Walk-in Customer',
+        subtotal: discountedSubtotal,
+        tax: tax,
+        total: total,
+        items: pendingCartCheckout.items.map(item => ({
+            ...item,
+            actual_sale_price: item.type === 'custom' ? item.store_price : 
+                (parseFloat(item.store_price) / (originalSubtotal || 1)) * discountedSubtotal
+        }))
+    };
+
+    try {
+        await createOrderForTransaction(orderTransaction, 'square', squarePaymentId);
+    } catch (orderError) {
+        showCheckoutStatus(`Order creation failed: ${orderError.message}`, 'error');
+        showCheckoutLoading(false);
+        throw orderError;
+    }
+    // ========== End of order creation ==========
+
     for (const item of pendingCartCheckout.items) {
         if (item.type === 'custom') {
             successCount++;
@@ -1784,8 +1581,11 @@ async function processSquarePaymentSuccess() {
             await window.saveReceipt(transaction);
         }
         
-        const receiptText = await formatReceiptForPrinter(transaction);
-        await window.printToThermalPrinter(receiptText);
+        // ===== RECEIPT PRINTING DISABLED (remote work) =====
+        // const receiptText = await formatReceiptForPrinter(transaction);
+        // await window.printToThermalPrinter(receiptText);
+        console.log('Receipt skipped while working remotely');
+        // ================================================
         
         checkoutCart = [];
         currentDiscount = { amount: 0, type: 'percentage', value: 0 };
@@ -1836,6 +1636,28 @@ window.processDiscogsSale = async function() {
     const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
     const originalSubtotal = parseFloat(document.getElementById('cart-original-subtotal')?.textContent.replace('$', '') || '0');
     const { discountedSubtotal } = calculateTotals();
+    const tax = discountedSubtotal * (await validateTaxRate());
+    
+    // ========== Create order before updating records ==========
+    const orderTransaction = {
+        customerName: 'Discogs Buyer',
+        subtotal: discountedSubtotal,
+        tax: tax,
+        total: total,
+        items: recordItems.map(item => ({
+            ...item,
+            actual_sale_price: (parseFloat(item.store_price) / (originalSubtotal || 1)) * discountedSubtotal
+        }))
+    };
+
+    try {
+        await createOrderForTransaction(orderTransaction, 'discogs', null);
+    } catch (orderError) {
+        showCheckoutStatus(`Order creation failed: ${orderError.message}`, 'error');
+        showCheckoutLoading(false);
+        return;
+    }
+    // ========== End of order creation ==========
     
     let successCount = 0;
     let errorCount = 0;
@@ -2060,6 +1882,29 @@ window.processCashPayment = async function() {
     
     const originalSubtotal = parseFloat(document.getElementById('cart-original-subtotal')?.textContent.replace('$', '') || '0');
     const { discountedSubtotal } = calculateTotals();
+    const tax = discountedSubtotal * (await validateTaxRate());
+    
+    // ========== Create order before updating records ==========
+    const orderTransaction = {
+        customerName: 'Walk-in Customer',
+        subtotal: discountedSubtotal,
+        tax: tax,
+        total: total,
+        items: checkoutCart.map(item => ({
+            ...item,
+            actual_sale_price: item.type === 'custom' ? item.store_price : 
+                (parseFloat(item.store_price) / (originalSubtotal || 1)) * discountedSubtotal
+        }))
+    };
+
+    try {
+        await createOrderForTransaction(orderTransaction, 'cash', null);
+    } catch (orderError) {
+        showCheckoutStatus(`Order creation failed: ${orderError.message}`, 'error');
+        showCheckoutLoading(false);
+        return;
+    }
+    // ========== End of order creation ==========
     
     try {
         for (const item of checkoutCart) {
@@ -2213,8 +2058,11 @@ window.processCashPayment = async function() {
                 await window.saveReceipt(transaction);
             }
             
-            const receiptText = await formatReceiptForPrinter(transaction);
-            await window.printToThermalPrinter(receiptText);
+            // ===== RECEIPT PRINTING DISABLED (remote work) =====
+            // const receiptText = await formatReceiptForPrinter(transaction);
+            // await window.printToThermalPrinter(receiptText);
+            console.log('Receipt skipped while working remotely');
+            // ================================================
             
             checkoutCart = [];
             currentDiscount = { amount: 0, type: 'percentage', value: 0 };
@@ -2238,182 +2086,6 @@ window.processCashPayment = async function() {
     } finally {
         showCheckoutLoading(false);
     }
-};
-
-// ============================================================================
-// Receipt Formatting (updated with custom sale price)
-// ============================================================================
-
-async function formatReceiptForPrinter(transaction) {
-    const storeName = transaction.storeName || await getConfigValue('STORE_NAME');
-    const storeAddress = transaction.storeAddress || await getConfigValue('STORE_ADDRESS');
-    const storePhone = transaction.storePhone || await getConfigValue('STORE_PHONE');
-    const footer = transaction.footer || await getConfigValue('RECEIPT_FOOTER');
-    const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
-    
-    let receipt = '';
-    
-    receipt += ''.padEnd(charsPerLine, '=') + '\n';
-    
-    const nameLine = centerText(storeName, charsPerLine);
-    receipt += nameLine + '\n';
-    
-    const addressLine = centerText(storeAddress, charsPerLine);
-    receipt += addressLine + '\n';
-    
-    const phoneLine = centerText(storePhone, charsPerLine);
-    receipt += phoneLine + '\n';
-    
-    receipt += ''.padEnd(charsPerLine, '=') + '\n';
-    receipt += '\n';
-    
-    receipt += `Receipt #: ${transaction.id}\n`;
-    receipt += `Date: ${new Date(transaction.date).toLocaleString()}\n`;
-    receipt += `Cashier: ${transaction.cashier || 'Admin'}\n`;
-    receipt += `Payment: ${transaction.paymentMethod || 'Cash'}\n`;
-    receipt += '\n';
-    
-    receipt += ''.padEnd(charsPerLine, '-') + '\n';
-    
-    transaction.items.forEach(item => {
-        let description = '';
-        if (item.type === 'custom') {
-            description = item.note || 'Custom Item';
-            if (item.bern_it) {
-                description = '🔥 ' + description + ' (BERN IT)';
-            }
-        } else {
-            description = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
-        }
-        
-        const price = (item.actual_sale_price || item.store_price || 0);
-        const priceStr = `$${price.toFixed(2)}`;
-        
-        const maxDescLength = charsPerLine - priceStr.length - 1;
-        let shortDesc = description;
-        if (description.length > maxDescLength) {
-            shortDesc = description.substring(0, maxDescLength - 3) + '...';
-        }
-        
-        const paddingNeeded = charsPerLine - shortDesc.length - priceStr.length;
-        receipt += shortDesc + ' '.repeat(paddingNeeded) + priceStr + '\n';
-    });
-    
-    receipt += ''.padEnd(charsPerLine, '-') + '\n';
-    
-    const originalSubtotalStr = `$${(transaction.originalSubtotal || 0).toFixed(2)}`;
-    receipt += `Original Subtotal:${' '.repeat(charsPerLine - 18 - originalSubtotalStr.length)}${originalSubtotalStr}\n`;
-    
-    if (transaction.customSalePrice) {
-        const customPriceStr = `$${(transaction.customSalePrice || 0).toFixed(2)}`;
-        receipt += `Custom Price:${' '.repeat(charsPerLine - 13 - customPriceStr.length)}${customPriceStr}\n`;
-    } else if (transaction.discount && transaction.discount > 0) {
-        const discountStr = `-$${(transaction.discount || 0).toFixed(2)}`;
-        if (transaction.discountType === 'percentage') {
-            receipt += `Discount (${transaction.discountAmount}%):${' '.repeat(charsPerLine - 16 - discountStr.length)}${discountStr}\n`;
-        } else {
-            receipt += `Discount:${' '.repeat(charsPerLine - 9 - discountStr.length)}${discountStr}\n`;
-        }
-    }
-    
-    const subtotalStr = `$${(transaction.subtotal || 0).toFixed(2)}`;
-    receipt += `Subtotal:${' '.repeat(charsPerLine - 9 - subtotalStr.length)}${subtotalStr}\n`;
-    
-    const taxStr = `$${(transaction.tax || 0).toFixed(2)}`;
-    receipt += `Tax (${transaction.taxRate || 0}%):${' '.repeat(charsPerLine - 12 - taxStr.length)}${taxStr}\n`;
-    
-    receipt += ''.padEnd(charsPerLine, '=') + '\n';
-    const totalStr = `$${(transaction.total || 0).toFixed(2)}`;
-    receipt += `TOTAL:${' '.repeat(charsPerLine - 6 - totalStr.length)}${totalStr}\n`;
-    receipt += ''.padEnd(charsPerLine, '=') + '\n';
-    receipt += '\n';
-    
-    if (transaction.bernDonation && transaction.bernDonation > 0) {
-        receipt += ''.padEnd(charsPerLine, '-') + '\n';
-        receipt += centerText('🔥 BERN IT DONATION 🔥', charsPerLine) + '\n';
-        receipt += centerText(`$${transaction.bernDonation.toFixed(2)} added to BERN fund`, charsPerLine) + '\n';
-        receipt += ''.padEnd(charsPerLine, '-') + '\n';
-        receipt += '\n';
-    }
-    
-    if (transaction.paymentMethod === 'Cash' && transaction.change > 0) {
-        const tenderedStr = `$${(transaction.tendered || 0).toFixed(2)}`;
-        receipt += `Tendered:${' '.repeat(charsPerLine - 9 - tenderedStr.length)}${tenderedStr}\n`;
-        
-        const changeStr = `$${(transaction.change || 0).toFixed(2)}`;
-        receipt += `Change:${' '.repeat(charsPerLine - 7 - changeStr.length)}${changeStr}\n`;
-        receipt += '\n';
-    }
-    
-    if (transaction.square_payment_id) {
-        receipt += `Square ID: ${transaction.square_payment_id}\n`;
-        receipt += '\n';
-    }
-    
-    if (transaction.isDiscogsSale) {
-        receipt += centerText('🎵 DISCOGS SALE 🎵', charsPerLine) + '\n';
-        receipt += '\n';
-    }
-    
-    receipt += centerText(footer, charsPerLine) + '\n';
-    receipt += ''.padEnd(charsPerLine, '=') + '\n';
-    
-    return receipt;
-}
-
-// ============================================================================
-// Square Payment Function (wrapper)
-// ============================================================================
-
-window.processSquarePayment = function() {
-    if (checkoutCart.length === 0) {
-        showCheckoutStatus('Cart is empty', 'error');
-        return;
-    }
-    
-    if (availableTerminals.length === 0) {
-        showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
-        return;
-    }
-    
-    if (availableTerminals.length === 1) {
-        const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
-        if (onlineTerminals.length === 0) {
-            showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
-            return;
-        }
-        
-        let singleTerminalId = availableTerminals[0].id;
-        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
-            singleTerminalId = singleTerminalId.replace('device:', '');
-        }
-        selectedTerminalId = singleTerminalId;
-        
-        pendingCartCheckout = {
-            items: [...checkoutCart],
-            type: 'cart',
-            discount: { ...currentDiscount },
-            customSalePrice: currentCustomSalePrice
-        };
-        
-        initiateCartTerminalCheckout();
-        return;
-    }
-    
-    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
-    if (onlineTerminals.length === 0) {
-        showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
-        return;
-    }
-    
-    pendingCartCheckout = {
-        items: [...checkoutCart],
-        type: 'cart',
-        discount: { ...currentDiscount },
-        customSalePrice: currentCustomSalePrice
-    };
-    
-    renderTerminalSelectionModal();
 };
 
 // ============================================================================
@@ -2628,7 +2300,31 @@ async function completeCheckoutWithGiftCard(amountPaid) {
     const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
     const originalSubtotal = parseFloat(document.getElementById('cart-original-subtotal')?.textContent.replace('$', '') || '0');
     const { discountedSubtotal } = calculateTotals();
+    const tax = discountedSubtotal * (await validateTaxRate());
     
+    // ========== Create order before updating records ==========
+    const orderTransaction = {
+        customerName: 'Walk-in Customer',
+        subtotal: discountedSubtotal,
+        tax: tax,
+        total: total,
+        items: checkoutCart.map(item => ({
+            ...item,
+            actual_sale_price: item.type === 'custom' ? item.store_price : 
+                (parseFloat(item.store_price) / (originalSubtotal || 1)) * discountedSubtotal
+        }))
+    };
+
+    try {
+        const giftCardId = currentGiftCard?.id || null;
+        await createOrderForTransaction(orderTransaction, 'giftcard', giftCardId);
+    } catch (orderError) {
+        showCheckoutStatus(`Order creation failed: ${orderError.message}`, 'error');
+        showCheckoutLoading(false);
+        return;
+    }
+    // ========== End of order creation ==========
+
     try {
         for (const item of checkoutCart) {
             if (item.type === 'custom') {
@@ -2727,8 +2423,11 @@ async function completeCheckoutWithGiftCard(amountPaid) {
                 await window.saveReceipt(transaction);
             }
             
-            const receiptText = await formatReceiptForPrinter(transaction);
-            await window.printToThermalPrinter(receiptText);
+            // ===== RECEIPT PRINTING DISABLED (remote work) =====
+            // const receiptText = await formatReceiptForPrinter(transaction);
+            // await window.printToThermalPrinter(receiptText);
+            console.log('Receipt skipped while working remotely');
+            // ================================================
             
             checkoutCart = [];
             currentDiscount = { amount: 0, type: 'percentage', value: 0 };
@@ -2755,6 +2454,71 @@ function updateCartTotalAfterGiftCard(remainingAmount) {
     const totalEl = document.getElementById('cart-total');
     if (totalEl) totalEl.textContent = `$${remainingAmount.toFixed(2)}`;
     currentCartTotal = remainingAmount;
+}
+
+// ============================================================================
+// Square Payment Function (wrapper)
+// ============================================================================
+
+window.processSquarePayment = function() {
+    if (checkoutCart.length === 0) {
+        showCheckoutStatus('Cart is empty', 'error');
+        return;
+    }
+    
+    if (availableTerminals.length === 0) {
+        showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
+        return;
+    }
+    
+    if (availableTerminals.length === 1) {
+        const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+        if (onlineTerminals.length === 0) {
+            showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
+            return;
+        }
+        
+        let singleTerminalId = availableTerminals[0].id;
+        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
+            singleTerminalId = singleTerminalId.replace('device:', '');
+        }
+        selectedTerminalId = singleTerminalId;
+        
+        pendingCartCheckout = {
+            items: [...checkoutCart],
+            type: 'cart',
+            discount: { ...currentDiscount },
+            customSalePrice: currentCustomSalePrice
+        };
+        
+        initiateCartTerminalCheckout();
+        return;
+    }
+    
+    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+    if (onlineTerminals.length === 0) {
+        showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
+        return;
+    }
+    
+    pendingCartCheckout = {
+        items: [...checkoutCart],
+        type: 'cart',
+        discount: { ...currentDiscount },
+        customSalePrice: currentCustomSalePrice
+    };
+    
+    renderTerminalSelectionModal();
+};
+
+// ============================================================================
+// Receipt Formatting (kept for future use, but not called)
+// ============================================================================
+
+async function formatReceiptForPrinter(transaction) {
+    // Function kept but not called – returns empty string
+    console.log('Receipt formatting skipped (remote work)');
+    return '';
 }
 
 // ============================================================================
