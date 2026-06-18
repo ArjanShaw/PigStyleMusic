@@ -25,7 +25,7 @@ let currentAccountBalance = 0;
 
 document.addEventListener('DOMContentLoaded', function() {
     const accountingContainer = document.getElementById('accounting-container');
-    if (!accountingContainer) return; // not on accounting page
+    if (!accountingContainer) return;
 
     // Sub-tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
@@ -36,19 +36,20 @@ document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('#accounting-container .sub-tab-content').forEach(c => c.classList.remove('active'));
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
-            if (sub === 'dashboard') loadDashboard();
-            else if (sub === 'journal') loadJournalEntries();
-            else if (sub === 'account-transactions') {
+            
+            if (sub === 'dashboard') {
+                loadDashboard();
+            } else if (sub === 'journal') {
+                loadJournalEntries();
+            } else if (sub === 'account-transactions') {
                 loadAccountSelectsForTransactions();
-                loadAccountTransactions();
-            }
-            else if (sub === 'reconcile') loadReconciliationStatus();
-            else if (sub === 'bank') {
+            } else if (sub === 'reconcile') {
+                loadReconciliationStatus();
+            } else if (sub === 'bank') {
                 loadBankTransactions();
                 checkBankConnection();
                 loadAccountSelectsForBank();
-            }
-            else if (sub === 'orders') {
+            } else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
                     window.loadOrders();
                     window.loadOrderStats();
@@ -120,9 +121,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Load accounts into dropdowns
-    loadAccountSelects();
-
     // Load default date range for reports and bank
     const today = new Date().toISOString().split('T')[0];
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -133,13 +131,19 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('journal-date-to').value = today;
     document.getElementById('bank-date-from').value = firstDay;
     document.getElementById('bank-date-to').value = today;
-    document.getElementById('account-tx-date-from').value =  '';
+    
+    // Account transactions - leave date filters empty to show all
+    document.getElementById('account-tx-date-from').value = '';
     document.getElementById('account-tx-date-to').value = '';
+
+    // Load all dropdowns
+    loadAccountSelects();
+    loadAccountSelectsForTransactions();
 
     // Load dashboard by default
     loadDashboard();
 
-    // ---- Handle OAuth redirect from Plaid (fallback) ----
+    // Handle OAuth redirect from Plaid
     const urlParams = new URLSearchParams(window.location.search);
     const publicToken = urlParams.get('public_token');
     if (publicToken) {
@@ -235,7 +239,8 @@ async function loadAccountSelects() {
         if (!res.ok) throw new Error('Failed to load accounts');
         const data = await res.json();
         if (data.status === 'success') {
-            const selects = document.querySelectorAll('.manual-account, #journal-account-filter');
+            // Manual entry account dropdowns
+            const selects = document.querySelectorAll('.manual-account');
             selects.forEach(sel => {
                 const currentVal = sel.value;
                 sel.innerHTML = '<option value="">Select Account</option>';
@@ -247,6 +252,20 @@ async function loadAccountSelects() {
                 });
                 sel.value = currentVal;
             });
+            
+            // Journal account filter dropdown
+            const journalSelect = document.getElementById('journal-account-filter');
+            if (journalSelect) {
+                const currentVal = journalSelect.value;
+                journalSelect.innerHTML = '<option value="">All Accounts</option>';
+                data.accounts.forEach(acc => {
+                    const opt = document.createElement('option');
+                    opt.value = acc.id;
+                    opt.textContent = acc.code + ' - ' + acc.name;
+                    journalSelect.appendChild(opt);
+                });
+                journalSelect.value = currentVal;
+            }
         }
     } catch (err) {
         console.error('Error loading accounts:', err);
@@ -256,13 +275,20 @@ async function loadAccountSelects() {
 async function loadAccountSelectsForTransactions() {
     const select = document.getElementById('account-transactions-select');
     if (!select) return;
+    
+    select.innerHTML = '<option value="">-- Loading accounts... --</option>';
+    select.disabled = true;
+    
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
         const data = await res.json();
-        if (data.status === 'success') {
+        
+        select.disabled = false;
+        
+        if (data.status === 'success' && data.accounts && data.accounts.length > 0) {
             const currentVal = select.value;
             select.innerHTML = '<option value="">-- Select an account --</option>';
             data.accounts.forEach(acc => {
@@ -271,13 +297,24 @@ async function loadAccountSelectsForTransactions() {
                 opt.textContent = acc.code + ' - ' + acc.name + ' (' + acc.type + ')';
                 select.appendChild(opt);
             });
-            select.value = currentVal;
-            // If there was a previously selected account, reload
-            if (currentVal) {
+            
+            if (currentVal && data.accounts.some(a => a.id == currentVal)) {
+                select.value = currentVal;
+            } else if (data.accounts.length > 0) {
+                select.value = data.accounts[0].id;
+            }
+            
+            console.log(`✅ Loaded ${data.accounts.length} accounts into Account Transactions dropdown`);
+            
+            if (select.value) {
                 loadAccountTransactions();
             }
+        } else {
+            select.innerHTML = '<option value="">-- No accounts found --</option>';
         }
     } catch (e) {
+        select.disabled = false;
+        select.innerHTML = '<option value="">-- Error loading accounts --</option>';
         console.error('Failed to load accounts for transactions:', e);
     }
 }
@@ -291,7 +328,7 @@ async function loadAccountSelectsForBank() {
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
         const data = await res.json();
-        if (data.status === 'success') {
+        if (data.status === 'success' && data.accounts) {
             select.innerHTML = '<option value="">Select Account</option>';
             data.accounts.forEach(acc => {
                 const opt = document.createElement('option');
@@ -451,7 +488,6 @@ async function loadAccountTransactions() {
     params.append('page', accountTxCurrentPage);
     params.append('per_page', accountTxPageSize);
     
-    // Only add date filters if they have values
     const from = document.getElementById('account-tx-date-from').value;
     const to = document.getElementById('account-tx-date-to').value;
     if (from) params.append('date_from', from);
@@ -479,7 +515,6 @@ async function loadAccountTransactions() {
     }
 }
 
-
 function renderAccountTransactions(transactions) {
     const body = document.getElementById('account-tx-body');
     if (!transactions || transactions.length === 0) {
@@ -488,12 +523,9 @@ function renderAccountTransactions(transactions) {
     }
     let html = '';
     transactions.forEach(tx => {
-        // Show debit if > 0, otherwise show credit
         const debitAmount = parseFloat(tx.debit_amount) || 0;
         const creditAmount = parseFloat(tx.credit_amount) || 0;
         
-        // For display, if it's an expense account with credit, show it as a debit for readability
-        // Or just show whichever has a value
         let displayDebit = '';
         let displayCredit = '';
         
@@ -504,7 +536,6 @@ function renderAccountTransactions(transactions) {
             displayCredit = '$' + creditAmount.toFixed(2);
         }
         
-        // If both are 0, skip this transaction
         if (debitAmount === 0 && creditAmount === 0) {
             return;
         }
@@ -523,7 +554,7 @@ function renderAccountTransactions(transactions) {
             <td class="credit">${displayCredit}</td>
             <td>${sourceType}: ${sourceId}</td>
             <td>
-                <button class="btn btn-sm btn-info" onclick="viewJournalEntry(${entryId})"><i class="fas fa-eye"></i></button>
+                <button class="btn btn-sm btn-danger" onclick="deleteAccountTransaction(${entryId})"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`;
     });
@@ -536,10 +567,10 @@ function renderAccountTransactions(transactions) {
 }
 
 function updateAccountTxPagination() {
-    const totalPages = Math.ceil(accountTxTotalEntries / accountTxPageSize);
-    document.getElementById('account-tx-pagination-info').textContent = `Showing ${accountTxTotalEntries} entries (Page ${accountTxCurrentPage} of ${totalPages || 1})`;
+    const totalPages = Math.max(1, Math.ceil(accountTxTotalEntries / accountTxPageSize));
+    document.getElementById('account-tx-pagination-info').textContent = `Showing ${accountTxTotalEntries} entries (Page ${accountTxCurrentPage} of ${totalPages})`;
     document.getElementById('account-tx-prev').disabled = accountTxCurrentPage <= 1;
-    document.getElementById('account-tx-next').disabled = accountTxCurrentPage >= totalPages || totalPages === 0;
+    document.getElementById('account-tx-next').disabled = accountTxCurrentPage >= totalPages;
     document.getElementById('account-tx-page-info').textContent = `Page ${accountTxCurrentPage}`;
 }
 
@@ -585,7 +616,6 @@ function exportAccountTransactionsCSV() {
             data.transactions.forEach(tx => {
                 csv += `${tx.transaction_date || tx.date || ''},"${(tx.description || tx.journal_description || '').replace(/"/g,'""')}",${tx.debit_amount || 0},${tx.credit_amount || 0},${tx.source_type || ''}\n`;
             });
-            // Add balance row
             csv += `\nAccount Balance,${data.balance || 0}\n`;
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = window.URL.createObjectURL(blob);
@@ -596,6 +626,39 @@ function exportAccountTransactionsCSV() {
             window.URL.revokeObjectURL(url);
         }
     }).catch(console.error);
+}
+
+// ============================================================
+// DELETE ACCOUNT TRANSACTION
+// ============================================================
+
+async function deleteAccountTransaction(entryId) {
+    if (!entryId) {
+        alert('Invalid transaction ID');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete journal entry #${entryId}? This will remove all lines associated with this entry.`)) {
+        return;
+    }
+    
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal/${entryId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert('Transaction deleted successfully');
+            loadAccountTransactions();
+            loadDashboard();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to delete transaction'));
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
 }
 
 // ============================================================
@@ -936,7 +999,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (with integrated filter-apply)
+// BANK TRANSACTIONS
 // ============================================================
 
 async function checkBankConnection() {
@@ -1091,7 +1154,7 @@ async function syncBankTransactions() {
 }
 
 // ============================================================
-// INTEGRATED FILTER-APPLY (using the same filter field)
+// INTEGRATED FILTER-APPLY
 // ============================================================
 
 async function applyFilterToTransactions() {
@@ -1113,7 +1176,6 @@ async function applyFilterToTransactions() {
 
     statusSpan.textContent = '⏳ Fetching transactions...';
     try {
-        // Fetch all transactions matching the pattern (no pagination)
         const params = new URLSearchParams();
         params.append('per_page', 9999);
         params.append('search', pattern);
@@ -1136,7 +1198,6 @@ async function applyFilterToTransactions() {
             return;
         }
 
-        // Confirm with user
         const confirmMsg = `Found ${transactions.length} transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
         if (!confirm(confirmMsg)) {
             statusSpan.textContent = '⏹️ Cancelled.';
@@ -1144,7 +1205,6 @@ async function applyFilterToTransactions() {
         }
 
         statusSpan.textContent = '⏳ Applying...';
-        // Send the transactions to backend
         const applyRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
             method: 'POST',
             credentials: 'include',
