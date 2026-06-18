@@ -7872,6 +7872,40 @@ def accounting_get_account_transactions():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/accounting/journal/<int:entry_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def accounting_delete_journal_entry(entry_id):
+    """
+    Delete a journal entry and all its lines.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if entry exists
+        cursor.execute('SELECT id FROM journal_entries WHERE id = ?', (entry_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Journal entry not found'}), 404
+        
+        # Delete journal lines first (foreign key constraint)
+        cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry_id,))
+        # Delete the journal entry
+        cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Deleted journal entry #{entry_id}")
+        return jsonify({
+            'status': 'success',
+            'message': f'Journal entry #{entry_id} deleted successfully'
+        })
+    except Exception as e:
+        app.logger.error(f"Error deleting journal entry: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
