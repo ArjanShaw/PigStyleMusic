@@ -7721,5 +7721,138 @@ def accounting_apply_filter():
         'message': f'Applied to {processed_count} transactions. Skipped {skipped_count} already processed.'
     })
 
+# ==================== ACCOUNTING: ACCOUNT TRANSACTIONS ====================
+
+@app.route('/api/accounting/account-transactions', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_get_account_transactions():
+    """
+    Get all journal lines for a specific account with pagination.
+    Returns transactions with debit/credit amounts and running balance.
+    """
+    try:
+        account_id = request.args.get('account_id', type=int)
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        offset = (page - 1) * per_page
+
+        if not account_id:
+            return jsonify({'status': 'error', 'error': 'account_id is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Verify account exists
+        cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
+        account = cursor.fetchone()
+        if not account:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+
+        # Build the query for journal lines with this account
+        query = '''
+            SELECT 
+                jl.id,
+                jl.journal_entry_id,
+                jl.account_id,
+                jl.debit_amount,
+                jl.credit_amount,
+                je.transaction_date,
+                je.description as journal_description,
+                je.source_type,
+                je.source_id,
+                a.code as account_code,
+                a.name as account_name
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.journal_entry_id = je.id
+            JOIN accounts a ON jl.account_id = a.id
+            WHERE jl.account_id = ?
+        '''
+        params = [account_id]
+
+        if date_from:
+            query += ' AND je.transaction_date >= ?'
+            params.append(date_from)
+        if date_to:
+            query += ' AND je.transaction_date <= ?'
+            params.append(date_to)
+
+        # Get total count
+        count_query = query.replace(
+            'SELECT jl.id, jl.journal_entry_id, jl.account_id, jl.debit_amount, jl.credit_amount, je.transaction_date, je.description as journal_description, je.source_type, je.source_id, a.code as account_code, a.name as account_name',
+            'SELECT COUNT(*) as total'
+        )
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()['total']
+
+        # Get paginated results
+        query += ' ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        # Get running balance (sum of all transactions up to the last returned date)
+        # For simplicity, we calculate the balance from all transactions for this account
+        balance_query = '''
+            SELECT 
+                COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.journal_entry_id = je.id
+            WHERE jl.account_id = ?
+        '''
+        balance_params = [account_id]
+        if date_from:
+            balance_query += ' AND je.transaction_date >= ?'
+            balance_params.append(date_from)
+        if date_to:
+            balance_query += ' AND je.transaction_date <= ?'
+            balance_params.append(date_to)
+
+        cursor.execute(balance_query, balance_params)
+        balance_row = cursor.fetchone()
+        balance = balance_row['balance'] / 100.0 if balance_row else 0
+
+        # Format results
+        transactions = []
+        for row in rows:
+            transactions.append({
+                'id': row['id'],
+                'journal_entry_id': row['journal_entry_id'],
+                'account_id': row['account_id'],
+                'account_code': row['account_code'],
+                'account_name': row['account_name'],
+                'transaction_date': row['transaction_date'],
+                'journal_description': row['journal_description'] or '',
+                'description': row['journal_description'] or '',
+                'debit_amount': row['debit_amount'] / 100.0 if row['debit_amount'] else 0,
+                'credit_amount': row['credit_amount'] / 100.0 if row['credit_amount'] else 0,
+                'source_type': row['source_type'] or '',
+                'source_id': row['source_id'] or ''
+            })
+
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'transactions': transactions,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'balance': balance,
+            'account': {
+                'id': account['id'],
+                'code': account['code'],
+                'name': account['name'],
+                'type': account['type']
+            }
+        })
+    except Exception as e:
+        app.logger.error(f"Account transactions error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

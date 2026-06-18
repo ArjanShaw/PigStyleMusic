@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+admin-accounting.html => <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -338,6 +338,53 @@
         .report-result .summary-text {
             color: #333 !important;
         }
+
+        /* ====== ACCOUNT TRANSACTIONS STYLES ====== */
+        .account-transactions-selector {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .account-transactions-selector .form-group {
+            min-width: 200px;
+            flex: 1;
+        }
+        .account-transactions-selector .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .account-transactions-selector .form-group select:focus {
+            border-color: #007bff;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        .account-balance-display {
+            font-size: 18px;
+            font-weight: 600;
+            padding: 10px 20px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            min-width: 150px;
+            text-align: center;
+        }
+        .account-balance-display .balance-positive {
+            color: #28a745;
+        }
+        .account-balance-display .balance-negative {
+            color: #dc3545;
+        }
+        .account-balance-display .balance-zero {
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -364,6 +411,7 @@
             <div class="sub-tabs" id="accounting-sub-tabs">
                 <button class="sub-tab active" data-subtab="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</button>
                 <button class="sub-tab" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
+                <button class="sub-tab" data-subtab="account-transactions"><i class="fas fa-receipt"></i> Account Transactions</button>
                 <button class="sub-tab" data-subtab="adjustments"><i class="fas fa-pencil-alt"></i> Adjustments</button>
                 <button class="sub-tab" data-subtab="reconcile"><i class="fas fa-handshake"></i> Reconciliation</button>
                 <button class="sub-tab" data-subtab="bank"><i class="fas fa-university"></i> Bank</button>
@@ -456,6 +504,71 @@
                         <button class="btn btn-sm btn-secondary" id="journal-prev" disabled>Prev</button>
                         <span id="journal-page-info">Page 1</span>
                         <button class="btn btn-sm btn-secondary" id="journal-next" disabled>Next</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account Transactions Sub-tab -->
+            <div id="sub-account-transactions" class="sub-tab-content">
+                <h4><i class="fas fa-receipt"></i> Account Transactions</h4>
+                <p class="text-muted">View all journal entries filtered by account. Select an account to see its transaction history.</p>
+                
+                <div class="account-transactions-selector">
+                    <div class="form-group">
+                        <label for="account-transactions-select"><i class="fas fa-university"></i> Select Account</label>
+                        <select id="account-transactions-select">
+                            <option value="">-- Select an account --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto;">
+                        <label>&nbsp;</label>
+                        <div class="account-balance-display" id="account-balance-display">
+                            <span class="balance-zero">$0.00</span>
+                        </div>
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-success" onclick="exportAccountTransactionsCSV()"><i class="fas fa-download"></i> Export CSV</button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
+                    <div class="form-group">
+                        <label>Date From</label>
+                        <input type="date" id="account-tx-date-from">
+                    </div>
+                    <div class="form-group">
+                        <label>Date To</label>
+                        <input type="date" id="account-tx-date-to">
+                    </div>
+                    <button class="btn btn-primary" onclick="loadAccountTransactions()"><i class="fas fa-search"></i> Filter</button>
+                    <button class="btn btn-secondary" onclick="resetAccountTxFilters()"><i class="fas fa-undo"></i> Reset</button>
+                </div>
+
+                <div class="journal-table-container" id="account-tx-table-wrapper">
+                    <table class="journal-table" id="account-tx-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Debit</th>
+                                <th>Credit</th>
+                                <th>Source</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="account-tx-body">
+                            <tr><td colspan="7" style="text-align:center; padding:40px;">Select an account to view transactions.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <span id="account-tx-pagination-info">Showing 0 entries</span>
+                    <div>
+                        <button class="btn btn-sm btn-secondary" id="account-tx-prev" disabled>Prev</button>
+                        <span id="account-tx-page-info">Page 1</span>
+                        <button class="btn btn-sm btn-secondary" id="account-tx-next" disabled>Next</button>
                     </div>
                 </div>
             </div>

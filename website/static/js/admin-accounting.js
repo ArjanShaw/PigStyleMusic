@@ -12,6 +12,13 @@ let bankCurrentPage = 1;
 const bankPageSize = 20;
 let bankTotalEntries = 0;
 
+// Account transactions pagination
+let accountTxCurrentPage = 1;
+const accountTxPageSize = 20;
+let accountTxTotalEntries = 0;
+let currentSelectedAccountId = null;
+let currentAccountBalance = 0;
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -31,6 +38,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (target) target.classList.add('active');
             if (sub === 'dashboard') loadDashboard();
             else if (sub === 'journal') loadJournalEntries();
+            else if (sub === 'account-transactions') {
+                loadAccountSelectsForTransactions();
+                loadAccountTransactions();
+            }
             else if (sub === 'reconcile') loadReconciliationStatus();
             else if (sub === 'bank') {
                 loadBankTransactions();
@@ -87,6 +98,21 @@ document.addEventListener('DOMContentLoaded', function() {
         if (bankCurrentPage < totalPages) { bankCurrentPage++; loadBankTransactions(); }
     });
 
+    // Pagination for account transactions
+    document.getElementById('account-tx-prev')?.addEventListener('click', () => {
+        if (accountTxCurrentPage > 1) { accountTxCurrentPage--; loadAccountTransactions(); }
+    });
+    document.getElementById('account-tx-next')?.addEventListener('click', () => {
+        const totalPages = Math.ceil(accountTxTotalEntries / accountTxPageSize);
+        if (accountTxCurrentPage < totalPages) { accountTxCurrentPage++; loadAccountTransactions(); }
+    });
+
+    // Account transactions dropdown change
+    document.getElementById('account-transactions-select')?.addEventListener('change', function() {
+        accountTxCurrentPage = 1;
+        loadAccountTransactions();
+    });
+
     // Manual entry – auto‑balance check
     document.addEventListener('input', function(e) {
         if (e.target.closest('.manual-entry-row')) {
@@ -107,6 +133,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('journal-date-to').value = today;
     document.getElementById('bank-date-from').value = firstDay;
     document.getElementById('bank-date-to').value = today;
+    document.getElementById('account-tx-date-from').value = firstDay;
+    document.getElementById('account-tx-date-to').value = today;
 
     // Load dashboard by default
     loadDashboard();
@@ -222,6 +250,35 @@ async function loadAccountSelects() {
         }
     } catch (err) {
         console.error('Error loading accounts:', err);
+    }
+}
+
+async function loadAccountSelectsForTransactions() {
+    const select = document.getElementById('account-transactions-select');
+    if (!select) return;
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">-- Select an account --</option>';
+            data.accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = acc.code + ' - ' + acc.name + ' (' + acc.type + ')';
+                select.appendChild(opt);
+            });
+            select.value = currentVal;
+            // If there was a previously selected account, reload
+            if (currentVal) {
+                loadAccountTransactions();
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load accounts for transactions:', e);
     }
 }
 
@@ -364,6 +421,148 @@ function exportJournalCSV() {
 
 function viewJournalEntry(entryId) {
     alert('View details for journal entry #' + entryId + ' (modal to be implemented)');
+}
+
+// ============================================================
+// ACCOUNT TRANSACTIONS
+// ============================================================
+
+async function loadAccountTransactions() {
+    const select = document.getElementById('account-transactions-select');
+    const accountId = select.value;
+    const body = document.getElementById('account-tx-body');
+    const balanceDisplay = document.getElementById('account-balance-display');
+
+    if (!accountId) {
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">Select an account to view transactions.</td></tr>';
+        document.getElementById('account-tx-pagination-info').textContent = 'Showing 0 entries';
+        document.getElementById('account-tx-prev').disabled = true;
+        document.getElementById('account-tx-next').disabled = true;
+        document.getElementById('account-tx-page-info').textContent = 'Page 1';
+        balanceDisplay.innerHTML = '<span class="balance-zero">$0.00</span>';
+        return;
+    }
+
+    currentSelectedAccountId = accountId;
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">Loading...</td></tr>';
+
+    const params = new URLSearchParams();
+    params.append('account_id', accountId);
+    params.append('page', accountTxCurrentPage);
+    params.append('per_page', accountTxPageSize);
+    const from = document.getElementById('account-tx-date-from').value;
+    const to = document.getElementById('account-tx-date-to').value;
+    if (from) params.append('date_from', from);
+    if (to) params.append('date_to', to);
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-transactions?${params.toString()}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) throw new Error('Failed to load account transactions');
+        const data = await res.json();
+        if (data.status === 'success') {
+            accountTxTotalEntries = data.total;
+            currentAccountBalance = data.balance || 0;
+            renderAccountTransactions(data.transactions || []);
+            updateAccountTxPagination();
+            updateAccountBalanceDisplay(currentAccountBalance);
+        } else {
+            body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
+        }
+    } catch (err) {
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+    }
+}
+
+function renderAccountTransactions(transactions) {
+    const body = document.getElementById('account-tx-body');
+    if (!transactions || transactions.length === 0) {
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No transactions found for this account.</td></tr>';
+        return;
+    }
+    let html = '';
+    transactions.forEach(tx => {
+        const debitDisplay = tx.debit_amount > 0 ? '$' + parseFloat(tx.debit_amount).toFixed(2) : '';
+        const creditDisplay = tx.credit_amount > 0 ? '$' + parseFloat(tx.credit_amount).toFixed(2) : '';
+        const description = tx.description || tx.journal_description || '';
+        html += `<tr>
+            <td>${tx.journal_entry_id || tx.id || ''}</td>
+            <td>${tx.transaction_date || tx.date || ''}</td>
+            <td>${description}</td>
+            <td class="debit">${debitDisplay}</td>
+            <td class="credit">${creditDisplay}</td>
+            <td>${tx.source_type || ''}: ${tx.source_id || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-info" onclick="viewJournalEntry(${tx.journal_entry_id})"><i class="fas fa-eye"></i></button>
+            </td>
+        </tr>`;
+    });
+    body.innerHTML = html;
+}
+
+function updateAccountTxPagination() {
+    const totalPages = Math.ceil(accountTxTotalEntries / accountTxPageSize);
+    document.getElementById('account-tx-pagination-info').textContent = `Showing ${accountTxTotalEntries} entries (Page ${accountTxCurrentPage} of ${totalPages || 1})`;
+    document.getElementById('account-tx-prev').disabled = accountTxCurrentPage <= 1;
+    document.getElementById('account-tx-next').disabled = accountTxCurrentPage >= totalPages || totalPages === 0;
+    document.getElementById('account-tx-page-info').textContent = `Page ${accountTxCurrentPage}`;
+}
+
+function updateAccountBalanceDisplay(balance) {
+    const display = document.getElementById('account-balance-display');
+    const formatted = '$' + Math.abs(balance).toFixed(2);
+    let className = 'balance-zero';
+    if (balance > 0) className = 'balance-positive';
+    else if (balance < 0) className = 'balance-negative';
+    display.innerHTML = `<span class="${className}">${formatted}</span>`;
+}
+
+function resetAccountTxFilters() {
+    document.getElementById('account-tx-date-from').value = '';
+    document.getElementById('account-tx-date-to').value = '';
+    accountTxCurrentPage = 1;
+    loadAccountTransactions();
+}
+
+function exportAccountTransactionsCSV() {
+    if (!currentSelectedAccountId) {
+        alert('Please select an account first.');
+        return;
+    }
+
+    const params = new URLSearchParams();
+    params.append('account_id', currentSelectedAccountId);
+    params.append('page', 1);
+    params.append('per_page', 9999);
+    const from = document.getElementById('account-tx-date-from').value;
+    const to = document.getElementById('account-tx-date-to').value;
+    if (from) params.append('date_from', from);
+    if (to) params.append('date_to', to);
+
+    fetch(`${AppConfig.baseUrl}/api/accounting/account-transactions?${params.toString()}`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success' && data.transactions) {
+            let csv = 'Date,Description,Debit,Credit,Source\n';
+            data.transactions.forEach(tx => {
+                csv += `${tx.transaction_date || tx.date || ''},"${(tx.description || tx.journal_description || '').replace(/"/g,'""')}",${tx.debit_amount || 0},${tx.credit_amount || 0},${tx.source_type || ''}\n`;
+            });
+            // Add balance row
+            csv += `\nAccount Balance,${data.balance || 0}\n`;
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'account_transactions.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+    }).catch(console.error);
 }
 
 // ============================================================
@@ -862,7 +1061,6 @@ async function syncBankTransactions() {
 // INTEGRATED FILTER-APPLY (using the same filter field)
 // ============================================================
 
-
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
     const accountSelect = document.getElementById('bank-apply-account');
@@ -931,9 +1129,6 @@ async function applyFilterToTransactions() {
         const applyData = await applyRes.json();
         if (applyData.status === 'success') {
             statusSpan.textContent = `✅ ${applyData.message}`;
-            // Reload the current page to reflect changes (but we don't have local storage, so we just clear filter or reload)
-            // We'll reload the transactions to show updated list (but since we don't store, it will show same)
-            // We can just show a message and maybe clear the filter.
             loadBankTransactions();
         } else {
             statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
