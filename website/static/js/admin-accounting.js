@@ -484,22 +484,51 @@ function renderAccountTransactions(transactions) {
     }
     let html = '';
     transactions.forEach(tx => {
-        const debitDisplay = tx.debit_amount > 0 ? '$' + parseFloat(tx.debit_amount).toFixed(2) : '';
-        const creditDisplay = tx.credit_amount > 0 ? '$' + parseFloat(tx.credit_amount).toFixed(2) : '';
-        const description = tx.description || tx.journal_description || '';
+        // Show debit if > 0, otherwise show credit
+        const debitAmount = parseFloat(tx.debit_amount) || 0;
+        const creditAmount = parseFloat(tx.credit_amount) || 0;
+        
+        // For display, if it's an expense account with credit, show it as a debit for readability
+        // Or just show whichever has a value
+        let displayDebit = '';
+        let displayCredit = '';
+        
+        if (debitAmount > 0) {
+            displayDebit = '$' + debitAmount.toFixed(2);
+        }
+        if (creditAmount > 0) {
+            displayCredit = '$' + creditAmount.toFixed(2);
+        }
+        
+        // If both are 0, skip this transaction
+        if (debitAmount === 0 && creditAmount === 0) {
+            return;
+        }
+        
+        const description = tx.journal_description || tx.description || '';
+        const sourceType = tx.source_type || '';
+        const sourceId = tx.source_id || '';
+        const entryId = tx.journal_entry_id || tx.id || '';
+        const date = tx.transaction_date || '';
+        
         html += `<tr>
-            <td>${tx.journal_entry_id || tx.id || ''}</td>
-            <td>${tx.transaction_date || tx.date || ''}</td>
+            <td>${entryId}</td>
+            <td>${date}</td>
             <td>${description}</td>
-            <td class="debit">${debitDisplay}</td>
-            <td class="credit">${creditDisplay}</td>
-            <td>${tx.source_type || ''}: ${tx.source_id || ''}</td>
+            <td class="debit">${displayDebit}</td>
+            <td class="credit">${displayCredit}</td>
+            <td>${sourceType}: ${sourceId}</td>
             <td>
-                <button class="btn btn-sm btn-info" onclick="viewJournalEntry(${tx.journal_entry_id})"><i class="fas fa-eye"></i></button>
+                <button class="btn btn-sm btn-info" onclick="viewJournalEntry(${entryId})"><i class="fas fa-eye"></i></button>
             </td>
         </tr>`;
     });
-    body.innerHTML = html;
+    
+    if (!html) {
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No valid transactions to display.</td></tr>';
+    } else {
+        body.innerHTML = html;
+    }
 }
 
 function updateAccountTxPagination() {
