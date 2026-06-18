@@ -7818,5 +7818,6 @@ def accounting_apply_filter():
         'message': f'Applied to {processed_count} transactions. {len(processed_matches)} were already processed.'
     })
 
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
