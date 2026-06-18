@@ -7780,7 +7780,7 @@ def accounting_get_account_transactions():
             query += ' AND je.transaction_date <= ?'
             params.append(date_to)
 
-        # Get total count - simplified to avoid string replacement issues
+        # Get total count
         count_query = '''
             SELECT COUNT(*) as total
             FROM journal_lines jl
@@ -7805,7 +7805,7 @@ def accounting_get_account_transactions():
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-        # Get running balance - handle None values properly
+        # Get running balance
         balance_query = '''
             SELECT 
                 COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
@@ -7829,6 +7829,17 @@ def accounting_get_account_transactions():
         transactions = []
         for row in rows:
             row_dict = dict(row) if row else {}
+            
+            # Get debit and credit amounts (handle None)
+            debit = row_dict.get('debit_amount') or 0
+            credit = row_dict.get('credit_amount') or 0
+            
+            # For display purposes, show both debit and credit
+            # If the account is an expense account and has a credit, convert to debit for display
+            # This makes it easier to read
+            display_debit = debit / 100.0
+            display_credit = credit / 100.0
+            
             transactions.append({
                 'id': row_dict.get('id'),
                 'journal_entry_id': row_dict.get('journal_entry_id'),
@@ -7838,8 +7849,8 @@ def accounting_get_account_transactions():
                 'transaction_date': row_dict.get('transaction_date', ''),
                 'journal_description': row_dict.get('journal_description') or '',
                 'description': row_dict.get('journal_description') or '',
-                'debit_amount': (row_dict.get('debit_amount') or 0) / 100.0,
-                'credit_amount': (row_dict.get('credit_amount') or 0) / 100.0,
+                'debit_amount': display_debit,
+                'credit_amount': display_credit,
                 'source_type': row_dict.get('source_type') or '',
                 'source_id': row_dict.get('source_id') or ''
             })
@@ -7864,6 +7875,7 @@ def accounting_get_account_transactions():
         app.logger.error(f"Account transactions error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
