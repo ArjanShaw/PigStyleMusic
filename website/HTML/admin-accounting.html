@@ -385,6 +385,36 @@
         .account-balance-display .balance-zero {
             color: #666;
         }
+
+        /* ====== BANK STATUS BAR ====== */
+        .bank-status-bar {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+            align-items: center;
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 4px;
+        }
+        .bank-status-bar .count-badge {
+            font-weight: 600;
+            color: #007bff;
+        }
+        .bank-status-bar .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #333;
+            margin-left: auto;
+        }
+        .bank-status-bar .toggle-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -654,7 +684,7 @@
             <!-- Bank Transactions Sub-tab -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">View and sync transactions from your connected bank account (FNBO).</p>
+                <p class="text-muted">View and categorize bank transactions. Processed transactions are automatically hidden.</p>
                 
                 <div style="margin-bottom: 15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display: none;">
@@ -663,10 +693,11 @@
                     <span id="bank-connection-status" class="text-muted"></span>
                 </div>
 
+                <!-- Filter & Apply section -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
                     <div class="form-group" style="flex: 2;">
-                        <label>Filter</label>
-                        <input type="text" id="bank-filter" placeholder="Filter by description (e.g. STAMPS.COM)">
+                        <label>Filter by description</label>
+                        <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
                     </div>
                     <div class="form-group">
                         <label>Apply to account</label>
@@ -674,12 +705,29 @@
                             <option value="">Select Account</option>
                         </select>
                     </div>
-                    <button class="btn btn-warning" onclick="applyFilterToTransactions()">
-                        <i class="fas fa-tag"></i> Apply to filtered
-                    </button>
+                    <div class="form-group" style="flex: 0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-warning" onclick="applyFilterToTransactions()">
+                            <i class="fas fa-tag"></i> Apply to filtered
+                        </button>
+                    </div>
                     <span id="filter-apply-status" class="text-muted"></span>
                 </div>
 
+                <!-- Status bar and Show All toggle -->
+                <div class="bank-status-bar">
+                    <div>
+                        <span class="count-badge" id="bank-unprocessed-count">0</span>
+                        <span class="text-muted"> unprocessed transactions</span>
+                        <span class="text-muted" id="bank-total-count" style="margin-left: 10px;">(0 total)</span>
+                    </div>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="bank-show-all" onchange="toggleBankShowAll()">
+                        <span>Show all transactions (including processed)</span>
+                    </label>
+                </div>
+
+                <!-- Date filters -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
                     <div class="form-group">
                         <label>Date From</label>
@@ -690,10 +738,12 @@
                         <input type="date" id="bank-date-to">
                     </div>
                     <button class="btn btn-primary" onclick="loadBankTransactions()"><i class="fas fa-search"></i> Filter</button>
+                    <button class="btn btn-secondary" onclick="resetBankFilters()"><i class="fas fa-undo"></i> Reset</button>
                     <button class="btn btn-success" onclick="syncBankTransactions()"><i class="fas fa-sync-alt"></i> Sync Now</button>
                     <span id="bank-sync-status" class="text-muted"></span>
                 </div>
 
+                <!-- Transaction table -->
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
                         <thead>
