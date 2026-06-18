@@ -7729,71 +7729,59 @@ def accounting_bank_sync():
     return jsonify({'status': 'success', 'message': 'Sync triggered'})
 
 
-
 @app.route('/api/accounting/bank/apply-filter', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def accounting_apply_filter():
-    """Apply a pattern filter to bank transactions (both positive and negative).
-    For negative amounts (expense): debit selected account, credit cash.
-    For positive amounts (income): debit cash, credit selected account.
+    """Apply a list of transactions to an account, creating journal entries.
+    Transactions are not stored locally; they come from the frontend.
+    Duplicate check: skip if a journal entry already exists with source_type='plaid_transaction' and source_id=tx_id.
     """
     data = request.json
-    pattern = data.get('pattern', '').strip()
+    transactions = data.get('transactions', [])
     account_id = data.get('account_id')
-    dry_run = data.get('dry_run', False)
-
-    if not pattern or not account_id:
-        return jsonify({'status': 'error', 'error': 'pattern and account_id required'}), 400
+    if not transactions or not account_id:
+        return jsonify({'status': 'error', 'error': 'transactions and account_id required'}), 400
 
     conn = get_db()
     cursor = conn.cursor()
 
     # Verify account exists
-    cursor.execute('SELECT id, type FROM accounts WHERE id = ?', (account_id,))
-    account_row = cursor.fetchone()
-    if not account_row:
+    cursor.execute('SELECT id FROM accounts WHERE id = ?', (account_id,))
+    if not cursor.fetchone():
         conn.close()
         return jsonify({'status': 'error', 'error': 'Account not found'}), 400
-    account_type = account_row['type']  # 'asset', 'liability', 'revenue', 'expense', etc.
 
-    pattern_upper = pattern.upper()
-    # Match any transaction (both signs) with the pattern
-    cursor.execute('''
-        SELECT id, transaction_date, amount, description, processed
-        FROM bank_transactions
-        WHERE UPPER(description) LIKE ?
-    ''', (f'%{pattern_upper}%',))
-    all_matching = cursor.fetchall()
-
-    unprocessed = [t for t in all_matching if t['processed'] == 0]
-    processed_matches = [t for t in all_matching if t['processed'] == 1]
-
-    if dry_run:
+    # Get cash account (1010)
+    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+    cash_row = cursor.fetchone()
+    if not cash_row:
         conn.close()
-        return jsonify({
-            'status': 'success',
-            'unprocessed_count': len(unprocessed),
-            'processed_count': len(processed_matches),
-            'transactions': [{
-                'description': t['description'],
-                'amount': t['amount'],          # keep original sign
-                'type': 'expense' if t['amount'] < 0 else 'income'
-            } for t in unprocessed]
-        })
-
-    if not unprocessed:
-        conn.close()
-        return jsonify({
-            'status': 'success',
-            'count': 0,
-            'processed_count': len(processed_matches),
-            'message': f'All {len(processed_matches)} matching transactions are already processed.'
-        })
+        return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
+    cash_id = cash_row['id']
 
     processed_count = 0
-    for tx in unprocessed:
-        amount_cents = int(round(tx['amount'] * 100))  # keep sign
+    skipped_count = 0
+    for tx in transactions:
+        tx_id = tx.get('id')
+        amount = tx.get('amount', 0)
+        date = tx.get('date')
+        description = tx.get('description', '')
+
+        if not tx_id or amount == 0 or not date:
+            skipped_count += 1
+            continue
+
+        # Check if already processed (by source_id)
+        cursor.execute('''
+            SELECT id FROM journal_entries
+            WHERE source_type = ? AND source_id = ?
+        ''', ('plaid_transaction', str(tx_id)))
+        if cursor.fetchone():
+            skipped_count += 1
+            continue
+
+        amount_cents = int(round(amount * 100))
         is_expense = amount_cents < 0
         abs_amount = abs(amount_cents)
 
@@ -7801,20 +7789,11 @@ def accounting_apply_filter():
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
-        ''', (tx['transaction_date'], f"Bank transaction: {tx['description']}", 'bank_transaction', tx['id']))
+        ''', (date, f"Bank transaction: {description}", 'plaid_transaction', str(tx_id)))
         entry_id = cursor.lastrowid
 
-        # Get cash account (1010)
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
-        cash_row = cursor.fetchone()
-        if not cash_row:
-            conn.rollback()
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
-        cash_id = cash_row['id']
-
         if is_expense:
-            # Debit the selected account, Credit cash
+            # Debit selected account, Credit cash
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
@@ -7824,7 +7803,7 @@ def accounting_apply_filter():
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, cash_id, 0, abs_amount))
         else:
-            # Debit cash, Credit the selected account
+            # Debit cash, Credit selected account
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
@@ -7834,16 +7813,16 @@ def accounting_apply_filter():
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, account_id, 0, abs_amount))
 
-        cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (tx['id'],))
         processed_count += 1
 
     conn.commit()
     conn.close()
+
     return jsonify({
         'status': 'success',
         'count': processed_count,
-        'processed_count': len(processed_matches),
-        'message': f'Applied to {processed_count} transactions. {len(processed_matches)} were already processed.'
+        'skipped': skipped_count,
+        'message': f'Applied to {processed_count} transactions. Skipped {skipped_count} already processed.'
     })
 
 if __name__ == '__main__':

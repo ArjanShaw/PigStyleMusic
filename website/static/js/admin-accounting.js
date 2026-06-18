@@ -862,6 +862,7 @@ async function syncBankTransactions() {
 // INTEGRATED FILTER-APPLY (using the same filter field)
 // ============================================================
 
+
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
     const accountSelect = document.getElementById('bank-apply-account');
@@ -879,50 +880,61 @@ async function applyFilterToTransactions() {
         return;
     }
 
-    statusSpan.textContent = '⏳ Checking...';
+    statusSpan.textContent = '⏳ Fetching transactions...';
     try {
-        // Preview (dry run)
-        const previewRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
-            method: 'POST',
+        // Fetch all transactions matching the pattern (no pagination)
+        const params = new URLSearchParams();
+        params.append('per_page', 9999);
+        params.append('search', pattern);
+        const from = document.getElementById('bank-date-from').value;
+        const to = document.getElementById('bank-date-to').value;
+        if (from) params.append('date_from', from);
+        if (to) params.append('date_to', to);
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
             credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pattern, account_id: accountId, dry_run: true })
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
-        const previewData = await previewRes.json();
-        if (previewData.status !== 'success') {
-            statusSpan.textContent = '❌ Preview failed: ' + (previewData.error || 'Unknown');
+        const data = await res.json();
+        if (data.status !== 'success') {
+            statusSpan.textContent = '❌ Failed to fetch transactions: ' + (data.error || 'Unknown');
             return;
         }
-        const unprocessed = previewData.unprocessed_count || 0;
-        const processed = previewData.processed_count || 0;
-
-        if (unprocessed === 0 && processed === 0) {
-            statusSpan.textContent = 'ℹ️ No matching transactions found.';
-            return;
-        }
-
-        if (unprocessed === 0 && processed > 0) {
-            statusSpan.textContent = `ℹ️ All ${processed} matching transactions are already processed.`;
+        const transactions = data.transactions || [];
+        if (transactions.length === 0) {
+            statusSpan.textContent = 'ℹ️ No transactions found matching the filter.';
             return;
         }
 
-        const confirmMsg = `Found ${unprocessed} unprocessed transaction(s) matching "${pattern}".\n${processed} transaction(s) already processed will be skipped.\nApply to ${unprocessed} transaction(s)?`;
+        // Confirm with user
+        const confirmMsg = `Found ${transactions.length} transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
         if (!confirm(confirmMsg)) {
             statusSpan.textContent = '⏹️ Cancelled.';
             return;
         }
 
-        // Apply
+        statusSpan.textContent = '⏳ Applying...';
+        // Send the transactions to backend
         const applyRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
             method: 'POST',
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pattern, account_id: accountId, dry_run: false })
+            body: JSON.stringify({
+                transactions: transactions.map(t => ({
+                    id: t.id,
+                    date: t.date,
+                    amount: t.amount,
+                    description: t.description
+                })),
+                account_id: accountId
+            })
         });
         const applyData = await applyRes.json();
         if (applyData.status === 'success') {
             statusSpan.textContent = `✅ ${applyData.message}`;
-            loadBankTransactions(); // refresh the table
+            // Reload the current page to reflect changes (but we don't have local storage, so we just clear filter or reload)
+            // We'll reload the transactions to show updated list (but since we don't store, it will show same)
+            // We can just show a message and maybe clear the filter.
+            loadBankTransactions();
         } else {
             statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
         }
