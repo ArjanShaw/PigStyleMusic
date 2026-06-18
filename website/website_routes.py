@@ -1,12 +1,19 @@
 import os
-from flask import Flask, send_from_directory, session, redirect, url_for
+from dotenv import load_dotenv  # Load environment variables from .env
+from flask import Flask, send_from_directory, session, redirect
+
+# Load .env file
+load_dotenv()
 
 app = Flask(__name__, static_folder='static')
-app.secret_key = 'your-secret-key-here'  # Required for sessions
+
+# Use the same secret key as api.py (from environment, with a consistent fallback)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
 
 def is_admin():
-   return True
-     
+    """Check if the current user is logged in as an admin."""
+    return session.get('logged_in') and session.get('role') == 'admin'
+
 # Serve HTML pages from HTML directory
 @app.route('/')
 def index():
@@ -15,7 +22,6 @@ def index():
 @app.route('/inventory')
 def inventory():
     return send_from_directory('HTML', 'inventory.html')
- 
 
 @app.route('/consignment')
 def consignment():
@@ -31,49 +37,39 @@ def login():
 
 @app.route('/dashboard')
 def dashboard():
-    # Check if user is logged in and has appropriate role
-    # This is a simplified check - you may want to implement proper session checking
     return send_from_directory('HTML', 'dashboard.html')
-
 
 @app.route('/misch')
 def merchandise():
-    # Check if user is logged in and has appropriate role
-    # This is a simplified check - you may want to implement proper session checking
     return send_from_directory('HTML', 'merchandise.html')
 
 @app.route('/browse')
 def browse():
-    # Check if user is logged in and has appropriate role
-    # This is a simplified check - you may want to implement proper session checking
     return send_from_directory('HTML', 'browse.html')
-      
+
 @app.route('/misc')
 def misc():
-    # Check if user is logged in and has appropriate role
-    # This is a simplified check - you may want to implement proper session checking
     return send_from_directory('HTML', 'misc.html')
-      
+
 @app.route('/youtube-linker')
 def youtube_linker():
-    # Serve the YouTube Linker page
     return send_from_directory('HTML', 'youtube-linker.html')
 
 @app.route('/kiosk')
 def kiosk():
-    """Serve the kiosk page for in-store lookup"""
-    return send_from_directory('HTML','kiosk.html')
+    return send_from_directory('HTML', 'kiosk.html')
 
-# *** ONLY ONE /admin ROUTE - THIS IS THE CORRECT ONE ***
 @app.route('/admin')
 def admin_panel():
-    # Server-side admin check
     if not is_admin():
-        # Redirect non-admin users to access denied page
         return redirect('/access-denied')
-    
-    # Only admins get here
     return send_from_directory('HTML', 'admin.html')
+
+@app.route('/admin/accounting')
+def admin_accounting():
+    if not is_admin():
+        return redirect('/access-denied')
+    return send_from_directory('HTML', 'admin-accounting.html')
 
 @app.route('/access-denied')
 def access_denied():
@@ -84,42 +80,30 @@ def access_denied():
 def serve_static(path):
     return send_from_directory('static', path)
 
-# Serve JS files
 @app.route('/js/<path:path>')
 def serve_js(path):
     return send_from_directory('static/js', path)
 
-# Serve CSS files  
 @app.route('/css/<path:path>')
 def serve_css(path):
     return send_from_directory('static/css', path)
 
-
-
-# Serve images
 @app.route('/images/<path:path>')
 def serve_images(path):
     return send_from_directory('static/images', path)
 
-# Serve fonts
 @app.route('/fonts/<path:path>')
 def serve_fonts(path):
     return send_from_directory('static/fonts', path)
 
-# Catch-all for other static files
 @app.route('/<path:filename>')
 def serve_file(filename):
-    # Check if file exists in static
     static_path = os.path.join('static', filename)
     if os.path.exists(static_path):
         return send_from_directory('static', filename)
-    
-    # Check if file exists in HTML
     html_path = os.path.join('HTML', filename)
     if os.path.exists(html_path):
         return send_from_directory('HTML', filename)
-    
-    # Return 404
     return "File not found", 404
 
 if __name__ == '__main__':
