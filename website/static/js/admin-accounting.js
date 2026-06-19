@@ -12,6 +12,7 @@ let bankCurrentPage = 1;
 const bankPageSize = 20;
 let bankTotalEntries = 0;
 let bankShowAll = false;
+let bankSourceFilter = 'all'; // 'all', 'plaid', 'historic'
 
 // Account transactions pagination
 let accountTxCurrentPage = 1;
@@ -115,6 +116,13 @@ document.addEventListener('DOMContentLoaded', function() {
         loadAccountTransactions();
     });
 
+    // Bank source filter dropdown change
+    document.getElementById('bank-source-filter')?.addEventListener('change', function() {
+        bankSourceFilter = this.value;
+        bankCurrentPage = 1;
+        loadBankTransactions();
+    });
+
     // Manual entry – auto‑balance check
     document.addEventListener('input', function(e) {
         if (e.target.closest('.manual-entry-row')) {
@@ -177,54 +185,46 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================================
 
 async function loadDashboard() {
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/dashboard`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to load dashboard');
-        const data = await res.json();
-        if (data.status === 'success') {
-            document.getElementById('dash-revenue').textContent = '$' + data.revenue.toFixed(2);
-            document.getElementById('dash-cogs').textContent = '$' + data.cogs.toFixed(2);
-            document.getElementById('dash-net-profit').textContent = '$' + data.net_profit.toFixed(2);
-            document.getElementById('dash-pending-sync').textContent = data.pending_sync;
-            document.getElementById('dash-unreconciled').textContent = data.unreconciled;
-            const container = document.getElementById('dash-recent-journal');
-            if (data.recent_entries && data.recent_entries.length) {
-                let html = '<table class="journal-table"><thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th></tr></thead><tbody>';
-                data.recent_entries.forEach(e => {
-                    html += `<tr><td>${e.date}</td><td>${e.description}</td><td class="debit">$${e.debit_total.toFixed(2)}</td><td class="credit">$${e.credit_total.toFixed(2)}</td></tr>`;
-                });
-                html += '</tbody></table>';
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = '<p class="text-muted">No recent entries.</p>';
-            }
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/dashboard`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error('Failed to load dashboard');
+    const data = await res.json();
+    if (data.status === 'success') {
+        document.getElementById('dash-revenue').textContent = '$' + data.revenue.toFixed(2);
+        document.getElementById('dash-cogs').textContent = '$' + data.cogs.toFixed(2);
+        document.getElementById('dash-net-profit').textContent = '$' + data.net_profit.toFixed(2);
+        document.getElementById('dash-pending-sync').textContent = data.pending_sync;
+        document.getElementById('dash-unreconciled').textContent = data.unreconciled;
+        const container = document.getElementById('dash-recent-journal');
+        if (data.recent_entries && data.recent_entries.length) {
+            let html = '<table class="journal-table"><thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th></tr></thead><tbody>';
+            data.recent_entries.forEach(e => {
+                html += `<tr><td>${e.date}</td><td>${e.description}</td><td class="debit">$${e.debit_total.toFixed(2)}</td><td class="credit">$${e.credit_total.toFixed(2)}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = '<p class="text-muted">No recent entries.</p>';
         }
-    } catch (err) {
-        console.error('Dashboard error:', err);
     }
 }
 
 async function runAccountingSync() {
     const status = document.getElementById('sync-status');
     status.textContent = '⏳ Running sync...';
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/sync`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            status.textContent = '✅ Synced ' + data.processed + ' orders.';
-            loadDashboard();
-        } else {
-            status.textContent = '❌ ' + (data.error || 'Sync failed');
-        }
-    } catch (err) {
-        status.textContent = '❌ Error: ' + err.message;
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/sync`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        status.textContent = '✅ Synced ' + data.processed + ' orders.';
+        loadDashboard();
+    } else {
+        status.textContent = '❌ ' + (data.error || 'Sync failed');
     }
 }
 
@@ -233,44 +233,38 @@ async function runAccountingSync() {
 // ============================================================
 
 async function loadAccountSelects() {
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to load accounts');
-        const data = await res.json();
-        if (data.status === 'success') {
-            // Manual entry account dropdowns
-            const selects = document.querySelectorAll('.manual-account');
-            selects.forEach(sel => {
-                const currentVal = sel.value;
-                sel.innerHTML = '<option value="">Select Account</option>';
-                data.accounts.forEach(acc => {
-                    const opt = document.createElement('option');
-                    opt.value = acc.id;
-                    opt.textContent = acc.code + ' - ' + acc.name;
-                    sel.appendChild(opt);
-                });
-                sel.value = currentVal;
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error('Failed to load accounts');
+    const data = await res.json();
+    if (data.status === 'success') {
+        const selects = document.querySelectorAll('.manual-account');
+        selects.forEach(sel => {
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="">Select Account</option>';
+            data.accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = acc.code + ' - ' + acc.name;
+                sel.appendChild(opt);
             });
-            
-            // Journal account filter dropdown
-            const journalSelect = document.getElementById('journal-account-filter');
-            if (journalSelect) {
-                const currentVal = journalSelect.value;
-                journalSelect.innerHTML = '<option value="">All Accounts</option>';
-                data.accounts.forEach(acc => {
-                    const opt = document.createElement('option');
-                    opt.value = acc.id;
-                    opt.textContent = acc.code + ' - ' + acc.name;
-                    journalSelect.appendChild(opt);
-                });
-                journalSelect.value = currentVal;
-            }
+            sel.value = currentVal;
+        });
+        
+        const journalSelect = document.getElementById('journal-account-filter');
+        if (journalSelect) {
+            const currentVal = journalSelect.value;
+            journalSelect.innerHTML = '<option value="">All Accounts</option>';
+            data.accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = acc.code + ' - ' + acc.name;
+                journalSelect.appendChild(opt);
+            });
+            journalSelect.value = currentVal;
         }
-    } catch (err) {
-        console.error('Error loading accounts:', err);
     }
 }
 
@@ -281,66 +275,56 @@ async function loadAccountSelectsForTransactions() {
     select.innerHTML = '<option value="">-- Loading accounts... --</option>';
     select.disabled = true;
     
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+    });
+    const data = await res.json();
+    
+    select.disabled = false;
+    
+    if (data.status === 'success' && data.accounts && data.accounts.length > 0) {
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">-- Select an account --</option>';
+        data.accounts.forEach(acc => {
+            const opt = document.createElement('option');
+            opt.value = acc.id;
+            opt.textContent = acc.code + ' - ' + acc.name + ' (' + acc.type + ')';
+            select.appendChild(opt);
         });
-        const data = await res.json();
         
-        select.disabled = false;
-        
-        if (data.status === 'success' && data.accounts && data.accounts.length > 0) {
-            const currentVal = select.value;
-            select.innerHTML = '<option value="">-- Select an account --</option>';
-            data.accounts.forEach(acc => {
-                const opt = document.createElement('option');
-                opt.value = acc.id;
-                opt.textContent = acc.code + ' - ' + acc.name + ' (' + acc.type + ')';
-                select.appendChild(opt);
-            });
-            
-            if (currentVal && data.accounts.some(a => a.id == currentVal)) {
-                select.value = currentVal;
-            } else if (data.accounts.length > 0) {
-                select.value = data.accounts[0].id;
-            }
-            
-            console.log(`✅ Loaded ${data.accounts.length} accounts into Account Transactions dropdown`);
-            
-            if (select.value) {
-                loadAccountTransactions();
-            }
-        } else {
-            select.innerHTML = '<option value="">-- No accounts found --</option>';
+        if (currentVal && data.accounts.some(a => a.id == currentVal)) {
+            select.value = currentVal;
+        } else if (data.accounts.length > 0) {
+            select.value = data.accounts[0].id;
         }
-    } catch (e) {
-        select.disabled = false;
-        select.innerHTML = '<option value="">-- Error loading accounts --</option>';
-        console.error('Failed to load accounts for transactions:', e);
+        
+        console.log(`✅ Loaded ${data.accounts.length} accounts into Account Transactions dropdown`);
+        
+        if (select.value) {
+            loadAccountTransactions();
+        }
+    } else {
+        select.innerHTML = '<option value="">-- No accounts found --</option>';
     }
 }
 
 async function loadAccountSelectsForBank() {
     const select = document.getElementById('bank-apply-account');
     if (!select) return;
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+    });
+    const data = await res.json();
+    if (data.status === 'success' && data.accounts) {
+        select.innerHTML = '<option value="">Select Account</option>';
+        data.accounts.forEach(acc => {
+            const opt = document.createElement('option');
+            opt.value = acc.id;
+            opt.textContent = acc.code + ' - ' + acc.name;
+            select.appendChild(opt);
         });
-        const data = await res.json();
-        if (data.status === 'success' && data.accounts) {
-            select.innerHTML = '<option value="">Select Account</option>';
-            data.accounts.forEach(acc => {
-                const opt = document.createElement('option');
-                opt.value = acc.id;
-                opt.textContent = acc.code + ' - ' + acc.name;
-                select.appendChild(opt);
-            });
-        }
-    } catch (e) {
-        console.error('Failed to load accounts for bank apply:', e);
     }
 }
 
@@ -364,22 +348,18 @@ async function loadJournalEntries() {
     const search = document.getElementById('journal-search').value.trim();
     if (search) params.append('search', search);
 
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to load journal');
-        const data = await res.json();
-        if (data.status === 'success') {
-            journalTotalEntries = data.total;
-            renderJournal(data.entries);
-            updateJournalPagination();
-        } else {
-            body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading journal') + '</td></tr>';
-        }
-    } catch (err) {
-        body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal?${params.toString()}`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error('Failed to load journal');
+    const data = await res.json();
+    if (data.status === 'success') {
+        journalTotalEntries = data.total;
+        renderJournal(data.entries);
+        updateJournalPagination();
+    } else {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading journal') + '</td></tr>';
     }
 }
 
@@ -495,25 +475,20 @@ async function loadAccountTransactions() {
     if (from) params.append('date_from', from);
     if (to) params.append('date_to', to);
 
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-transactions?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to load account transactions');
-        const data = await res.json();
-        if (data.status === 'success') {
-            accountTxTotalEntries = data.total || 0;
-            currentAccountBalance = data.balance || 0;
-            renderAccountTransactions(data.transactions || []);
-            updateAccountTxPagination();
-            updateAccountBalanceDisplay(currentAccountBalance);
-        } else {
-            body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
-        }
-    } catch (err) {
-        console.error('Error loading account transactions:', err);
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-transactions?${params.toString()}`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error('Failed to load account transactions');
+    const data = await res.json();
+    if (data.status === 'success') {
+        accountTxTotalEntries = data.total || 0;
+        currentAccountBalance = data.balance || 0;
+        renderAccountTransactions(data.transactions || []);
+        updateAccountTxPagination();
+        updateAccountBalanceDisplay(currentAccountBalance);
+    } else {
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
     }
 }
 
@@ -644,22 +619,18 @@ async function deleteAccountTransaction(entryId) {
         return;
     }
     
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal/${entryId}`, {
-            method: 'DELETE',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            alert('Transaction deleted successfully');
-            loadAccountTransactions();
-            loadDashboard();
-        } else {
-            alert('Error: ' + (data.error || 'Failed to delete transaction'));
-        }
-    } catch (err) {
-        alert('Error: ' + err.message);
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal/${entryId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        alert('Transaction deleted successfully');
+        loadAccountTransactions();
+        loadDashboard();
+    } else {
+        alert('Error: ' + (data.error || 'Failed to delete transaction'));
     }
 }
 
@@ -745,32 +716,28 @@ async function submitManualEntry() {
 
     const status = document.getElementById('manual-status');
     status.textContent = '⏳ Posting...';
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/manual`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date, description, lines })
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/manual`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, description, lines })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        status.textContent = '✅ Entry posted (ID: ' + data.entry_id + ')';
+        document.getElementById('manual-description').value = '';
+        document.querySelectorAll('.manual-entry-row').forEach((row, idx) => {
+            if (idx > 0) row.remove();
+            else {
+                row.querySelector('.manual-account').value = '';
+                row.querySelector('.manual-debit').value = '';
+                row.querySelector('.manual-credit').value = '';
+            }
         });
-        const data = await res.json();
-        if (data.status === 'success') {
-            status.textContent = '✅ Entry posted (ID: ' + data.entry_id + ')';
-            document.getElementById('manual-description').value = '';
-            document.querySelectorAll('.manual-entry-row').forEach((row, idx) => {
-                if (idx > 0) row.remove();
-                else {
-                    row.querySelector('.manual-account').value = '';
-                    row.querySelector('.manual-debit').value = '';
-                    row.querySelector('.manual-credit').value = '';
-                }
-            });
-            updateManualBalance();
-            loadDashboard();
-        } else {
-            status.textContent = '❌ ' + (data.error || 'Failed to post');
-        }
-    } catch (err) {
-        status.textContent = '❌ Error: ' + err.message;
+        updateManualBalance();
+        loadDashboard();
+    } else {
+        status.textContent = '❌ ' + (data.error || 'Failed to post');
     }
 }
 
@@ -798,45 +765,37 @@ function handleBankUpload(file) {
                 return obj;
             });
         }
-        try {
-            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/upload`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    bank_account_id: parseInt(document.getElementById('reconcile-bank-account').value),
-                    transactions: rows
-                })
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                status.textContent = '✅ Uploaded ' + data.inserted + ' transactions.';
-                loadReconciliationStatus();
-            } else {
-                status.textContent = '❌ ' + (data.error || 'Upload failed');
-            }
-        } catch (err) {
-            status.textContent = '❌ Error: ' + err.message;
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/upload`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bank_account_id: parseInt(document.getElementById('reconcile-bank-account').value),
+                transactions: rows
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.textContent = '✅ Uploaded ' + data.inserted + ' transactions.';
+            loadReconciliationStatus();
+        } else {
+            status.textContent = '❌ ' + (data.error || 'Upload failed');
         }
     };
     reader.readAsText(file);
 }
 
 async function loadReconciliationStatus() {
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/status`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to load reconciliation status');
-        const data = await res.json();
-        if (data.status === 'success') {
-            renderExpectedPayments(data.expected);
-            renderBankDeposits(data.deposits);
-            renderUnmatched(data.unmatched);
-        }
-    } catch (err) {
-        console.error('Reconciliation load error:', err);
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/status`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error('Failed to load reconciliation status');
+    const data = await res.json();
+    if (data.status === 'success') {
+        renderExpectedPayments(data.expected);
+        renderBankDeposits(data.deposits);
+        renderUnmatched(data.unmatched);
     }
 }
 
@@ -894,21 +853,17 @@ function renderUnmatched(unmatched) {
 }
 
 async function runAutoMatch() {
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/auto-match`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            alert('Auto‑match complete: ' + data.matched + ' matches found.');
-            loadReconciliationStatus();
-        } else {
-            alert('Error: ' + (data.error || 'Auto‑match failed'));
-        }
-    } catch (err) {
-        alert('Error: ' + err.message);
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/auto-match`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        alert('Auto‑match complete: ' + data.matched + ' matches found.');
+        loadReconciliationStatus();
+    } else {
+        alert('Error: ' + (data.error || 'Auto‑match failed'));
     }
 }
 
@@ -927,24 +882,20 @@ async function runReport() {
     const container = document.getElementById('report-result');
     container.innerHTML = '<p class="text-muted">Loading...</p>';
 
-    try {
-        const params = new URLSearchParams({ type: reportType });
-        if (dateFrom) params.append('date_from', dateFrom);
-        if (dateTo) params.append('date_to', dateTo);
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to generate report');
-        const data = await res.json();
-        if (data.status === 'success') {
-            currentReportData = data;
-            renderReport(data, reportType);
-        } else {
-            container.innerHTML = '<p class="text-muted" style="color:#dc3545;">' + (data.error || 'Error generating report') + '</p>';
-        }
-    } catch (err) {
-        container.innerHTML = '<p class="text-muted" style="color:#dc3545;">Error: ' + err.message + '</p>';
+    const params = new URLSearchParams({ type: reportType });
+    if (dateFrom) params.append('date_from', dateFrom);
+    if (dateTo) params.append('date_to', dateTo);
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?${params.toString()}`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error('Failed to generate report');
+    const data = await res.json();
+    if (data.status === 'success') {
+        currentReportData = data;
+        renderReport(data, reportType);
+    } else {
+        container.innerHTML = '<p class="text-muted" style="color:#dc3545;">' + (data.error || 'Error generating report') + '</p>';
     }
 }
 
@@ -1083,7 +1034,6 @@ async function loadBankTransactions() {
     params.append('page', bankCurrentPage);
     params.append('per_page', bankPageSize);
     
-    // Only add date filters if they have values
     const from = document.getElementById('bank-date-from').value;
     const to = document.getElementById('bank-date-to').value;
     if (from) params.append('date_from', from);
@@ -1092,28 +1042,30 @@ async function loadBankTransactions() {
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
     
-    // Add processed filter - only show unprocessed by default
     if (!bankShowAll) {
         params.append('processed', 'false');
     }
+    
+    // Add source filter
+    const sourceFilter = document.getElementById('bank-source-filter');
+    if (sourceFilter && sourceFilter.value !== 'all') {
+        params.append('source', sourceFilter.value);
+    }
 
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to load bank transactions');
-        const data = await res.json();
-        if (data.status === 'success') {
-            bankTotalEntries = data.total || data.transactions?.length || 0;
-            renderBankTransactions(data.transactions || []);
-            updateBankPagination();
-            updateBankCounts(data);
-        } else {
-            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
-        }
-    } catch (err) {
-        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error('Failed to load bank transactions');
+    const data = await res.json();
+    if (data.status === 'success') {
+        // ✅ FIX: Use total_count for pagination, not total
+        bankTotalEntries = data.total_count || data.total || data.transactions?.length || 0;
+        renderBankTransactions(data.transactions || []);
+        updateBankPagination();
+        updateBankCounts(data);
+    } else {
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
     }
 }
 
@@ -1132,12 +1084,20 @@ function renderBankTransactions(transactions) {
         const amount = parseFloat(t.amount) || 0;
         const isDebit = amount < 0;
         const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
-        const status = t.processed ? '✅ Processed' : '⏳ Pending';
-        const statusClass = t.processed ? 'active' : 'warning';
+        const processed = t.processed || false;
+        const status = processed ? '✅ Processed' : '⏳ Pending';
+        const statusClass = processed ? 'active' : 'warning';
         const category = t.category || '';
+        const source = t.source || '';
+        let sourceBadge = '';
+        if (source === 'historic') {
+            sourceBadge = ' <span class="status-badge" style="background:#e9ecef; color:#333; font-size:10px;">Historic</span>';
+        } else if (source === 'plaid') {
+            sourceBadge = ' <span class="status-badge" style="background:#d4edda; color:#155724; font-size:10px;">Live</span>';
+        }
         html += `<tr>
             <td>${t.date || ''}</td>
-            <td>${t.description || ''}</td>
+            <td>${t.description || ''}${sourceBadge}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>${category}</td>
             <td><span class="status-badge ${statusClass}">${status}</span></td>
@@ -1169,6 +1129,8 @@ function resetBankFilters() {
     document.getElementById('bank-date-from').value = '';
     document.getElementById('bank-date-to').value = '';
     document.getElementById('bank-filter').value = '';
+    document.getElementById('bank-source-filter').value = 'all';
+    bankSourceFilter = 'all';
     bankCurrentPage = 1;
     loadBankTransactions();
 }
@@ -1176,21 +1138,17 @@ function resetBankFilters() {
 async function syncBankTransactions() {
     const status = document.getElementById('bank-sync-status');
     status.textContent = '⏳ Syncing...';
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/sync`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            status.textContent = '✅ Sync triggered. Refreshing...';
-            loadBankTransactions();
-        } else {
-            status.textContent = '❌ ' + (data.error || 'Sync failed');
-        }
-    } catch (err) {
-        status.textContent = '❌ Error: ' + err.message;
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/sync`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        status.textContent = '✅ Sync triggered. Refreshing...';
+        loadBankTransactions();
+    } else {
+        status.textContent = '❌ ' + (data.error || 'Sync failed');
     }
 }
 
@@ -1216,60 +1174,57 @@ async function applyFilterToTransactions() {
     }
 
     statusSpan.textContent = '⏳ Fetching transactions...';
-    try {
-        const params = new URLSearchParams();
-        params.append('per_page', 9999);
-        params.append('search', pattern);
-        // Only get unprocessed transactions
-        params.append('processed', 'false');
-        const from = document.getElementById('bank-date-from').value;
-        const to = document.getElementById('bank-date-to').value;
-        if (from) params.append('date_from', from);
-        if (to) params.append('date_to', to);
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        if (data.status !== 'success') {
-            statusSpan.textContent = '❌ Failed to fetch transactions: ' + (data.error || 'Unknown');
-            return;
-        }
-        const transactions = data.transactions || [];
-        if (transactions.length === 0) {
-            statusSpan.textContent = 'ℹ️ No unprocessed transactions found matching the filter.';
-            return;
-        }
+    const params = new URLSearchParams();
+    params.append('per_page', 9999);
+    params.append('search', pattern);
+    params.append('processed', 'false');
+    const from = document.getElementById('bank-date-from').value;
+    const to = document.getElementById('bank-date-to').value;
+    if (from) params.append('date_from', from);
+    if (to) params.append('date_to', to);
+    
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+    });
+    const data = await res.json();
+    if (data.status !== 'success') {
+        statusSpan.textContent = '❌ Failed to fetch transactions: ' + (data.error || 'Unknown');
+        return;
+    }
+    const transactions = data.transactions || [];
+    if (transactions.length === 0) {
+        statusSpan.textContent = 'ℹ️ No unprocessed transactions found matching the filter.';
+        return;
+    }
 
-        const confirmMsg = `Found ${transactions.length} unprocessed transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
-        if (!confirm(confirmMsg)) {
-            statusSpan.textContent = '⏹️ Cancelled.';
-            return;
-        }
+    const confirmMsg = `Found ${transactions.length} unprocessed transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
+    if (!confirm(confirmMsg)) {
+        statusSpan.textContent = '⏹️ Cancelled.';
+        return;
+    }
 
-        statusSpan.textContent = '⏳ Applying...';
-        const applyRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transactions: transactions.map(t => ({
-                    id: t.id,
-                    date: t.date,
-                    amount: t.amount,
-                    description: t.description
-                })),
-                account_id: accountId
-            })
-        });
-        const applyData = await applyRes.json();
-        if (applyData.status === 'success') {
-            statusSpan.textContent = `✅ ${applyData.message}`;
-            loadBankTransactions();
-        } else {
-            statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
-        }
-    } catch (e) {
-        statusSpan.textContent = '❌ Error: ' + e.message;
+    statusSpan.textContent = '⏳ Applying...';
+    const applyRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            transactions: transactions.map(t => ({
+                id: t.id,
+                date: t.date,
+                amount: t.amount,
+                description: t.description,
+                source: t.source || 'plaid'
+            })),
+            account_id: accountId
+        })
+    });
+    const applyData = await applyRes.json();
+    if (applyData.status === 'success') {
+        statusSpan.textContent = `✅ ${applyData.message}`;
+        loadBankTransactions();
+    } else {
+        statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
     }
 }
