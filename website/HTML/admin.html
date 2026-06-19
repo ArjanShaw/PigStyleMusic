@@ -1935,6 +1935,162 @@
             margin-right: 5px;
             margin-bottom: 5px;
         }
+
+        /* Square Payment Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+        @keyframes modalSlideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px 12px 0 0;
+        }
+        .modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            opacity: 0.8;
+            padding: 0 5px;
+        }
+        .modal-close:hover {
+            opacity: 1;
+        }
+        .modal-body {
+            padding: 24px;
+        }
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        #square-payment-status {
+            text-align: center;
+            padding: 20px 0;
+        }
+        #square-status-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: #ffc107;
+        }
+        #square-status-message {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+        #square-status-detail {
+            font-size: 14px;
+            color: #666;
+            margin-top: 8px;
+        }
+        #square-payment-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        #square-payment-info .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+        }
+        #square-payment-info .info-row .label {
+            color: #666;
+        }
+        #square-payment-info .info-row .value {
+            font-weight: 600;
+            color: #333;
+        }
+        #square-force-warning {
+            display: none;
+            margin-top: 15px;
+            padding: 10px;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #856404;
+        }
+        #square-force-warning.show {
+            display: block;
+        }
+        #square-payment-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        #square-payment-actions .btn {
+            padding: 10px 25px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-square-force {
+            background: #ffc107;
+            color: #333;
+        }
+        .btn-square-force:hover {
+            background: #e0a800;
+        }
+        .btn-square-force:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-square-cancel {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-square-cancel:hover {
+            background: #bd2130;
+        }
+        .status-text-waiting { color: #ffc107; }
+        .status-text-completed { color: #28a745; }
+        .status-text-error { color: #dc3545; }
+        .status-text-force { color: #856404; }
     </style>
 </head>
 <body>
@@ -4474,6 +4630,62 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeGiftCardModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== SQUARE PAYMENT STATUS MODAL ====== -->
+    <div id="square-payment-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-square"></i> Square Payment</h3>
+                <button class="modal-close" onclick="closeSquarePaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="square-payment-status" style="text-align: center; padding: 20px 0;">
+                    <div id="square-status-icon" style="font-size: 48px; margin-bottom: 15px; color: #ffc107;">
+                        <i class="fas fa-spinner fa-pulse"></i>
+                    </div>
+                    <div id="square-status-message" style="font-size: 18px; font-weight: 600; color: #333;">
+                        Waiting for payment on terminal...
+                    </div>
+                    <div id="square-status-detail" style="font-size: 14px; color: #666; margin-top: 8px;">
+                        Please complete payment on the Square Terminal
+                    </div>
+                </div>
+                
+                <div id="square-payment-info" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <div class="info-row">
+                        <span class="label">Amount:</span>
+                        <span class="value" id="square-modal-amount">$0.00</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Terminal:</span>
+                        <span class="value" id="square-modal-terminal">--</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Status:</span>
+                        <span class="value" id="square-modal-status-text" style="color: #ffc107;">Waiting...</span>
+                    </div>
+                </div>
+                
+                <div id="square-payment-actions" style="display: flex; gap: 10px; justify-content: center; margin-top: 15px; flex-wrap: wrap;">
+                    <button id="square-force-complete-btn" class="btn btn-square-force" onclick="forceCompleteSquarePayment()">
+                        <i class="fas fa-check-double"></i> Force Complete
+                    </button>
+                    <button id="square-cancel-payment-btn" class="btn btn-square-cancel" onclick="cancelSquarePayment()">
+                        <i class="fas fa-times"></i> Cancel Payment
+                    </button>
+                </div>
+                
+                <div id="square-force-warning">
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    <strong>Warning:</strong> Force complete will mark the sale as completed without waiting for terminal confirmation. 
+                    Use this only if the customer has already paid on the terminal.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSquarePaymentModal()">Close</button>
             </div>
         </div>
     </div>

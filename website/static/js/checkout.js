@@ -16,6 +16,7 @@ let availableTerminals = [];
 let selectedTerminalId = null;
 let activeCheckoutId = null;
 let square_payment_sessions = {}; // Track payment sessions
+let squarePaymentResolve = null; // For Promise-based completion
 
 // Gift Card Variables
 let currentGiftCard = null;
@@ -90,7 +91,7 @@ window.getStatusText = function(statusId) {
 };
 
 // ============================================================================
-// Helper Functions for Order Creation (NEW)
+// Helper Functions for Order Creation
 // ============================================================================
 
 // Generate a UUID v4 style ID for the order
@@ -296,6 +297,93 @@ function centerText(text, width) {
     }
     
     return result;
+}
+
+// ============================================================================
+// Square Payment Modal Functions
+// ============================================================================
+
+function showSquarePaymentModal(amount, terminalName) {
+    const modal = document.getElementById('square-payment-modal');
+    if (!modal) return;
+    
+    // Reset modal to waiting state
+    const statusIcon = document.getElementById('square-status-icon');
+    const statusMessage = document.getElementById('square-status-message');
+    const statusDetail = document.getElementById('square-status-detail');
+    const statusText = document.getElementById('square-modal-status-text');
+    const amountDisplay = document.getElementById('square-modal-amount');
+    const terminalDisplay = document.getElementById('square-modal-terminal');
+    const forceBtn = document.getElementById('square-force-complete-btn');
+    
+    if (statusIcon) {
+        statusIcon.innerHTML = '<i class="fas fa-spinner fa-pulse"></i>';
+        statusIcon.style.color = '#ffc107';
+    }
+    if (statusMessage) statusMessage.textContent = 'Waiting for payment on terminal...';
+    if (statusDetail) statusDetail.textContent = 'Please complete payment on the Square Terminal';
+    if (statusText) {
+        statusText.textContent = 'Waiting...';
+        statusText.style.color = '#ffc107';
+    }
+    if (amountDisplay) amountDisplay.textContent = `$${amount.toFixed(2)}`;
+    if (terminalDisplay) terminalDisplay.textContent = terminalName || '--';
+    if (forceBtn) {
+        forceBtn.disabled = false;
+        forceBtn.style.opacity = '1';
+    }
+    
+    // Show the modal
+    modal.style.display = 'flex';
+}
+
+function updateSquarePaymentModal(status, message, detail) {
+    const statusIcon = document.getElementById('square-status-icon');
+    const statusMessage = document.getElementById('square-status-message');
+    const statusDetail = document.getElementById('square-status-detail');
+    const statusText = document.getElementById('square-modal-status-text');
+    
+    if (statusIcon) {
+        if (status === 'processing') {
+            statusIcon.innerHTML = '<i class="fas fa-spinner fa-pulse"></i>';
+            statusIcon.style.color = '#ffc107';
+        } else if (status === 'completed') {
+            statusIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
+            statusIcon.style.color = '#28a745';
+        } else if (status === 'error') {
+            statusIcon.innerHTML = '<i class="fas fa-times-circle"></i>';
+            statusIcon.style.color = '#dc3545';
+        } else if (status === 'force') {
+            statusIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+            statusIcon.style.color = '#ffc107';
+        } else {
+            statusIcon.innerHTML = '<i class="fas fa-spinner fa-pulse"></i>';
+            statusIcon.style.color = '#ffc107';
+        }
+    }
+    
+    if (statusMessage) statusMessage.textContent = message || 'Processing...';
+    if (statusDetail) statusDetail.textContent = detail || '';
+    if (statusText) {
+        statusText.textContent = status === 'completed' ? '✅ Completed' : 
+                                status === 'error' ? '❌ Error' : 
+                                status === 'force' ? '⚠️ Force Complete' : '⏳ Waiting...';
+        statusText.style.color = status === 'completed' ? '#28a745' : 
+                                 status === 'error' ? '#dc3545' : 
+                                 status === 'force' ? '#856404' : '#ffc107';
+    }
+}
+
+function closeSquarePaymentModal() {
+    const modal = document.getElementById('square-payment-modal');
+    if (modal) modal.style.display = 'none';
+    
+    // Clear any active checkout
+    if (activeCheckoutId && square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
+        clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
+    }
+    
+    activeCheckoutId = null;
 }
 
 // ============================================================================
@@ -984,7 +1072,11 @@ function startPollingCheckoutStatus(checkoutId) {
             if (square_payment_sessions[checkoutId]) {
                 square_payment_sessions[checkoutId].status = status;
                 
-                if (status === 'COMPLETED') {
+                if (status === 'PENDING') {
+                    updateSquarePaymentModal('processing', 'Waiting for payment...', 'Please complete payment on the Square Terminal');
+                } else if (status === 'COMPLETED') {
+                    updateSquarePaymentModal('completed', 'Payment Confirmed!', 'Processing sale...');
+                    
                     if (!checkout.payment_ids || checkout.payment_ids.length === 0) {
                         throw new Error('Checkout completed but no payment ID found');
                     }
@@ -1000,9 +1092,12 @@ function startPollingCheckoutStatus(checkoutId) {
                         
                         setTimeout(async () => {
                             await processSquarePaymentSuccess();
-                            closeTerminalCheckoutModal();
+                            closeSquarePaymentModal();
                         }, 1000);
                     }
+                } else if (status === 'FAILED' || status === 'CANCELED') {
+                    updateSquarePaymentModal('error', `Payment ${status}`, 'Please try again');
+                    clearInterval(pollInterval);
                 }
             }
         } catch (error) {
@@ -1023,6 +1118,61 @@ function startPollingCheckoutStatus(checkoutId) {
     }, 300000);
 }
 
+// ============================================================================
+// Square Payment - Main Functions
+// ============================================================================
+
+window.processSquarePayment = function() {
+    if (checkoutCart.length === 0) {
+        showCheckoutStatus('Cart is empty', 'error');
+        return;
+    }
+    
+    if (availableTerminals.length === 0) {
+        showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
+        return;
+    }
+    
+    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+    if (onlineTerminals.length === 0) {
+        showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
+        return;
+    }
+    
+    // Get the total amount
+    const totalEl = document.getElementById('cart-total');
+    const total = parseFloat(totalEl?.textContent.replace('$', '') || '0');
+    
+    // Get terminal name
+    let terminalName = 'Square Terminal';
+    if (availableTerminals.length === 1) {
+        terminalName = availableTerminals[0].device_name || 'Square Terminal';
+    }
+    
+    // SHOW THE MODAL BEFORE CHECKOUT
+    showSquarePaymentModal(total, terminalName);
+    
+    // Save cart items for later
+    pendingCartCheckout = {
+        items: [...checkoutCart],
+        type: 'cart',
+        discount: { ...currentDiscount },
+        customSalePrice: currentCustomSalePrice
+    };
+    
+    // Handle terminal selection
+    if (availableTerminals.length === 1) {
+        let singleTerminalId = availableTerminals[0].id;
+        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
+            singleTerminalId = singleTerminalId.replace('device:', '');
+        }
+        selectedTerminalId = singleTerminalId;
+        initiateCartTerminalCheckout();
+    } else {
+        renderTerminalSelectionModal();
+    }
+};
+
 window.initiateCartTerminalCheckout = async function() {
     if (!pendingCartCheckout) {
         showCheckoutStatus('No items selected for checkout', 'error');
@@ -1035,6 +1185,9 @@ window.initiateCartTerminalCheckout = async function() {
         return;
     }
     
+    // Update modal: Creating checkout
+    updateSquarePaymentModal('processing', 'Creating checkout on terminal...', 'Please wait');
+    
     const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
     const amountCents = Math.round(total * 100);
     const recordIds = pendingCartCheckout.items.map(item => 
@@ -1045,23 +1198,6 @@ window.initiateCartTerminalCheckout = async function() {
     );
     
     closeTerminalSelectionModal();
-    
-    const modalBody = document.getElementById('terminal-checkout-body');
-    const modal = document.getElementById('terminal-checkout-modal');
-    
-    if (modalBody) {
-        modalBody.innerHTML = `
-            <div class="payment-status">
-                <div class="payment-status-icon processing">
-                    <i class="fas fa-spinner fa-pulse"></i>
-                </div>
-                <div class="payment-status-message">Creating Terminal Checkout...</div>
-                <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
-                <div class="payment-status-detail">Please wait while we prepare the terminal</div>
-            </div>
-        `;
-    }
-    if (modal) modal.style.display = 'flex';
     
     try {
         const requestBody = {
@@ -1114,48 +1250,15 @@ window.initiateCartTerminalCheckout = async function() {
             checkout_data: checkout
         };
         
-        startPollingCheckoutStatus(activeCheckoutId);
+        // Update modal: Waiting for payment
+        updateSquarePaymentModal('processing', 'Waiting for payment on terminal...', `Amount: $${total.toFixed(2)}`);
         
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon processing">
-                        <i class="fas fa-credit-card"></i>
-                    </div>
-                    <div class="payment-status-message">Checkout Created</div>
-                    <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
-                    <div class="payment-status-detail">Please complete payment on the Square Terminal</div>
-                    <div class="payment-status-detail" style="margin-top: 20px; font-weight: bold;">Waiting for payment...</div>
-                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                        <button class="btn btn-success" onclick="forceCompleteSquarePayment()">
-                            <i class="fas fa-check-circle"></i> Complete Sale
-                        </button>
-                        <button class="btn btn-danger" onclick="cancelTerminalCheckout()">
-                            <i class="fas fa-times"></i> Cancel
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
+        startPollingCheckoutStatus(activeCheckoutId);
         
     } catch (error) {
         console.error('Checkout error:', error);
-        
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon error">
-                        <i class="fas fa-times-circle"></i>
-                    </div>
-                    <div class="payment-status-message">Checkout Failed</div>
-                    <div class="payment-status-detail">${error.message}</div>
-                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                </div>
-            `;
-        }
-        
+        // Update modal: Error
+        updateSquarePaymentModal('error', 'Checkout Failed', error.message);
         showCheckoutStatus(`Checkout failed: ${error.message}`, 'error');
     }
 };
@@ -1171,19 +1274,8 @@ window.forceCompleteSquarePayment = async function() {
         return;
     }
     
-    const modalBody = document.getElementById('terminal-checkout-body');
-    
-    if (modalBody) {
-        modalBody.innerHTML = `
-            <div class="payment-status">
-                <div class="payment-status-icon processing">
-                    <i class="fas fa-spinner fa-pulse"></i>
-                </div>
-                <div class="payment-status-message">Completing sale manually...</div>
-                <div class="payment-status-detail">Processing payment for ${pendingCartCheckout.items.length} items</div>
-            </div>
-        `;
-    }
+    // Update modal: Force complete in progress
+    updateSquarePaymentModal('force', 'Force completing sale...', 'Marking sale as completed manually');
     
     try {
         if (square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
@@ -1195,39 +1287,21 @@ window.forceCompleteSquarePayment = async function() {
         square_payment_sessions[activeCheckoutId].status = 'COMPLETED';
         
         await processSquarePaymentSuccess();
-        closeTerminalCheckoutModal();
+        updateSquarePaymentModal('completed', 'Sale Completed!', 'Records have been marked as sold');
+        setTimeout(closeSquarePaymentModal, 1500);
         showCheckoutStatus('Sale completed successfully!', 'success');
         
     } catch (error) {
         console.error('Error completing sale:', error);
-        
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon error">
-                        <i class="fas fa-times-circle"></i>
-                    </div>
-                    <div class="payment-status-message">Completion Failed</div>
-                    <div class="payment-status-detail">${error.message}</div>
-                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                        <button class="btn btn-warning" onclick="forceCompleteSquarePayment()">
-                            <i class="fas fa-redo"></i> Retry
-                        </button>
-                        <button class="btn btn-secondary" onclick="closeTerminalCheckoutModal()">
-                            <i class="fas fa-times"></i> Close
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
-        
+        updateSquarePaymentModal('error', 'Completion Failed', error.message);
         showCheckoutStatus(`Failed to complete sale: ${error.message}`, 'error');
     }
 };
 
-window.cancelTerminalCheckout = async function() {
+window.cancelSquarePayment = function() {
     if (!activeCheckoutId) {
         showCheckoutStatus('No active checkout to cancel', 'info');
+        closeSquarePaymentModal();
         return;
     }
     
@@ -1235,16 +1309,18 @@ window.cancelTerminalCheckout = async function() {
         clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
     }
     
-    const modalBody = document.getElementById('terminal-checkout-body');
-    if (modalBody) {
-        modalBody.innerHTML = `
-            <div class="payment-status">
-                <div class="payment-status-icon processing">
-                    <i class="fas fa-spinner fa-pulse"></i>
-                </div>
-                <div class="payment-status-message">Cancelling checkout...</div>
-            </div>
-        `;
+    // Update modal: Cancelling
+    updateSquarePaymentModal('processing', 'Cancelling checkout...', 'Please wait');
+    
+    // Call the existing cancel function
+    cancelTerminalCheckout();
+};
+
+window.cancelTerminalCheckout = async function() {
+    if (!activeCheckoutId) {
+        showCheckoutStatus('No active checkout to cancel', 'info');
+        closeSquarePaymentModal();
+        return;
     }
     
     try {
@@ -1285,20 +1361,8 @@ window.cancelTerminalCheckout = async function() {
         }
         
         showCheckoutStatus('Checkout cancelled successfully', 'success');
-        
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon success">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <div class="payment-status-message">Checkout Cancelled Successfully</div>
-                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                </div>
-            `;
-        }
+        updateSquarePaymentModal('completed', 'Cancelled', 'Checkout has been cancelled');
+        setTimeout(closeSquarePaymentModal, 1000);
         
         if (square_payment_sessions[activeCheckoutId]) {
             delete square_payment_sessions[activeCheckoutId];
@@ -1308,25 +1372,7 @@ window.cancelTerminalCheckout = async function() {
         
     } catch (error) {
         console.error('Cancel checkout error:', error);
-        
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon error">
-                        <i class="fas fa-times-circle"></i>
-                    </div>
-                    <div class="payment-status-message">Failed to Cancel Checkout</div>
-                    <div class="payment-status-detail">${error.message}</div>
-                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                    <button class="btn btn-secondary" onclick="cancelTerminalCheckout()" style="margin-top: 10px;">
-                        <i class="fas fa-redo"></i> Retry
-                    </button>
-                </div>
-            `;
-        }
-        
+        updateSquarePaymentModal('error', 'Failed to Cancel', error.message);
         showCheckoutStatus(`Failed to cancel: ${error.message}`, 'error');
     }
 };
@@ -1349,23 +1395,7 @@ window.completeSquarePayment = async function() {
     }
     
     await processSquarePaymentSuccess();
-    
-    const modalBody = document.getElementById('terminal-checkout-body');
-    if (modalBody) {
-        modalBody.innerHTML = `
-            <div class="payment-status">
-                <div class="payment-status-icon success">
-                    <i class="fas fa-check-circle"></i>
-                </div>
-                <div class="payment-status-message">Payment Recorded Successfully!</div>
-                <div class="payment-status-detail">Records have been updated to sold status</div>
-                <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                    <i class="fas fa-check"></i> Done
-                </button>
-            </div>
-        `;
-    }
-    
+    closeSquarePaymentModal();
     showCheckoutStatus('Payment completed successfully!', 'success');
 };
 
@@ -1609,7 +1639,7 @@ async function processSquarePaymentSuccess() {
 }
 
 // ============================================================================
-// Discogs Sell Button Function (No confirmation popup, No receipt printing)
+// Discogs Sale Function
 // ============================================================================
 
 window.processDiscogsSale = async function() {
@@ -1807,7 +1837,7 @@ window.processDiscogsSale = async function() {
 };
 
 // ============================================================================
-// Cash Payment Functions (with custom sale price support)
+// Cash Payment Functions
 // ============================================================================
 
 window.showTenderModal = function() {
@@ -2455,61 +2485,6 @@ function updateCartTotalAfterGiftCard(remainingAmount) {
     if (totalEl) totalEl.textContent = `$${remainingAmount.toFixed(2)}`;
     currentCartTotal = remainingAmount;
 }
-
-// ============================================================================
-// Square Payment Function (wrapper)
-// ============================================================================
-
-window.processSquarePayment = function() {
-    if (checkoutCart.length === 0) {
-        showCheckoutStatus('Cart is empty', 'error');
-        return;
-    }
-    
-    if (availableTerminals.length === 0) {
-        showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
-        return;
-    }
-    
-    if (availableTerminals.length === 1) {
-        const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
-        if (onlineTerminals.length === 0) {
-            showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
-            return;
-        }
-        
-        let singleTerminalId = availableTerminals[0].id;
-        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
-            singleTerminalId = singleTerminalId.replace('device:', '');
-        }
-        selectedTerminalId = singleTerminalId;
-        
-        pendingCartCheckout = {
-            items: [...checkoutCart],
-            type: 'cart',
-            discount: { ...currentDiscount },
-            customSalePrice: currentCustomSalePrice
-        };
-        
-        initiateCartTerminalCheckout();
-        return;
-    }
-    
-    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
-    if (onlineTerminals.length === 0) {
-        showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
-        return;
-    }
-    
-    pendingCartCheckout = {
-        items: [...checkoutCart],
-        type: 'cart',
-        discount: { ...currentDiscount },
-        customSalePrice: currentCustomSalePrice
-    };
-    
-    renderTerminalSelectionModal();
-};
 
 // ============================================================================
 // Receipt Formatting (kept for future use, but not called)
