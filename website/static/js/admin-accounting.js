@@ -1131,7 +1131,7 @@ function bankSourceFilterChanged() {
 
 async function loadBankTransactions() {
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const params = new URLSearchParams();
     params.append('page', bankCurrentPage);
@@ -1167,10 +1167,10 @@ async function loadBankTransactions() {
             updateBankPagination();
             updateBankCounts(data);
         } else {
-            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
-        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
@@ -1178,14 +1178,13 @@ function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
         if (!bankShowAll) {
-            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">🎉 All transactions have been processed! Check "Show all transactions" to view them.</td></tr>';
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">🎉 All transactions have been processed! Check "Show all transactions" to view them.</td></tr>';
         } else {
-            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         }
         return;
     }
     
-    // Get account options HTML for dropdowns
     const accountOptions = getAccountOptionsHTML();
     
     let html = '';
@@ -1199,6 +1198,8 @@ function renderBankTransactions(transactions) {
         const category = t.category || '';
         const source = t.source || '';
         const txId = t.id || '';
+        const date = t.date || '';
+        const description = t.description || '';
         
         let sourceBadge = '';
         if (source === 'historic') {
@@ -1207,9 +1208,10 @@ function renderBankTransactions(transactions) {
             sourceBadge = ' <span class="status-badge" style="background:#d4edda; color:#155724; font-size:10px;">Live</span>';
         }
         
-        // Only show dropdown for unprocessed transactions
         let actionColumn = '';
         if (!processed) {
+            // For historic transactions, we need the actual database ID
+            // The ID from the API is already correct
             actionColumn = `
                 <td>
                     <select class="bank-account-select" data-tx-id="${txId}" data-source="${source}" onchange="processSingleTransaction(this)">
@@ -1222,8 +1224,8 @@ function renderBankTransactions(transactions) {
         }
         
         html += `<tr>
-            <td>${t.date || ''}</td>
-            <td>${t.description || ''}${sourceBadge}</td>
+            <td>${date}</td>
+            <td>${description}${sourceBadge}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>${category}</td>
             <td><span class="status-badge ${statusClass}">${status}</span></td>
@@ -1239,7 +1241,7 @@ async function processSingleTransaction(selectElement) {
     const accountId = parseInt(selectElement.value);
     
     if (!accountId) {
-        return; // User selected "Select Account"
+        return;
     }
     
     // Disable the dropdown while processing
@@ -1247,6 +1249,15 @@ async function processSingleTransaction(selectElement) {
     selectElement.style.opacity = '0.6';
     
     try {
+        // Get the transaction data from the row
+        const row = selectElement.closest('tr');
+        const cells = row.querySelectorAll('td');
+        // cells[0] = Date, cells[1] = Description, cells[2] = Amount
+        const date = cells[0]?.textContent?.trim() || '';
+        const description = cells[1]?.textContent?.trim() || '';
+        const amountStr = cells[2]?.textContent?.trim() || '0';
+        const amount = parseFloat(amountStr.replace(/[$,]/g, '')) || 0;
+        
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/process-transaction`, {
             method: 'POST',
             credentials: 'include',
@@ -1254,12 +1265,14 @@ async function processSingleTransaction(selectElement) {
             body: JSON.stringify({
                 transaction_id: txId,
                 account_id: accountId,
-                source: source
+                source: source,
+                date: date,
+                amount: amount,
+                description: description
             })
         });
         const data = await res.json();
         if (data.status === 'success') {
-            // Reload the bank transactions to refresh the list
             loadBankTransactions();
         } else {
             alert('Error: ' + (data.error || 'Failed to process transaction'));
