@@ -21,6 +21,9 @@ let accountTxTotalEntries = 0;
 let currentSelectedAccountId = null;
 let currentAccountBalance = 0;
 
+// Cache for account dropdowns
+let accountOptionsCache = [];
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -48,6 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (sub === 'reconcile') {
                 loadReconciliationStatus();
             } else if (sub === 'bank') {
+                loadAccountOptionsCache();
                 loadBankTransactions();
                 checkBankConnection();
                 loadAccountSelectsForBank();
@@ -142,6 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAccountSelects();
     loadAccountSelectsForTransactions();
     loadAccountSelectsForBank();
+    loadAccountOptionsCache();
 
     // Load dashboard by default
     loadDashboard();
@@ -172,6 +177,38 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// ============================================================
+// ACCOUNT OPTIONS CACHE
+// ============================================================
+
+async function loadAccountOptionsCache() {
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) throw new Error('Failed to load accounts');
+        const data = await res.json();
+        if (data.status === 'success') {
+            accountOptionsCache = data.accounts;
+        }
+    } catch (err) {
+        console.error('Error loading account cache:', err);
+    }
+}
+
+function getAccountOptionsHTML(selectedId) {
+    if (!accountOptionsCache || accountOptionsCache.length === 0) {
+        return '<option value="">Loading...</option>';
+    }
+    let html = '<option value="">Select Account</option>';
+    accountOptionsCache.forEach(acc => {
+        const selected = acc.id == selectedId ? 'selected' : '';
+        html += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
+    });
+    return html;
+}
 
 // ============================================================
 // DASHBOARD
@@ -1010,7 +1047,6 @@ async function checkBankConnection() {
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
         if (!res.ok) {
-            // If endpoint doesn't exist, just show disconnected
             const statusEl = document.getElementById('bank-connection-status');
             const connectBtn = document.getElementById('connect-bank-btn');
             if (statusEl) statusEl.innerHTML = '⚠️ Plaid not configured';
@@ -1028,7 +1064,6 @@ async function checkBankConnection() {
             connectBtn.style.display = 'inline-block';
         }
     } catch (e) {
-        // If error (like 404), show as disconnected
         const statusEl = document.getElementById('bank-connection-status');
         const connectBtn = document.getElementById('connect-bank-btn');
         if (statusEl) statusEl.innerHTML = '⚠️ Plaid not configured';
@@ -1114,7 +1149,6 @@ async function loadBankTransactions() {
         params.append('processed', 'false');
     }
     
-    // Add source filter
     const sourceFilter = document.getElementById('bank-source-filter');
     if (sourceFilter && sourceFilter.value !== 'all') {
         params.append('source', sourceFilter.value);
@@ -1150,6 +1184,10 @@ function renderBankTransactions(transactions) {
         }
         return;
     }
+    
+    // Get account options HTML for dropdowns
+    const accountOptions = getAccountOptionsHTML();
+    
     let html = '';
     transactions.forEach(t => {
         const amount = parseFloat(t.amount) || 0;
@@ -1160,21 +1198,79 @@ function renderBankTransactions(transactions) {
         const statusClass = processed ? 'active' : 'warning';
         const category = t.category || '';
         const source = t.source || '';
+        const txId = t.id || '';
+        
         let sourceBadge = '';
         if (source === 'historic') {
             sourceBadge = ' <span class="status-badge" style="background:#e9ecef; color:#333; font-size:10px;">Historic</span>';
         } else if (source === 'plaid') {
             sourceBadge = ' <span class="status-badge" style="background:#d4edda; color:#155724; font-size:10px;">Live</span>';
         }
+        
+        // Only show dropdown for unprocessed transactions
+        let actionColumn = '';
+        if (!processed) {
+            actionColumn = `
+                <td>
+                    <select class="bank-account-select" data-tx-id="${txId}" data-source="${source}" onchange="processSingleTransaction(this)">
+                        ${accountOptions}
+                    </select>
+                </td>
+            `;
+        } else {
+            actionColumn = '<td><span class="text-muted">Processed</span></td>';
+        }
+        
         html += `<tr>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}${sourceBadge}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>${category}</td>
             <td><span class="status-badge ${statusClass}">${status}</span></td>
+            ${actionColumn}
         </tr>`;
     });
     body.innerHTML = html;
+}
+
+async function processSingleTransaction(selectElement) {
+    const txId = selectElement.dataset.txId;
+    const source = selectElement.dataset.source || 'plaid';
+    const accountId = parseInt(selectElement.value);
+    
+    if (!accountId) {
+        return; // User selected "Select Account"
+    }
+    
+    // Disable the dropdown while processing
+    selectElement.disabled = true;
+    selectElement.style.opacity = '0.6';
+    
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/process-transaction`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                transaction_id: txId,
+                account_id: accountId,
+                source: source
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            // Reload the bank transactions to refresh the list
+            loadBankTransactions();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to process transaction'));
+            selectElement.disabled = false;
+            selectElement.style.opacity = '1';
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+        selectElement.disabled = false;
+        selectElement.style.opacity = '1';
+    }
 }
 
 function updateBankCounts(data) {
@@ -1231,7 +1327,7 @@ async function syncBankTransactions() {
 }
 
 // ============================================================
-// INTEGRATED FILTER-APPLY
+// INTEGRATED FILTER-APPLY (Bulk processing)
 // ============================================================
 
 async function applyFilterToTransactions() {
