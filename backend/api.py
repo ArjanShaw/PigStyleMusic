@@ -7992,7 +7992,7 @@ def accounting_delete_journal_entry(entry_id):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== ACCOUNTING: PROCESS SINGLE TRANSACTION ====================
-
+ 
 @app.route('/api/accounting/bank/process-transaction', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -8004,7 +8004,10 @@ def accounting_process_single_transaction():
     data = request.json
     transaction_id = data.get('transaction_id')
     account_id = data.get('account_id')
-    source = data.get('source', 'plaid')  # 'historic' or 'plaid'
+    source = data.get('source', 'plaid')
+    date = data.get('date')
+    amount = data.get('amount')
+    description = data.get('description', '')
     
     if not transaction_id or not account_id:
         return jsonify({'status': 'error', 'error': 'transaction_id and account_id required'}), 400
@@ -8041,16 +8044,13 @@ def accounting_process_single_transaction():
         if tx['processed'] == 1:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
-    else:
-        # For Plaid transactions, we need to fetch from Plaid or use the data passed
-        # Since we don't store Plaid transactions, we need to get the data from the request
-        # or fetch from Plaid. For simplicity, we'll expect the data in the request.
-        # The frontend will pass the transaction data.
-        date = data.get('date')
-        amount = data.get('amount')
-        description = data.get('description')
-        tx_id = transaction_id
         
+        tx_date = tx['date']
+        tx_amount = tx['amount']
+        tx_description = tx['description']
+        
+    else:
+        # For Plaid transactions, use the data passed from the frontend
         if not date or amount is None:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Missing transaction data for Plaid transaction'}), 400
@@ -8059,28 +8059,25 @@ def accounting_process_single_transaction():
         cursor.execute('''
             SELECT id FROM journal_entries
             WHERE source_type IN ('bank_transaction', 'plaid_transaction') AND source_id = ?
-        ''', (str(tx_id),))
+        ''', (str(transaction_id),))
         if cursor.fetchone():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
         
-        # Create a virtual tx object
-        tx = {
-            'date': date,
-            'amount': amount,
-            'description': description
-        }
+        tx_date = date
+        tx_amount = amount
+        tx_description = description or 'Plaid transaction'
     
-    amount_cents = int(round(abs(tx['amount']) * 100))
-    is_expense = tx['amount'] < 0
+    amount_cents = int(round(abs(tx_amount) * 100))
+    is_expense = tx_amount < 0
     is_expense_account = account['type'] == 'expense'
     
     # Create journal entry
-    entry_description = f"Bank transaction: {tx['description']}"
+    entry_description = f"Bank transaction: {tx_description}"
     cursor.execute('''
         INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
         VALUES (?, ?, ?, ?)
-    ''', (tx['date'], entry_description, 'bank_transaction', str(transaction_id)))
+    ''', (tx_date, entry_description, 'bank_transaction', str(transaction_id)))
     entry_id = cursor.lastrowid
     
     if is_expense:
