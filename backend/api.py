@@ -7991,6 +7991,155 @@ def accounting_delete_journal_entry(entry_id):
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ==================== ACCOUNTING: PROCESS SINGLE TRANSACTION ====================
+
+@app.route('/api/accounting/bank/process-transaction', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_process_single_transaction():
+    """
+    Process a single transaction by assigning it to an account.
+    Handles both historic (CSV) and Plaid transactions.
+    """
+    data = request.json
+    transaction_id = data.get('transaction_id')
+    account_id = data.get('account_id')
+    source = data.get('source', 'plaid')  # 'historic' or 'plaid'
+    
+    if not transaction_id or not account_id:
+        return jsonify({'status': 'error', 'error': 'transaction_id and account_id required'}), 400
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get the account details
+    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
+    account = cursor.fetchone()
+    if not account:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+    
+    # Get cash account (1010)
+    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+    cash_row = cursor.fetchone()
+    if not cash_row:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
+    cash_id = cash_row['id']
+    
+    # Determine the transaction details based on source
+    if source == 'historic':
+        cursor.execute('''
+            SELECT id, transaction_date as date, amount, description, processed
+            FROM historic_bank_transactions 
+            WHERE id = ?
+        ''', (int(transaction_id),))
+        tx = cursor.fetchone()
+        if not tx:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Historic transaction not found'}), 404
+        if tx['processed'] == 1:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
+    else:
+        # For Plaid transactions, we need to fetch from Plaid or use the data passed
+        # Since we don't store Plaid transactions, we need to get the data from the request
+        # or fetch from Plaid. For simplicity, we'll expect the data in the request.
+        # The frontend will pass the transaction data.
+        date = data.get('date')
+        amount = data.get('amount')
+        description = data.get('description')
+        tx_id = transaction_id
+        
+        if not date or amount is None:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Missing transaction data for Plaid transaction'}), 400
+        
+        # Check if already processed
+        cursor.execute('''
+            SELECT id FROM journal_entries
+            WHERE source_type IN ('bank_transaction', 'plaid_transaction') AND source_id = ?
+        ''', (str(tx_id),))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
+        
+        # Create a virtual tx object
+        tx = {
+            'date': date,
+            'amount': amount,
+            'description': description
+        }
+    
+    amount_cents = int(round(abs(tx['amount']) * 100))
+    is_expense = tx['amount'] < 0
+    is_expense_account = account['type'] == 'expense'
+    
+    # Create journal entry
+    entry_description = f"Bank transaction: {tx['description']}"
+    cursor.execute('''
+        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+        VALUES (?, ?, ?, ?)
+    ''', (tx['date'], entry_description, 'bank_transaction', str(transaction_id)))
+    entry_id = cursor.lastrowid
+    
+    if is_expense:
+        if is_expense_account:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, 0, amount_cents))
+        else:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+    else:
+        if is_expense_account:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+        else:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+    
+    # Mark as processed in the appropriate table
+    if source == 'historic':
+        cursor.execute('UPDATE historic_bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'status': 'success',
+        'message': f'Transaction processed successfully to {account["name"]}',
+        'entry_id': entry_id,
+        'account': {
+            'id': account['id'],
+            'code': account['code'],
+            'name': account['name'],
+            'type': account['type']
+        }
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

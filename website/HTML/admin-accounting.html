@@ -431,6 +431,23 @@
         .bank-status-bar .filter-group .form-group {
             margin: 0;
         }
+        .bank-account-select {
+            padding: 4px 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            background: white;
+            min-width: 120px;
+            max-width: 180px;
+        }
+        .bank-account-select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .bank-account-select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -700,34 +717,13 @@
             <!-- Bank Transactions Sub-tab -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">View and categorize bank transactions. Processed transactions are automatically hidden.</p>
+                <p class="text-muted">View and categorize bank transactions. Select an account from the dropdown to process individual transactions.</p>
                 
                 <div style="margin-bottom: 15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display: none;">
                         <i class="fas fa-university"></i> Connect Bank Account
                     </button>
                     <span id="bank-connection-status" class="text-muted"></span>
-                </div>
-
-                <!-- Filter & Apply section -->
-                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
-                    <div class="form-group" style="flex: 2;">
-                        <label>Filter by description</label>
-                        <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
-                    </div>
-                    <div class="form-group">
-                        <label>Apply to account</label>
-                        <select id="bank-apply-account">
-                            <option value="">Select Account</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 0 0 auto;">
-                        <label>&nbsp;</label>
-                        <button class="btn btn-warning" onclick="applyFilterToTransactions()">
-                            <i class="fas fa-tag"></i> Apply to filtered
-                        </button>
-                    </div>
-                    <span id="filter-apply-status" class="text-muted"></span>
                 </div>
 
                 <!-- Status bar and Show All toggle -->
@@ -750,6 +746,27 @@
                             <span>Show all transactions (including processed)</span>
                         </label>
                     </div>
+                </div>
+
+                <!-- Filter & Bulk Apply section -->
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                    <div class="form-group" style="flex: 2;">
+                        <label>Filter by description</label>
+                        <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
+                    </div>
+                    <div class="form-group">
+                        <label>Bulk apply to account</label>
+                        <select id="bank-apply-account">
+                            <option value="">Select Account</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-warning" onclick="applyFilterToTransactions()">
+                            <i class="fas fa-tag"></i> Apply to filtered
+                        </button>
+                    </div>
+                    <span id="filter-apply-status" class="text-muted"></span>
                 </div>
 
                 <!-- Date filters -->
@@ -778,10 +795,11 @@
                                 <th>Amount</th>
                                 <th>Category</th>
                                 <th>Status</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="bank-body">
-                            <tr><td colspan="5" style="text-align:center; padding:40px;">Loading transactions...</td></tr>
+                            <tr><td colspan="6" style="text-align:center; padding:40px;">Loading transactions...</td></tr>
                         </tbody>
                     </table>
                 </div>
