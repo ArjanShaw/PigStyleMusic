@@ -63,7 +63,7 @@ const TabManager = (function() {
             }
         };
         
-        // Discogs Tab - FIXED: Use initDiscogsTab
+        // Discogs Tab
         initializers['discogs'] = () => {
             console.log('🔵 TabManager: Initializing Discogs tab');
             if (typeof window.initDiscogsTab === 'function') {
@@ -71,6 +71,18 @@ const TabManager = (function() {
                 window.initDiscogsTab();
             } else {
                 console.error('❌ initDiscogsTab function not found!');
+                console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
+            }
+        };
+        
+        // Discogs Orders Tab - NEW
+        initializers['discogs-orders'] = () => {
+            console.log('🔵 TabManager: Initializing Discogs Orders tab');
+            if (typeof window.initDiscogsOrdersTab === 'function') {
+                console.log('✅ Found initDiscogsOrdersTab function, calling it...');
+                window.initDiscogsOrdersTab();
+            } else {
+                console.error('❌ initDiscogsOrdersTab function not found!');
                 console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
             }
         };
@@ -98,8 +110,6 @@ const TabManager = (function() {
                 console.warn('⚠️ initUsersTab not found');
             }
         };
-        
-         
         
         // Admin Config Tab
         initializers['admin-config'] = () => {
@@ -180,6 +190,18 @@ const TabManager = (function() {
                 console.warn('⚠️ initStatsTab not found');
             }
         };
+        
+        // Inventory Purchases Tab
+        initializers['inventory-purchases'] = () => {
+            console.log('🔵 TabManager: Initializing Inventory Purchases tab');
+            if (typeof window.initInventoryPurchasesTab === 'function') {
+                window.initInventoryPurchasesTab();
+            } else if (typeof window.loadInventoryPurchases === 'function') {
+                window.loadInventoryPurchases();
+            } else {
+                console.warn('⚠️ initInventoryPurchasesTab not found');
+            }
+        };
     }
     
     // Register cleanup functions
@@ -193,6 +215,13 @@ const TabManager = (function() {
             'inventory': () => {
                 if (window.closeDuplicateRecordModal) {
                     window.closeDuplicateRecordModal();
+                }
+            },
+            'discogs-orders': () => {
+                // Cleanup for discogs orders tab
+                const modal = document.getElementById('discogs-order-modal');
+                if (modal) {
+                    modal.style.display = 'none';
                 }
             }
         };

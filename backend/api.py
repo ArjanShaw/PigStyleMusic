@@ -8138,5 +8138,268 @@ def accounting_process_single_transaction():
         }
     })
 
+# ==================== DISCOGS ORDERS ENDPOINTS ====================
+
+@app.route('/api/discogs/orders', methods=['GET'])
+def get_discogs_orders():
+    """
+    Get orders from Discogs API.
+    
+    Query params:
+        status: Filter by status (New, Paid, Shipped, etc.)
+        page: Page number (default: 1)
+        per_page: Items per page (default: 50, max: 100)
+        all: If 'true', fetch all pages (default: false)
+    """
+    try:
+        # Check if Discogs token exists
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({
+                'status': 'error',
+                'error': 'Discogs token not configured'
+            }), 500
+        
+        # Get query parameters
+        status = request.args.get('status')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        fetch_all = request.args.get('all', 'false').lower() == 'true'
+        
+        # Initialize Discogs handler
+        handler = DiscogsHandler(TOKEN)
+        
+        if fetch_all:
+            # Fetch all orders (handles pagination internally)
+            orders = handler.get_all_orders(status=status)
+            
+            return jsonify({
+                'status': 'success',
+                'orders': orders,
+                'total': len(orders),
+                'pagination': {
+                    'page': 1,
+                    'per_page': len(orders),
+                    'pages': 1,
+                    'items': len(orders)
+                }
+            })
+        else:
+            # Fetch a single page
+            result = handler.get_orders(status=status, page=page, per_page=per_page)
+            
+            if not result['success']:
+                return jsonify({
+                    'status': 'error',
+                    'error': result.get('error', 'Failed to fetch orders')
+                }), 500
+            
+            return jsonify({
+                'status': 'success',
+                'orders': result['orders'],
+                'pagination': result['pagination']
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Error fetching Discogs orders: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/discogs/orders/<order_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_discogs_order_detail(order_id):
+    """
+    Get detailed information for a specific Discogs order.
+    """
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({
+                'status': 'error',
+                'error': 'Discogs token not configured'
+            }), 500
+        
+        handler = DiscogsHandler(TOKEN)
+        result = handler.get_order_details(order_id)
+        
+        if not result['success']:
+            return jsonify({
+                'status': 'error',
+                'error': result.get('error', 'Failed to fetch order')
+            }), 500
+        
+        return jsonify({
+            'status': 'success',
+            'order': result['order']
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching Discogs order detail: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+ 
+
+@app.route('/api/records/mark-sold-on-discogs', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_sold_on_discogs():
+    """
+    Mark a record as sold on Discogs.
+    Updates status_id to 4, sets actual_sale_price, and date_sold.
+    
+    Request body:
+    {
+        "record_id": 9976,
+        "sale_price": 34.99
+    }
+    """
+    try:
+        data = request.json
+        record_id = data.get('record_id')
+        sale_price = data.get('sale_price')
+        
+        if not record_id:
+            return jsonify({'status': 'error', 'error': 'record_id is required'}), 400
+        
+        if sale_price is None:
+            return jsonify({'status': 'error', 'error': 'sale_price is required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if record exists
+        cursor.execute('SELECT id, artist, title, status_id FROM records WHERE id = ?', (record_id,))
+        record = cursor.fetchone()
+        
+        if not record:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Record #{record_id} not found'}), 404
+        
+        # Check if already sold
+        if record['status_id'] == 3 or record['status_id'] == 4:
+            conn.close()
+            return jsonify({
+                'status': 'error', 
+                'error': f'Record #{record_id} is already marked as sold (status_id: {record["status_id"]})'
+            }), 400
+        
+        # Update the record - NO discogs_order_id
+        cursor.execute('''
+            UPDATE records 
+            SET status_id = 4, 
+                actual_sale_price = ?, 
+                date_sold = CURRENT_DATE
+            WHERE id = ?
+        ''', (sale_price, record_id))
+        
+        conn.commit()
+        
+        # Get updated record
+        cursor.execute('''
+            SELECT id, artist, title, status_id, actual_sale_price, date_sold
+            FROM records 
+            WHERE id = ?
+        ''', (record_id,))
+        
+        updated_record = cursor.fetchone()
+        conn.close()
+        
+        app.logger.info(f"✅ Record #{record_id} marked as sold on Discogs for ${sale_price}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Record #{record_id} marked as sold on Discogs',
+            'record': {
+                'id': updated_record['id'],
+                'artist': updated_record['artist'],
+                'title': updated_record['title'],
+                'status_id': updated_record['status_id'],
+                'actual_sale_price': float(updated_record['actual_sale_price']) if updated_record['actual_sale_price'] else None,
+                'date_sold': updated_record['date_sold']
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error marking record as sold on Discogs: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/records/search-by-barcode', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def search_records_by_barcode():
+    """
+    Search for records by barcode.
+    Returns all records that match the barcode.
+    
+    Query params:
+        barcode: The barcode to search for
+    """
+    try:
+        barcode = request.args.get('barcode', '').strip()
+        
+        if not barcode:
+            return jsonify({
+                'status': 'error',
+                'error': 'barcode parameter is required'
+            }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Search for records with this barcode
+        cursor.execute('''
+            SELECT 
+                r.id, r.artist, r.title, r.barcode, r.catalog_number,
+                r.store_price, r.status_id, r.location,
+                s.status_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            WHERE r.barcode = ?
+            ORDER BY r.created_at DESC
+        ''', (barcode,))
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        records_list = []
+        for record in records:
+            records_list.append({
+                'id': record['id'],
+                'artist': record['artist'],
+                'title': record['title'],
+                'barcode': record['barcode'],
+                'catalog_number': record['catalog_number'],
+                'store_price': float(record['store_price']) if record['store_price'] else 0,
+                'status_id': record['status_id'],
+                'status_name': record['status_name'],
+                'location': record['location'],
+                'sleeve_condition': record['sleeve_condition_name'],
+                'disc_condition': record['disc_condition_name']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'records': records_list,
+            'count': len(records_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error searching records by barcode: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
