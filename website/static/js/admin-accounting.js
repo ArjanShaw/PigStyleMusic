@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (sub === 'dashboard') loadDashboard();
             else if (sub === 'journal') loadJournalEntries();
             else if (sub === 'account-transactions') {
-                loadAccountTransactionsSelect();  // this now auto‑loads
+                loadAccountTransactionsSelect();
             }
             else if (sub === 'reconcile') loadReconciliationStatus();
             else if (sub === 'bank') {
@@ -290,7 +290,6 @@ async function loadAccountTransactionsSelect() {
                 opt.textContent = acc.code + ' - ' + acc.name;
                 select.appendChild(opt);
             });
-            // Auto‑select first account and load
             if (data.accounts.length > 0) {
                 select.value = data.accounts[0].id;
                 loadAccountTransactions();
@@ -829,11 +828,17 @@ async function loadBankTransactions() {
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
 
+    // Check "Show all" toggle
     const showAll = document.getElementById('bank-show-all')?.checked || false;
-    if (!showAll) params.append('unprocessed_only', 'true');
+    if (!showAll) {
+        params.append('unprocessed_only', 'true');
+    }
 
+    // Source filter
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
-    if (sourceFilter !== 'all') params.append('source_type', sourceFilter);
+    if (sourceFilter !== 'all') {
+        params.append('source_type', sourceFilter);
+    }
 
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
@@ -846,10 +851,8 @@ async function loadBankTransactions() {
             bankTotalEntries = data.total || data.transactions?.length || 0;
             renderBankTransactions(data.transactions || []);
             updateBankPagination();
-            if (data.unprocessed_count !== undefined) {
-                document.getElementById('bank-unprocessed-count').textContent = data.unprocessed_count || 0;
-                document.getElementById('bank-total-count').textContent = `(${data.total_count || 0} total)`;
-            }
+            // Update counts with dynamic label
+            updateBankCounts(data.unprocessed_count || 0, data.total_count || 0);
         } else {
             body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
@@ -872,16 +875,14 @@ function renderBankTransactions(transactions) {
         const status = t.status || (t.pending ? 'Pending' : 'Posted');
         const category = t.category || '';
         const processed = t.processed ? '✅ Processed' : '⏳ Pending';
+        const actionButton = !t.processed ? `<button class="btn btn-sm btn-primary" onclick="applyTransaction(${t.id}, document.getElementById('bank-apply-account').value)"><i class="fas fa-tag"></i></button>` : '<span class="text-muted">Processed</span>';
         html += `<tr>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>${category}</td>
             <td><span class="status-badge ${status === 'Pending' ? 'warning' : 'active'}">${status}</span></td>
-            <td>
-                ${!t.processed ? `<button class="btn btn-sm btn-primary" onclick="applyTransaction(${t.id}, document.getElementById('bank-apply-account').value)"><i class="fas fa-tag"></i></button>` : ''}
-                ${t.processed ? '<span class="text-muted">Processed</span>' : ''}
-            </td>
+            <td>${actionButton}</td>
         </tr>`;
     });
     body.innerHTML = html;
@@ -893,6 +894,23 @@ function updateBankPagination() {
     document.getElementById('bank-prev').disabled = bankCurrentPage <= 1;
     document.getElementById('bank-next').disabled = bankCurrentPage >= totalPages || totalPages === 0;
     document.getElementById('bank-page-info').textContent = `Page ${bankCurrentPage}`;
+}
+
+function updateBankCounts(unprocessed, total) {
+    const showAll = document.getElementById('bank-show-all')?.checked || false;
+    const countEl = document.getElementById('bank-unprocessed-count');
+    const labelEl = document.getElementById('bank-count-label');
+    const totalEl = document.getElementById('bank-total-count');
+
+    if (showAll) {
+        countEl.textContent = total;
+        labelEl.textContent = ' transactions';
+        totalEl.textContent = `(${total} total)`;
+    } else {
+        countEl.textContent = unprocessed;
+        labelEl.textContent = ' unprocessed transactions';
+        totalEl.textContent = `(${total} total)`;
+    }
 }
 
 function toggleBankShowAll() {
@@ -964,7 +982,7 @@ async function applyTransaction(transactionId, accountId) {
 }
 
 // ============================================================
-// ACCOUNT TRANSACTIONS (main functionality)
+// ACCOUNT TRANSACTIONS
 // ============================================================
 
 async function loadAccountTransactions() {

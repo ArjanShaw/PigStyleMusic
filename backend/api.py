@@ -7582,61 +7582,56 @@ def fetch_bank_transactions(date_from=None, date_to=None):
 @login_required
 @role_required(['admin'])
 def accounting_get_bank_transactions():
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
-    search = request.args.get('search', '').strip()
-    processed_filter = request.args.get('processed')
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        search = request.args.get('search', '').strip()
+        unprocessed_only = request.args.get('unprocessed_only', 'false').lower() == 'true'
 
-    all_tx = fetch_bank_transactions(date_from, date_to)
+        # Fetch transactions from Plaid
+        all_tx = fetch_bank_transactions(date_from, date_to)
 
-    # Get all transaction IDs that have been processed
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT DISTINCT source_id 
-        FROM journal_entries 
-        WHERE source_type IN ('bank_transaction', 'plaid_transaction')
-    ''')
-    processed_ids = set(row['source_id'] for row in cursor.fetchall())
-    conn.close()
+        # Filter by search
+        if search:
+            search_lower = search.lower()
+            all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
 
-    # Mark each transaction as processed or not
-    for tx in all_tx:
-        tx['processed'] = tx['id'] in processed_ids
+        # Filter unprocessed if requested
+        if unprocessed_only:
+            # Get all already processed Plaid transaction IDs (those with a journal entry)
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT DISTINCT source_id FROM journal_entries
+                WHERE source_type = 'plaid_transaction'
+            ''')
+            processed_ids = {row['source_id'] for row in cursor.fetchall()}
+            conn.close()
+            # Keep only those not in processed_ids
+            all_tx = [tx for tx in all_tx if tx['id'] not in processed_ids]
 
-    # Filter by search term
-    if search:
-        search_lower = search.lower()
-        all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
+        # Sort by date
+        all_tx.sort(key=lambda x: x['date'], reverse=True)
+        total = len(all_tx)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated = all_tx[start:end]
 
-    # Filter by processed status
-    if processed_filter == 'false':
-        all_tx = [tx for tx in all_tx if not tx['processed']]
-    elif processed_filter == 'true':
-        all_tx = [tx for tx in all_tx if tx['processed']]
-
-    total_count = len(all_tx)
-    unprocessed_count = sum(1 for tx in all_tx if not tx['processed'])
-
-    # Sort by date descending
-    all_tx.sort(key=lambda x: x['date'], reverse=True)
-    
-    # Paginate
-    start = (page - 1) * per_page
-    end = start + per_page
-    paginated = all_tx[start:end]
-
-    return jsonify({
-        'status': 'success',
-        'transactions': paginated,
-        'total': len(paginated),
-        'total_count': total_count,
-        'unprocessed_count': unprocessed_count,
-        'page': page,
-        'per_page': per_page
-    })
+        return jsonify({
+            'status': 'success',
+            'transactions': paginated,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            # Also return counts for UI
+            'total_count': total,
+            'unprocessed_count': len([tx for tx in all_tx if tx['id'] not in processed_ids]) if unprocessed_only else total
+        })
+    except Exception as e:
+        app.logger.error(f"Error fetching bank transactions: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
