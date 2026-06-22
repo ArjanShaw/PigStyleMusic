@@ -20,8 +20,8 @@ let accountTxTotalEntries = 0;
 // Global list of accounts for bank dropdowns
 let bankAccounts = [];
 
-// Monthly charts container
-let monthlyChartInstances = [];
+// Monthly charts – store chart instances and their data for click handling
+let monthlyChartsData = [];
 
 // ============================================================
 // INITIALIZATION
@@ -56,7 +56,6 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'monthly') {
                 const now = new Date();
                 const endMonth = now.toISOString().slice(0, 7);
-                // Start at 2026-01-01
                 const startMonth = '2026-01';
                 const startInput = document.getElementById('monthly-start');
                 const endInput = document.getElementById('monthly-end');
@@ -181,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
-// DASHBOARD (unchanged)
+// DASHBOARD
 // ============================================================
 
 async function loadDashboard() {
@@ -237,7 +236,7 @@ async function runAccountingSync() {
 }
 
 // ============================================================
-// ACCOUNT DROPDOWNS (unchanged)
+// ACCOUNT DROPDOWNS
 // ============================================================
 
 async function loadAccountSelects() {
@@ -335,7 +334,7 @@ async function loadAccountTransactionsSelect() {
 }
 
 // ============================================================
-// JOURNAL ENTRIES (unchanged)
+// JOURNAL ENTRIES
 // ============================================================
 
 async function loadJournalEntries() {
@@ -443,7 +442,7 @@ function viewJournalEntry(entryId) {
 }
 
 // ============================================================
-// MANUAL ADJUSTMENTS (unchanged)
+// MANUAL ADJUSTMENTS
 // ============================================================
 
 function addManualLine() {
@@ -554,7 +553,7 @@ async function submitManualEntry() {
 }
 
 // ============================================================
-// RECONCILIATION (unchanged)
+// RECONCILIATION
 // ============================================================
 
 function handleBankUpload(file) {
@@ -696,7 +695,7 @@ function manualMatch(id) {
 }
 
 // ============================================================
-// REPORTS (unchanged)
+// REPORTS
 // ============================================================
 
 async function runReport() {
@@ -780,7 +779,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (unchanged)
+// BANK TRANSACTIONS
 // ============================================================
 
 async function checkBankConnection() {
@@ -1115,7 +1114,7 @@ async function applyFilterToTransactions() {
 }
 
 // ============================================================
-// ACCOUNT TRANSACTIONS (unchanged)
+// ACCOUNT TRANSACTIONS
 // ============================================================
 
 async function loadAccountTransactions() {
@@ -1254,7 +1253,7 @@ function exportAccountTransactionsCSV() {
 }
 
 // ============================================================
-// MONTHLY PERFORMANCE (with uniform Y‑axis and default start 2026-01)
+// MONTHLY PERFORMANCE (with clickable bars – FIXED)
 // ============================================================
 
 async function loadMonthlyPerformance() {
@@ -1291,14 +1290,14 @@ async function loadMonthlyPerformance() {
 function renderMonthlyCharts(data) {
     const { months, account_breakdown } = data;
     const container = document.getElementById('monthly-chart-grid');
-    container.innerHTML = ''; // clear
+    container.innerHTML = '';
 
     if (!months || months.length === 0) {
         container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
         return;
     }
 
-    // Collect all unique account names across all months
+    // Collect all unique account names
     const allAccounts = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1306,7 +1305,7 @@ function renderMonthlyCharts(data) {
     });
     const accountNames = Array.from(allAccounts).sort();
 
-    // Calculate global maximum value across all months and accounts
+    // Global max for Y axis
     let globalMax = 0;
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1315,44 +1314,41 @@ function renderMonthlyCharts(data) {
             if (val > globalMax) globalMax = val;
         });
     });
+    const yMax = Math.ceil(globalMax / 500) * 500 || 100;
 
-    // Round globalMax up to the nearest 500 or 1000
-    const maxY = Math.ceil(globalMax / 500) * 500;
-    // If maxY is 0, set a default of 100
-    const yMax = maxY > 0 ? maxY : 100;
-
-    // Define a color palette
     const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14', '#20c997', '#17a2b8', '#e83e8c', '#6c757d'];
 
-    // Destroy existing charts (if any)
+    // Destroy old charts
     if (window._monthlyCharts) {
         window._monthlyCharts.forEach(chart => chart.destroy());
     }
     window._monthlyCharts = [];
 
-    // For each month, create a bar chart
+    // For each month
     months.forEach((month, idx) => {
         const monthData = account_breakdown[month] || {};
         const values = accountNames.map(acc => monthData[acc] || 0);
+        const labels = accountNames;
 
-        // Create a card
+        // Create card
         const card = document.createElement('div');
         card.className = 'monthly-chart-card';
         card.innerHTML = `<h4>${month}</h4><canvas id="monthly-chart-${idx}"></canvas>`;
         container.appendChild(card);
 
-        // Create chart
         const canvas = card.querySelector('canvas');
         const ctx = canvas.getContext('2d');
+
+        // Define the chart
         const chart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: accountNames,
+                labels: labels,
                 datasets: [{
                     label: 'Amount',
                     data: values,
-                    backgroundColor: colors.slice(0, accountNames.length).map(c => c + '80'),
-                    borderColor: colors.slice(0, accountNames.length),
+                    backgroundColor: colors.slice(0, labels.length).map(c => c + '80'),
+                    borderColor: colors.slice(0, labels.length),
                     borderWidth: 1
                 }]
             },
@@ -1380,9 +1376,90 @@ function renderMonthlyCharts(data) {
                             font: { size: 10 }
                         }
                     }
+                },
+                // Click handler – FIXED (no self-assignment)
+                onClick: function(e, elements) {
+                    if (elements.length === 0) return;
+                    const element = elements[0];
+                    const datasetIndex = element.datasetIndex;
+                    const index = element.index;
+                    const accountName = this.data.labels[index];
+                    const amount = this.data.datasets[datasetIndex].data[index];
+                    if (amount === 0) return;
+                    showMonthlyTransactions(month, accountName); // month is captured from outer scope
                 }
             }
         });
         window._monthlyCharts.push(chart);
     });
+}
+
+// ============================================================
+// MODAL FUNCTIONS
+// ============================================================
+
+function closeMonthlyModal() {
+    document.getElementById('monthly-tx-modal').classList.remove('active');
+}
+
+function showMonthlyTransactions(month, accountName) {
+    const modal = document.getElementById('monthly-tx-modal');
+    const body = document.getElementById('modal-body');
+    const title = document.getElementById('modal-title');
+    title.textContent = `${accountName} - ${month}`;
+    body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
+    modal.classList.add('active');
+
+    // Find account ID by name
+    const account = bankAccounts.find(a => a.name === accountName);
+    if (!account) {
+        body.innerHTML = '<p class="monthly-error">Error: Account not found.</p>';
+        return;
+    }
+
+    fetch(`${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}&account_id=${account.id}`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success' && data.transactions) {
+            renderModalTransactions(data.transactions);
+        } else {
+            body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load transactions'}</p>`;
+        }
+    })
+    .catch(err => {
+        body.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+        console.error(err);
+    });
+}
+
+function renderModalTransactions(transactions) {
+    const body = document.getElementById('modal-body');
+    if (!transactions || transactions.length === 0) {
+        body.innerHTML = '<p>No transactions found.</p>';
+        return;
+    }
+
+    let total = 0;
+    let html = `<table>
+        <thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Amount</th></tr></thead>
+        <tbody>`;
+    transactions.forEach(tx => {
+        const debit = tx.debit_amount || 0;
+        const credit = tx.credit_amount || 0;
+        const net = debit - credit;
+        total += net;
+        html += `<tr>
+            <td>${tx.transaction_date}</td>
+            <td>${tx.description}</td>
+            <td class="debit">${debit ? '$' + debit.toFixed(2) : ''}</td>
+            <td class="credit">${credit ? '$' + credit.toFixed(2) : ''}</td>
+            <td>${net !== 0 ? '$' + net.toFixed(2) : ''}</td>
+        </tr>`;
+    });
+    html += `<tr class="total-row"><td colspan="4">Total</td><td>$${total.toFixed(2)}</td></tr>`;
+    html += '</tbody></table>';
+    body.innerHTML = html;
 }

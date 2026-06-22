@@ -204,6 +204,11 @@
             border: 1px solid #ddd;
             min-height: 250px;
             position: relative;
+            cursor: pointer;
+            transition: box-shadow 0.2s;
+        }
+        .monthly-chart-grid .monthly-chart-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .monthly-chart-grid .monthly-chart-card h4 {
             margin-top: 0;
@@ -223,6 +228,73 @@
             color: #666;
         }
         .monthly-error { color: #dc3545; }
+
+        /* ====== MODAL STYLES ====== */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-box {
+            background: white;
+            border-radius: 8px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+            border-radius: 8px 8px 0 0;
+        }
+        .modal-header h3 { margin: 0; font-size: 18px; }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        .modal-close:hover { color: #333; }
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-body table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .modal-body th {
+            background: #f8f9fa;
+            padding: 8px 10px;
+            text-align: left;
+            border-bottom: 2px solid #ddd;
+        }
+        .modal-body td {
+            padding: 6px 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .modal-body .total-row {
+            font-weight: bold;
+            background: #f0f0f0;
+        }
+        .modal-body .debit { color: #28a745; }
+        .modal-body .credit { color: #dc3545; }
+        .modal-loading { text-align: center; padding: 30px; color: #666; }
     </style>
 </head>
 <body>
@@ -423,10 +495,10 @@
                 <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
             </div>
 
-            <!-- ====== MONTHLY PERFORMANCE SUB-TAB (NEW) ====== -->
+            <!-- ====== MONTHLY PERFORMANCE SUB-TAB ====== -->
             <div id="sub-monthly" class="sub-tab-content">
                 <h4><i class="fas fa-chart-line"></i> Monthly Performance</h4>
-                <p class="text-muted">Select a month range to see a breakdown bar chart for each month.</p>
+                <p class="text-muted">Select a month range to see a breakdown bar chart for each month. Click any bar to see the underlying transactions.</p>
 
                 <!-- Controls -->
                 <div class="monthly-controls">
@@ -482,6 +554,19 @@
                     <button class="btn btn-success" onclick="exportOrdersToCSV()"><i class="fas fa-download"></i> Export to CSV</button>
                 </div>
                 <div class="loading" id="orders-loading" style="display:none;"><div class="loading-spinner"></div><p>Loading orders...</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== MODAL ====== -->
+    <div class="modal-overlay" id="monthly-tx-modal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3 id="modal-title">Transactions</h3>
+                <button class="modal-close" onclick="closeMonthlyModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <div class="modal-loading">Loading...</div>
             </div>
         </div>
     </div>
