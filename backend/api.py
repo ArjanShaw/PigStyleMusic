@@ -7742,6 +7742,80 @@ def apply_multiple():
         'message': f'Processed {processed} transactions' + (f', errors: {len(errors)}' if errors else '')
     })
 
+@app.route('/api/accounting/monthly-performance', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def monthly_performance():
+    """Get monthly account breakdown for each month in the selected range."""
+    start = request.args.get('start')  # YYYY-MM
+    end = request.args.get('end')      # YYYY-MM
+    if not start or not end:
+        return jsonify({'status': 'error', 'error': 'start and end months required'}), 400
+
+    from datetime import datetime, timedelta
+    start_date = datetime.strptime(start + '-01', '%Y-%m-%d')
+    end_date = datetime.strptime(end + '-01', '%Y-%m-%d')
+    if end_date.month == 12:
+        end_date = end_date.replace(year=end_date.year+1, month=1, day=1) - timedelta(days=1)
+    else:
+        end_date = end_date.replace(month=end_date.month+1, day=1) - timedelta(days=1)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Account‑level breakdown: for each month, get all revenue and expense accounts with non‑zero balance
+    cursor.execute('''
+        SELECT 
+            strftime('%Y-%m', je.transaction_date) as month,
+            a.code,
+            a.name,
+            a.type,
+            SUM(jl.debit_amount - jl.credit_amount) / 100.0 as net_amount
+        FROM journal_lines jl
+        JOIN journal_entries je ON je.id = jl.journal_entry_id
+        JOIN accounts a ON a.id = jl.account_id
+        WHERE a.type IN ('revenue', 'expense')
+          AND je.transaction_date >= ? AND je.transaction_date <= ?
+        GROUP BY month, a.id
+        ORDER BY month, a.code
+    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    rows = cursor.fetchall()
+
+    account_breakdown = {}
+    for row in rows:
+        month = row['month']
+        if month not in account_breakdown:
+            account_breakdown[month] = {}
+        # For revenue accounts, net_amount = debit - credit; we want positive for revenue, so invert.
+        if row['type'] == 'revenue':
+            amount = -row['net_amount']
+        else:
+            amount = row['net_amount']
+        account_breakdown[month][row['name']] = amount
+
+    # Build month list
+    months = []
+    current = datetime.strptime(start + '-01', '%Y-%m-%d')
+    while current <= end_date:
+        months.append(current.strftime('%Y-%m'))
+        if current.month == 12:
+            current = current.replace(year=current.year+1, month=1, day=1)
+        else:
+            current = current.replace(month=current.month+1, day=1)
+
+    # Ensure each month has an entry in account_breakdown
+    for m in months:
+        if m not in account_breakdown:
+            account_breakdown[m] = {}
+
+    conn.close()
+
+    return jsonify({
+        'status': 'success',
+        'months': months,
+        'account_breakdown': account_breakdown
+    })
+
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required

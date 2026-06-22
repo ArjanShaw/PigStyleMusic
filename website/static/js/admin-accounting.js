@@ -20,6 +20,9 @@ let accountTxTotalEntries = 0;
 // Global list of accounts for bank dropdowns
 let bankAccounts = [];
 
+// Monthly charts container
+let monthlyChartInstances = [];
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -47,8 +50,19 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'bank') {
                 loadBankTransactions();
                 checkBankConnection();
-                loadAccountSelectsForBank(); // for bulk apply dropdown
-                loadBankAccountsForRowDropdowns(); // for per-row dropdowns
+                loadAccountSelectsForBank();
+                loadBankAccountsForRowDropdowns();
+            }
+            else if (sub === 'monthly') {
+                const now = new Date();
+                const endMonth = now.toISOString().slice(0, 7);
+                // Start at 2026-01-01
+                const startMonth = '2026-01';
+                const startInput = document.getElementById('monthly-start');
+                const endInput = document.getElementById('monthly-end');
+                if (!startInput.value) startInput.value = startMonth;
+                if (!endInput.value) endInput.value = endMonth;
+                loadMonthlyPerformance();
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
@@ -167,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
-// DASHBOARD
+// DASHBOARD (unchanged)
 // ============================================================
 
 async function loadDashboard() {
@@ -223,7 +237,7 @@ async function runAccountingSync() {
 }
 
 // ============================================================
-// ACCOUNT DROPDOWNS
+// ACCOUNT DROPDOWNS (unchanged)
 // ============================================================
 
 async function loadAccountSelects() {
@@ -321,7 +335,7 @@ async function loadAccountTransactionsSelect() {
 }
 
 // ============================================================
-// JOURNAL ENTRIES
+// JOURNAL ENTRIES (unchanged)
 // ============================================================
 
 async function loadJournalEntries() {
@@ -429,7 +443,7 @@ function viewJournalEntry(entryId) {
 }
 
 // ============================================================
-// MANUAL ADJUSTMENTS
+// MANUAL ADJUSTMENTS (unchanged)
 // ============================================================
 
 function addManualLine() {
@@ -540,7 +554,7 @@ async function submitManualEntry() {
 }
 
 // ============================================================
-// RECONCILIATION
+// RECONCILIATION (unchanged)
 // ============================================================
 
 function handleBankUpload(file) {
@@ -682,7 +696,7 @@ function manualMatch(id) {
 }
 
 // ============================================================
-// REPORTS
+// REPORTS (unchanged)
 // ============================================================
 
 async function runReport() {
@@ -766,7 +780,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (with Apply All)
+// BANK TRANSACTIONS (unchanged)
 // ============================================================
 
 async function checkBankConnection() {
@@ -848,19 +862,16 @@ async function loadBankTransactions() {
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
 
-    // Toggle: checked = show all, unchecked = show unprocessed only
     const showAll = document.getElementById('bank-show-all')?.checked || false;
     if (!showAll) {
         params.append('unprocessed_only', 'true');
     }
 
-    // Source filter
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
     if (sourceFilter !== 'all') {
         params.append('source_type', sourceFilter);
     }
 
-    // Ensure accounts are loaded for dropdowns
     if (bankAccounts.length === 0) {
         await loadBankAccountsForRowDropdowns();
     }
@@ -901,7 +912,6 @@ function renderBankTransactions(transactions) {
         const processed = t.processed || false;
         const assignedAccountId = t.account_id || null;
 
-        // Build account dropdown – no automatic trigger
         let options = '<option value="">-- Select --</option>';
         bankAccounts.forEach(acc => {
             const selected = (assignedAccountId === acc.id) ? 'selected' : '';
@@ -991,34 +1001,17 @@ function resetBankFilters() {
     loadBankTransactions();
 }
 
-// ============================================================
-// APPLY ALL SELECTIONS
-// ============================================================
-
 async function applyAllSelections() {
     const selects = document.querySelectorAll('#bank-body .tx-account-select');
-    console.log(`Found ${selects.length} dropdowns.`);
-
     const updates = [];
     selects.forEach(sel => {
         const accountId = sel.value;
-        console.log(`Dropdown ${sel.id}: value = '${accountId}'`);
-        if (!accountId) {
-            console.log(`Skipping ${sel.id} because accountId is empty.`);
-            return;
-        }
-        // Extract transaction ID from the select's id (tx-select-{id})
+        if (!accountId) return;
         const idParts = sel.id.split('-');
-        if (idParts.length < 3) {
-            console.warn(`No transaction ID found in id: ${sel.id}`);
-            return;
-        }
-        const transactionId = idParts.slice(2).join('-'); // Handle IDs with dashes
-        console.log(`Extracted transaction ID: '${transactionId}'`);
+        if (idParts.length < 3) return;
+        const transactionId = idParts.slice(2).join('-');
         updates.push({ transaction_id: transactionId, account_id: parseInt(accountId) });
     });
-
-    console.log(`Total updates: ${updates.length}`);
 
     if (updates.length === 0) {
         alert('No selections to apply. Please select an account for at least one transaction.');
@@ -1045,10 +1038,6 @@ async function applyAllSelections() {
         alert('Error: ' + e.message);
     }
 }
-
-// ============================================================
-// BULK APPLY FILTER (kept for convenience)
-// ============================================================
 
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
@@ -1126,7 +1115,7 @@ async function applyFilterToTransactions() {
 }
 
 // ============================================================
-// ACCOUNT TRANSACTIONS
+// ACCOUNT TRANSACTIONS (unchanged)
 // ============================================================
 
 async function loadAccountTransactions() {
@@ -1262,4 +1251,138 @@ function exportAccountTransactionsCSV() {
             window.URL.revokeObjectURL(url);
         }
     }).catch(console.error);
+}
+
+// ============================================================
+// MONTHLY PERFORMANCE (with uniform Y‑axis and default start 2026-01)
+// ============================================================
+
+async function loadMonthlyPerformance() {
+    const startInput = document.getElementById('monthly-start');
+    const endInput = document.getElementById('monthly-end');
+    const start = startInput.value;
+    const end = endInput.value;
+    if (!start || !end) {
+        alert('Please select both start and end months.');
+        return;
+    }
+
+    const container = document.getElementById('monthly-chart-grid');
+    container.innerHTML = '<p class="monthly-loading">Loading...</p>';
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-performance?start=${start}&end=${end}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to fetch monthly data');
+        const data = await res.json();
+        if (data.status === 'success') {
+            renderMonthlyCharts(data);
+        } else {
+            container.innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
+        }
+    } catch (err) {
+        container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+        console.error('Monthly performance error:', err);
+    }
+}
+
+function renderMonthlyCharts(data) {
+    const { months, account_breakdown } = data;
+    const container = document.getElementById('monthly-chart-grid');
+    container.innerHTML = ''; // clear
+
+    if (!months || months.length === 0) {
+        container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
+        return;
+    }
+
+    // Collect all unique account names across all months
+    const allAccounts = new Set();
+    months.forEach(m => {
+        const monthData = account_breakdown[m] || {};
+        Object.keys(monthData).forEach(acc => allAccounts.add(acc));
+    });
+    const accountNames = Array.from(allAccounts).sort();
+
+    // Calculate global maximum value across all months and accounts
+    let globalMax = 0;
+    months.forEach(m => {
+        const monthData = account_breakdown[m] || {};
+        accountNames.forEach(acc => {
+            const val = monthData[acc] || 0;
+            if (val > globalMax) globalMax = val;
+        });
+    });
+
+    // Round globalMax up to the nearest 500 or 1000
+    const maxY = Math.ceil(globalMax / 500) * 500;
+    // If maxY is 0, set a default of 100
+    const yMax = maxY > 0 ? maxY : 100;
+
+    // Define a color palette
+    const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14', '#20c997', '#17a2b8', '#e83e8c', '#6c757d'];
+
+    // Destroy existing charts (if any)
+    if (window._monthlyCharts) {
+        window._monthlyCharts.forEach(chart => chart.destroy());
+    }
+    window._monthlyCharts = [];
+
+    // For each month, create a bar chart
+    months.forEach((month, idx) => {
+        const monthData = account_breakdown[month] || {};
+        const values = accountNames.map(acc => monthData[acc] || 0);
+
+        // Create a card
+        const card = document.createElement('div');
+        card.className = 'monthly-chart-card';
+        card.innerHTML = `<h4>${month}</h4><canvas id="monthly-chart-${idx}"></canvas>`;
+        container.appendChild(card);
+
+        // Create chart
+        const canvas = card.querySelector('canvas');
+        const ctx = canvas.getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: accountNames,
+                datasets: [{
+                    label: 'Amount',
+                    data: values,
+                    backgroundColor: colors.slice(0, accountNames.length).map(c => c + '80'),
+                    borderColor: colors.slice(0, accountNames.length),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `$${ctx.raw.toFixed(2)}`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: yMax,
+                        ticks: { callback: (val) => '$' + val }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            font: { size: 10 }
+                        }
+                    }
+                }
+            }
+        });
+        window._monthlyCharts.push(chart);
+    });
 }
