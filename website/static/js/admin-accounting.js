@@ -766,7 +766,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (with per-row dropdowns)
+// BANK TRANSACTIONS (with Apply All)
 // ============================================================
 
 async function checkBankConnection() {
@@ -901,15 +901,17 @@ function renderBankTransactions(transactions) {
         const processed = t.processed || false;
         const assignedAccountId = t.account_id || null;
 
-        // Build account column – always a dropdown, pre‑selected if processed
+        // Build account dropdown – no automatic trigger
         let options = '<option value="">-- Select --</option>';
         bankAccounts.forEach(acc => {
             const selected = (assignedAccountId === acc.id) ? 'selected' : '';
             options += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
         });
-        const accountHtml = `<select class="tx-account-select" onchange="processTransaction(${t.id}, this.value)">
-            ${options}
-        </select>`;
+        const accountHtml = `
+            <select class="tx-account-select" id="tx-select-${t.id}">
+                ${options}
+            </select>
+        `;
 
         html += `<tr>
             <td>${t.date || ''}</td>
@@ -989,35 +991,65 @@ function resetBankFilters() {
     loadBankTransactions();
 }
 
-// Process a single transaction with selected account
-async function processTransaction(transactionId, accountId) {
-    if (!accountId) {
-        alert('Please select an account.');
+// ============================================================
+// APPLY ALL SELECTIONS
+// ============================================================
+
+async function applyAllSelections() {
+    const selects = document.querySelectorAll('#bank-body .tx-account-select');
+    console.log(`Found ${selects.length} dropdowns.`);
+
+    const updates = [];
+    selects.forEach(sel => {
+        const accountId = sel.value;
+        console.log(`Dropdown ${sel.id}: value = '${accountId}'`);
+        if (!accountId) {
+            console.log(`Skipping ${sel.id} because accountId is empty.`);
+            return;
+        }
+        // Extract transaction ID from the select's id (tx-select-{id})
+        const idParts = sel.id.split('-');
+        if (idParts.length < 3) {
+            console.warn(`No transaction ID found in id: ${sel.id}`);
+            return;
+        }
+        const transactionId = idParts.slice(2).join('-'); // Handle IDs with dashes
+        console.log(`Extracted transaction ID: '${transactionId}'`);
+        updates.push({ transaction_id: transactionId, account_id: parseInt(accountId) });
+    });
+
+    console.log(`Total updates: ${updates.length}`);
+
+    if (updates.length === 0) {
+        alert('No selections to apply. Please select an account for at least one transaction.');
         return;
     }
+
+    if (!confirm(`Apply accounts to ${updates.length} transaction(s)?`)) return;
+
     try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-multiple`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transactions: [{ id: transactionId }],
-                account_id: parseInt(accountId)
-            })
+            body: JSON.stringify({ updates })
         });
         const data = await res.json();
         if (data.status === 'success') {
-            // Reload the list to reflect changes
+            alert(`✅ ${data.processed} transaction(s) updated.`);
             loadBankTransactions();
         } else {
-            alert('Error processing transaction: ' + (data.error || 'Unknown error'));
+            alert('❌ Error: ' + (data.error || 'Unknown error'));
         }
     } catch (e) {
         alert('Error: ' + e.message);
     }
 }
 
-// Bulk apply (kept for convenience)
+// ============================================================
+// BULK APPLY FILTER (kept for convenience)
+// ============================================================
+
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
     const accountSelect = document.getElementById('bank-apply-account');

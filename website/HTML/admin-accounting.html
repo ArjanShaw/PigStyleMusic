@@ -10,20 +10,17 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* ====== ACCOUNTING SUB‑TAB STYLES ====== */
         body {
             background: #f4f6f9;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 0;
         }
-
         .admin-container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 25px 30px;
         }
-
         .accounting-title {
             margin-top: 0;
             margin-bottom: 20px;
@@ -33,7 +30,6 @@
             align-items: center;
             gap: 12px;
         }
-
         .sub-tabs {
             display: flex;
             gap: 5px;
@@ -56,14 +52,8 @@
             color: #333;
             transition: all 0.2s;
         }
-        .sub-tab:hover {
-            background: #e9ecef;
-        }
-        .sub-tab.active {
-            background: #007bff;
-            color: white;
-            border-color: #007bff;
-        }
+        .sub-tab:hover { background: #e9ecef; }
+        .sub-tab.active { background: #007bff; color: white; border-color: #007bff; }
         .sub-tab-content {
             display: none;
             background: white;
@@ -72,10 +62,7 @@
             border: 1px solid #ddd;
             border-top: none;
         }
-        .sub-tab-content.active {
-            display: block;
-        }
-
+        .sub-tab-content.active { display: block; }
         .accounting-stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -89,19 +76,11 @@
             text-align: center;
             border-left: 4px solid #007bff;
         }
-        .accounting-stat-card .stat-value {
-            font-size: 28px;
-            font-weight: bold;
-            color: #007bff;
-        }
-        .accounting-stat-card .stat-label {
-            color: #666;
-            font-size: 14px;
-        }
+        .accounting-stat-card .stat-value { font-size: 28px; font-weight: bold; color: #007bff; }
+        .accounting-stat-card .stat-label { color: #666; font-size: 14px; }
         .accounting-stat-card.warning { border-left-color: #ffc107; }
         .accounting-stat-card.danger { border-left-color: #dc3545; }
         .accounting-stat-card.success { border-left-color: #28a745; }
-
         .journal-table-container {
             overflow-x: auto;
             max-height: 500px;
@@ -125,13 +104,9 @@
             padding: 8px 12px;
             border-bottom: 1px solid #eee;
         }
-        .journal-table th,
-        .journal-table td {
-            color: #333 !important;
-        }
+        .journal-table th, .journal-table td { color: #333 !important; }
         .journal-table .debit { color: #28a745; font-weight: 600; }
         .journal-table .credit { color: #dc3545; font-weight: 600; }
-
         .manual-entry-row {
             display: flex;
             gap: 10px;
@@ -158,7 +133,6 @@
         }
         .balance-indicator.balanced { background: #d4edda; color: #155724; }
         .balance-indicator.unbalanced { background: #f8d7da; color: #721c24; }
-
         .reconciliation-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -193,15 +167,8 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        .upload-area:hover {
-            border-color: #007bff;
-            background: #f0f7ff;
-        }
-        .upload-area.dragover {
-            border-color: #28a745;
-            background: #f0fff0;
-        }
-
+        .upload-area:hover { border-color: #007bff; background: #f0f7ff; }
+        .upload-area.dragover { border-color: #28a745; background: #f0fff0; }
         .report-selector {
             display: flex;
             gap: 15px;
@@ -219,8 +186,7 @@
             font-size: 13px;
             color: #333;
         }
-        .report-selector .form-group select,
-        .report-selector .form-group input {
+        .report-selector .form-group select, .report-selector .form-group input {
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -235,20 +201,9 @@
             border-collapse: collapse;
             font-size: 14px;
         }
-        .report-result table th {
-            background: #f8f9fa;
-            padding: 10px;
-            text-align: left;
-            border-bottom: 2px solid #ddd;
-        }
-        .report-result table td {
-            padding: 8px 10px;
-            border-bottom: 1px solid #eee;
-        }
-        .report-result .total-row {
-            font-weight: bold;
-            background: #f0f0f0;
-        }
+        .report-result table th { background: #f8f9fa; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; }
+        .report-result table td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+        .report-result .total-row { font-weight: bold; background: #f0f0f0; }
         .text-muted { color: #666; font-size: 13px; }
         .btn-sm { padding: 4px 10px; font-size: 12px; }
         .btn {
@@ -279,11 +234,7 @@
             flex-direction: column;
             gap: 5px;
         }
-        .form-group label {
-            font-weight: 500;
-            font-size: 13px;
-            color: #333;
-        }
+        .form-group label { font-weight: 500; font-size: 13px; color: #333; }
         .form-group input, .form-group select {
             padding: 8px 12px;
             border: 1px solid #ddd;
@@ -301,12 +252,7 @@
         .status-badge.active { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .status-badge.removed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .status-badge.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-        .bank-table-container {
-            overflow-x: auto;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        /* Order table styles (reused from admin.css) */
+        .bank-table-container { overflow-x: auto; max-height: 500px; overflow-y: auto; }
         .records-table-container { overflow-x: auto; }
         .records-table { width: 100%; border-collapse: collapse; font-size: 14px; }
         .records-table th { background: #f8f9fa; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 5; }
@@ -322,24 +268,8 @@
         .filter-controls { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
         .filter-group { flex: 1; display: flex; flex-direction: column; gap: 5px; }
         .filter-select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-
-        /* ====== FIX: Pagination text visibility ====== */
-        #bank-pagination-info,
-        #journal-pagination-info,
-        #bank-page-info,
-        #journal-page-info,
-        .pagination-info {
-            color: #333 !important;
-        }
-
-        /* ====== FIX: Report text visibility ====== */
-        .report-result table th,
-        .report-result table td,
-        .report-result .summary-text {
-            color: #333 !important;
-        }
-
-        /* ====== ACCOUNT TRANSACTIONS STYLES ====== */
+        #bank-pagination-info, #journal-pagination-info, #bank-page-info, #journal-page-info, .pagination-info { color: #333 !important; }
+        .report-result table th, .report-result table td, .report-result .summary-text { color: #333 !important; }
         .account-transactions-selector {
             display: flex;
             gap: 15px;
@@ -350,22 +280,9 @@
             background: #f8f9fa;
             border-radius: 8px;
         }
-        .account-transactions-selector .form-group {
-            min-width: 200px;
-            flex: 1;
-        }
-        .account-transactions-selector .form-group select {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        .account-transactions-selector .form-group select:focus {
-            border-color: #007bff;
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
-        }
+        .account-transactions-selector .form-group { min-width: 200px; flex: 1; }
+        .account-transactions-selector .form-group select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .account-transactions-selector .form-group select:focus { border-color: #007bff; outline: none; box-shadow: 0 0 0 2px rgba(0,123,255,0.25); }
         .account-balance-display {
             font-size: 18px;
             font-weight: 600;
@@ -376,17 +293,9 @@
             min-width: 150px;
             text-align: center;
         }
-        .account-balance-display .balance-positive {
-            color: #28a745;
-        }
-        .account-balance-display .balance-negative {
-            color: #dc3545;
-        }
-        .account-balance-display .balance-zero {
-            color: #666;
-        }
-
-        /* ====== BANK STATUS BAR ====== */
+        .account-balance-display .balance-positive { color: #28a745; }
+        .account-balance-display .balance-negative { color: #dc3545; }
+        .account-balance-display .balance-zero { color: #666; }
         .bank-status-bar {
             display: flex;
             gap: 20px;
@@ -397,10 +306,7 @@
             padding: 10px 15px;
             border-radius: 4px;
         }
-        .bank-status-bar .count-badge {
-            font-weight: 600;
-            color: #007bff;
-        }
+        .bank-status-bar .count-badge { font-weight: 600; color: #007bff; }
         .bank-status-bar .toggle-label {
             display: flex;
             align-items: center;
@@ -410,44 +316,13 @@
             color: #333;
             margin: 0;
         }
-        .bank-status-bar .toggle-label input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-        .bank-status-bar .source-filter-select {
-            padding: 6px 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-            background: white;
-        }
-        .bank-status-bar .filter-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-left: auto;
-        }
-        .bank-status-bar .filter-group .form-group {
-            margin: 0;
-        }
-        .bank-account-select {
-            padding: 4px 6px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 12px;
-            background: white;
-            min-width: 120px;
-            max-width: 180px;
-        }
-        .bank-account-select:focus {
-            border-color: #007bff;
-            outline: none;
-        }
-        .bank-account-select:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
+        .bank-status-bar .toggle-label input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .bank-status-bar .source-filter-select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: white; }
+        .bank-status-bar .filter-group { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+        .bank-status-bar .filter-group .form-group { margin: 0; }
+        .bank-account-select { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; background: white; min-width: 120px; max-width: 180px; }
+        .bank-account-select:focus { border-color: #007bff; outline: none; }
+        .bank-account-select:disabled { opacity: 0.6; cursor: not-allowed; }
         .tx-account-select {
             padding: 4px 6px;
             border: 1px solid #ddd;
@@ -457,23 +332,11 @@
             min-width: 130px;
             max-width: 180px;
         }
-        .tx-account-select:focus {
-            border-color: #007bff;
-            outline: none;
-        }
-        .tx-account-select:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .tx-account-select.processed {
-            border-color: #28a745;
-            background: #f0fff0;
-        }
+        .tx-account-select:focus { border-color: #007bff; outline: none; }
+        .tx-account-select:disabled { opacity: 0.6; cursor: not-allowed; }
     </style>
 </head>
 <body>
-
-    <!-- ====== TOP NAVIGATION BAR ====== -->
     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
         <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
             <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
@@ -485,13 +348,9 @@
             <div id="auth-section"></div>
         </div>
     </nav>
-
-    <!-- ====== MAIN CONTENT AREA ====== -->
     <div style="margin-top: 60px;">
         <div class="admin-container" id="accounting-container">
             <h1 class="accounting-title"><i class="fas fa-calculator"></i> Accounting</h1>
-
-            <!-- Sub-navigation -->
             <div class="sub-tabs" id="accounting-sub-tabs">
                 <button class="sub-tab active" data-subtab="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</button>
                 <button class="sub-tab" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
@@ -502,167 +361,73 @@
                 <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
-
-            <!-- Dashboard Sub-tab -->
             <div id="sub-dashboard" class="sub-tab-content active">
                 <div class="accounting-stats" id="dashboard-stats">
-                    <div class="accounting-stat-card success">
-                        <div class="stat-value" id="dash-revenue">$0.00</div>
-                        <div class="stat-label">Revenue (This Month)</div>
-                    </div>
-                    <div class="accounting-stat-card">
-                        <div class="stat-value" id="dash-cogs">$0.00</div>
-                        <div class="stat-label">COGS (This Month)</div>
-                    </div>
-                    <div class="accounting-stat-card success">
-                        <div class="stat-value" id="dash-net-profit">$0.00</div>
-                        <div class="stat-label">Net Profit (This Month)</div>
-                    </div>
-                    <div class="accounting-stat-card warning">
-                        <div class="stat-value" id="dash-pending-sync">0</div>
-                        <div class="stat-label">Orders Pending Accounting</div>
-                    </div>
-                    <div class="accounting-stat-card danger">
-                        <div class="stat-value" id="dash-unreconciled">0</div>
-                        <div class="stat-label">Unreconciled Payments</div>
-                    </div>
+                    <div class="accounting-stat-card success"><div class="stat-value" id="dash-revenue">$0.00</div><div class="stat-label">Revenue (This Month)</div></div>
+                    <div class="accounting-stat-card"><div class="stat-value" id="dash-cogs">$0.00</div><div class="stat-label">COGS (This Month)</div></div>
+                    <div class="accounting-stat-card success"><div class="stat-value" id="dash-net-profit">$0.00</div><div class="stat-label">Net Profit (This Month)</div></div>
+                    <div class="accounting-stat-card warning"><div class="stat-value" id="dash-pending-sync">0</div><div class="stat-label">Orders Pending Accounting</div></div>
+                    <div class="accounting-stat-card danger"><div class="stat-value" id="dash-unreconciled">0</div><div class="stat-label">Unreconciled Payments</div></div>
                 </div>
-                <div style="margin-top: 20px;">
-                    <h4><i class="fas fa-clock"></i> Recent Journal Entries</h4>
-                    <div id="dash-recent-journal" style="max-height: 300px; overflow-y: auto;">
-                        <p class="text-muted">Loading...</p>
-                    </div>
+                <div style="margin-top:20px;"><h4><i class="fas fa-clock"></i> Recent Journal Entries</h4>
+                    <div id="dash-recent-journal" style="max-height:300px; overflow-y:auto;"><p class="text-muted">Loading...</p></div>
                 </div>
-                <div style="margin-top: 20px;">
+                <div style="margin-top:20px;">
                     <button class="btn btn-primary" onclick="runAccountingSync()"><i class="fas fa-sync-alt"></i> Run Sync Now</button>
-                    <span id="sync-status" class="text-muted" style="margin-left: 15px;"></span>
+                    <span id="sync-status" class="text-muted" style="margin-left:15px;"></span>
                 </div>
             </div>
-
-            <!-- Journal Sub-tab (Date filters removed) -->
             <div id="sub-journal" class="sub-tab-content">
-                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
-                    <div class="form-group">
-                        <label>Account</label>
-                        <select id="journal-account-filter"><option value="">All Accounts</option></select>
-                    </div>
-                    <div class="form-group">
-                        <label>Search</label>
-                        <input type="text" id="journal-search" placeholder="Description or order ID...">
-                    </div>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
+                    <div class="form-group"><label>Account</label><select id="journal-account-filter"><option value="">All Accounts</option></select></div>
+                    <div class="form-group"><label>Search</label><input type="text" id="journal-search" placeholder="Description or order ID..."></div>
                     <button class="btn btn-primary" onclick="loadJournalEntries()"><i class="fas fa-search"></i> Filter</button>
                     <button class="btn btn-secondary" onclick="resetJournalFilters()"><i class="fas fa-undo"></i> Reset</button>
                     <button class="btn btn-success" onclick="exportJournalCSV()"><i class="fas fa-download"></i> Export CSV</button>
                 </div>
-                <div class="journal-table-container" id="journal-table-wrapper">
+                <div class="journal-table-container">
                     <table class="journal-table" id="journal-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Account (Debit)</th>
-                                <th>Debit</th>
-                                <th>Account (Credit)</th>
-                                <th>Credit</th>
-                                <th>Source</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="journal-body">
-                            <tr><td colspan="9" style="text-align:center; padding:40px;">Loading journal entries...</td></tr>
-                        </tbody>
+                        <thead><tr><th>ID</th><th>Date</th><th>Description</th><th>Account (Debit)</th><th>Debit</th><th>Account (Credit)</th><th>Credit</th><th>Source</th><th>Actions</th></tr></thead>
+                        <tbody id="journal-body"><tr><td colspan="9" style="text-align:center; padding:40px;">Loading journal entries...</td></tr></tbody>
                     </table>
                 </div>
-                <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
                     <span id="journal-pagination-info">Showing 0 entries</span>
-                    <div>
-                        <button class="btn btn-sm btn-secondary" id="journal-prev" disabled>Prev</button>
-                        <span id="journal-page-info">Page 1</span>
-                        <button class="btn btn-sm btn-secondary" id="journal-next" disabled>Next</button>
-                    </div>
+                    <div><button class="btn btn-sm btn-secondary" id="journal-prev" disabled>Prev</button><span id="journal-page-info">Page 1</span><button class="btn btn-sm btn-secondary" id="journal-next" disabled>Next</button></div>
                 </div>
             </div>
-
-            <!-- Account Transactions Sub-tab -->
             <div id="sub-account-transactions" class="sub-tab-content">
                 <h4><i class="fas fa-receipt"></i> Account Transactions</h4>
                 <p class="text-muted">View all journal entries filtered by account. Select an account to see its transaction history.</p>
-                
                 <div class="account-transactions-selector">
-                    <div class="form-group">
-                        <label for="account-transactions-select"><i class="fas fa-university"></i> Select Account</label>
-                        <select id="account-transactions-select">
-                            <option value="">-- Loading accounts... --</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 0 0 auto;">
-                        <label>&nbsp;</label>
-                        <div class="account-balance-display" id="account-balance-display">
-                            <span class="balance-zero">$0.00</span>
-                        </div>
-                    </div>
-                    <div class="form-group" style="flex: 0 0 auto;">
-                        <label>&nbsp;</label>
-                        <button class="btn btn-success" onclick="exportAccountTransactionsCSV()"><i class="fas fa-download"></i> Export CSV</button>
-                    </div>
+                    <div class="form-group"><label for="account-transactions-select"><i class="fas fa-university"></i> Select Account</label><select id="account-transactions-select"><option value="">-- Loading accounts... --</option></select></div>
+                    <div class="form-group" style="flex:0 0 auto;"><label>&nbsp;</label><div class="account-balance-display" id="account-balance-display"><span class="balance-zero">$0.00</span></div></div>
+                    <div class="form-group" style="flex:0 0 auto;"><label>&nbsp;</label><button class="btn btn-success" onclick="exportAccountTransactionsCSV()"><i class="fas fa-download"></i> Export CSV</button></div>
                 </div>
-
-                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
-                    <div class="form-group">
-                        <label>Date From</label>
-                        <input type="date" id="account-tx-date-from">
-                    </div>
-                    <div class="form-group">
-                        <label>Date To</label>
-                        <input type="date" id="account-tx-date-to">
-                    </div>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
+                    <div class="form-group"><label>Date From</label><input type="date" id="account-tx-date-from"></div>
+                    <div class="form-group"><label>Date To</label><input type="date" id="account-tx-date-to"></div>
                     <button class="btn btn-primary" onclick="loadAccountTransactions()"><i class="fas fa-search"></i> Filter</button>
                     <button class="btn btn-secondary" onclick="resetAccountTxFilters()"><i class="fas fa-undo"></i> Reset</button>
                 </div>
-
-                <div class="journal-table-container" id="account-tx-table-wrapper">
+                <div class="journal-table-container">
                     <table class="journal-table" id="account-tx-table">
-                        <thead>
-                            <tr>
-                                <th>Entry ID</th>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Debit</th>
-                                <th>Credit</th>
-                                <th>Source</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="account-tx-body">
-                            <tr><td colspan="7" style="text-align:center; padding:40px;">Select an account to view transactions.</td></tr>
-                        </tbody>
+                        <thead><tr><th>Entry ID</th><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Source</th><th>Actions</th></tr></thead>
+                        <tbody id="account-tx-body"><tr><td colspan="7" style="text-align:center; padding:40px;">Select an account to view transactions.</td></tr></tbody>
                     </table>
                 </div>
-                <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
                     <span id="account-tx-pagination-info">Showing 0 entries</span>
-                    <div>
-                        <button class="btn btn-sm btn-secondary" id="account-tx-prev" disabled>Prev</button>
-                        <span id="account-tx-page-info">Page 1</span>
-                        <button class="btn btn-sm btn-secondary" id="account-tx-next" disabled>Next</button>
-                    </div>
+                    <div><button class="btn btn-sm btn-secondary" id="account-tx-prev" disabled>Prev</button><span id="account-tx-page-info">Page 1</span><button class="btn btn-sm btn-secondary" id="account-tx-next" disabled>Next</button></div>
                 </div>
             </div>
-
-            <!-- Manual Adjustments Sub-tab -->
             <div id="sub-adjustments" class="sub-tab-content">
                 <h4><i class="fas fa-pencil-alt"></i> Post a Manual Journal Entry</h4>
                 <p class="text-muted">Use this for inventory write‑offs, initial seed, cash register adjustments, etc.</p>
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 15px;">
-                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px;">
-                        <div class="form-group">
-                            <label>Date</label>
-                            <input type="date" id="manual-date" value="2026-06-16">
-                        </div>
-                        <div class="form-group" style="flex:2;">
-                            <label>Description</label>
-                            <input type="text" id="manual-description" placeholder="e.g., Write-off damaged record #123" style="width:100%;">
-                        </div>
+                <div style="background:#f8f9fa; padding:20px; border-radius:8px; margin-top:15px;">
+                    <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
+                        <div class="form-group"><label>Date</label><input type="date" id="manual-date" value="2026-06-16"></div>
+                        <div class="form-group" style="flex:2;"><label>Description</label><input type="text" id="manual-description" placeholder="e.g., Write-off damaged record #123" style="width:100%;"></div>
                     </div>
                     <div id="manual-lines-container">
                         <div class="manual-entry-row">
@@ -673,317 +438,122 @@
                         </div>
                     </div>
                     <button class="btn btn-secondary btn-sm" onclick="addManualLine()"><i class="fas fa-plus"></i> Add Line</button>
-                    <div id="manual-balance" class="balance-indicator unbalanced" style="margin-top: 15px;">
-                        ⚠️ Unbalanced: Debits $0.00, Credits $0.00
-                    </div>
-                    <div style="margin-top: 15px;">
-                        <button class="btn btn-success" onclick="submitManualEntry()"><i class="fas fa-save"></i> Post Entry</button>
-                        <span id="manual-status" class="text-muted" style="margin-left: 15px;"></span>
-                    </div>
+                    <div id="manual-balance" class="balance-indicator unbalanced" style="margin-top:15px;">⚠️ Unbalanced: Debits $0.00, Credits $0.00</div>
+                    <div style="margin-top:15px;"><button class="btn btn-success" onclick="submitManualEntry()"><i class="fas fa-save"></i> Post Entry</button><span id="manual-status" class="text-muted" style="margin-left:15px;"></span></div>
                 </div>
             </div>
-
-            <!-- Reconciliation Sub-tab -->
             <div id="sub-reconcile" class="sub-tab-content">
                 <h4><i class="fas fa-handshake"></i> Bank Reconciliation</h4>
                 <p class="text-muted">Upload your bank statement (CSV) and match deposits to expected payments.</p>
-                
-                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin: 15px 0;">
+                <div style="display:flex; gap:20px; flex-wrap:wrap; margin:15px 0;">
                     <div style="flex:1; min-width:250px;">
                         <div class="upload-area" id="bank-upload-area">
-                            <i class="fas fa-cloud-upload-alt" style="font-size: 48px; color: #007bff;"></i>
+                            <i class="fas fa-cloud-upload-alt" style="font-size:48px; color:#007bff;"></i>
                             <p><strong>Drop your bank CSV here</strong> or click to browse</p>
                             <input type="file" id="bank-file-input" accept=".csv" style="display:none;">
                         </div>
-                        <div id="upload-status" class="text-muted" style="margin-top: 10px;"></div>
+                        <div id="upload-status" class="text-muted" style="margin-top:10px;"></div>
                     </div>
                     <div style="flex:1; min-width:200px;">
-                        <div class="form-group">
-                            <label>Bank Account</label>
-                            <select id="reconcile-bank-account">
-                                <option value="1">FNBO</option>
-                                <option value="2">Bluevine</option>
-                            </select>
-                        </div>
+                        <div class="form-group"><label>Bank Account</label><select id="reconcile-bank-account"><option value="1">FNBO</option><option value="2">Bluevine</option></select></div>
                         <button class="btn btn-primary" onclick="runAutoMatch()"><i class="fas fa-magic"></i> Auto-Match</button>
                         <button class="btn btn-secondary" onclick="loadReconciliationStatus()"><i class="fas fa-sync-alt"></i> Refresh</button>
                     </div>
                 </div>
-
                 <div class="reconciliation-grid">
-                    <div class="col">
-                        <h4>✅ Expected Payments (from orders)</h4>
-                        <div id="expected-payments-list"><p class="text-muted">No expected payments found.</p></div>
-                    </div>
-                    <div class="col">
-                        <h4>🏦 Bank Deposits</h4>
-                        <div id="bank-deposits-list"><p class="text-muted">No bank transactions loaded.</p></div>
-                    </div>
+                    <div class="col"><h4>✅ Expected Payments (from orders)</h4><div id="expected-payments-list"><p class="text-muted">No expected payments found.</p></div></div>
+                    <div class="col"><h4>🏦 Bank Deposits</h4><div id="bank-deposits-list"><p class="text-muted">No bank transactions loaded.</p></div></div>
                 </div>
-
-                <div style="margin-top: 20px;">
-                    <h4>⚠️ Unmatched / Discrepancies</h4>
-                    <div id="unmatched-list"><p class="text-muted">All matched!</p></div>
-                </div>
+                <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
-
-            <!-- Bank Transactions Sub-tab (with per-row dropdowns and "Show all" toggle) -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">Select an account for each transaction to process it. Unprocessed transactions have a dropdown; processed ones show the assigned account.</p>
-                
-                <div style="margin-bottom: 15px;">
-                    <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display: none;">
-                        <i class="fas fa-university"></i> Connect Bank Account
-                    </button>
+                <p class="text-muted">Select an account for each transaction, then click <strong>Apply All</strong> to process all at once.</p>
+                <div style="margin-bottom:15px;">
+                    <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display:none;"><i class="fas fa-university"></i> Connect Bank Account</button>
                     <span id="bank-connection-status" class="text-muted"></span>
                 </div>
-
-                <!-- Status bar and Show All toggle -->
                 <div class="bank-status-bar">
-                    <div>
-                        <span class="count-badge" id="bank-unprocessed-count">0</span>
-                        <span class="text-muted" id="bank-count-label"> unprocessed transactions</span>
-                        <span class="text-muted" id="bank-total-count" style="margin-left: 10px;">(0 total)</span>
-                    </div>
+                    <div><span class="count-badge" id="bank-unprocessed-count">0</span><span class="text-muted" id="bank-count-label"> unprocessed transactions</span><span class="text-muted" id="bank-total-count" style="margin-left:10px;">(0 total)</span></div>
                     <div class="filter-group">
-                        <div class="form-group" style="margin: 0;">
-                            <select id="bank-source-filter" class="source-filter-select" onchange="bankSourceFilterChanged()">
-                                <option value="all">All Sources</option>
-                                <option value="plaid">Live (Plaid)</option>
-                                <option value="historic">Historic (CSV)</option>
-                            </select>
-                        </div>
-                        <label class="toggle-label">
-                            <input type="checkbox" id="bank-show-all" onchange="toggleBankShowAll()">
-                            <span>Show all transactions</span>
-                        </label>
+                        <div class="form-group" style="margin:0;"><select id="bank-source-filter" class="source-filter-select" onchange="bankSourceFilterChanged()"><option value="all">All Sources</option><option value="plaid">Live (Plaid)</option><option value="historic">Historic (CSV)</option></select></div>
+                        <label class="toggle-label"><input type="checkbox" id="bank-show-all" onchange="toggleBankShowAll()"><span>Show all transactions</span></label>
                     </div>
                 </div>
-
-                <!-- Filter & Bulk Apply (kept for bulk operations if needed) -->
-                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
-                    <div class="form-group" style="flex: 2;">
-                        <label>Filter by description</label>
-                        <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
-                    </div>
-                    <div class="form-group">
-                        <label>Bulk apply to account</label>
-                        <select id="bank-apply-account">
-                            <option value="">Select Account</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 0 0 auto;">
-                        <label>&nbsp;</label>
-                        <button class="btn btn-warning" onclick="applyFilterToTransactions()">
-                            <i class="fas fa-tag"></i> Bulk Apply
-                        </button>
-                    </div>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
+                    <div class="form-group" style="flex:2;"><label>Filter by description</label><input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM"></div>
+                    <div class="form-group"><label>Bulk apply to account</label><select id="bank-apply-account"><option value="">Select Account</option></select></div>
+                    <div class="form-group" style="flex:0 0 auto;"><label>&nbsp;</label><button class="btn btn-warning" onclick="applyFilterToTransactions()"><i class="fas fa-tag"></i> Bulk Apply</button></div>
                     <span id="filter-apply-status" class="text-muted"></span>
                 </div>
-
-                <!-- Date filters -->
-                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
-                    <div class="form-group">
-                        <label>Date From</label>
-                        <input type="date" id="bank-date-from">
-                    </div>
-                    <div class="form-group">
-                        <label>Date To</label>
-                        <input type="date" id="bank-date-to">
-                    </div>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
+                    <div class="form-group"><label>Date From</label><input type="date" id="bank-date-from"></div>
+                    <div class="form-group"><label>Date To</label><input type="date" id="bank-date-to"></div>
                     <button class="btn btn-primary" onclick="loadBankTransactions()"><i class="fas fa-search"></i> Filter</button>
                     <button class="btn btn-secondary" onclick="resetBankFilters()"><i class="fas fa-undo"></i> Reset</button>
                     <button class="btn btn-success" onclick="syncBankTransactions()"><i class="fas fa-sync-alt"></i> Sync Now</button>
+                    <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply All</button>
                     <span id="bank-sync-status" class="text-muted"></span>
                 </div>
-
-                <!-- Transaction table -->
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Amount</th>
-                                <th>Category</th>
-                                <th>Status</th>
-                                <th>Account</th>
-                            </tr>
-                        </thead>
-                        <tbody id="bank-body">
-                            <tr><td colspan="6" style="text-align:center; padding:40px;">Loading transactions...</td></tr>
-                        </tbody>
+                        <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>Status</th><th>Account</th></tr></thead>
+                        <tbody id="bank-body"><tr><td colspan="6" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
                     </table>
                 </div>
-                <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
                     <span id="bank-pagination-info">Showing 0 entries</span>
-                    <div>
-                        <button class="btn btn-sm btn-secondary" id="bank-prev" disabled>Prev</button>
-                        <span id="bank-page-info">Page 1</span>
-                        <button class="btn btn-sm btn-secondary" id="bank-next" disabled>Next</button>
-                    </div>
+                    <div><button class="btn btn-sm btn-secondary" id="bank-prev" disabled>Prev</button><span id="bank-page-info">Page 1</span><button class="btn btn-sm btn-secondary" id="bank-next" disabled>Next</button></div>
                 </div>
             </div>
-
-            <!-- Reports Sub-tab -->
             <div id="sub-reports" class="sub-tab-content">
                 <h4><i class="fas fa-chart-pie"></i> Financial Reports</h4>
                 <div class="report-selector">
-                    <div class="form-group">
-                        <label>Report Type</label>
-                        <select id="report-type">
-                            <option value="pll">Profit & Loss</option>
-                            <option value="balance-sheet">Balance Sheet</option>
-                            <option value="batch-profit">Batch Profitability</option>
-                            <option value="order-economics">Order Economics</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Date From</label>
-                        <input type="date" id="report-date-from">
-                    </div>
-                    <div class="form-group">
-                        <label>Date To</label>
-                        <input type="date" id="report-date-to">
-                    </div>
+                    <div class="form-group"><label>Report Type</label><select id="report-type"><option value="pll">Profit & Loss</option><option value="balance-sheet">Balance Sheet</option><option value="batch-profit">Batch Profitability</option><option value="order-economics">Order Economics</option></select></div>
+                    <div class="form-group"><label>Date From</label><input type="date" id="report-date-from"></div>
+                    <div class="form-group"><label>Date To</label><input type="date" id="report-date-to"></div>
                     <button class="btn btn-primary" onclick="runReport()"><i class="fas fa-play"></i> Generate</button>
                     <button class="btn btn-success" onclick="exportReportCSV()"><i class="fas fa-download"></i> Export CSV</button>
                 </div>
-                <div id="report-result" class="report-result">
-                    <p class="text-muted">Select a report and click Generate.</p>
-                </div>
+                <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
             </div>
-
-            <!-- Orders Sub-tab -->
             <div id="sub-orders" class="sub-tab-content">
                 <h2><i class="fas fa-shopping-bag"></i> Order Management</h2>
-                
-                <div class="stats-grid" style="margin-bottom: 20px;">
-                    <div class="stat-card">
-                        <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Orders</h3>
-                        <p class="stat-number" id="total-orders" style="color: #007bff;">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Revenue</h3>
-                        <p class="stat-number" id="total-revenue" style="color: #28a745;">$0.00</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Pending</h3>
-                        <p class="stat-number" id="pending-orders" style="color: #ffc107;">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Paid</h3>
-                        <p class="stat-number" id="paid-orders" style="color: #28a745;">0</p>
-                    </div>
+                <div class="stats-grid" style="margin-bottom:20px;">
+                    <div class="stat-card"><h3 style="margin:0 0 5px 0; font-size:14px; color:#666;">Total Orders</h3><p class="stat-number" id="total-orders" style="color:#007bff;">0</p></div>
+                    <div class="stat-card"><h3 style="margin:0 0 5px 0; font-size:14px; color:#666;">Total Revenue</h3><p class="stat-number" id="total-revenue" style="color:#28a745;">$0.00</p></div>
+                    <div class="stat-card"><h3 style="margin:0 0 5px 0; font-size:14px; color:#666;">Pending</h3><p class="stat-number" id="pending-orders" style="color:#ffc107;">0</p></div>
+                    <div class="stat-card"><h3 style="margin:0 0 5px 0; font-size:14px; color:#666;">Paid</h3><p class="stat-number" id="paid-orders" style="color:#28a745;">0</p></div>
                 </div>
-                
-                <div class="filter-controls" style="margin-bottom: 20px;">
-                    <div class="filter-group" style="flex: 2;">
-                        <label for="orders-search"><i class="fas fa-search"></i> Search:</label>
-                        <input type="text" id="orders-search" class="filter-select" placeholder="Search by order ID, customer, or items..." style="width: 100%;">
-                    </div>
-                    <div class="filter-group" style="flex: 1;">
-                        <label for="orders-status-filter"><i class="fas fa-filter"></i> Status:</label>
-                        <select id="orders-status-filter" class="filter-select" style="width: 100%;">
-                            <option value="all">All Orders</option>
-                            <option value="pending">Pending</option>
-                            <option value="paid">Paid</option>
-                            <option value="cancelled">Cancelled</option>
-                        </select>
-                    </div>
-                    <div class="filter-group" style="flex: 0 0 auto;">
-                        <button class="btn btn-primary" onclick="searchOrders()">
-                            <i class="fas fa-search"></i> Search
-                        </button>
-                        <button class="btn btn-secondary" onclick="clearOrdersSearch()">
-                            <i class="fas fa-times"></i> Clear
-                        </button>
-                    </div>
+                <div class="filter-controls" style="margin-bottom:20px;">
+                    <div class="filter-group" style="flex:2;"><label for="orders-search"><i class="fas fa-search"></i> Search:</label><input type="text" id="orders-search" class="filter-select" placeholder="Search by order ID, customer, or items..." style="width:100%;"></div>
+                    <div class="filter-group" style="flex:1;"><label for="orders-status-filter"><i class="fas fa-filter"></i> Status:</label><select id="orders-status-filter" class="filter-select" style="width:100%;"><option value="all">All Orders</option><option value="pending">Pending</option><option value="paid">Paid</option><option value="cancelled">Cancelled</option></select></div>
+                    <div class="filter-group" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="searchOrders()"><i class="fas fa-search"></i> Search</button><button class="btn btn-secondary" onclick="clearOrdersSearch()"><i class="fas fa-times"></i> Clear</button></div>
                 </div>
-                
                 <div class="records-table-container">
                     <table class="records-table" id="orders-table">
-                        <thead>
-                            <tr>
-                                <th onclick="sortOrders('id')" id="sort-id" style="cursor: pointer;">ID <span class="sort-indicator"></span></th>
-                                <th onclick="sortOrders('square_order_id')" id="sort-square_order_id" style="cursor: pointer;">Order ID</th>
-                                <th onclick="sortOrders('created_at')" id="sort-created_at" style="cursor: pointer;">Date</th>
-                                <th onclick="sortOrders('customer_email')" id="sort-customer_email" style="cursor: pointer;">Customer Email</th>
-                                <th onclick="sortOrders('customer_name')" id="sort-customer_name" style="cursor: pointer;">Customer Name</th>
-                                <th>Items</th>
-                                <th onclick="sortOrders('total')" id="sort-total" style="cursor: pointer;">Total</th>
-                                <th onclick="sortOrders('status')" id="sort-status" style="cursor: pointer;">Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="orders-body">
-                            <td colspan="9" style="text-align:center; padding:40px;">Loading orders...</td>
-                        </tbody>
+                        <thead><tr><th onclick="sortOrders('id')" id="sort-id" style="cursor:pointer;">ID <span class="sort-indicator"></span></th><th onclick="sortOrders('square_order_id')" id="sort-square_order_id" style="cursor:pointer;">Order ID</th><th onclick="sortOrders('created_at')" id="sort-created_at" style="cursor:pointer;">Date</th><th onclick="sortOrders('customer_email')" id="sort-customer_email" style="cursor:pointer;">Customer Email</th><th onclick="sortOrders('customer_name')" id="sort-customer_name" style="cursor:pointer;">Customer Name</th><th>Items</th><th onclick="sortOrders('total')" id="sort-total" style="cursor:pointer;">Total</th><th onclick="sortOrders('status')" id="sort-status" style="cursor:pointer;">Status</th><th>Actions</th></tr></thead>
+                        <tbody id="orders-body"><td colspan="9" style="text-align:center; padding:40px;">Loading orders...</td></tbody>
                     </table>
-                    <div id="orders-empty" style="display: none; text-align: center; padding: 40px;">
-                        <i class="fas fa-shopping-bag" style="font-size: 48px; margin-bottom: 15px; color: #ccc;"></i>
-                        <p>No orders found</p>
-                    </div>
+                    <div id="orders-empty" style="display:none; text-align:center; padding:40px;"><i class="fas fa-shopping-bag" style="font-size:48px; margin-bottom:15px; color:#ccc;"></i><p>No orders found</p></div>
                 </div>
-                
-                <div class="pagination" style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                    <button class="page-btn" onclick="goToOrdersPage(1)" id="orders-first-btn" disabled>
-                        <i class="fas fa-angle-double-left"></i>
-                    </button>
-                    <button class="page-btn" onclick="goToOrdersPage(ordersCurrentPage - 1)" id="orders-prev-btn" disabled>
-                        <i class="fas fa-angle-left"></i>
-                    </button>
-                    
-                    <span class="pagination-info">
-                        Page <input type="number" class="page-input" id="orders-current-page" min="1" value="1" 
-                            onchange="goToOrdersPage(parseInt(this.value))" onblur="goToOrdersPage(parseInt(this.value))" 
-                            style="width: 50px; text-align: center;"> 
-                        of <span id="orders-total-pages">1</span>
-                    </span>
-                    
-                    <button class="page-btn" onclick="goToOrdersPage(ordersCurrentPage + 1)" id="orders-next-btn" disabled>
-                        <i class="fas fa-angle-right"></i>
-                    </button>
-                    <button class="page-btn" onclick="goToOrdersPage(Math.ceil(filteredOrders.length / ordersPageSize))" id="orders-last-btn" disabled>
-                        <i class="fas fa-angle-double-right"></i>
-                    </button>
-                    
-                    <div class="records-per-page" style="margin-left: auto;">
-                        <span>Show:</span>
-                        <select id="orders-page-size" onchange="changeOrdersPageSize(parseInt(this.value))">
-                            <option value="10">10</option>
-                            <option value="20" selected>20</option>
-                            <option value="50">50</option>
-                            <option value="100">100</option>
-                        </select>
-                    </div>
+                <div class="pagination" style="margin-top:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button class="page-btn" onclick="goToOrdersPage(1)" id="orders-first-btn" disabled><i class="fas fa-angle-double-left"></i></button>
+                    <button class="page-btn" onclick="goToOrdersPage(ordersCurrentPage - 1)" id="orders-prev-btn" disabled><i class="fas fa-angle-left"></i></button>
+                    <span class="pagination-info">Page <input type="number" class="page-input" id="orders-current-page" min="1" value="1" onchange="goToOrdersPage(parseInt(this.value))" onblur="goToOrdersPage(parseInt(this.value))" style="width:50px; text-align:center;"> of <span id="orders-total-pages">1</span></span>
+                    <button class="page-btn" onclick="goToOrdersPage(ordersCurrentPage + 1)" id="orders-next-btn" disabled><i class="fas fa-angle-right"></i></button>
+                    <button class="page-btn" onclick="goToOrdersPage(Math.ceil(filteredOrders.length / ordersPageSize))" id="orders-last-btn" disabled><i class="fas fa-angle-double-right"></i></button>
+                    <div class="records-per-page" style="margin-left:auto;"><span>Show:</span><select id="orders-page-size" onchange="changeOrdersPageSize(parseInt(this.value))"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div>
                 </div>
-                
-                <div style="margin-top: 10px; color: #666; font-size: 14px;">
-                    Showing <span id="orders-showing-start">0</span>-<span id="orders-showing-end">0</span> 
-                    of <span id="orders-total-filtered">0</span> orders
+                <div style="margin-top:10px; color:#666; font-size:14px;">Showing <span id="orders-showing-start">0</span>-<span id="orders-showing-end">0</span> of <span id="orders-total-filtered">0</span> orders</div>
+                <div class="action-buttons" style="margin-top:20px;">
+                    <button class="btn btn-primary" onclick="refreshOrders()"><i class="fas fa-sync-alt"></i> Refresh</button>
+                    <button class="btn btn-success" onclick="exportOrdersToCSV()"><i class="fas fa-download"></i> Export to CSV</button>
                 </div>
-                
-                <div class="action-buttons" style="margin-top: 20px;">
-                    <button class="btn btn-primary" onclick="refreshOrders()">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                    <button class="btn btn-success" onclick="exportOrdersToCSV()">
-                        <i class="fas fa-download"></i> Export to CSV
-                    </button>
-                </div>
-                
-                <div class="loading" id="orders-loading" style="display: none;">
-                    <div class="loading-spinner"></div>
-                    <p>Loading orders...</p>
-                </div>
+                <div class="loading" id="orders-loading" style="display:none;"><div class="loading-spinner"></div><p>Loading orders...</p></div>
             </div>
-
         </div>
     </div>
-
-    <!-- Scripts -->
     <script src="/static/js/app-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -994,6 +564,5 @@
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/admin-accounting.js?v=2"></script>
-
 </body>
 </html>
