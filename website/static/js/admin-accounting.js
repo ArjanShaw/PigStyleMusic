@@ -61,7 +61,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 const endInput = document.getElementById('monthly-end');
                 if (!startInput.value) startInput.value = startMonth;
                 if (!endInput.value) endInput.value = endMonth;
-                loadMonthlyPerformance();
+                // Ensure bankAccounts are loaded for account lookup
+                if (bankAccounts.length === 0) {
+                    loadBankAccountsForRowDropdowns().then(() => {
+                        loadMonthlyPerformance();
+                    });
+                } else {
+                    loadMonthlyPerformance();
+                }
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
@@ -300,8 +307,10 @@ async function loadBankAccountsForRowDropdowns() {
         if (data.status === 'success') {
             bankAccounts = data.accounts;
         }
+        return data;
     } catch (e) {
         console.error('Failed to load accounts for row dropdowns:', e);
+        throw e;
     }
 }
 
@@ -1253,7 +1262,7 @@ function exportAccountTransactionsCSV() {
 }
 
 // ============================================================
-// MONTHLY PERFORMANCE (with clickable bars – FIXED)
+// MONTHLY PERFORMANCE (with account lookup fix)
 // ============================================================
 
 async function loadMonthlyPerformance() {
@@ -1264,6 +1273,11 @@ async function loadMonthlyPerformance() {
     if (!start || !end) {
         alert('Please select both start and end months.');
         return;
+    }
+
+    // Ensure bankAccounts are loaded
+    if (bankAccounts.length === 0) {
+        await loadBankAccountsForRowDropdowns();
     }
 
     const container = document.getElementById('monthly-chart-grid');
@@ -1304,6 +1318,12 @@ function renderMonthlyCharts(data) {
         Object.keys(monthData).forEach(acc => allAccounts.add(acc));
     });
     const accountNames = Array.from(allAccounts).sort();
+
+    // Build a map from account name to account ID
+    const accountNameToId = {};
+    bankAccounts.forEach(acc => {
+        accountNameToId[acc.name] = acc.id;
+    });
 
     // Global max for Y axis
     let globalMax = 0;
@@ -1377,16 +1397,20 @@ function renderMonthlyCharts(data) {
                         }
                     }
                 },
-                // Click handler – FIXED (no self-assignment)
+                // Click handler – uses the accountNameToId map
                 onClick: function(e, elements) {
                     if (elements.length === 0) return;
                     const element = elements[0];
-                    const datasetIndex = element.datasetIndex;
                     const index = element.index;
                     const accountName = this.data.labels[index];
-                    const amount = this.data.datasets[datasetIndex].data[index];
+                    const amount = this.data.datasets[0].data[index];
                     if (amount === 0) return;
-                    showMonthlyTransactions(month, accountName); // month is captured from outer scope
+                    const accountId = accountNameToId[accountName];
+                    if (!accountId) {
+                        alert('Account not found: ' + accountName);
+                        return;
+                    }
+                    showMonthlyTransactions(month, accountId, accountName);
                 }
             }
         });
@@ -1402,7 +1426,7 @@ function closeMonthlyModal() {
     document.getElementById('monthly-tx-modal').classList.remove('active');
 }
 
-function showMonthlyTransactions(month, accountName) {
+function showMonthlyTransactions(month, accountId, accountName) {
     const modal = document.getElementById('monthly-tx-modal');
     const body = document.getElementById('modal-body');
     const title = document.getElementById('modal-title');
@@ -1410,14 +1434,7 @@ function showMonthlyTransactions(month, accountName) {
     body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
     modal.classList.add('active');
 
-    // Find account ID by name
-    const account = bankAccounts.find(a => a.name === accountName);
-    if (!account) {
-        body.innerHTML = '<p class="monthly-error">Error: Account not found.</p>';
-        return;
-    }
-
-    fetch(`${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}&account_id=${account.id}`, {
+    fetch(`${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}&account_id=${accountId}`, {
         credentials: 'include',
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
     })
