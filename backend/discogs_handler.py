@@ -21,6 +21,7 @@ class DiscogsHandler:
         }
         # Cache for release pricing data
         self._release_cache = {}
+        self._orders_cache = {}
         self.db_path = db_path or 'data/records.db'
         self._condition_cache = None
         self._load_condition_cache()
@@ -234,7 +235,7 @@ class DiscogsHandler:
         params = {
             'q': query,
             'type': 'release',
-            'per_page': 25,  # Keep as is
+            'per_page': 25,
             'currency': 'USD'
         }
         
@@ -259,17 +260,9 @@ class DiscogsHandler:
         search_data = response.json()
         
         formatted_results = []
-        # REMOVE the master_id deduplication
-        # seen_masters = set()  # ← DELETE THIS LINE
         
         for result in search_data.get('results', []):
             master_id = result.get('master_id')
-            
-            # REMOVE this entire block
-            # if master_id and master_id in seen_masters:
-            #     continue
-            # if master_id:
-            #     seen_masters.add(master_id)
             
             artist = self._extract_artist_from_result(result)
             title = self._extract_title_from_result(result)
@@ -305,7 +298,6 @@ class DiscogsHandler:
             formatted_results.append(formatted_result)
         
         return formatted_results
-
 
     def _extract_genre_from_result(self, result):
         if not isinstance(result, dict):
@@ -480,8 +472,348 @@ class DiscogsHandler:
         
         return result
 
+    def get_orders(self, status: str = None, page: int = 1, per_page: int = 50):
+        """
+        Fetch orders from Discogs API.
+        
+        Args:
+            status: Filter by status (New, Paid, Shipped, etc.)
+            page: Page number for pagination
+            per_page: Items per page (max 100)
+        
+        Returns:
+            Dict with orders list and pagination info
+        """
+        endpoint_url = f"{self.base_url}/marketplace/orders"
+        
+        params = {
+            'page': page,
+            'per_page': min(per_page, 100)
+        }
+        
+        if status:
+            params['status'] = status
+        
+        start_time = time.time()
+        logger.info(f"Discogs API CALL [START]: GET /marketplace/orders - page={page}, status={status}")
+        
+        response = requests.get(
+            endpoint_url,
+            params=params,
+            headers=self.headers,
+            timeout=30
+        )
+        
+        duration = time.time() - start_time
+        logger.info(f"Discogs API CALL [END]: GET /marketplace/orders - {duration:.3f}s - Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            logger.error(f"Discogs API Error {response.status_code}: {response.text}")
+            return {
+                'success': False,
+                'error': f"Discogs API returned status {response.status_code}: {response.text[:200]}",
+                'orders': [],
+                'pagination': {'page': page, 'per_page': per_page, 'pages': 0, 'items': 0}
+            }
+        
+        try:
+            data = response.json()
+            logger.info(f"Response type: {type(data)}")
+            logger.info(f"Response keys: {data.keys() if isinstance(data, dict) else 'not a dict'}")
+        except Exception as e:
+            logger.error(f"Failed to parse JSON: {e}")
+            return {
+                'success': False,
+                'error': f"Failed to parse JSON: {str(e)}",
+                'orders': [],
+                'pagination': {'page': page, 'per_page': per_page, 'pages': 0, 'items': 0}
+            }
+        
+        # Parse orders
+        orders = []
+        orders_data = data.get('orders', [])
+        
+        logger.info(f"Found {len(orders_data)} orders in response")
+        
+        for order_data in orders_data:
+            try:
+                order = self._parse_order(order_data)
+                if order:
+                    orders.append(order)
+            except Exception as e:
+                logger.error(f"Error parsing order: {e}")
+                continue
+        
+        pagination = data.get('pagination', {})
+        
+        return {
+            'success': True,
+            'orders': orders,
+            'pagination': {
+                'page': pagination.get('page', page),
+                'per_page': pagination.get('per_page', per_page),
+                'pages': pagination.get('pages', 0),
+                'items': pagination.get('items', 0)
+            }
+        }
+
+    def get_order_details(self, order_id: str) -> Dict:
+        """
+        Get detailed information for a single order.
+        
+        Args:
+            order_id: The Discogs order ID
+        
+        Returns:
+            Dict with order details
+        """
+        endpoint_url = f"{self.base_url}/marketplace/orders/{order_id}"
+        
+        start_time = time.time()
+        logger.info(f"Discogs API CALL [START]: GET /marketplace/orders/{order_id}")
+        
+        response = requests.get(
+            endpoint_url,
+            headers=self.headers,
+            timeout=15
+        )
+        
+        duration = time.time() - start_time
+        logger.info(f"Discogs API CALL [END]: GET /marketplace/orders/{order_id} - {duration:.3f}s - Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            logger.error(f"Discogs API Error {response.status_code}: {response.text}")
+            return {
+                'success': False,
+                'error': f"Discogs API returned status {response.status_code}: {response.text[:200]}"
+            }
+        
+        try:
+            data = response.json()
+        except Exception as e:
+            logger.error(f"Failed to parse JSON: {e}")
+            return {
+                'success': False,
+                'error': f"Failed to parse JSON: {str(e)}"
+            }
+        
+        # Parse the order
+        order = self._parse_order(data)
+        
+        return {
+            'success': True,
+            'order': order
+        }
+
+    def _parse_order(self, order_data: Dict) -> Dict:
+        """
+        Parse Discogs order data into a clean format.
+        
+        Args:
+            order_data: Raw order data from Discogs API
+        
+        Returns:
+            Parsed order dict
+        """
+        if not order_data:
+            return {}
+        
+        if isinstance(order_data, str):
+            # If it's a string, try to parse it as JSON
+            try:
+                order_data = json.loads(order_data)
+            except:
+                return {}
+        
+        if not isinstance(order_data, dict):
+            return {}
+        
+        # Extract shipping address
+        shipping_address = order_data.get('shipping_address', '')
+        if isinstance(shipping_address, dict):
+            # Sometimes it's a dict
+            address_parts = []
+            address_parts.append(shipping_address.get('name', ''))
+            address_parts.append(shipping_address.get('street', ''))
+            city = shipping_address.get('city', '')
+            state = shipping_address.get('state', '')
+            zipcode = shipping_address.get('zip', '')
+            country = shipping_address.get('country', '')
+            
+            if city:
+                address_parts.append(city)
+            if state:
+                address_parts.append(state)
+            if zipcode:
+                address_parts.append(zipcode)
+            if country:
+                address_parts.append(country)
+            
+            shipping_address = ', '.join([p for p in address_parts if p])
+        elif not isinstance(shipping_address, str):
+            shipping_address = ''
+        
+        # Get items
+        items = order_data.get('items', [])
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except:
+                items = []
+        
+        parsed_items = []
+        for item in items:
+            if isinstance(item, str):
+                try:
+                    item = json.loads(item)
+                except:
+                    continue
+                    
+            if not isinstance(item, dict):
+                continue
+                
+            # Try to get artist and title from the item
+            release = item.get('release', {})
+            if isinstance(release, str):
+                try:
+                    release = json.loads(release)
+                except:
+                    release = {}
+            
+            # Get artist and title
+            artist = release.get('artist', '') or item.get('artist', 'Unknown Artist')
+            title = release.get('title', '') or item.get('title', 'Unknown Title')
+            
+            # If title contains " - ", it might be "Artist - Title"
+            if ' - ' in title and not artist:
+                parts = title.split(' - ', 1)
+                artist = parts[0]
+                title = parts[1] if len(parts) > 1 else title
+            
+            # Handle price
+            price_data = item.get('price', {})
+            if isinstance(price_data, (int, float)):
+                price = float(price_data)
+            elif isinstance(price_data, dict):
+                price = float(price_data.get('value', 0))
+            else:
+                price = 0
+                
+            parsed_items.append({
+                'release_id': item.get('release_id') or release.get('id'),
+                'listing_id': item.get('listing_id'),
+                'artist': artist,
+                'title': title,
+                'catalog_number': release.get('catalog_number', '') or item.get('catalog_number', ''),
+                'media_condition': item.get('media_condition', ''),
+                'sleeve_condition': item.get('sleeve_condition', ''),
+                'price': price,
+                'quantity': item.get('quantity', 1)
+            })
+        
+        # Parse amounts
+        total_data = order_data.get('total', {})
+        if isinstance(total_data, (int, float)):
+            total_amount = float(total_data)
+        elif isinstance(total_data, dict):
+            total_amount = float(total_data.get('value', 0))
+        else:
+            total_amount = 0
+        
+        shipping_data = order_data.get('shipping', {})
+        if isinstance(shipping_data, (int, float)):
+            shipping_amount = float(shipping_data)
+        elif isinstance(shipping_data, dict):
+            shipping_amount = float(shipping_data.get('value', 0))
+        else:
+            shipping_amount = 0
+        
+        # Parse dates
+        created_at = order_data.get('created')
+        if created_at and 'T' in created_at:
+            created_at = created_at.split('T')[0]
+        
+        paid_at = order_data.get('paid_at')
+        if paid_at and 'T' in paid_at:
+            paid_at = paid_at.split('T')[0]
+        
+        shipped_at = order_data.get('shipped_at')
+        if shipped_at and 'T' in shipped_at:
+            shipped_at = shipped_at.split('T')[0]
+        
+        # Handle buyer
+        buyer = order_data.get('buyer', {})
+        if isinstance(buyer, str):
+            try:
+                buyer = json.loads(buyer)
+            except:
+                buyer = {}
+        
+        # Get currency
+        currency = 'USD'
+        if isinstance(total_data, dict):
+            currency = total_data.get('currency', 'USD')
+        
+        return {
+            'order_id': order_data.get('id'),
+            'status': order_data.get('status', 'Unknown'),
+            'buyer_username': buyer.get('username', '') if isinstance(buyer, dict) else '',
+            'buyer_name': buyer.get('name', '') if isinstance(buyer, dict) else '',
+            'buyer_email': buyer.get('email', '') if isinstance(buyer, dict) else '',
+            'shipping_address': shipping_address,
+            'shipping_method': order_data.get('shipping_method', ''),
+            'total_amount': total_amount,
+            'shipping_amount': shipping_amount,
+            'subtotal': total_amount - shipping_amount,
+            'currency': currency,
+            'created_at': created_at,
+            'paid_at': paid_at,
+            'shipped_at': shipped_at,
+            'items': parsed_items,
+            'buyer_message': order_data.get('additional_instructions', '') or '',
+            'feedback': {
+                'buyer_feedback': order_data.get('buyer_feedback', {}),
+                'seller_feedback': order_data.get('seller_feedback', {})
+            }
+        }
+
+    def get_all_orders(self, status: str = None) -> List[Dict]:
+        """
+        Get all orders (handles pagination).
+        
+        Args:
+            status: Filter by status
+        
+        Returns:
+            List of all orders
+        """
+        all_orders = []
+        page = 1
+        per_page = 100
+        
+        while True:
+            result = self.get_orders(status=status, page=page, per_page=per_page)
+            
+            if not result['success']:
+                break
+            
+            orders = result['orders']
+            if not orders:
+                break
+            
+            all_orders.extend(orders)
+            
+            pagination = result['pagination']
+            if page >= pagination.get('pages', 1):
+                break
+            
+            page += 1
+        
+        return all_orders
+
     def clear_cache(self):
-        """Clear the pricing cache"""
+        """Clear all caches"""
         self._release_cache = {}
+        self._orders_cache = {}
         self._condition_cache = None
         logger.info("Discogs cache cleared")

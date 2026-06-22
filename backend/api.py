@@ -3599,218 +3599,201 @@ def get_dropoff_records():
     return jsonify({'status': 'success', 'records': records_list})
 
 
-# ==================== PRICE ESTIMATE ENDPOINT ====================
+# ==================== PRICE ESTIMATE ENDPOINT - NO FALLBACKS, NO TRY/CATCH ====================
  
 @app.route('/api/discogs/price-suggestions/<release_id>', methods=['GET'])
 def discogs_price_suggestions_proxy(release_id):
     """Proxy endpoint to fetch Discogs price suggestions"""
-    try:
-        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
-        if not TOKEN:
-            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
-        
-        headers = {
-            'Authorization': f'Discogs token={TOKEN}',
-            'User-Agent': 'PigStyleMusic/1.0'
-        }
-        
-        url = f"https://api.discogs.com/marketplace/price_suggestions/{release_id}"
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code != 200:
-            return jsonify({'status': 'error', 'error': f'Discogs API returned {response.status_code}'}), response.status_code
-        
-        return jsonify(response.json())
-        
-    except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+    TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+    if not TOKEN:
+        return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+    
+    headers = {
+        'Authorization': f'Discogs token={TOKEN}',
+        'User-Agent': 'PigStyleMusic/1.0'
+    }
+    
+    url = f"https://api.discogs.com/marketplace/price_suggestions/{release_id}"
+    
+    response = requests.get(url, headers=headers, timeout=10)
+    
+    if response.status_code != 200:
+        return jsonify({'status': 'error', 'error': f'Discogs API returned {response.status_code}'}), response.status_code
+    
+    return jsonify(response.json())
 
 
 @app.route('/api/ebay/search', methods=['POST'])
 def ebay_search_proxy():
     """Proxy endpoint to search eBay listings"""
-    try:
-        data = request.get_json()
-        
-        if not data or 'query' not in data:
-            return jsonify({'status': 'error', 'error': 'query required'}), 400
-        
-        search_query = data.get('query')
-        limit = data.get('limit', 50)
-        
-        ebay_client_id = os.environ.get('EBAY_CLIENT_ID')
-        ebay_client_secret = os.environ.get('EBAY_CLIENT_SECRET')
-        
-        if not ebay_client_id or not ebay_client_secret:
-            return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
-        
-        # Get OAuth token
-        token_url = "https://api.ebay.com/identity/v1/oauth2/token"
-        token_headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        token_data = {
-            'grant_type': 'client_credentials',
-            'scope': 'https://api.ebay.com/oauth/api_scope'
-        }
-        
-        token_response = requests.post(
-            token_url, 
-            headers=token_headers, 
-            data=token_data, 
-            auth=(ebay_client_id, ebay_client_secret), 
-            timeout=10
-        )
-        
-        if token_response.status_code != 200:
-            return jsonify({'status': 'error', 'error': 'Failed to get eBay access token'}), 500
-        
-        access_token = token_response.json().get('access_token')
-        
-        # Search eBay
-        search_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json'
-        }
-        params = {
-            'q': search_query,
-            'limit': limit,
-            'filter': 'conditions:{NEW|USED}',
-            'sort': 'price'
-        }
-        
-        response = requests.get(search_url, headers=headers, params=params, timeout=15)
-        
-        if response.status_code != 200:
-            return jsonify({
-                'status': 'error',
-                'error': f'eBay API returned {response.status_code}'
-            }), response.status_code
-        
-        return jsonify(response.json())
-        
-    except Exception as e:
-        app.logger.error(f"eBay search error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+    data = request.get_json()
+    
+    if not data or 'query' not in data:
+        return jsonify({'status': 'error', 'error': 'query required'}), 400
+    
+    search_query = data.get('query')
+    limit = data.get('limit', 50)
+    
+    ebay_client_id = os.environ.get('EBAY_CLIENT_ID')
+    ebay_client_secret = os.environ.get('EBAY_CLIENT_SECRET')
+    
+    if not ebay_client_id or not ebay_client_secret:
+        return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
+    
+    # Get OAuth token
+    token_url = "https://api.ebay.com/identity/v1/oauth2/token"
+    token_headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    token_data = {
+        'grant_type': 'client_credentials',
+        'scope': 'https://api.ebay.com/oauth/api_scope'
+    }
+    
+    token_response = requests.post(
+        token_url, 
+        headers=token_headers, 
+        data=token_data, 
+        auth=(ebay_client_id, ebay_client_secret), 
+        timeout=10
+    )
+    
+    if token_response.status_code != 200:
+        return jsonify({'status': 'error', 'error': 'Failed to get eBay access token'}), 500
+    
+    access_token = token_response.json().get('access_token')
+    
+    # Search eBay
+    search_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+    params = {
+        'q': search_query,
+        'limit': limit,
+        'filter': 'conditions:{NEW|USED}',
+        'sort': 'price'
+    }
+    
+    response = requests.get(search_url, headers=headers, params=params, timeout=15)
+    
+    if response.status_code != 200:
+        return jsonify({
+            'status': 'error',
+            'error': f'eBay API returned {response.status_code}'
+        }), response.status_code
+    
+    return jsonify(response.json())
 
         
 @app.route('/api/discogs/search', methods=['GET'])
 def discogs_search_proxy():
-    try:
-        search_term = request.args.get('q', '')
+    search_term = request.args.get('q', '')
+    
+    if not search_term:
+        return jsonify({'status': 'error', 'error': 'Search term required'}), 400
+    
+    TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+    if not TOKEN:
+        return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+    
+    headers = {
+        'Authorization': f'Discogs token={TOKEN}',
+        'User-Agent': 'PigStyleMusic/1.0'
+    }
+    
+    response = requests.get(
+        'https://api.discogs.com/database/search',
+        headers=headers,
+        params={'q': search_term, 'type': 'release', 'per_page': 20}
+    )
+    
+    if response.status_code != 200:
+        return jsonify({'status': 'error', 'error': 'Discogs search failed'}), response.status_code
+    
+    data = response.json()
+    results = []
+    
+    for item in data.get('results', []):
+        # Get artist from response or extract from title
+        artist = item.get('artist', '')
+        title = item.get('title', '')
         
-        if not search_term:
-            return jsonify({'status': 'error', 'error': 'Search term required'}), 400
+        # If artist is missing or "Unknown", try to extract from title
+        if not artist or artist == 'Unknown':
+            if title and ' - ' in title:
+                parts = title.split(' - ', 1)
+                artist = parts[0].strip()
+                title = parts[1].strip() if len(parts) > 1 else title
+                print(f"Extracted artist '{artist}' from title")
         
-        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
-        if not TOKEN:
-            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+        # Handle artist being a list
+        if isinstance(artist, list):
+            artist = artist[0] if artist else 'Unknown'
         
-        headers = {
-            'Authorization': f'Discogs token={TOKEN}',
-            'User-Agent': 'PigStyleMusic/1.0'
-        }
+        # Final fallback
+        if not artist or artist == 'Unknown':
+            artist = 'Unknown Artist'
         
-        response = requests.get(
-            'https://api.discogs.com/database/search',
-            headers=headers,
-            params={'q': search_term, 'type': 'release', 'per_page': 20}
-        )
+        # Get raw genre string
+        genre_list = item.get('genre', [])
+        raw_genre = ', '.join(genre_list) if genre_list else ''
         
-        if response.status_code != 200:
-            return jsonify({'status': 'error', 'error': 'Discogs search failed'}), response.status_code
-        
-        data = response.json()
-        results = []
-        
-        for item in data.get('results', []):
-            # Get artist from response or extract from title
-            artist = item.get('artist', '')
-            title = item.get('title', '')
-            
-            # If artist is missing or "Unknown", try to extract from title
-            if not artist or artist == 'Unknown':
-                if title and ' - ' in title:
-                    parts = title.split(' - ', 1)
-                    artist = parts[0].strip()
-                    title = parts[1].strip() if len(parts) > 1 else title
-                    print(f"Extracted artist '{artist}' from title")
-            
-            # Handle artist being a list
-            if isinstance(artist, list):
-                artist = artist[0] if artist else 'Unknown'
-            
-            # Final fallback
-            if not artist or artist == 'Unknown':
-                artist = 'Unknown Artist'
-            
-            # Get raw genre string
-            genre_list = item.get('genre', [])
-            raw_genre = ', '.join(genre_list) if genre_list else ''
-            
-            results.append({
-                'artist': artist,
-                'title': title,
-                'year': item.get('year'),
-                'genre_raw': raw_genre,
-                'format': item.get('format', [''])[0] if item.get('format') else '',
-                'country': item.get('country'),
-                'image_url': item.get('thumb', ''),
-                'catalog_number': item.get('catno', ''),
-                'discogs_id': item.get('id'),
-                'barcode': item.get('barcode', [''])[0] if item.get('barcode') else ''
-            })
-        
-        return jsonify({'status': 'success', 'results': results, 'count': len(results)})
-        
-    except Exception as e:
-        app.logger.error(f"Discogs search error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+        results.append({
+            'artist': artist,
+            'title': title,
+            'year': item.get('year'),
+            'genre_raw': raw_genre,
+            'format': item.get('format', [''])[0] if item.get('format') else '',
+            'country': item.get('country'),
+            'image_url': item.get('thumb', ''),
+            'catalog_number': item.get('catno', ''),
+            'discogs_id': item.get('id'),
+            'barcode': item.get('barcode', [''])[0] if item.get('barcode') else ''
+        })
+    
+    return jsonify({'status': 'success', 'results': results, 'count': len(results)})
 
 
 @app.route('/catalog/records', methods=['GET'])
 def get_catalog_records():
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'INVENTORY_CUTOFF_DAYS'")
-        cutoff_row = cursor.fetchone()
-        cutoff_days = int(cutoff_row['config_value']) if cutoff_row else 30
-        query = """
-            SELECT r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number, r.store_price, r.youtube_url, r.consignor_id,
-            r.commission_rate, r.created_at, r.status_id, ds.status_name as status_name,
-            r.date_sold, r.condition_sleeve_id, cs.condition_name as condition_sleeve,
-            r.condition_disc_id, cd.condition_name as condition_disc, r.last_seen,
-            r.discogs_listing_id, r.discogs_listed_date, r.location, r.discogs_genre_raw
-            FROM records r
-            LEFT JOIN d_status ds ON r.status_id = ds.id
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            WHERE (r.last_seen >= DATE('now', '-' || ? || ' days') OR r.last_seen IS NULL)
-            ORDER BY r.created_at DESC
-        """
-        cursor.execute(query, (cutoff_days,))
-        rows = cursor.fetchall()
-        records = []
-        for row in rows:
-            record = {
-                'id': row['id'], 'artist': row['artist'], 'title': row['title'],
-                'barcode': row['barcode'], 'image_url': row['image_url'],
-                'catalog_number': row['catalog_number'], 'store_price': row['store_price'],
-                'youtube_url': row['youtube_url'], 'consignor_id': row['consignor_id'],
-                'commission_rate': row['commission_rate'], 'created_at': row['created_at'],
-                'status_id': row['status_id'], 'status_name': row['status_name'],
-                'date_sold': row['date_sold'], 'condition_sleeve_id': row['condition_sleeve_id'],
-                'condition_sleeve': row['condition_sleeve'], 'condition_disc_id': row['condition_disc_id'],
-                'condition_disc': row['condition_disc'], 'last_seen': row['last_seen'],
-                'discogs_listing_id': row['discogs_listing_id'], 'discogs_listed_date': row['discogs_listed_date'],
-                'location': row['location'] if row['location'] else 'Check with staff',
-                'discogs_genre_raw': row['discogs_genre_raw'] or ''
-            }
-            records.append(record)
-        return jsonify({'status': 'success', 'records': records, 'total': len(records), 'cutoff_days': cutoff_days})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'INVENTORY_CUTOFF_DAYS'")
+    cutoff_row = cursor.fetchone()
+    cutoff_days = int(cutoff_row['config_value']) if cutoff_row else 30
+    query = """
+        SELECT r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number, r.store_price, r.youtube_url, r.consignor_id,
+        r.commission_rate, r.created_at, r.status_id, ds.status_name as status_name,
+        r.date_sold, r.condition_sleeve_id, cs.condition_name as condition_sleeve,
+        r.condition_disc_id, cd.condition_name as condition_disc, r.last_seen,
+        r.discogs_listing_id, r.discogs_listed_date, r.location, r.discogs_genre_raw
+        FROM records r
+        LEFT JOIN d_status ds ON r.status_id = ds.id
+        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+        WHERE (r.last_seen >= DATE('now', '-' || ? || ' days') OR r.last_seen IS NULL)
+        ORDER BY r.created_at DESC
+    """
+    cursor.execute(query, (cutoff_days,))
+    rows = cursor.fetchall()
+    records = []
+    for row in rows:
+        record = {
+            'id': row['id'], 'artist': row['artist'], 'title': row['title'],
+            'barcode': row['barcode'], 'image_url': row['image_url'],
+            'catalog_number': row['catalog_number'], 'store_price': row['store_price'],
+            'youtube_url': row['youtube_url'], 'consignor_id': row['consignor_id'],
+            'commission_rate': row['commission_rate'], 'created_at': row['created_at'],
+            'status_id': row['status_id'], 'status_name': row['status_name'],
+            'date_sold': row['date_sold'], 'condition_sleeve_id': row['condition_sleeve_id'],
+            'condition_sleeve': row['condition_sleeve'], 'condition_disc_id': row['condition_disc_id'],
+            'condition_disc': row['condition_disc'], 'last_seen': row['last_seen'],
+            'discogs_listing_id': row['discogs_listing_id'], 'discogs_listed_date': row['discogs_listed_date'],
+            'location': row['location'] if row['location'] else 'Check with staff',
+            'discogs_genre_raw': row['discogs_genre_raw'] or ''
+        }
+        records.append(record)
+    return jsonify({'status': 'success', 'records': records, 'total': len(records), 'cutoff_days': cutoff_days})
 
 
 @app.route('/catalog/grouped-by-release', methods=['GET'])
@@ -5808,271 +5791,184 @@ def calculate_markup():
 
 @app.route('/api/price-estimate-v3', methods=['POST'])
 def price_estimate_v3():
-    """Self-contained Discogs price estimator - no external class dependencies, NO FALLBACKS"""
+    """Price estimate - uses Discogs price suggestions directly"""
     import requests
     import re
-    from enum import Enum
-    from typing import Tuple
     
-    # Log the incoming request
     app.logger.info("=" * 60)
     app.logger.info("🔍 PRICE ESTIMATE V3 CALLED")
-    app.logger.info(f"Request data: {request.json}")
     
-    # ============================================
-    # CONDITION ENUM (defined inside endpoint)
-    # ============================================
-    class Condition(Enum):
-        MINT = "Mint (M)"
-        NEAR_MINT = "Near Mint (NM)"
-        VERY_GOOD_PLUS = "Very Good Plus (VG+)"
-        VERY_GOOD = "Very Good (VG)"
-        GOOD = "Good (G)"
-        FAIR = "Fair (F)"
-        POOR = "Poor (P)"
-        
-        @classmethod
-        def from_string(cls, condition_str: str):
-            """Convert string to Condition enum - NO FALLBACK, raises error if not found"""
-            # Try direct match first (comparing enum values)
-            for condition in cls:
-                if condition.value.lower() == condition_str.lower():
-                    app.logger.info(f"   Direct match: '{condition_str}' -> {condition.value}")
-                    return condition
-            
-            # Try cleaning parentheses and matching
-            cleaned = condition_str.lower().strip()
-            cleaned = re.sub(r'\s*\([^)]*\)', '', cleaned).strip()
-            
-            # Exact matches after cleaning
-            exact_matches = {
-                'mint': cls.MINT, 'm': cls.MINT,
-                'nm': cls.NEAR_MINT, 'near mint': cls.NEAR_MINT,
-                'vg+': cls.VERY_GOOD_PLUS, 'vgplus': cls.VERY_GOOD_PLUS, 'very good plus': cls.VERY_GOOD_PLUS,
-                'vg': cls.VERY_GOOD, 'very good': cls.VERY_GOOD,
-                'g+': cls.GOOD, 'good plus': cls.GOOD,
-                'g': cls.GOOD, 'good': cls.GOOD,
-                'f': cls.FAIR, 'fair': cls.FAIR,
-                'p': cls.POOR, 'poor': cls.POOR
-            }
-            
-            if cleaned in exact_matches:
-                result = exact_matches[cleaned]
-                app.logger.info(f"   Cleaned match: '{condition_str}' -> cleaned: '{cleaned}' -> {result.value}")
-                return result
-            
-            # NO FALLBACK - raise error if condition not found
-            raise ValueError(f"Unknown condition: '{condition_str}'. Valid conditions: Mint, Near Mint, Very Good Plus, Very Good, Good, Fair, Poor")
+    data = request.json
+    catalog_number = data.get('catalog_number', '').strip()
+    media_condition = data.get('media_condition', '').strip()
+    sleeve_condition = data.get('sleeve_condition', '').strip()
     
-    # ============================================
-    # HELPER FUNCTIONS
-    # ============================================
-    def get_condition_multiplier(media_condition: Condition, sleeve_condition: Condition) -> float:
-        multipliers = {
-            Condition.MINT: 1.35, Condition.NEAR_MINT: 1.00,
-            Condition.VERY_GOOD_PLUS: 0.80, Condition.VERY_GOOD: 0.55,
-            Condition.GOOD: 0.25, Condition.FAIR: 0.15, Condition.POOR: 0.08
-        }
-        media_mult = multipliers.get(media_condition)
-        sleeve_mult = multipliers.get(sleeve_condition)
-        
-        # NO FALLBACK - if multiplier not found, raise error
-        if media_mult is None:
-            raise ValueError(f"No multiplier defined for media condition: {media_condition.value}")
-        if sleeve_mult is None:
-            raise ValueError(f"No multiplier defined for sleeve condition: {sleeve_condition.value}")
-        
-        return round((media_mult * 0.7) + (sleeve_mult * 0.3), 3)
+    # Validation
+    if not catalog_number:
+        return jsonify({'status': 'error', 'error': 'catalog_number is required'}), 400
+    if not media_condition:
+        return jsonify({'status': 'error', 'error': 'media_condition is required'}), 400
+    if not sleeve_condition:
+        return jsonify({'status': 'error', 'error': 'sleeve_condition is required'}), 400
     
-    def calculate_demand_adjustment(wants: int, haves: int) -> Tuple[float, float]:
-        if haves == 0:
-            return 1.0, 0.0
-        ratio = wants / haves
-        if ratio >= 2.0: adjustment = 1.25
-        elif ratio >= 1.5: adjustment = 1.15
-        elif ratio >= 1.0: adjustment = 1.05
-        elif ratio >= 0.5: adjustment = 1.00
-        elif ratio >= 0.2: adjustment = 0.95
-        else: adjustment = 0.85
-        return adjustment, ratio
+    # Get Discogs token
+    discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
+    if not discogs_token:
+        return jsonify({'status': 'error', 'error': 'DISCOGS_USER_TOKEN not configured'}), 500
     
-    def calculate_confidence(num_sales: int, want_have_ratio: float) -> float:
-        sales_confidence = min(num_sales / 30.0, 1.0) * 70
-        if 0.5 <= want_have_ratio <= 2.0: ratio_confidence = 30
-        elif 0.2 <= want_have_ratio <= 5.0: ratio_confidence = 15
-        else: ratio_confidence = 5
-        return min(sales_confidence + ratio_confidence, 100)
+    headers = {
+        'User-Agent': 'PigStyleMusic/1.0',
+        'Authorization': f'Discogs token={discogs_token}'
+    }
     
-    # ============================================
-    # MAIN LOGIC
-    # ============================================
-    try:
-        data = request.json
-        catalog_number = data.get('catalog_number', '').strip()
-        media_condition = data.get('media_condition', '').strip()
-        sleeve_condition = data.get('sleeve_condition', '').strip()
-        
-        # DEBUG: Log what was received
-        app.logger.info(f"📥 RECEIVED PARAMETERS:")
-        app.logger.info(f"   catalog_number: '{catalog_number}'")
-        app.logger.info(f"   media_condition: '{media_condition}'")
-        app.logger.info(f"   sleeve_condition: '{sleeve_condition}'")
-        
-        # Validation
-        if not catalog_number:
-            app.logger.error("❌ catalog_number is missing")
-            return jsonify({'status': 'error', 'error': 'catalog_number is required'}), 400
-        if not media_condition:
-            app.logger.error("❌ media_condition is missing")
-            return jsonify({'status': 'error', 'error': 'media_condition is required'}), 400
-        if not sleeve_condition:
-            app.logger.error("❌ sleeve_condition is missing")
-            return jsonify({'status': 'error', 'error': 'sleeve_condition is required'}), 400
-        
-        # Get Discogs token
-        discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
-        if not discogs_token:
-            app.logger.error("❌ DISCOGS_USER_TOKEN not configured")
-            return jsonify({'status': 'error', 'error': 'DISCOGS_USER_TOKEN not configured'}), 500
-        
-        headers = {
-            'User-Agent': 'PigStyleMusic/1.0',
-            'Authorization': f'Discogs token={discogs_token}'
-        }
-        
-        # Step 1: Search for release by catalog number
-        app.logger.info(f"🔍 Searching Discogs for catalog: {catalog_number}")
-        search_url = "https://api.discogs.com/database/search"
-        params = {'q': catalog_number, 'type': 'release', 'per_page': 5}
-        
-        search_response = requests.get(search_url, headers=headers, params=params, timeout=10)
-        app.logger.info(f"   Search response status: {search_response.status_code}")
-        
-        if search_response.status_code != 200:
-            app.logger.error(f"❌ Discogs search failed: {search_response.status_code}")
-            return jsonify({'status': 'error', 'error': f'Discogs search failed: {search_response.status_code}'}), 500
-        
-        search_data = search_response.json()
-        results = search_data.get('results', [])
-        
-        if not results:
-            app.logger.error(f"❌ No release found for catalog: {catalog_number}")
-            return jsonify({'status': 'error', 'error': f'No release found for catalog: {catalog_number}'}), 404
-        
-        # Find exact catalog match
-        release = None
-        for result in results:
-            catno = result.get('catno', '')
-            if catalog_number.lower() in [c.lower() for c in catno.split(',')]:
-                release = result
-                break
-        
-        if not release:
-            release = results[0]
-            app.logger.warning(f"⚠️ No exact catalog match, using first result: {release.get('catno', '')}")
-        
-        release_id = release['id']
-        release_title = release.get('title', 'Unknown')
-        app.logger.info(f"✅ Found release: {release_title} (ID: {release_id})")
-        
-        # Step 2: Get release stats
-        stats_url = f"https://api.discogs.com/releases/{release_id}/stats"
-        stats_response = requests.get(stats_url, headers=headers, timeout=10)
-        stats = stats_response.json() if stats_response.status_code == 200 else None
-        app.logger.info(f"📊 Stats response status: {stats_response.status_code}")
-        
-        # Step 3: Get marketplace stats
-        marketplace_url = f"https://api.discogs.com/marketplace/stats/{release_id}"
-        marketplace_response = requests.get(marketplace_url, headers=headers, timeout=10)
-        marketplace = marketplace_response.json() if marketplace_response.status_code == 200 else None
-        app.logger.info(f"💰 Marketplace response status: {marketplace_response.status_code}")
-        
-        # Step 4: Calculate base price
-        fallback_price = 20.0
-        
-        if marketplace and 'median' in marketplace:
-            base_median_price = marketplace['median']
-            num_sales = marketplace.get('num_sales', 0)
-            app.logger.info(f"📈 Base median price from marketplace: ${base_median_price}")
-        elif stats:
-            community_rating = stats.get('community', {}).get('rating', {}).get('average', 3.5)
-            base_median_price = fallback_price * (community_rating / 3.0)
-            num_sales = 0
-            app.logger.info(f"📈 Base price estimated from rating: ${base_median_price}")
-        else:
-            base_median_price = fallback_price
-            num_sales = 0
-            app.logger.info(f"📈 Using fallback price: ${base_median_price}")
-        
-        # Step 5: Parse conditions from user input - THIS WILL THROW ERROR IF CONDITION NOT FOUND
-        app.logger.info(f"🎚️ Parsing conditions - Media: '{media_condition}', Sleeve: '{sleeve_condition}'")
-        try:
-            media_cond = Condition.from_string(media_condition)
-            sleeve_cond = Condition.from_string(sleeve_condition)
-        except ValueError as e:
-            app.logger.error(f"❌ Condition parsing error: {str(e)}")
-            return jsonify({'status': 'error', 'error': str(e)}), 400
-        
-        app.logger.info(f"   Parsed media: {media_cond.value}")
-        app.logger.info(f"   Parsed sleeve: {sleeve_cond.value}")
-        
-        # Step 6: Calculate condition multiplier - THIS WILL THROW ERROR IF MULTIPLIER NOT FOUND
-        try:
-            condition_mult = get_condition_multiplier(media_cond, sleeve_cond)
-        except ValueError as e:
-            app.logger.error(f"❌ Multiplier error: {str(e)}")
-            return jsonify({'status': 'error', 'error': str(e)}), 400
-        
-        app.logger.info(f"📊 Condition multiplier: {condition_mult}")
-        
-        # Step 7: Calculate demand adjustment
-        wants = stats.get('community', {}).get('want', 0) if stats else 0
-        haves = stats.get('community', {}).get('have', 0) if stats else 0
-        demand_adjust, want_have_ratio = calculate_demand_adjustment(wants, haves)
-        app.logger.info(f"📊 Demand adjustment: {demand_adjust} (Want/Have ratio: {want_have_ratio:.2f})")
-        
-        # Step 8: Calculate final price
-        estimated_price = base_median_price * condition_mult * demand_adjust
-        app.logger.info(f"💰 Estimated price: ${estimated_price:.2f}")
-        
-        # Step 9: Calculate price range
-        condition_variance = 1.0 - (condition_mult / 1.35)
-        price_range_low = estimated_price * (0.85 - (condition_variance * 0.15))
-        price_range_high = estimated_price * (1.15 + (condition_variance * 0.15))
-        
-        # Step 10: Calculate confidence
-        confidence = calculate_confidence(num_sales, want_have_ratio)
-        
-        # Step 11: Return result
-        result = {
-            'status': 'success',
-            'catalog_number': catalog_number,
-            'release_id': release_id,
-            'release_title': release_title,
-            'media_condition_input': media_condition,
-            'sleeve_condition_input': sleeve_condition,
-            'media_condition_parsed': media_cond.value,
-            'sleeve_condition_parsed': sleeve_cond.value,
-            'estimated_price': round(estimated_price, 2),
-            'price_range_low': round(price_range_low, 2),
-            'price_range_high': round(price_range_high, 2),
-            'confidence_score': round(confidence, 1),
-            'condition_multiplier': condition_mult,
-            'demand_adjustment': round(demand_adjust, 2),
-            'base_median_price': round(base_median_price, 2),
-            'want_have_ratio': round(want_have_ratio, 2),
-            'num_sales': num_sales
-        }
-        
-        app.logger.info(f"✅ Returning result: estimated_price = ${result['estimated_price']}")
-        app.logger.info("=" * 60)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        app.logger.error(f"❌ Price estimate error: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+    # Step 1: Search for release
+    app.logger.info(f"🔍 Searching for catalog: {catalog_number}")
+    search_url = "https://api.discogs.com/database/search"
+    params = {'q': catalog_number, 'type': 'release', 'per_page': 10}
+    
+    search_response = requests.get(search_url, headers=headers, params=params, timeout=10)
+    
+    if search_response.status_code != 200:
+        return jsonify({'status': 'error', 'error': f'Discogs search failed: {search_response.status_code}'}), 500
+    
+    search_data = search_response.json()
+    results = search_data.get('results', [])
+    
+    if not results:
+        return jsonify({'status': 'error', 'error': f'No release found for catalog: {catalog_number}'}), 404
+    
+    # Find exact catalog match
+    release = None
+    catalog_normalized = catalog_number.lower().replace(' ', '').replace('-', '')
+    
+    for result in results:
+        catno = result.get('catno', '').lower().replace(' ', '').replace('-', '')
+        if catalog_normalized in catno:
+            release = result
+            break
+    
+    if not release:
+        return jsonify({
+            'status': 'error',
+            'error': f'No exact match for: {catalog_number}',
+            'suggestions': [r.get('catno', '') for r in results[:5]]
+        }), 404
+    
+    release_id = release['id']
+    app.logger.info(f"✅ Found release ID: {release_id}")
+    
+    # Step 2: Get price suggestions - THIS RETURNS CONDITION-SPECIFIC PRICES!
+    app.logger.info(f"💰 Getting price suggestions for release: {release_id}")
+    price_url = f"https://api.discogs.com/marketplace/price_suggestions/{release_id}"
+    
+    price_response = requests.get(price_url, headers=headers, timeout=10)
+    
+    if price_response.status_code != 200:
+        return jsonify({
+            'status': 'error',
+            'error': f'Failed to get price suggestions: {price_response.status_code}'
+        }), 500
+    
+    price_data = price_response.json()
+    
+    if not price_data:
+        return jsonify({
+            'status': 'error',
+            'error': f'No price data available for release {release_id}'
+        }), 404
+    
+    # Step 3: Get the price for the specific condition
+    # Map user-friendly condition names to Discogs condition names
+    condition_map = {
+        'mint': 'Mint (M)',
+        'near mint': 'Near Mint (NM or M-)',
+        'very good plus': 'Very Good Plus (VG+)',
+        'very good': 'Very Good (VG)',
+        'good plus': 'Good Plus (G+)',
+        'good': 'Good (G)',
+        'fair': 'Fair (F)',
+        'poor': 'Poor (P)'
+    }
+    
+    # Clean the media condition input
+    media_clean = media_condition.lower().strip()
+    media_clean = re.sub(r'\s*\([^)]*\)', '', media_clean).strip()
+    
+    # Find matching condition key
+    condition_key = None
+    for key in condition_map:
+        if key in media_clean:
+            condition_key = condition_map[key]
+            break
+    
+    if not condition_key:
+        return jsonify({
+            'status': 'error',
+            'error': f'Unknown condition: {media_condition}',
+            'valid_conditions': list(condition_map.values())
+        }), 400
+    
+    # Get the price for the condition
+    if condition_key not in price_data:
+        return jsonify({
+            'status': 'error',
+            'error': f'No price data for condition: {condition_key}',
+            'available_conditions': list(price_data.keys())
+        }), 404
+    
+    condition_price = price_data[condition_key]
+    estimated_price = condition_price.get('value')
+    
+    if estimated_price is None or estimated_price == 0:
+        return jsonify({
+            'status': 'error',
+            'error': f'Price is $0 for condition: {condition_key}'
+        }), 404
+    
+    app.logger.info(f"💰 Price for {condition_key}: ${estimated_price}")
+    
+    # Step 4: Get community stats for confidence
+    stats_url = f"https://api.discogs.com/releases/{release_id}/stats"
+    stats_response = requests.get(stats_url, headers=headers, timeout=10)
+    stats = stats_response.json() if stats_response.status_code == 200 else {}
+    
+    wants = stats.get('community', {}).get('want', 0)
+    haves = stats.get('community', {}).get('have', 0)
+    
+    # Calculate confidence based on community data
+    confidence = 50  # Base confidence
+    if wants > 0:
+        confidence += 10
+    if haves > 0:
+        confidence += 10
+    if wants > 100:
+        confidence += 10
+    if haves > 100:
+        confidence += 10
+    
+    # Get min and max prices from all conditions
+    all_prices = [data.get('value', 0) for data in price_data.values() if data.get('value')]
+    min_price = min(all_prices) if all_prices else estimated_price
+    max_price = max(all_prices) if all_prices else estimated_price
+    
+    result = {
+        'status': 'success',
+        'catalog_number': catalog_number,
+        'release_id': release_id,
+        'condition': condition_key,
+        'estimated_price': round(estimated_price, 2),
+        'price_range_low': round(min_price, 2),
+        'price_range_high': round(max_price, 2),
+        'confidence_score': min(confidence, 100),
+        'condition_multiplier': 1.0,  # Not needed since Discogs gives condition-specific prices
+        'demand_adjustment': 1.0,  # Not needed
+        'base_median_price': round(estimated_price, 2),
+        'want_have_ratio': round(wants / haves, 2) if haves > 0 else 0,
+        'num_sales': 0  # Not available from price_suggestions
+    }
+    
+    app.logger.info(f"✅ Returning price: ${result['estimated_price']}")
+    return jsonify(result)
 
 @app.route('/api/stats/sales-history', methods=['POST'])
 def get_sales_history():
@@ -7637,7 +7533,6 @@ def apply_rule_endpoint(rule_id):
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-# ===== Updated bank transaction functions (using stored token) =====
 
 def fetch_bank_transactions(date_from=None, date_to=None):
     """Fetch transactions using stored access token."""
@@ -7655,7 +7550,8 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         end_date = datetime.strptime(date_to, '%Y-%m-%d').date()
 
     if not date_from:
-        start_date = end_date - timedelta(days=30)
+        # ✅ Fetch as far back as Plaid allows (2 years)
+        start_date = end_date - timedelta(days=730)
     else:
         start_date = datetime.strptime(date_from, '%Y-%m-%d').date()
 
@@ -7665,16 +7561,9 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         end_date=end_date,
         options=TransactionsGetRequestOptions(count=500, offset=0)
     )
-    try:
-        response = client.transactions_get(request)
-        transactions = response['transactions']
-    except plaid.ApiException as e:
-        # If token is invalid, clear it so user can reconnect
-        if e.status == 400 and 'INVALID_ACCESS_TOKEN' in e.body:
-            set_plaid_access_token('')
-            raise Exception("Access token expired or invalid. Please reconnect your bank.")
-        raise
-
+    response = client.transactions_get(request)
+    transactions = response['transactions']
+    
     result = []
     for tx in transactions:
         result.append({
@@ -7688,40 +7577,66 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         })
     return result
 
-# Override the existing bank-transactions and sync endpoints
+
 @app.route('/api/accounting/bank-transactions', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def accounting_get_bank_transactions():
-    try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
-        search = request.args.get('search', '').strip()
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    search = request.args.get('search', '').strip()
+    processed_filter = request.args.get('processed')
 
-        all_tx = fetch_bank_transactions(date_from, date_to)
+    all_tx = fetch_bank_transactions(date_from, date_to)
 
-        if search:
-            search_lower = search.lower()
-            all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
+    # Get all transaction IDs that have been processed
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DISTINCT source_id 
+        FROM journal_entries 
+        WHERE source_type IN ('bank_transaction', 'plaid_transaction')
+    ''')
+    processed_ids = set(row['source_id'] for row in cursor.fetchall())
+    conn.close()
 
-        all_tx.sort(key=lambda x: x['date'], reverse=True)
-        total = len(all_tx)
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated = all_tx[start:end]
+    # Mark each transaction as processed or not
+    for tx in all_tx:
+        tx['processed'] = tx['id'] in processed_ids
 
-        return jsonify({
-            'status': 'success',
-            'transactions': paginated,
-            'total': total,
-            'page': page,
-            'per_page': per_page
-        })
-    except Exception as e:
-        app.logger.error(f"Error fetching bank transactions: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+    # Filter by search term
+    if search:
+        search_lower = search.lower()
+        all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
+
+    # Filter by processed status
+    if processed_filter == 'false':
+        all_tx = [tx for tx in all_tx if not tx['processed']]
+    elif processed_filter == 'true':
+        all_tx = [tx for tx in all_tx if tx['processed']]
+
+    total_count = len(all_tx)
+    unprocessed_count = sum(1 for tx in all_tx if not tx['processed'])
+
+    # Sort by date descending
+    all_tx.sort(key=lambda x: x['date'], reverse=True)
+    
+    # Paginate
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated = all_tx[start:end]
+
+    return jsonify({
+        'status': 'success',
+        'transactions': paginated,
+        'total': len(paginated),
+        'total_count': total_count,
+        'unprocessed_count': unprocessed_count,
+        'page': page,
+        'per_page': per_page
+    })
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
@@ -7730,30 +7645,385 @@ def accounting_bank_sync():
     # Just return success; the GET will fetch fresh data
     return jsonify({'status': 'success', 'message': 'Sync triggered'})
 
-
 @app.route('/api/accounting/bank/apply-filter', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def accounting_apply_filter():
-    """Apply a list of transactions to an account, creating journal entries.
-    Transactions are not stored locally; they come from the frontend.
-    Duplicate check: skip if a journal entry already exists with source_type='plaid_transaction' and source_id=tx_id.
+    """Apply a list of transactions to an account, creating journal entries."""
+    try:
+        data = request.json
+        transactions = data.get('transactions', [])
+        account_id = data.get('account_id')
+        
+        if not transactions or not account_id:
+            return jsonify({'status': 'error', 'error': 'transactions and account_id required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get the account details
+        cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
+        account = cursor.fetchone()
+        if not account:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+        
+        app.logger.info(f"Applying transactions to account: {account['code']} - {account['name']} (type: {account['type']})")
+
+        # Get cash account (1010)
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+        cash_row = cursor.fetchone()
+        if not cash_row:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
+        cash_id = cash_row['id']
+
+        processed_count = 0
+        skipped_count = 0
+        error_count = 0
+        created_entries = []
+
+        for tx in transactions:
+            try:
+                tx_id = tx.get('id')
+                amount = tx.get('amount', 0)
+                date = tx.get('date')
+                description = tx.get('description', '')
+
+                if not tx_id or amount == 0 or not date:
+                    skipped_count += 1
+                    continue
+
+                # Check if already processed (by source_id)
+                cursor.execute('''
+                    SELECT id FROM journal_entries
+                    WHERE source_type IN ('bank_transaction', 'plaid_transaction') AND source_id = ?
+                ''', (str(tx_id),))
+                if cursor.fetchone():
+                    skipped_count += 1
+                    continue
+
+                amount_cents = int(round(abs(amount) * 100))
+                is_expense = amount < 0  # Negative amount = expense (withdrawal)
+                
+                # Create journal entry
+                entry_description = f"Bank transaction: {description}"
+                cursor.execute('''
+                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (date, entry_description, 'bank_transaction', str(tx_id)))
+                entry_id = cursor.lastrowid
+
+                # Check if the selected account is an expense type
+                is_expense_account = account['type'] == 'expense'
+                
+                if is_expense:
+                    # This is a withdrawal (expense)
+                    if is_expense_account:
+                        # For expense accounts: Debit expense, Credit cash
+                        cursor.execute('''
+                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                            VALUES (?, ?, ?, ?)
+                        ''', (entry_id, account_id, amount_cents, 0))
+                        cursor.execute('''
+                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                            VALUES (?, ?, ?, ?)
+                        ''', (entry_id, cash_id, 0, amount_cents))
+                        app.logger.info(f"Expense: Debit {account['name']} ${amount_cents/100:.2f}, Credit Cash ${amount_cents/100:.2f}")
+                    else:
+                        # For non-expense accounts with negative amount
+                        cursor.execute('''
+                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                            VALUES (?, ?, ?, ?)
+                        ''', (entry_id, cash_id, amount_cents, 0))
+                        cursor.execute('''
+                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                            VALUES (?, ?, ?, ?)
+                        ''', (entry_id, account_id, 0, amount_cents))
+                        app.logger.info(f"Credit account: Debit Cash ${amount_cents/100:.2f}, Credit {account['name']} ${amount_cents/100:.2f}")
+                else:
+                    # This is a deposit (income)
+                    if is_expense_account:
+                        # If depositing to an expense account
+                        cursor.execute('''
+                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                            VALUES (?, ?, ?, ?)
+                        ''', (entry_id, account_id, 0, amount_cents))
+                        cursor.execute('''
+                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                            VALUES (?, ?, ?, ?)
+                        ''', (entry_id, cash_id, amount_cents, 0))
+                        app.logger.info(f"Expense refund: Debit Cash ${amount_cents/100:.2f}, Credit {account['name']} ${amount_cents/100:.2f}")
+                    else:
+                        # For income/revenue accounts: Debit cash, Credit income
+                        cursor.execute('''
+                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                            VALUES (?, ?, ?, ?)
+                        ''', (entry_id, cash_id, amount_cents, 0))
+                        cursor.execute('''
+                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                            VALUES (?, ?, ?, ?)
+                        ''', (entry_id, account_id, 0, amount_cents))
+                        app.logger.info(f"Income: Debit Cash ${amount_cents/100:.2f}, Credit {account['name']} ${amount_cents/100:.2f}")
+
+                created_entries.append({
+                    'entry_id': entry_id,
+                    'transaction_id': tx_id,
+                    'amount': amount,
+                    'account': account['name'],
+                    'account_type': account['type'],
+                    'is_expense': is_expense,
+                    'description': description
+                })
+                processed_count += 1
+
+            except Exception as e:
+                app.logger.error(f"Error processing transaction {tx.get('id')}: {str(e)}")
+                error_count += 1
+                continue
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Applied {processed_count} transactions to {account["name"]}. Skipped {skipped_count} already processed.',
+            'count': processed_count,
+            'skipped': skipped_count,
+            'errors': error_count,
+            'account': {
+                'id': account['id'],
+                'code': account['code'],
+                'name': account['name'],
+                'type': account['type']
+            },
+            'entries': created_entries[:10]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Apply filter error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== ACCOUNTING: ACCOUNT TRANSACTIONS ====================
+
+@app.route('/api/accounting/account-transactions', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_get_account_transactions():
+    """
+    Get all journal lines for a specific account with pagination.
+    Returns transactions with debit/credit amounts and running balance.
+    """
+    try:
+        account_id = request.args.get('account_id', type=int)
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        offset = (page - 1) * per_page
+
+        if not account_id:
+            return jsonify({'status': 'error', 'error': 'account_id is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Verify account exists
+        cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
+        account = cursor.fetchone()
+        if not account:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+
+        # Build the query for journal lines with this account
+        # Use date() function to handle date comparisons regardless of format
+        query = '''
+            SELECT 
+                jl.id,
+                jl.journal_entry_id,
+                jl.account_id,
+                jl.debit_amount,
+                jl.credit_amount,
+                je.transaction_date,
+                je.description as journal_description,
+                je.source_type,
+                je.source_id,
+                a.code as account_code,
+                a.name as account_name
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.journal_entry_id = je.id
+            JOIN accounts a ON jl.account_id = a.id
+            WHERE jl.account_id = ?
+        '''
+        params = [account_id]
+
+        # Handle date filters - use date() function to normalize
+        if date_from:
+            query += ' AND date(je.transaction_date) >= date(?)'
+            params.append(date_from)
+        if date_to:
+            query += ' AND date(je.transaction_date) <= date(?)'
+            params.append(date_to)
+
+        # Get total count
+        count_query = '''
+            SELECT COUNT(*) as total
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.journal_entry_id = je.id
+            WHERE jl.account_id = ?
+        '''
+        count_params = [account_id]
+        if date_from:
+            count_query += ' AND date(je.transaction_date) >= date(?)'
+            count_params.append(date_from)
+        if date_to:
+            count_query += ' AND date(je.transaction_date) <= date(?)'
+            count_params.append(date_to)
+            
+        cursor.execute(count_query, count_params)
+        result = cursor.fetchone()
+        total = result['total'] if result else 0
+
+        # Get paginated results
+        query += ' ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        # Get running balance
+        balance_query = '''
+            SELECT 
+                COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.journal_entry_id = je.id
+            WHERE jl.account_id = ?
+        '''
+        balance_params = [account_id]
+        if date_from:
+            balance_query += ' AND date(je.transaction_date) >= date(?)'
+            balance_params.append(date_from)
+        if date_to:
+            balance_query += ' AND date(je.transaction_date) <= date(?)'
+            balance_params.append(date_to)
+
+        cursor.execute(balance_query, balance_params)
+        balance_row = cursor.fetchone()
+        balance = balance_row['balance'] / 100.0 if balance_row and balance_row['balance'] is not None else 0
+
+        # Format results
+        transactions = []
+        for row in rows:
+            row_dict = dict(row) if row else {}
+            
+            # Get debit and credit amounts
+            debit = row_dict.get('debit_amount') or 0
+            credit = row_dict.get('credit_amount') or 0
+            
+            transactions.append({
+                'id': row_dict.get('id'),
+                'journal_entry_id': row_dict.get('journal_entry_id'),
+                'account_id': row_dict.get('account_id'),
+                'account_code': row_dict.get('account_code', ''),
+                'account_name': row_dict.get('account_name', ''),
+                'transaction_date': row_dict.get('transaction_date', ''),
+                'journal_description': row_dict.get('journal_description') or '',
+                'description': row_dict.get('journal_description') or '',
+                'debit_amount': debit / 100.0,
+                'credit_amount': credit / 100.0,
+                'source_type': row_dict.get('source_type') or '',
+                'source_id': row_dict.get('source_id') or ''
+            })
+
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'transactions': transactions,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'balance': balance,
+            'account': {
+                'id': account['id'],
+                'code': account['code'],
+                'name': account['name'],
+                'type': account['type']
+            }
+        })
+    except Exception as e:
+        app.logger.error(f"Account transactions error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/accounting/journal/<int:entry_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def accounting_delete_journal_entry(entry_id):
+    """
+    Delete a journal entry and all its lines.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if entry exists
+        cursor.execute('SELECT id, source_id, source_type FROM journal_entries WHERE id = ?', (entry_id,))
+        entry = cursor.fetchone()
+        if not entry:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Journal entry not found'}), 404
+        
+        # Delete journal lines first (foreign key constraint)
+        cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry_id,))
+        # Delete the journal entry
+        cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Deleted journal entry #{entry_id}")
+        return jsonify({
+            'status': 'success',
+            'message': f'Journal entry #{entry_id} deleted successfully'
+        })
+    except Exception as e:
+        app.logger.error(f"Error deleting journal entry: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: PROCESS SINGLE TRANSACTION ====================
+ 
+@app.route('/api/accounting/bank/process-transaction', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_process_single_transaction():
+    """
+    Process a single transaction by assigning it to an account.
+    Handles both historic (CSV) and Plaid transactions.
     """
     data = request.json
-    transactions = data.get('transactions', [])
+    transaction_id = data.get('transaction_id')
     account_id = data.get('account_id')
-    if not transactions or not account_id:
-        return jsonify({'status': 'error', 'error': 'transactions and account_id required'}), 400
-
+    source = data.get('source', 'plaid')
+    date = data.get('date')
+    amount = data.get('amount')
+    description = data.get('description', '')
+    
+    if not transaction_id or not account_id:
+        return jsonify({'status': 'error', 'error': 'transaction_id and account_id required'}), 400
+    
     conn = get_db()
     cursor = conn.cursor()
-
-    # Verify account exists
-    cursor.execute('SELECT id FROM accounts WHERE id = ?', (account_id,))
-    if not cursor.fetchone():
+    
+    # Get the account details
+    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
+    account = cursor.fetchone()
+    if not account:
         conn.close()
-        return jsonify({'status': 'error', 'error': 'Account not found'}), 400
-
+        return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+    
     # Get cash account (1010)
     cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
     cash_row = cursor.fetchone()
@@ -7761,71 +8031,377 @@ def accounting_apply_filter():
         conn.close()
         return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
     cash_id = cash_row['id']
-
-    processed_count = 0
-    skipped_count = 0
-    for tx in transactions:
-        tx_id = tx.get('id')
-        amount = tx.get('amount', 0)
-        date = tx.get('date')
-        description = tx.get('description', '')
-
-        if not tx_id or amount == 0 or not date:
-            skipped_count += 1
-            continue
-
-        # Check if already processed (by source_id)
+    
+    # Determine the transaction details based on source
+    if source == 'historic':
+        cursor.execute('''
+            SELECT id, transaction_date as date, amount, description, processed
+            FROM historic_bank_transactions 
+            WHERE id = ?
+        ''', (int(transaction_id),))
+        tx = cursor.fetchone()
+        if not tx:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Historic transaction not found'}), 404
+        if tx['processed'] == 1:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
+        
+        tx_date = tx['date']
+        tx_amount = tx['amount']
+        tx_description = tx['description']
+        
+    else:
+        # For Plaid transactions, use the data passed from the frontend
+        if not date or amount is None:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Missing transaction data for Plaid transaction'}), 400
+        
+        # Check if already processed
         cursor.execute('''
             SELECT id FROM journal_entries
-            WHERE source_type = ? AND source_id = ?
-        ''', ('plaid_transaction', str(tx_id)))
+            WHERE source_type IN ('bank_transaction', 'plaid_transaction') AND source_id = ?
+        ''', (str(transaction_id),))
         if cursor.fetchone():
-            skipped_count += 1
-            continue
-
-        amount_cents = int(round(amount * 100))
-        is_expense = amount_cents < 0
-        abs_amount = abs(amount_cents)
-
-        # Create journal entry
-        cursor.execute('''
-            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-            VALUES (?, ?, ?, ?)
-        ''', (date, f"Bank transaction: {description}", 'plaid_transaction', str(tx_id)))
-        entry_id = cursor.lastrowid
-
-        if is_expense:
-            # Debit selected account, Credit cash
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
+        
+        tx_date = date
+        tx_amount = amount
+        tx_description = description or 'Plaid transaction'
+    
+    amount_cents = int(round(abs(tx_amount) * 100))
+    is_expense = tx_amount < 0
+    is_expense_account = account['type'] == 'expense'
+    
+    # Create journal entry
+    entry_description = f"Bank transaction: {tx_description}"
+    cursor.execute('''
+        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+        VALUES (?, ?, ?, ?)
+    ''', (tx_date, entry_description, 'bank_transaction', str(transaction_id)))
+    entry_id = cursor.lastrowid
+    
+    if is_expense:
+        if is_expense_account:
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, abs_amount, 0))
+            ''', (entry_id, account_id, amount_cents, 0))
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, 0, abs_amount))
+            ''', (entry_id, cash_id, 0, amount_cents))
         else:
-            # Debit cash, Credit selected account
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, abs_amount, 0))
+            ''', (entry_id, cash_id, amount_cents, 0))
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, 0, abs_amount))
-
-        processed_count += 1
-
+            ''', (entry_id, account_id, 0, amount_cents))
+    else:
+        if is_expense_account:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+        else:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+    
+    # Mark as processed in the appropriate table
+    if source == 'historic':
+        cursor.execute('UPDATE historic_bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
+    
     conn.commit()
     conn.close()
-
+    
     return jsonify({
         'status': 'success',
-        'count': processed_count,
-        'skipped': skipped_count,
-        'message': f'Applied to {processed_count} transactions. Skipped {skipped_count} already processed.'
+        'message': f'Transaction processed successfully to {account["name"]}',
+        'entry_id': entry_id,
+        'account': {
+            'id': account['id'],
+            'code': account['code'],
+            'name': account['name'],
+            'type': account['type']
+        }
     })
+
+# ==================== DISCOGS ORDERS ENDPOINTS ====================
+
+@app.route('/api/discogs/orders', methods=['GET'])
+def get_discogs_orders():
+    """
+    Get orders from Discogs API.
+    
+    Query params:
+        status: Filter by status (New, Paid, Shipped, etc.)
+        page: Page number (default: 1)
+        per_page: Items per page (default: 50, max: 100)
+        all: If 'true', fetch all pages (default: false)
+    """
+    try:
+        # Check if Discogs token exists
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({
+                'status': 'error',
+                'error': 'Discogs token not configured'
+            }), 500
+        
+        # Get query parameters
+        status = request.args.get('status')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        fetch_all = request.args.get('all', 'false').lower() == 'true'
+        
+        # Initialize Discogs handler
+        handler = DiscogsHandler(TOKEN)
+        
+        if fetch_all:
+            # Fetch all orders (handles pagination internally)
+            orders = handler.get_all_orders(status=status)
+            
+            return jsonify({
+                'status': 'success',
+                'orders': orders,
+                'total': len(orders),
+                'pagination': {
+                    'page': 1,
+                    'per_page': len(orders),
+                    'pages': 1,
+                    'items': len(orders)
+                }
+            })
+        else:
+            # Fetch a single page
+            result = handler.get_orders(status=status, page=page, per_page=per_page)
+            
+            if not result['success']:
+                return jsonify({
+                    'status': 'error',
+                    'error': result.get('error', 'Failed to fetch orders')
+                }), 500
+            
+            return jsonify({
+                'status': 'success',
+                'orders': result['orders'],
+                'pagination': result['pagination']
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Error fetching Discogs orders: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/discogs/orders/<order_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_discogs_order_detail(order_id):
+    """
+    Get detailed information for a specific Discogs order.
+    """
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({
+                'status': 'error',
+                'error': 'Discogs token not configured'
+            }), 500
+        
+        handler = DiscogsHandler(TOKEN)
+        result = handler.get_order_details(order_id)
+        
+        if not result['success']:
+            return jsonify({
+                'status': 'error',
+                'error': result.get('error', 'Failed to fetch order')
+            }), 500
+        
+        return jsonify({
+            'status': 'success',
+            'order': result['order']
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching Discogs order detail: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+ 
+
+@app.route('/api/records/mark-sold-on-discogs', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_sold_on_discogs():
+    """
+    Mark a record as sold on Discogs.
+    Updates status_id to 4, sets actual_sale_price, and date_sold.
+    
+    Request body:
+    {
+        "record_id": 9976,
+        "sale_price": 34.99
+    }
+    """
+    try:
+        data = request.json
+        record_id = data.get('record_id')
+        sale_price = data.get('sale_price')
+        
+        if not record_id:
+            return jsonify({'status': 'error', 'error': 'record_id is required'}), 400
+        
+        if sale_price is None:
+            return jsonify({'status': 'error', 'error': 'sale_price is required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if record exists
+        cursor.execute('SELECT id, artist, title, status_id FROM records WHERE id = ?', (record_id,))
+        record = cursor.fetchone()
+        
+        if not record:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Record #{record_id} not found'}), 404
+        
+        # Check if already sold
+        if record['status_id'] == 3 or record['status_id'] == 4:
+            conn.close()
+            return jsonify({
+                'status': 'error', 
+                'error': f'Record #{record_id} is already marked as sold (status_id: {record["status_id"]})'
+            }), 400
+        
+        # Update the record - NO discogs_order_id
+        cursor.execute('''
+            UPDATE records 
+            SET status_id = 4, 
+                actual_sale_price = ?, 
+                date_sold = CURRENT_DATE
+            WHERE id = ?
+        ''', (sale_price, record_id))
+        
+        conn.commit()
+        
+        # Get updated record
+        cursor.execute('''
+            SELECT id, artist, title, status_id, actual_sale_price, date_sold
+            FROM records 
+            WHERE id = ?
+        ''', (record_id,))
+        
+        updated_record = cursor.fetchone()
+        conn.close()
+        
+        app.logger.info(f"✅ Record #{record_id} marked as sold on Discogs for ${sale_price}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Record #{record_id} marked as sold on Discogs',
+            'record': {
+                'id': updated_record['id'],
+                'artist': updated_record['artist'],
+                'title': updated_record['title'],
+                'status_id': updated_record['status_id'],
+                'actual_sale_price': float(updated_record['actual_sale_price']) if updated_record['actual_sale_price'] else None,
+                'date_sold': updated_record['date_sold']
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error marking record as sold on Discogs: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/records/search-by-barcode', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def search_records_by_barcode():
+    """
+    Search for records by barcode.
+    Returns all records that match the barcode.
+    
+    Query params:
+        barcode: The barcode to search for
+    """
+    try:
+        barcode = request.args.get('barcode', '').strip()
+        
+        if not barcode:
+            return jsonify({
+                'status': 'error',
+                'error': 'barcode parameter is required'
+            }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Search for records with this barcode
+        cursor.execute('''
+            SELECT 
+                r.id, r.artist, r.title, r.barcode, r.catalog_number,
+                r.store_price, r.status_id, r.location,
+                s.status_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            WHERE r.barcode = ?
+            ORDER BY r.created_at DESC
+        ''', (barcode,))
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        records_list = []
+        for record in records:
+            records_list.append({
+                'id': record['id'],
+                'artist': record['artist'],
+                'title': record['title'],
+                'barcode': record['barcode'],
+                'catalog_number': record['catalog_number'],
+                'store_price': float(record['store_price']) if record['store_price'] else 0,
+                'status_id': record['status_id'],
+                'status_name': record['status_name'],
+                'location': record['location'],
+                'sleeve_condition': record['sleeve_condition_name'],
+                'disc_condition': record['disc_condition_name']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'records': records_list,
+            'count': len(records_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error searching records by barcode: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

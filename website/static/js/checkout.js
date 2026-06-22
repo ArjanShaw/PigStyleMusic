@@ -16,6 +16,7 @@ let availableTerminals = [];
 let selectedTerminalId = null;
 let activeCheckoutId = null;
 let square_payment_sessions = {}; // Track payment sessions
+let squarePaymentResolve = null; // For Promise-based completion
 
 // Gift Card Variables
 let currentGiftCard = null;
@@ -90,7 +91,7 @@ window.getStatusText = function(statusId) {
 };
 
 // ============================================================================
-// Helper Functions for Order Creation (NEW)
+// Helper Functions for Order Creation
 // ============================================================================
 
 // Generate a UUID v4 style ID for the order
@@ -248,7 +249,7 @@ async function validateTaxRate() {
 }
 
 // ============================================================================
-// VCP-8370 Thermal Printer Functions (kept for future use)
+// VCP-8370 Thermal Printer Functions (RESTORED for Cash payments only)
 // ============================================================================
 
 function isWebUSBSupported() {
@@ -256,30 +257,304 @@ function isWebUSBSupported() {
 }
 
 async function connectVCP8370() {
-    // Kept for future use
-    console.log('Printer connection function (not used remotely)');
-    return null;
+    try {
+        if (!isWebUSBSupported()) {
+            throw new Error('WebUSB not supported. Use Chrome/Edge for thermal printing.');
+        }
+
+        const vendorId = await getConfigValue('PRINTER_VENDOR_ID');
+        const productId = await getConfigValue('PRINTER_PRODUCT_ID');
+        
+        let filters = [];
+        
+        if (vendorId && productId) {
+            filters.push({ 
+                vendorId: parseInt(vendorId, 16), 
+                productId: parseInt(productId, 16) 
+            });
+            console.log(`Using configured vendor ID: ${vendorId}, product ID: ${productId}`);
+        } else {
+            filters = [
+                { vendorId: 0x0416 },
+                { vendorId: 0x067B },
+                { vendorId: 0x1A86 },
+                { vendorId: 0x10C4 },
+                { vendorId: 0x0403 },
+                { vendorId: 0x0557 },
+            ];
+        }
+
+        console.log('Requesting USB device with filters:', filters);
+        
+        const device = await navigator.usb.requestDevice({ filters });
+        
+        console.log('Device selected:', {
+            vendorId: '0x' + device.vendorId.toString(16),
+            productId: '0x' + device.productId.toString(16),
+            manufacturer: device.manufacturerName,
+            product: device.productName
+        });
+        
+        try {
+            await device.open();
+            console.log('Device opened successfully');
+        } catch (openError) {
+            console.error('Failed to open device:', openError);
+            if (openError.message.includes('Access denied')) {
+                throw new Error(
+                    'Cannot access the printer due to permission issues.\n\n' +
+                    'Please run the fix_printer_permissions.sh script again.'
+                );
+            }
+            throw openError;
+        }
+        
+        if (device.configuration === null) {
+            console.log('No configuration, selecting configuration 1');
+            await device.selectConfiguration(1);
+        }
+        
+        let outEndpoint = null;
+        let interfaceNumber = null;
+        
+        for (const iface of device.configuration.interfaces) {
+            console.log(`Checking interface ${iface.interfaceNumber}`);
+            
+            for (const alt of iface.alternates) {
+                console.log(`  Alternate setting ${alt.alternateSetting}, endpoints:`, alt.endpoints.length);
+                
+                for (const endpoint of alt.endpoints) {
+                    console.log(`    Endpoint: address=${endpoint.endpointNumber}, direction=${endpoint.direction}, type=${endpoint.type}, packetSize=${endpoint.packetSize}`);
+                    
+                    if (endpoint.direction === 'out') {
+                        outEndpoint = endpoint;
+                        interfaceNumber = iface.interfaceNumber;
+                        console.log(`✅ Found OUT endpoint: ${endpoint.endpointNumber} on interface ${interfaceNumber}`);
+                        break;
+                    }
+                }
+                if (outEndpoint) break;
+            }
+            if (outEndpoint) break;
+        }
+        
+        if (!outEndpoint) {
+            throw new Error('No OUT endpoint found on printer. Make sure the printer is connected and powered on.');
+        }
+        
+        try {
+            await device.claimInterface(interfaceNumber);
+            console.log(`Interface ${interfaceNumber} claimed`);
+        } catch (claimError) {
+            console.error('Failed to claim interface:', claimError);
+            if (claimError.message.includes('Unable to claim interface')) {
+                throw new Error(
+                    'Cannot claim printer interface - it is already in use.\n\n' +
+                    'Run this command in terminal:\n' +
+                    'sudo modprobe -r usblp\n\n' +
+                    'Then unplug and replug the printer.'
+                );
+            }
+            throw claimError;
+        }
+        
+        return { device, endpointNumber: outEndpoint.endpointNumber };
+        
+    } catch (error) {
+        console.error('Connection failed:', error);
+        throw error;
+    }
 }
 
 async function formatReceiptAsESCPOS(receiptText) {
-    // Kept for future use
-    console.log('Receipt formatting skipped');
-    return new Uint8Array(0);
+    const encoder = new TextEncoder('utf-8');
+    let commands = [];
+    
+    commands.push(PrinterCommands.INIT);
+    commands.push(PrinterCommands.LINE_SPACING_30);
+    
+    const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
+    const cutPaper = await getConfigValue('PRINTER_CUT_PAPER');
+    const openDrawer = await getConfigValue('PRINTER_OPEN_DRAWER');
+    
+    const lines = receiptText.split('\n');
+    
+    for (const line of lines) {
+        if (!line.trim()) {
+            commands.push(PrinterCommands.LF);
+            continue;
+        }
+        
+        if (line.startsWith('=') && line.length > 5) {
+            commands.push(PrinterCommands.ALIGN_CENTER);
+            commands.push(PrinterCommands.BOLD_ON);
+            commands.push(line.substring(0, charsPerLine));
+            commands.push(PrinterCommands.BOLD_OFF);
+            commands.push(PrinterCommands.LF);
+        } 
+        else if (line.startsWith('-')) {
+            commands.push(PrinterCommands.ALIGN_LEFT);
+            commands.push(line.substring(0, charsPerLine));
+            commands.push(PrinterCommands.LF);
+        }
+        else if (line.includes('TOTAL:')) {
+            commands.push(PrinterCommands.ALIGN_CENTER);
+            commands.push(PrinterCommands.BOLD_ON);
+            commands.push(line.substring(0, charsPerLine));
+            commands.push(PrinterCommands.BOLD_OFF);
+            commands.push(PrinterCommands.LF);
+        }
+        else if (line.includes('THANK YOU') || line.includes('Thank you')) {
+            commands.push(PrinterCommands.ALIGN_CENTER);
+            commands.push(line.substring(0, charsPerLine));
+            commands.push(PrinterCommands.LF);
+            commands.push(PrinterCommands.LF);
+        }
+        else if (line.includes('Receipt #:') || line.includes('Date:') || line.includes('Cashier:')) {
+            commands.push(PrinterCommands.ALIGN_LEFT);
+            commands.push(line.substring(0, charsPerLine));
+            commands.push(PrinterCommands.LF);
+        }
+        else {
+            commands.push(PrinterCommands.ALIGN_LEFT);
+            commands.push(line.substring(0, charsPerLine));
+            commands.push(PrinterCommands.LF);
+        }
+    }
+    
+    commands.push(PrinterCommands.LF);
+    commands.push(PrinterCommands.LF);
+    
+    if (cutPaper !== 'false') {
+        commands.push(PrinterCommands.CUT);
+    }
+    
+    if (openDrawer !== 'false') {
+        commands.push(PrinterCommands.OPEN_DRAWER);
+    }
+    
+    const commandString = commands.join('');
+    return encoder.encode(commandString);
 }
 
 window.printToVCP8370 = async function(receiptText) {
-    console.log('🖨️ Printer printing disabled (remote work)');
-    return true;
+    console.log('🖨️ Attempting to print to VCP-8370...');
+    console.log('Receipt text length:', receiptText.length);
+    
+    try {
+        const statusEl = document.getElementById('printer-status');
+        if (statusEl) {
+            statusEl.innerHTML = '🔌 Please select your VCP-8370 printer from the popup...';
+            statusEl.style.color = '#007bff';
+        }
+        
+        const { device, endpointNumber } = await connectVCP8370();
+        
+        if (statusEl) {
+            statusEl.innerHTML = '✅ Connected! Sending receipt...';
+            statusEl.style.color = '#28a745';
+        }
+        
+        const escposData = await formatReceiptAsESCPOS(receiptText);
+        
+        console.log('ESC/POS data size:', escposData.length, 'bytes');
+        
+        const chunkSize = 64;
+        for (let i = 0; i < escposData.length; i += chunkSize) {
+            const chunk = escposData.slice(i, Math.min(i + chunkSize, escposData.length));
+            await device.transferOut(endpointNumber, chunk);
+            
+            await new Promise(resolve => setTimeout(resolve, 20));
+            
+            if (statusEl && escposData.length > 256 && i % 256 === 0) {
+                const percent = Math.round((i / escposData.length) * 100);
+                statusEl.innerHTML = `✅ Printing... ${percent}%`;
+            }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        await device.close();
+        
+        if (statusEl) {
+            statusEl.innerHTML = '✅ Receipt printed successfully!';
+            statusEl.style.color = '#28a745';
+            setTimeout(() => {
+                statusEl.innerHTML = '';
+            }, 3000);
+        }
+        
+        console.log('✅ VCP-8370 printing successful');
+        return true;
+        
+    } catch (error) {
+        console.error('❌ VCP-8370 printing failed:', error);
+        
+        const statusEl = document.getElementById('printer-status');
+        if (statusEl) {
+            statusEl.innerHTML = `❌ Thermal printer error: ${error.message}`;
+            statusEl.style.color = '#dc3545';
+        }
+        
+        throw error;
+    }
 };
 
 window.printToThermalPrinter = async function(receiptText) {
-    console.log('🖨️ Thermal printer disabled (remote work)');
-    return true;
+    console.log('printToThermalPrinter called with text length:', receiptText.length);
+    
+    try {
+        console.log('Attempting to print to VCP-8370...');
+        const success = await printToVCP8370(receiptText);
+        console.log('✅ Successfully printed to VCP-8370');
+        return true;
+    } catch (error) {
+        console.log('⚠️ VCP-8370 failed:', error.message);
+        // Only show popup if thermal printer fails
+        showPrintableReceipt(receiptText);
+        throw error;
+    }
 };
 
 function showPrintableReceipt(receiptText) {
-    // Function kept but not called – disabled to prevent popup
-    console.log('Receipt popup disabled (remote work)');
+    let modal = document.getElementById('printable-receipt-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'printable-receipt-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 400px; width: 90%;">
+                <div class="modal-header">
+                    <h3 class="modal-title">Receipt</h3>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; font-size: 14px; line-height: 1.5;" id="receipt-content-display">
+                        ${escapeHtml(receiptText).replace(/\n/g, '<br>')}
+                    </div>
+                    <p style="color: #666; font-size: 12px; margin-top: 15px; text-align: center;">
+                        <i class="fas fa-info-circle"></i> You can print this receipt using your browser's print function.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="window.print()">
+                        <i class="fas fa-print"></i> Browser Print
+                    </button>
+                    <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').style.display='none'">
+                        Close
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    } else {
+        const contentDiv = modal.querySelector('#receipt-content-display');
+        if (contentDiv) {
+            contentDiv.innerHTML = escapeHtml(receiptText).replace(/\n/g, '<br>');
+        }
+    }
+    
+    modal.style.display = 'flex';
 }
 
 function centerText(text, width) {
@@ -296,6 +571,93 @@ function centerText(text, width) {
     }
     
     return result;
+}
+
+// ============================================================================
+// Square Payment Modal Functions
+// ============================================================================
+
+function showSquarePaymentModal(amount, terminalName) {
+    const modal = document.getElementById('square-payment-modal');
+    if (!modal) return;
+    
+    // Reset modal to waiting state
+    const statusIcon = document.getElementById('square-status-icon');
+    const statusMessage = document.getElementById('square-status-message');
+    const statusDetail = document.getElementById('square-status-detail');
+    const statusText = document.getElementById('square-modal-status-text');
+    const amountDisplay = document.getElementById('square-modal-amount');
+    const terminalDisplay = document.getElementById('square-modal-terminal');
+    const forceBtn = document.getElementById('square-force-complete-btn');
+    
+    if (statusIcon) {
+        statusIcon.innerHTML = '<i class="fas fa-spinner fa-pulse"></i>';
+        statusIcon.style.color = '#ffc107';
+    }
+    if (statusMessage) statusMessage.textContent = 'Waiting for payment on terminal...';
+    if (statusDetail) statusDetail.textContent = 'Please complete payment on the Square Terminal';
+    if (statusText) {
+        statusText.textContent = 'Waiting...';
+        statusText.style.color = '#ffc107';
+    }
+    if (amountDisplay) amountDisplay.textContent = `$${amount.toFixed(2)}`;
+    if (terminalDisplay) terminalDisplay.textContent = terminalName || '--';
+    if (forceBtn) {
+        forceBtn.disabled = false;
+        forceBtn.style.opacity = '1';
+    }
+    
+    // Show the modal
+    modal.style.display = 'flex';
+}
+
+function updateSquarePaymentModal(status, message, detail) {
+    const statusIcon = document.getElementById('square-status-icon');
+    const statusMessage = document.getElementById('square-status-message');
+    const statusDetail = document.getElementById('square-status-detail');
+    const statusText = document.getElementById('square-modal-status-text');
+    
+    if (statusIcon) {
+        if (status === 'processing') {
+            statusIcon.innerHTML = '<i class="fas fa-spinner fa-pulse"></i>';
+            statusIcon.style.color = '#ffc107';
+        } else if (status === 'completed') {
+            statusIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
+            statusIcon.style.color = '#28a745';
+        } else if (status === 'error') {
+            statusIcon.innerHTML = '<i class="fas fa-times-circle"></i>';
+            statusIcon.style.color = '#dc3545';
+        } else if (status === 'force') {
+            statusIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+            statusIcon.style.color = '#ffc107';
+        } else {
+            statusIcon.innerHTML = '<i class="fas fa-spinner fa-pulse"></i>';
+            statusIcon.style.color = '#ffc107';
+        }
+    }
+    
+    if (statusMessage) statusMessage.textContent = message || 'Processing...';
+    if (statusDetail) statusDetail.textContent = detail || '';
+    if (statusText) {
+        statusText.textContent = status === 'completed' ? '✅ Completed' : 
+                                status === 'error' ? '❌ Error' : 
+                                status === 'force' ? '⚠️ Force Complete' : '⏳ Waiting...';
+        statusText.style.color = status === 'completed' ? '#28a745' : 
+                                 status === 'error' ? '#dc3545' : 
+                                 status === 'force' ? '#856404' : '#ffc107';
+    }
+}
+
+function closeSquarePaymentModal() {
+    const modal = document.getElementById('square-payment-modal');
+    if (modal) modal.style.display = 'none';
+    
+    // Clear any active checkout
+    if (activeCheckoutId && square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
+        clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
+    }
+    
+    activeCheckoutId = null;
 }
 
 // ============================================================================
@@ -984,7 +1346,11 @@ function startPollingCheckoutStatus(checkoutId) {
             if (square_payment_sessions[checkoutId]) {
                 square_payment_sessions[checkoutId].status = status;
                 
-                if (status === 'COMPLETED') {
+                if (status === 'PENDING') {
+                    updateSquarePaymentModal('processing', 'Waiting for payment...', 'Please complete payment on the Square Terminal');
+                } else if (status === 'COMPLETED') {
+                    updateSquarePaymentModal('completed', 'Payment Confirmed!', 'Processing sale...');
+                    
                     if (!checkout.payment_ids || checkout.payment_ids.length === 0) {
                         throw new Error('Checkout completed but no payment ID found');
                     }
@@ -1000,9 +1366,12 @@ function startPollingCheckoutStatus(checkoutId) {
                         
                         setTimeout(async () => {
                             await processSquarePaymentSuccess();
-                            closeTerminalCheckoutModal();
+                            closeSquarePaymentModal();
                         }, 1000);
                     }
+                } else if (status === 'FAILED' || status === 'CANCELED') {
+                    updateSquarePaymentModal('error', `Payment ${status}`, 'Please try again');
+                    clearInterval(pollInterval);
                 }
             }
         } catch (error) {
@@ -1023,6 +1392,61 @@ function startPollingCheckoutStatus(checkoutId) {
     }, 300000);
 }
 
+// ============================================================================
+// Square Payment - Main Functions
+// ============================================================================
+
+window.processSquarePayment = function() {
+    if (checkoutCart.length === 0) {
+        showCheckoutStatus('Cart is empty', 'error');
+        return;
+    }
+    
+    if (availableTerminals.length === 0) {
+        showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
+        return;
+    }
+    
+    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
+    if (onlineTerminals.length === 0) {
+        showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
+        return;
+    }
+    
+    // Get the total amount
+    const totalEl = document.getElementById('cart-total');
+    const total = parseFloat(totalEl?.textContent.replace('$', '') || '0');
+    
+    // Get terminal name
+    let terminalName = 'Square Terminal';
+    if (availableTerminals.length === 1) {
+        terminalName = availableTerminals[0].device_name || 'Square Terminal';
+    }
+    
+    // SHOW THE MODAL BEFORE CHECKOUT
+    showSquarePaymentModal(total, terminalName);
+    
+    // Save cart items for later
+    pendingCartCheckout = {
+        items: [...checkoutCart],
+        type: 'cart',
+        discount: { ...currentDiscount },
+        customSalePrice: currentCustomSalePrice
+    };
+    
+    // Handle terminal selection
+    if (availableTerminals.length === 1) {
+        let singleTerminalId = availableTerminals[0].id;
+        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
+            singleTerminalId = singleTerminalId.replace('device:', '');
+        }
+        selectedTerminalId = singleTerminalId;
+        initiateCartTerminalCheckout();
+    } else {
+        renderTerminalSelectionModal();
+    }
+};
+
 window.initiateCartTerminalCheckout = async function() {
     if (!pendingCartCheckout) {
         showCheckoutStatus('No items selected for checkout', 'error');
@@ -1035,6 +1459,9 @@ window.initiateCartTerminalCheckout = async function() {
         return;
     }
     
+    // Update modal: Creating checkout
+    updateSquarePaymentModal('processing', 'Creating checkout on terminal...', 'Please wait');
+    
     const total = parseFloat(document.getElementById('cart-total')?.textContent.replace('$', '') || '0');
     const amountCents = Math.round(total * 100);
     const recordIds = pendingCartCheckout.items.map(item => 
@@ -1045,23 +1472,6 @@ window.initiateCartTerminalCheckout = async function() {
     );
     
     closeTerminalSelectionModal();
-    
-    const modalBody = document.getElementById('terminal-checkout-body');
-    const modal = document.getElementById('terminal-checkout-modal');
-    
-    if (modalBody) {
-        modalBody.innerHTML = `
-            <div class="payment-status">
-                <div class="payment-status-icon processing">
-                    <i class="fas fa-spinner fa-pulse"></i>
-                </div>
-                <div class="payment-status-message">Creating Terminal Checkout...</div>
-                <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
-                <div class="payment-status-detail">Please wait while we prepare the terminal</div>
-            </div>
-        `;
-    }
-    if (modal) modal.style.display = 'flex';
     
     try {
         const requestBody = {
@@ -1114,48 +1524,15 @@ window.initiateCartTerminalCheckout = async function() {
             checkout_data: checkout
         };
         
-        startPollingCheckoutStatus(activeCheckoutId);
+        // Update modal: Waiting for payment
+        updateSquarePaymentModal('processing', 'Waiting for payment on terminal...', `Amount: $${total.toFixed(2)}`);
         
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon processing">
-                        <i class="fas fa-credit-card"></i>
-                    </div>
-                    <div class="payment-status-message">Checkout Created</div>
-                    <div class="payment-status-detail">Amount: $${total.toFixed(2)}</div>
-                    <div class="payment-status-detail">Please complete payment on the Square Terminal</div>
-                    <div class="payment-status-detail" style="margin-top: 20px; font-weight: bold;">Waiting for payment...</div>
-                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                        <button class="btn btn-success" onclick="forceCompleteSquarePayment()">
-                            <i class="fas fa-check-circle"></i> Complete Sale
-                        </button>
-                        <button class="btn btn-danger" onclick="cancelTerminalCheckout()">
-                            <i class="fas fa-times"></i> Cancel
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
+        startPollingCheckoutStatus(activeCheckoutId);
         
     } catch (error) {
         console.error('Checkout error:', error);
-        
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon error">
-                        <i class="fas fa-times-circle"></i>
-                    </div>
-                    <div class="payment-status-message">Checkout Failed</div>
-                    <div class="payment-status-detail">${error.message}</div>
-                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                </div>
-            `;
-        }
-        
+        // Update modal: Error
+        updateSquarePaymentModal('error', 'Checkout Failed', error.message);
         showCheckoutStatus(`Checkout failed: ${error.message}`, 'error');
     }
 };
@@ -1171,19 +1548,8 @@ window.forceCompleteSquarePayment = async function() {
         return;
     }
     
-    const modalBody = document.getElementById('terminal-checkout-body');
-    
-    if (modalBody) {
-        modalBody.innerHTML = `
-            <div class="payment-status">
-                <div class="payment-status-icon processing">
-                    <i class="fas fa-spinner fa-pulse"></i>
-                </div>
-                <div class="payment-status-message">Completing sale manually...</div>
-                <div class="payment-status-detail">Processing payment for ${pendingCartCheckout.items.length} items</div>
-            </div>
-        `;
-    }
+    // Update modal: Force complete in progress
+    updateSquarePaymentModal('force', 'Force completing sale...', 'Marking sale as completed manually');
     
     try {
         if (square_payment_sessions[activeCheckoutId] && square_payment_sessions[activeCheckoutId].pollInterval) {
@@ -1195,39 +1561,21 @@ window.forceCompleteSquarePayment = async function() {
         square_payment_sessions[activeCheckoutId].status = 'COMPLETED';
         
         await processSquarePaymentSuccess();
-        closeTerminalCheckoutModal();
+        updateSquarePaymentModal('completed', 'Sale Completed!', 'Records have been marked as sold');
+        setTimeout(closeSquarePaymentModal, 1500);
         showCheckoutStatus('Sale completed successfully!', 'success');
         
     } catch (error) {
         console.error('Error completing sale:', error);
-        
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon error">
-                        <i class="fas fa-times-circle"></i>
-                    </div>
-                    <div class="payment-status-message">Completion Failed</div>
-                    <div class="payment-status-detail">${error.message}</div>
-                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                        <button class="btn btn-warning" onclick="forceCompleteSquarePayment()">
-                            <i class="fas fa-redo"></i> Retry
-                        </button>
-                        <button class="btn btn-secondary" onclick="closeTerminalCheckoutModal()">
-                            <i class="fas fa-times"></i> Close
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
-        
+        updateSquarePaymentModal('error', 'Completion Failed', error.message);
         showCheckoutStatus(`Failed to complete sale: ${error.message}`, 'error');
     }
 };
 
-window.cancelTerminalCheckout = async function() {
+window.cancelSquarePayment = function() {
     if (!activeCheckoutId) {
         showCheckoutStatus('No active checkout to cancel', 'info');
+        closeSquarePaymentModal();
         return;
     }
     
@@ -1235,16 +1583,18 @@ window.cancelTerminalCheckout = async function() {
         clearInterval(square_payment_sessions[activeCheckoutId].pollInterval);
     }
     
-    const modalBody = document.getElementById('terminal-checkout-body');
-    if (modalBody) {
-        modalBody.innerHTML = `
-            <div class="payment-status">
-                <div class="payment-status-icon processing">
-                    <i class="fas fa-spinner fa-pulse"></i>
-                </div>
-                <div class="payment-status-message">Cancelling checkout...</div>
-            </div>
-        `;
+    // Update modal: Cancelling
+    updateSquarePaymentModal('processing', 'Cancelling checkout...', 'Please wait');
+    
+    // Call the existing cancel function
+    cancelTerminalCheckout();
+};
+
+window.cancelTerminalCheckout = async function() {
+    if (!activeCheckoutId) {
+        showCheckoutStatus('No active checkout to cancel', 'info');
+        closeSquarePaymentModal();
+        return;
     }
     
     try {
@@ -1285,20 +1635,8 @@ window.cancelTerminalCheckout = async function() {
         }
         
         showCheckoutStatus('Checkout cancelled successfully', 'success');
-        
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon success">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <div class="payment-status-message">Checkout Cancelled Successfully</div>
-                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                </div>
-            `;
-        }
+        updateSquarePaymentModal('completed', 'Cancelled', 'Checkout has been cancelled');
+        setTimeout(closeSquarePaymentModal, 1000);
         
         if (square_payment_sessions[activeCheckoutId]) {
             delete square_payment_sessions[activeCheckoutId];
@@ -1308,25 +1646,7 @@ window.cancelTerminalCheckout = async function() {
         
     } catch (error) {
         console.error('Cancel checkout error:', error);
-        
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="payment-status">
-                    <div class="payment-status-icon error">
-                        <i class="fas fa-times-circle"></i>
-                    </div>
-                    <div class="payment-status-message">Failed to Cancel Checkout</div>
-                    <div class="payment-status-detail">${error.message}</div>
-                    <button class="btn btn-primary" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                    <button class="btn btn-secondary" onclick="cancelTerminalCheckout()" style="margin-top: 10px;">
-                        <i class="fas fa-redo"></i> Retry
-                    </button>
-                </div>
-            `;
-        }
-        
+        updateSquarePaymentModal('error', 'Failed to Cancel', error.message);
         showCheckoutStatus(`Failed to cancel: ${error.message}`, 'error');
     }
 };
@@ -1349,23 +1669,7 @@ window.completeSquarePayment = async function() {
     }
     
     await processSquarePaymentSuccess();
-    
-    const modalBody = document.getElementById('terminal-checkout-body');
-    if (modalBody) {
-        modalBody.innerHTML = `
-            <div class="payment-status">
-                <div class="payment-status-icon success">
-                    <i class="fas fa-check-circle"></i>
-                </div>
-                <div class="payment-status-message">Payment Recorded Successfully!</div>
-                <div class="payment-status-detail">Records have been updated to sold status</div>
-                <button class="btn btn-success" onclick="closeTerminalCheckoutModal()" style="margin-top: 20px;">
-                    <i class="fas fa-check"></i> Done
-                </button>
-            </div>
-        `;
-    }
-    
+    closeSquarePaymentModal();
     showCheckoutStatus('Payment completed successfully!', 'success');
 };
 
@@ -1581,11 +1885,7 @@ async function processSquarePaymentSuccess() {
             await window.saveReceipt(transaction);
         }
         
-        // ===== RECEIPT PRINTING DISABLED (remote work) =====
-        // const receiptText = await formatReceiptForPrinter(transaction);
-        // await window.printToThermalPrinter(receiptText);
-        console.log('Receipt skipped while working remotely');
-        // ================================================
+        // Square has its own receipt - NO thermal printer receipt for Square
         
         checkoutCart = [];
         currentDiscount = { amount: 0, type: 'percentage', value: 0 };
@@ -1609,7 +1909,7 @@ async function processSquarePaymentSuccess() {
 }
 
 // ============================================================================
-// Discogs Sell Button Function (No confirmation popup, No receipt printing)
+// Discogs Sale Function
 // ============================================================================
 
 window.processDiscogsSale = async function() {
@@ -1807,7 +2107,7 @@ window.processDiscogsSale = async function() {
 };
 
 // ============================================================================
-// Cash Payment Functions (with custom sale price support)
+// Cash Payment Functions
 // ============================================================================
 
 window.showTenderModal = function() {
@@ -2058,10 +2358,9 @@ window.processCashPayment = async function() {
                 await window.saveReceipt(transaction);
             }
             
-            // ===== RECEIPT PRINTING DISABLED (remote work) =====
-            // const receiptText = await formatReceiptForPrinter(transaction);
-            // await window.printToThermalPrinter(receiptText);
-            console.log('Receipt skipped while working remotely');
+            // ===== CASH PAYMENT: Print thermal receipt =====
+            const receiptText = await formatReceiptForPrinter(transaction);
+            await window.printToThermalPrinter(receiptText);
             // ================================================
             
             checkoutCart = [];
@@ -2423,11 +2722,7 @@ async function completeCheckoutWithGiftCard(amountPaid) {
                 await window.saveReceipt(transaction);
             }
             
-            // ===== RECEIPT PRINTING DISABLED (remote work) =====
-            // const receiptText = await formatReceiptForPrinter(transaction);
-            // await window.printToThermalPrinter(receiptText);
-            console.log('Receipt skipped while working remotely');
-            // ================================================
+            // Gift Card: NO thermal printer receipt (just like Square)
             
             checkoutCart = [];
             currentDiscount = { amount: 0, type: 'percentage', value: 0 };
@@ -2457,68 +2752,124 @@ function updateCartTotalAfterGiftCard(remainingAmount) {
 }
 
 // ============================================================================
-// Square Payment Function (wrapper)
-// ============================================================================
-
-window.processSquarePayment = function() {
-    if (checkoutCart.length === 0) {
-        showCheckoutStatus('Cart is empty', 'error');
-        return;
-    }
-    
-    if (availableTerminals.length === 0) {
-        showCheckoutStatus('No Square Terminals available. Please refresh terminals.', 'error');
-        return;
-    }
-    
-    if (availableTerminals.length === 1) {
-        const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
-        if (onlineTerminals.length === 0) {
-            showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
-            return;
-        }
-        
-        let singleTerminalId = availableTerminals[0].id;
-        if (singleTerminalId && singleTerminalId.startsWith('device:')) {
-            singleTerminalId = singleTerminalId.replace('device:', '');
-        }
-        selectedTerminalId = singleTerminalId;
-        
-        pendingCartCheckout = {
-            items: [...checkoutCart],
-            type: 'cart',
-            discount: { ...currentDiscount },
-            customSalePrice: currentCustomSalePrice
-        };
-        
-        initiateCartTerminalCheckout();
-        return;
-    }
-    
-    const onlineTerminals = availableTerminals.filter(t => t.status === 'ONLINE');
-    if (onlineTerminals.length === 0) {
-        showCheckoutStatus('No online terminals available. Please check terminal connection.', 'error');
-        return;
-    }
-    
-    pendingCartCheckout = {
-        items: [...checkoutCart],
-        type: 'cart',
-        discount: { ...currentDiscount },
-        customSalePrice: currentCustomSalePrice
-    };
-    
-    renderTerminalSelectionModal();
-};
-
-// ============================================================================
-// Receipt Formatting (kept for future use, but not called)
+// Receipt Formatting (RESTORED for Cash payments)
 // ============================================================================
 
 async function formatReceiptForPrinter(transaction) {
-    // Function kept but not called – returns empty string
-    console.log('Receipt formatting skipped (remote work)');
-    return '';
+    const storeName = transaction.storeName || await getConfigValue('STORE_NAME');
+    const storeAddress = transaction.storeAddress || await getConfigValue('STORE_ADDRESS');
+    const storePhone = transaction.storePhone || await getConfigValue('STORE_PHONE');
+    const footer = transaction.footer || await getConfigValue('RECEIPT_FOOTER');
+    const charsPerLine = await getConfigValue('PRINTER_CHARS_PER_LINE');
+    
+    let receipt = '';
+    
+    receipt += ''.padEnd(charsPerLine, '=') + '\n';
+    
+    const nameLine = centerText(storeName, charsPerLine);
+    receipt += nameLine + '\n';
+    
+    const addressLine = centerText(storeAddress, charsPerLine);
+    receipt += addressLine + '\n';
+    
+    const phoneLine = centerText(storePhone, charsPerLine);
+    receipt += phoneLine + '\n';
+    
+    receipt += ''.padEnd(charsPerLine, '=') + '\n';
+    receipt += '\n';
+    
+    receipt += `Receipt #: ${transaction.id}\n`;
+    receipt += `Date: ${new Date(transaction.date).toLocaleString()}\n`;
+    receipt += `Cashier: ${transaction.cashier || 'Admin'}\n`;
+    receipt += `Payment: ${transaction.paymentMethod || 'Cash'}\n`;
+    receipt += '\n';
+    
+    receipt += ''.padEnd(charsPerLine, '-') + '\n';
+    
+    transaction.items.forEach(item => {
+        let description = '';
+        if (item.type === 'custom') {
+            description = item.note || 'Custom Item';
+            if (item.bern_it) {
+                description = '🔥 ' + description + ' (BERN IT)';
+            }
+        } else {
+            description = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
+        }
+        
+        const price = (item.actual_sale_price || item.store_price || 0);
+        const priceStr = `$${price.toFixed(2)}`;
+        
+        const maxDescLength = charsPerLine - priceStr.length - 1;
+        let shortDesc = description;
+        if (description.length > maxDescLength) {
+            shortDesc = description.substring(0, maxDescLength - 3) + '...';
+        }
+        
+        const paddingNeeded = charsPerLine - shortDesc.length - priceStr.length;
+        receipt += shortDesc + ' '.repeat(paddingNeeded) + priceStr + '\n';
+    });
+    
+    receipt += ''.padEnd(charsPerLine, '-') + '\n';
+    
+    const originalSubtotalStr = `$${(transaction.originalSubtotal || 0).toFixed(2)}`;
+    receipt += `Original Subtotal:${' '.repeat(charsPerLine - 18 - originalSubtotalStr.length)}${originalSubtotalStr}\n`;
+    
+    if (transaction.customSalePrice) {
+        const customPriceStr = `$${(transaction.customSalePrice || 0).toFixed(2)}`;
+        receipt += `Custom Price:${' '.repeat(charsPerLine - 13 - customPriceStr.length)}${customPriceStr}\n`;
+    } else if (transaction.discount && transaction.discount > 0) {
+        const discountStr = `-$${(transaction.discount || 0).toFixed(2)}`;
+        if (transaction.discountType === 'percentage') {
+            receipt += `Discount (${transaction.discountAmount}%):${' '.repeat(charsPerLine - 16 - discountStr.length)}${discountStr}\n`;
+        } else {
+            receipt += `Discount:${' '.repeat(charsPerLine - 9 - discountStr.length)}${discountStr}\n`;
+        }
+    }
+    
+    const subtotalStr = `$${(transaction.subtotal || 0).toFixed(2)}`;
+    receipt += `Subtotal:${' '.repeat(charsPerLine - 9 - subtotalStr.length)}${subtotalStr}\n`;
+    
+    const taxStr = `$${(transaction.tax || 0).toFixed(2)}`;
+    receipt += `Tax (${transaction.taxRate || 0}%):${' '.repeat(charsPerLine - 12 - taxStr.length)}${taxStr}\n`;
+    
+    receipt += ''.padEnd(charsPerLine, '=') + '\n';
+    const totalStr = `$${(transaction.total || 0).toFixed(2)}`;
+    receipt += `TOTAL:${' '.repeat(charsPerLine - 6 - totalStr.length)}${totalStr}\n`;
+    receipt += ''.padEnd(charsPerLine, '=') + '\n';
+    receipt += '\n';
+    
+    if (transaction.bernDonation && transaction.bernDonation > 0) {
+        receipt += ''.padEnd(charsPerLine, '-') + '\n';
+        receipt += centerText('🔥 BERN IT DONATION 🔥', charsPerLine) + '\n';
+        receipt += centerText(`$${transaction.bernDonation.toFixed(2)} added to BERN fund`, charsPerLine) + '\n';
+        receipt += ''.padEnd(charsPerLine, '-') + '\n';
+        receipt += '\n';
+    }
+    
+    if (transaction.paymentMethod === 'Cash' && transaction.change > 0) {
+        const tenderedStr = `$${(transaction.tendered || 0).toFixed(2)}`;
+        receipt += `Tendered:${' '.repeat(charsPerLine - 9 - tenderedStr.length)}${tenderedStr}\n`;
+        
+        const changeStr = `$${(transaction.change || 0).toFixed(2)}`;
+        receipt += `Change:${' '.repeat(charsPerLine - 7 - changeStr.length)}${changeStr}\n`;
+        receipt += '\n';
+    }
+    
+    if (transaction.square_payment_id) {
+        receipt += `Square ID: ${transaction.square_payment_id}\n`;
+        receipt += '\n';
+    }
+    
+    if (transaction.isDiscogsSale) {
+        receipt += centerText('🎵 DISCOGS SALE 🎵', charsPerLine) + '\n';
+        receipt += '\n';
+    }
+    
+    receipt += centerText(footer, charsPerLine) + '\n';
+    receipt += ''.padEnd(charsPerLine, '=') + '\n';
+    
+    return receipt;
 }
 
 // ============================================================================
@@ -2550,4 +2901,4 @@ document.addEventListener('keypress', function(e) {
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
 
-console.log('✅ checkout.js loaded with VCP-8370 printer support, custom sale price, and Discogs sell button (no confirmation popup, no receipt printing)');
+console.log('✅ checkout.js loaded with VCP-8370 printer support (CASH payments only), custom sale price, and Discogs sell button');
