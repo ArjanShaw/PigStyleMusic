@@ -7590,34 +7590,47 @@ def accounting_get_bank_transactions():
         search = request.args.get('search', '').strip()
         unprocessed_only = request.args.get('unprocessed_only', 'false').lower() == 'true'
 
-        # Fetch transactions from Plaid
         all_tx = fetch_bank_transactions(date_from, date_to)
 
-        # Filter by search
         if search:
             search_lower = search.lower()
             all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
 
-        # Filter unprocessed if requested
-        if unprocessed_only:
-            # Get all already processed Plaid transaction IDs (those with a journal entry)
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT DISTINCT source_id FROM journal_entries
-                WHERE source_type = 'plaid_transaction'
-            ''')
-            processed_ids = {row['source_id'] for row in cursor.fetchall()}
-            conn.close()
-            # Keep only those not in processed_ids
-            all_tx = [tx for tx in all_tx if tx['id'] not in processed_ids]
+        conn = get_db()
+        cursor = conn.cursor()
 
-        # Sort by date
+        # Get processed IDs and their account_id
+        cursor.execute('''
+            SELECT je.source_id, jl.account_id
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            WHERE je.source_type = 'plaid_transaction'
+              AND jl.account_id != (SELECT id FROM accounts WHERE code = '1010')
+        ''')
+        processed_map = {}
+        for row in cursor.fetchall():
+            processed_map[row['source_id']] = row['account_id']
+        conn.close()
+
+        # Mark each transaction
+        for tx in all_tx:
+            tx['processed'] = tx['id'] in processed_map
+            if tx['processed']:
+                tx['account_id'] = processed_map[tx['id']]
+            else:
+                tx['account_id'] = None
+
+        if unprocessed_only:
+            all_tx = [tx for tx in all_tx if not tx['processed']]
+
         all_tx.sort(key=lambda x: x['date'], reverse=True)
         total = len(all_tx)
         start = (page - 1) * per_page
         end = start + per_page
         paginated = all_tx[start:end]
+
+        total_count = len(all_tx)
+        unprocessed_count = len([tx for tx in all_tx if not tx['processed']])
 
         return jsonify({
             'status': 'success',
@@ -7625,13 +7638,13 @@ def accounting_get_bank_transactions():
             'total': total,
             'page': page,
             'per_page': per_page,
-            # Also return counts for UI
-            'total_count': total,
-            'unprocessed_count': len([tx for tx in all_tx if tx['id'] not in processed_ids]) if unprocessed_only else total
+            'total_count': total_count,
+            'unprocessed_count': unprocessed_count
         })
     except Exception as e:
         app.logger.error(f"Error fetching bank transactions: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
