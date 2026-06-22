@@ -103,8 +103,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('report-date-from').value = firstDay;
     document.getElementById('report-date-to').value = today;
     document.getElementById('manual-date').value = today;
-    document.getElementById('journal-date-from').value = firstDay;
-    document.getElementById('journal-date-to').value = today;
     document.getElementById('bank-date-from').value = firstDay;
     document.getElementById('bank-date-to').value = today;
 
@@ -249,7 +247,7 @@ async function loadAccountSelectsForBank() {
 }
 
 // ============================================================
-// JOURNAL ENTRIES
+// JOURNAL ENTRIES (date filters removed)
 // ============================================================
 
 async function loadJournalEntries() {
@@ -259,10 +257,6 @@ async function loadJournalEntries() {
     const params = new URLSearchParams();
     params.append('page', journalCurrentPage);
     params.append('per_page', journalPageSize);
-    const from = document.getElementById('journal-date-from').value;
-    const to = document.getElementById('journal-date-to').value;
-    if (from) params.append('date_from', from);
-    if (to) params.append('date_to', to);
     const account = document.getElementById('journal-account-filter').value;
     if (account) params.append('account_id', account);
     const search = document.getElementById('journal-search').value.trim();
@@ -319,8 +313,6 @@ function updateJournalPagination() {
 }
 
 function resetJournalFilters() {
-    document.getElementById('journal-date-from').value = '';
-    document.getElementById('journal-date-to').value = '';
     document.getElementById('journal-account-filter').value = '';
     document.getElementById('journal-search').value = '';
     journalCurrentPage = 1;
@@ -331,10 +323,6 @@ function exportJournalCSV() {
     const params = new URLSearchParams();
     params.append('page', 1);
     params.append('per_page', 9999);
-    const from = document.getElementById('journal-date-from').value;
-    const to = document.getElementById('journal-date-to').value;
-    if (from) params.append('date_from', from);
-    if (to) params.append('date_to', to);
     const account = document.getElementById('journal-account-filter').value;
     if (account) params.append('account_id', account);
     const search = document.getElementById('journal-search').value.trim();
@@ -862,7 +850,6 @@ async function syncBankTransactions() {
 // INTEGRATED FILTER-APPLY (using the same filter field)
 // ============================================================
 
-
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
     const accountSelect = document.getElementById('bank-apply-account');
@@ -931,9 +918,6 @@ async function applyFilterToTransactions() {
         const applyData = await applyRes.json();
         if (applyData.status === 'success') {
             statusSpan.textContent = `✅ ${applyData.message}`;
-            // Reload the current page to reflect changes (but we don't have local storage, so we just clear filter or reload)
-            // We'll reload the transactions to show updated list (but since we don't store, it will show same)
-            // We can just show a message and maybe clear the filter.
             loadBankTransactions();
         } else {
             statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
