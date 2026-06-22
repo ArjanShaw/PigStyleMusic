@@ -7645,6 +7645,103 @@ def accounting_get_bank_transactions():
         app.logger.error(f"Error fetching bank transactions: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/accounting/bank/apply-multiple', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def apply_multiple():
+    """Apply multiple transactions to their respective accounts in one go."""
+    data = request.json
+    updates = data.get('updates', [])
+    if not updates:
+        return jsonify({'status': 'error', 'error': 'No updates provided'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    processed = 0
+    errors = []
+
+    # Get cash account (1010)
+    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+    cash_row = cursor.fetchone()
+    if not cash_row:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
+    cash_id = cash_row['id']
+
+    # Fetch all Plaid transactions for the last 90 days
+    try:
+        all_tx = fetch_bank_transactions(date_from=(datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'))
+    except Exception as e:
+        conn.close()
+        return jsonify({'status': 'error', 'error': f'Failed to fetch transactions: {str(e)}'}), 500
+
+    for item in updates:
+        transaction_id = item.get('transaction_id')
+        account_id = item.get('account_id')
+        if not transaction_id or not account_id:
+            errors.append(f'Missing fields for {transaction_id}')
+            continue
+
+        # Find the transaction in the fetched list
+        tx = next((t for t in all_tx if t['id'] == transaction_id), None)
+        if not tx:
+            errors.append(f'Transaction {transaction_id} not found in Plaid')
+            continue
+
+        amount = tx['amount']
+        date = tx['date']
+        description = tx['description']
+
+        # Check if already processed
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
+                       ('plaid_transaction', str(transaction_id)))
+        existing = cursor.fetchone()
+        if existing:
+            # Remove old lines and keep entry
+            cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+            entry_id = existing['id']
+        else:
+            # Create new entry
+            cursor.execute('''
+                INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                VALUES (?, ?, ?, ?)
+            ''', (date, f"Bank transaction: {description}", 'plaid_transaction', str(transaction_id)))
+            entry_id = cursor.lastrowid
+
+        amount_cents = int(round(amount * 100))
+        if amount_cents < 0:
+            # Expense: debit account, credit cash
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, abs(amount_cents), 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, 0, abs(amount_cents)))
+        else:
+            # Income: debit cash, credit account
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+
+        conn.commit()
+        processed += 1
+
+    conn.close()
+
+    return jsonify({
+        'status': 'success',
+        'processed': processed,
+        'errors': errors if errors else None,
+        'message': f'Processed {processed} transactions' + (f', errors: {len(errors)}' if errors else '')
+    })
+
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
