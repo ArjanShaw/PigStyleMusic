@@ -338,6 +338,116 @@
         .report-result .summary-text {
             color: #333 !important;
         }
+
+        /* ====== ACCOUNT TRANSACTIONS STYLES ====== */
+        .account-transactions-selector {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .account-transactions-selector .form-group {
+            min-width: 200px;
+            flex: 1;
+        }
+        .account-transactions-selector .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .account-transactions-selector .form-group select:focus {
+            border-color: #007bff;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        .account-balance-display {
+            font-size: 18px;
+            font-weight: 600;
+            padding: 10px 20px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            min-width: 150px;
+            text-align: center;
+        }
+        .account-balance-display .balance-positive {
+            color: #28a745;
+        }
+        .account-balance-display .balance-negative {
+            color: #dc3545;
+        }
+        .account-balance-display .balance-zero {
+            color: #666;
+        }
+
+        /* ====== BANK STATUS BAR ====== */
+        .bank-status-bar {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+            align-items: center;
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 4px;
+        }
+        .bank-status-bar .count-badge {
+            font-weight: 600;
+            color: #007bff;
+        }
+        .bank-status-bar .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #333;
+            margin: 0;
+        }
+        .bank-status-bar .toggle-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .bank-status-bar .source-filter-select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            background: white;
+        }
+        .bank-status-bar .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+        .bank-status-bar .filter-group .form-group {
+            margin: 0;
+        }
+        .bank-account-select {
+            padding: 4px 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            background: white;
+            min-width: 120px;
+            max-width: 180px;
+        }
+        .bank-account-select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .bank-account-select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -364,6 +474,7 @@
             <div class="sub-tabs" id="accounting-sub-tabs">
                 <button class="sub-tab active" data-subtab="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</button>
                 <button class="sub-tab" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
+                <button class="sub-tab" data-subtab="account-transactions"><i class="fas fa-receipt"></i> Account Transactions</button>
                 <button class="sub-tab" data-subtab="adjustments"><i class="fas fa-pencil-alt"></i> Adjustments</button>
                 <button class="sub-tab" data-subtab="reconcile"><i class="fas fa-handshake"></i> Reconciliation</button>
                 <button class="sub-tab" data-subtab="bank"><i class="fas fa-university"></i> Bank</button>
@@ -452,6 +563,71 @@
                 </div>
             </div>
 
+            <!-- Account Transactions Sub-tab -->
+            <div id="sub-account-transactions" class="sub-tab-content">
+                <h4><i class="fas fa-receipt"></i> Account Transactions</h4>
+                <p class="text-muted">View all journal entries filtered by account. Select an account to see its transaction history.</p>
+                
+                <div class="account-transactions-selector">
+                    <div class="form-group">
+                        <label for="account-transactions-select"><i class="fas fa-university"></i> Select Account</label>
+                        <select id="account-transactions-select">
+                            <option value="">-- Loading accounts... --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto;">
+                        <label>&nbsp;</label>
+                        <div class="account-balance-display" id="account-balance-display">
+                            <span class="balance-zero">$0.00</span>
+                        </div>
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-success" onclick="exportAccountTransactionsCSV()"><i class="fas fa-download"></i> Export CSV</button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end;">
+                    <div class="form-group">
+                        <label>Date From</label>
+                        <input type="date" id="account-tx-date-from">
+                    </div>
+                    <div class="form-group">
+                        <label>Date To</label>
+                        <input type="date" id="account-tx-date-to">
+                    </div>
+                    <button class="btn btn-primary" onclick="loadAccountTransactions()"><i class="fas fa-search"></i> Filter</button>
+                    <button class="btn btn-secondary" onclick="resetAccountTxFilters()"><i class="fas fa-undo"></i> Reset</button>
+                </div>
+
+                <div class="journal-table-container" id="account-tx-table-wrapper">
+                    <table class="journal-table" id="account-tx-table">
+                        <thead>
+                            <tr>
+                                <th>Entry ID</th>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Debit</th>
+                                <th>Credit</th>
+                                <th>Source</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="account-tx-body">
+                            <tr><td colspan="7" style="text-align:center; padding:40px;">Select an account to view transactions.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <span id="account-tx-pagination-info">Showing 0 entries</span>
+                    <div>
+                        <button class="btn btn-sm btn-secondary" id="account-tx-prev" disabled>Prev</button>
+                        <span id="account-tx-page-info">Page 1</span>
+                        <button class="btn btn-sm btn-secondary" id="account-tx-next" disabled>Next</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Manual Adjustments Sub-tab -->
             <div id="sub-adjustments" class="sub-tab-content">
                 <h4><i class="fas fa-pencil-alt"></i> Post a Manual Journal Entry</h4>
@@ -530,12 +706,11 @@
                 </div>
             </div>
 
-            <!-- Bank Transactions Sub-tab (integrated filter-apply) -->
+            <!-- Bank Transactions Sub-tab -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">View and sync transactions from your connected bank account (FNBO).</p>
+                <p class="text-muted">View and categorize bank transactions. Select an account from the dropdown to process individual transactions.</p>
                 
-                <!-- Connect button and status -->
                 <div style="margin-bottom: 15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display: none;">
                         <i class="fas fa-university"></i> Connect Bank Account
@@ -543,21 +718,46 @@
                     <span id="bank-connection-status" class="text-muted"></span>
                 </div>
 
-                <!-- Filter & Apply section -->
+                <!-- Status bar and Show All toggle -->
+                <div class="bank-status-bar">
+                    <div>
+                        <span class="count-badge" id="bank-unprocessed-count">0</span>
+                        <span class="text-muted"> unprocessed transactions</span>
+                        <span class="text-muted" id="bank-total-count" style="margin-left: 10px;">(0 total)</span>
+                    </div>
+                    <div class="filter-group">
+                        <div class="form-group" style="margin: 0;">
+                            <select id="bank-source-filter" class="source-filter-select" onchange="bankSourceFilterChanged()">
+                                <option value="all">All Sources</option>
+                                <option value="plaid">Live (Plaid)</option>
+                                <option value="historic">Historic (CSV)</option>
+                            </select>
+                        </div>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="bank-show-all" onchange="toggleBankShowAll()">
+                            <span>Show all transactions (including processed)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Filter & Bulk Apply section -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
                     <div class="form-group" style="flex: 2;">
-                        <label>Filter</label>
-                        <input type="text" id="bank-filter" placeholder="Filter by description (e.g. STAMPS.COM)">
+                        <label>Filter by description</label>
+                        <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
                     </div>
                     <div class="form-group">
-                        <label>Apply to account</label>
+                        <label>Bulk apply to account</label>
                         <select id="bank-apply-account">
                             <option value="">Select Account</option>
                         </select>
                     </div>
-                    <button class="btn btn-warning" onclick="applyFilterToTransactions()">
-                        <i class="fas fa-tag"></i> Apply to filtered
-                    </button>
+                    <div class="form-group" style="flex: 0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-warning" onclick="applyFilterToTransactions()">
+                            <i class="fas fa-tag"></i> Apply to filtered
+                        </button>
+                    </div>
                     <span id="filter-apply-status" class="text-muted"></span>
                 </div>
 
@@ -572,6 +772,7 @@
                         <input type="date" id="bank-date-to">
                     </div>
                     <button class="btn btn-primary" onclick="loadBankTransactions()"><i class="fas fa-search"></i> Filter</button>
+                    <button class="btn btn-secondary" onclick="resetBankFilters()"><i class="fas fa-undo"></i> Reset</button>
                     <button class="btn btn-success" onclick="syncBankTransactions()"><i class="fas fa-sync-alt"></i> Sync Now</button>
                     <span id="bank-sync-status" class="text-muted"></span>
                 </div>
@@ -586,10 +787,11 @@
                                 <th>Amount</th>
                                 <th>Category</th>
                                 <th>Status</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="bank-body">
-                            <tr><td colspan="5" style="text-align:center; padding:40px;">Loading transactions...</td></tr>
+                            <tr><td colspan="6" style="text-align:center; padding:40px;">Loading transactions...</td></tr>
                         </tbody>
                     </table>
                 </div>
