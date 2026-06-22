@@ -17,6 +17,9 @@ let accountTxCurrentPage = 1;
 const accountTxPageSize = 20;
 let accountTxTotalEntries = 0;
 
+// Global list of accounts for bank dropdowns
+let bankAccounts = [];
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -44,7 +47,8 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'bank') {
                 loadBankTransactions();
                 checkBankConnection();
-                loadAccountSelectsForBank();
+                loadAccountSelectsForBank(); // for bulk apply dropdown
+                loadBankAccountsForRowDropdowns(); // for per-row dropdowns
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
@@ -269,6 +273,22 @@ async function loadAccountSelectsForBank() {
         }
     } catch (e) {
         console.error('Failed to load accounts for bank apply:', e);
+    }
+}
+
+// Load accounts for per‑row dropdowns and store globally
+async function loadBankAccountsForRowDropdowns() {
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            bankAccounts = data.accounts;
+        }
+    } catch (e) {
+        console.error('Failed to load accounts for row dropdowns:', e);
     }
 }
 
@@ -746,7 +766,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS
+// BANK TRANSACTIONS (with per-row dropdowns)
 // ============================================================
 
 async function checkBankConnection() {
@@ -828,7 +848,7 @@ async function loadBankTransactions() {
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
 
-    // Check "Show all" toggle
+    // Toggle: checked = show all, unchecked = show unprocessed only
     const showAll = document.getElementById('bank-show-all')?.checked || false;
     if (!showAll) {
         params.append('unprocessed_only', 'true');
@@ -838,6 +858,11 @@ async function loadBankTransactions() {
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
     if (sourceFilter !== 'all') {
         params.append('source_type', sourceFilter);
+    }
+
+    // Ensure accounts are loaded for dropdowns
+    if (bankAccounts.length === 0) {
+        await loadBankAccountsForRowDropdowns();
     }
 
     try {
@@ -851,7 +876,6 @@ async function loadBankTransactions() {
             bankTotalEntries = data.total || data.transactions?.length || 0;
             renderBankTransactions(data.transactions || []);
             updateBankPagination();
-            // Update counts with dynamic label
             updateBankCounts(data.unprocessed_count || 0, data.total_count || 0);
         } else {
             body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
@@ -874,15 +898,26 @@ function renderBankTransactions(transactions) {
         const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
         const status = t.status || (t.pending ? 'Pending' : 'Posted');
         const category = t.category || '';
-        const processed = t.processed ? '✅ Processed' : '⏳ Pending';
-        const actionButton = !t.processed ? `<button class="btn btn-sm btn-primary" onclick="applyTransaction(${t.id}, document.getElementById('bank-apply-account').value)"><i class="fas fa-tag"></i></button>` : '<span class="text-muted">Processed</span>';
+        const processed = t.processed || false;
+        const assignedAccountId = t.account_id || null;
+
+        // Build account column – always a dropdown, pre‑selected if processed
+        let options = '<option value="">-- Select --</option>';
+        bankAccounts.forEach(acc => {
+            const selected = (assignedAccountId === acc.id) ? 'selected' : '';
+            options += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
+        });
+        const accountHtml = `<select class="tx-account-select" onchange="processTransaction(${t.id}, this.value)">
+            ${options}
+        </select>`;
+
         html += `<tr>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>${category}</td>
             <td><span class="status-badge ${status === 'Pending' ? 'warning' : 'active'}">${status}</span></td>
-            <td>${actionButton}</td>
+            <td>${accountHtml}</td>
         </tr>`;
     });
     body.innerHTML = html;
@@ -954,9 +989,10 @@ function resetBankFilters() {
     loadBankTransactions();
 }
 
-async function applyTransaction(transactionId, accountId) {
+// Process a single transaction with selected account
+async function processTransaction(transactionId, accountId) {
     if (!accountId) {
-        alert('Please select an account first.');
+        alert('Please select an account.');
         return;
     }
     try {
@@ -971,13 +1007,89 @@ async function applyTransaction(transactionId, accountId) {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            alert('Transaction processed.');
+            // Reload the list to reflect changes
             loadBankTransactions();
         } else {
-            alert('Error: ' + (data.error || 'Failed to process'));
+            alert('Error processing transaction: ' + (data.error || 'Unknown error'));
         }
     } catch (e) {
         alert('Error: ' + e.message);
+    }
+}
+
+// Bulk apply (kept for convenience)
+async function applyFilterToTransactions() {
+    const filterInput = document.getElementById('bank-filter');
+    const accountSelect = document.getElementById('bank-apply-account');
+    const statusSpan = document.getElementById('filter-apply-status');
+
+    const pattern = filterInput.value.trim();
+    const accountId = parseInt(accountSelect.value);
+
+    if (!pattern) {
+        alert('Please enter a filter pattern (e.g. STAMPS.COM).');
+        return;
+    }
+    if (!accountId) {
+        alert('Please select an account to apply.');
+        return;
+    }
+
+    statusSpan.textContent = '⏳ Fetching transactions...';
+    try {
+        const params = new URLSearchParams();
+        params.append('per_page', 9999);
+        params.append('search', pattern);
+        const from = document.getElementById('bank-date-from').value;
+        const to = document.getElementById('bank-date-to').value;
+        if (from) params.append('date_from', from);
+        if (to) params.append('date_to', to);
+        params.append('unprocessed_only', 'true');
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status !== 'success') {
+            statusSpan.textContent = '❌ Failed to fetch transactions: ' + (data.error || 'Unknown');
+            return;
+        }
+        const transactions = data.transactions || [];
+        if (transactions.length === 0) {
+            statusSpan.textContent = 'ℹ️ No unprocessed transactions found matching the filter.';
+            return;
+        }
+
+        const confirmMsg = `Found ${transactions.length} unprocessed transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
+        if (!confirm(confirmMsg)) {
+            statusSpan.textContent = '⏹️ Cancelled.';
+            return;
+        }
+
+        statusSpan.textContent = '⏳ Applying...';
+        const applyRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                transactions: transactions.map(t => ({
+                    id: t.id,
+                    date: t.date,
+                    amount: t.amount,
+                    description: t.description
+                })),
+                account_id: accountId
+            })
+        });
+        const applyData = await applyRes.json();
+        if (applyData.status === 'success') {
+            statusSpan.textContent = `✅ ${applyData.message}`;
+            loadBankTransactions();
+        } else {
+            statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
+        }
+    } catch (e) {
+        statusSpan.textContent = '❌ Error: ' + e.message;
     }
 }
 
@@ -1118,83 +1230,4 @@ function exportAccountTransactionsCSV() {
             window.URL.revokeObjectURL(url);
         }
     }).catch(console.error);
-}
-
-// ============================================================
-// INTEGRATED FILTER-APPLY (for Bank tab)
-// ============================================================
-
-async function applyFilterToTransactions() {
-    const filterInput = document.getElementById('bank-filter');
-    const accountSelect = document.getElementById('bank-apply-account');
-    const statusSpan = document.getElementById('filter-apply-status');
-
-    const pattern = filterInput.value.trim();
-    const accountId = parseInt(accountSelect.value);
-
-    if (!pattern) {
-        alert('Please enter a filter pattern (e.g. STAMPS.COM).');
-        return;
-    }
-    if (!accountId) {
-        alert('Please select an account to apply.');
-        return;
-    }
-
-    statusSpan.textContent = '⏳ Fetching transactions...';
-    try {
-        const params = new URLSearchParams();
-        params.append('per_page', 9999);
-        params.append('search', pattern);
-        const from = document.getElementById('bank-date-from').value;
-        const to = document.getElementById('bank-date-to').value;
-        if (from) params.append('date_from', from);
-        if (to) params.append('date_to', to);
-        params.append('unprocessed_only', 'true');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        if (data.status !== 'success') {
-            statusSpan.textContent = '❌ Failed to fetch transactions: ' + (data.error || 'Unknown');
-            return;
-        }
-        const transactions = data.transactions || [];
-        if (transactions.length === 0) {
-            statusSpan.textContent = 'ℹ️ No unprocessed transactions found matching the filter.';
-            return;
-        }
-
-        const confirmMsg = `Found ${transactions.length} unprocessed transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
-        if (!confirm(confirmMsg)) {
-            statusSpan.textContent = '⏹️ Cancelled.';
-            return;
-        }
-
-        statusSpan.textContent = '⏳ Applying...';
-        const applyRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transactions: transactions.map(t => ({
-                    id: t.id,
-                    date: t.date,
-                    amount: t.amount,
-                    description: t.description
-                })),
-                account_id: accountId
-            })
-        });
-        const applyData = await applyRes.json();
-        if (applyData.status === 'success') {
-            statusSpan.textContent = `✅ ${applyData.message}`;
-            loadBankTransactions();
-        } else {
-            statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
-        }
-    } catch (e) {
-        statusSpan.textContent = '❌ Error: ' + e.message;
-    }
 }

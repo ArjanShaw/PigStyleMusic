@@ -448,6 +448,27 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+        .tx-account-select {
+            padding: 4px 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            background: white;
+            min-width: 130px;
+            max-width: 180px;
+        }
+        .tx-account-select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .tx-account-select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .tx-account-select.processed {
+            border-color: #28a745;
+            background: #f0fff0;
+        }
     </style>
 </head>
 <body>
@@ -706,10 +727,10 @@
                 </div>
             </div>
 
-            <!-- Bank Transactions Sub-tab -->
+            <!-- Bank Transactions Sub-tab (with per-row dropdowns and "Show all" toggle) -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">View and categorize bank transactions. Select an account from the dropdown to process individual transactions.</p>
+                <p class="text-muted">Select an account for each transaction to process it. Unprocessed transactions have a dropdown; processed ones show the assigned account.</p>
                 
                 <div style="margin-bottom: 15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display: none;">
@@ -735,12 +756,12 @@
                         </div>
                         <label class="toggle-label">
                             <input type="checkbox" id="bank-show-all" onchange="toggleBankShowAll()">
-                            <span>Show all transactions (including processed)</span>
+                            <span>Show all transactions</span>
                         </label>
                     </div>
                 </div>
 
-                <!-- Filter & Bulk Apply section -->
+                <!-- Filter & Bulk Apply (kept for bulk operations if needed) -->
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: flex-end; background: #f8f9fa; padding: 10px; border-radius: 4px;">
                     <div class="form-group" style="flex: 2;">
                         <label>Filter by description</label>
@@ -755,7 +776,7 @@
                     <div class="form-group" style="flex: 0 0 auto;">
                         <label>&nbsp;</label>
                         <button class="btn btn-warning" onclick="applyFilterToTransactions()">
-                            <i class="fas fa-tag"></i> Apply to filtered
+                            <i class="fas fa-tag"></i> Bulk Apply
                         </button>
                     </div>
                     <span id="filter-apply-status" class="text-muted"></span>
@@ -787,7 +808,7 @@
                                 <th>Amount</th>
                                 <th>Category</th>
                                 <th>Status</th>
-                                <th>Action</th>
+                                <th>Account</th>
                             </tr>
                         </thead>
                         <tbody id="bank-body">
@@ -972,7 +993,7 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js"></script>
+    <script src="/static/js/admin-accounting.js?v=2"></script>
 
 </body>
 </html>
