@@ -6546,8 +6546,6 @@ def accounting_get_journal():
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
         account_id = request.args.get('account_id', type=int)
         search = request.args.get('search', '').strip()
         offset = (page - 1) * per_page
@@ -6555,7 +6553,7 @@ def accounting_get_journal():
         conn = get_db()
         cursor = conn.cursor()
 
-        # Build the base query for journal entries
+        # Base query for journal entries - NO DATE FILTERS
         entry_query = '''
             SELECT id, transaction_date, description, source_type, source_id
             FROM journal_entries
@@ -6563,17 +6561,21 @@ def accounting_get_journal():
         '''
         params = []
 
-        if date_from:
-            entry_query += ' AND transaction_date >= ?'
-            params.append(date_from)
-        if date_to:
-            entry_query += ' AND transaction_date <= ?'
-            params.append(date_to)
+        # Search filter
         if search:
             entry_query += ' AND (description LIKE ? OR source_id LIKE ?)'
             search_term = f'%{search}%'
             params.append(search_term)
             params.append(search_term)
+
+        # Account filter
+        if account_id:
+            entry_query += ''' AND EXISTS (
+                SELECT 1 FROM journal_lines jl 
+                WHERE jl.journal_entry_id = journal_entries.id 
+                AND jl.account_id = ?
+            )'''
+            params.append(account_id)
 
         # Get total count
         count_query = entry_query.replace(
@@ -6583,7 +6585,7 @@ def accounting_get_journal():
         cursor.execute(count_query, params)
         total = cursor.fetchone()['total']
 
-        # Get paginated entries
+        # Get paginated entries - newest first
         entry_query += ' ORDER BY transaction_date DESC, id DESC LIMIT ? OFFSET ?'
         params.extend([per_page, offset])
         cursor.execute(entry_query, params)
