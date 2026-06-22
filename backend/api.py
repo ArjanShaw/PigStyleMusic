@@ -7816,6 +7816,52 @@ def monthly_performance():
         'account_breakdown': account_breakdown
     })
 
+@app.route('/api/accounting/monthly-account-transactions', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def monthly_account_transactions():
+    """Return all journal entries for a given account and month."""
+    month = request.args.get('month')  # YYYY-MM
+    account_id = request.args.get('account_id')
+    if not month or not account_id:
+        return jsonify({'status': 'error', 'error': 'month and account_id required'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get all journal lines for that account and month
+    cursor.execute('''
+        SELECT 
+            je.transaction_date,
+            je.description,
+            jl.debit_amount / 100.0 as debit_amount,
+            jl.credit_amount / 100.0 as credit_amount,
+            a.name as account_name
+        FROM journal_lines jl
+        JOIN journal_entries je ON je.id = jl.journal_entry_id
+        JOIN accounts a ON a.id = jl.account_id
+        WHERE jl.account_id = ?
+          AND strftime('%Y-%m', je.transaction_date) = ?
+        ORDER BY je.transaction_date DESC
+    ''', (account_id, month))
+    rows = cursor.fetchall()
+    conn.close()
+
+    transactions = []
+    for row in rows:
+        transactions.append({
+            'transaction_date': row['transaction_date'],
+            'description': row['description'],
+            'debit_amount': row['debit_amount'],
+            'credit_amount': row['credit_amount'],
+            'account_name': row['account_name']
+        })
+
+    return jsonify({
+        'status': 'success',
+        'transactions': transactions
+    })
+
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
