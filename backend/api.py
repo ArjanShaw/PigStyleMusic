@@ -7861,34 +7861,46 @@ def monthly_performance():
         'account_breakdown': account_breakdown
     })
 
+
 @app.route('/api/accounting/monthly-account-transactions', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def monthly_account_transactions():
-    """Return all journal entries for a given account and month."""
-    month = request.args.get('month')  # YYYY-MM
+    """Return journal entries for a given account and month.
+       If exclude_orders=true, skip entries with source_type = 'order'.
+    """
+    month = request.args.get('month')
     account_id = request.args.get('account_id')
+    exclude_orders = request.args.get('exclude_orders', 'false').lower() == 'true'
+
     if not month or not account_id:
         return jsonify({'status': 'error', 'error': 'month and account_id required'}), 400
 
     conn = get_db()
     cursor = conn.cursor()
 
-    # Get all journal lines for that account and month
-    cursor.execute('''
+    query = '''
         SELECT 
             je.transaction_date,
             je.description,
             jl.debit_amount / 100.0 as debit_amount,
             jl.credit_amount / 100.0 as credit_amount,
-            a.name as account_name
+            a.name as account_name,
+            je.source_type
         FROM journal_lines jl
         JOIN journal_entries je ON je.id = jl.journal_entry_id
         JOIN accounts a ON a.id = jl.account_id
         WHERE jl.account_id = ?
           AND strftime('%Y-%m', je.transaction_date) = ?
-        ORDER BY je.transaction_date DESC
-    ''', (account_id, month))
+    '''
+    params = [account_id, month]
+
+    if exclude_orders:
+        query += ' AND je.source_type != ?'
+        params.append('order')
+
+    query += ' ORDER BY je.transaction_date DESC'
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
 
@@ -7899,14 +7911,14 @@ def monthly_account_transactions():
             'description': row['description'],
             'debit_amount': row['debit_amount'],
             'credit_amount': row['credit_amount'],
-            'account_name': row['account_name']
+            'account_name': row['account_name'],
+            'source_type': row['source_type']
         })
 
     return jsonify({
         'status': 'success',
         'transactions': transactions
     })
-
 
 @app.route('/api/accounting/cash-flow', methods=['GET'])
 @login_required
