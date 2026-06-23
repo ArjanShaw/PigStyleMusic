@@ -120,6 +120,7 @@ user_tokens = {}
 background_jobs = {}
 square_payment_sessions = {}  # Store active payment sessions
 
+
 def get_transactions_matching_filter(search, unprocessed_only, source_type):
     """
     Returns a list of transaction dicts that match the given filter.
@@ -137,13 +138,12 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
     if source_type:
         all_tx = [tx for tx in all_tx if tx.get('source_type') == source_type]
 
-    # Add processed flag
+    # Add processed flag – always use 'bank_transaction'
     conn = get_db()
     cursor = conn.cursor()
     for tx in all_tx:
-        source_type_for_check = 'plaid_transaction' if tx.get('id', '').startswith('plaid_') else 'bank_transaction'
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
-                       (source_type_for_check, str(tx['id'])))
+                       ('bank_transaction', str(tx['id'])))
         tx['processed'] = cursor.fetchone() is not None
     conn.close()
 
@@ -7624,6 +7624,7 @@ def accounting_get_bank_transactions():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+
 @app.route('/api/accounting/bank/apply-multiple', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -7680,18 +7681,18 @@ def apply_multiple():
 
         # Check if already processed
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
-                       ('plaid_transaction', str(transaction_id)))
+                       ('bank_transaction', str(transaction_id)))
         existing = cursor.fetchone()
         if existing:
             # Remove old lines and keep entry
             cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
             entry_id = existing['id']
         else:
-            # Create new entry
+            # Create new entry – always use 'bank_transaction'
             cursor.execute('''
                 INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                 VALUES (?, ?, ?, ?)
-            ''', (date_str, f"Bank transaction: {description}", 'plaid_transaction', str(transaction_id)))
+            ''', (date_str, f"Bank transaction: {description}", 'bank_transaction', str(transaction_id)))
             entry_id = cursor.lastrowid
 
         amount_cents = int(round(abs(amount) * 100))
@@ -7729,7 +7730,6 @@ def apply_multiple():
         'errors': errors if errors else None,
         'message': f'Processed {processed} transactions' + (f', errors: {len(errors)}' if errors else '')
     })
-
 
 @app.route('/api/accounting/monthly-performance', methods=['GET'])
 @login_required
