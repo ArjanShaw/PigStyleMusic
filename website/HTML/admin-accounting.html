@@ -183,7 +183,7 @@
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
 
-            <!-- ====== DASHBOARD (sync button removed) ====== -->
+            <!-- ====== DASHBOARD ====== -->
             <div id="sub-dashboard" class="sub-tab-content active">
                 <div class="accounting-stats" id="dashboard-stats">
                     <div class="accounting-stat-card success"><div class="stat-value" id="dash-revenue">$0.00</div><div class="stat-label">Revenue (This Month)</div></div>
@@ -195,7 +195,6 @@
                 <div style="margin-top:20px;"><h4><i class="fas fa-clock"></i> Recent Journal Entries</h4>
                     <div id="dash-recent-journal" style="max-height:300px; overflow-y:auto;"><p class="text-muted">Loading...</p></div>
                 </div>
-                <!-- sync button removed -->
             </div>
 
             <!-- ====== JOURNAL ====== -->
@@ -295,7 +294,7 @@
                 <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
 
-            <!-- ====== BANK (no pagination, with Refresh button) ====== -->
+            <!-- ====== BANK (no pagination, Refresh button, no Sync button) ====== -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
                 <p class="text-muted">Select an account for each transaction, then click <strong>Apply All</strong> to process all at once.</p>
@@ -330,12 +329,11 @@
                     </div>
                     <span id="filter-apply-status" class="text-muted"></span>
                 </div>
-                <!-- Action buttons without date filters -->
+                <!-- Action buttons without date filters and without Sync button -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
                     <button class="btn btn-secondary" onclick="resetBankFilters()"><i class="fas fa-undo"></i> Reset</button>
-                    <button class="btn btn-success" onclick="syncBankTransactions()"><i class="fas fa-sync-alt"></i> Sync Now</button>
                     <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply All</button>
-                    <span id="bank-sync-status" class="text-muted"></span>
+                    <!-- sync button removed -->
                 </div>
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
@@ -376,7 +374,7 @@
                 </div>
             </div>
 
-            <!-- ====== CASH FLOW (with Net bar) ====== -->
+            <!-- ====== CASH FLOW ====== -->
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
                 <p class="text-muted">Positive bars = cash inflows (revenue), negative bars = cash outflows (expenses). Click any bar to see the underlying transactions. The purple bar is the net cash flow for the month.</p>

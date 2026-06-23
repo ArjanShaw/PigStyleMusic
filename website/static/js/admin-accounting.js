@@ -1,5 +1,5 @@
 // ============================================================
-// admin-accounting.js – Accounting Module (with Net bar in Cash Flow, sync removed)
+// admin-accounting.js – Accounting Module (with Net bar, sync removed)
 // ============================================================
 
 let journalCurrentPage = 1;
@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
-// DASHBOARD (unchanged, sync removed)
+// DASHBOARD (unchanged)
 // ============================================================
 
 async function loadDashboard() {
@@ -213,8 +213,6 @@ async function loadDashboard() {
         console.error('Dashboard error:', err);
     }
 }
-
-// runAccountingSync() removed
 
 // ============================================================
 // ACCOUNT DROPDOWNS (unchanged)
@@ -762,7 +760,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (with filter-based bulk apply)
+// BANK TRANSACTIONS (with filter-based bulk apply, no sync)
 // ============================================================
 
 async function checkBankConnection() {
@@ -943,27 +941,6 @@ function bankSourceFilterChanged() {
 
 function refreshBankTable() {
     loadBankTransactions();
-}
-
-async function syncBankTransactions() {
-    const status = document.getElementById('bank-sync-status');
-    status.textContent = '⏳ Syncing...';
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/sync`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            status.textContent = '✅ Sync triggered. Refreshing...';
-            loadBankTransactions();
-        } else {
-            status.textContent = '❌ ' + (data.error || 'Sync failed');
-        }
-    } catch (err) {
-        status.textContent = '❌ Error: ' + err.message;
-    }
 }
 
 function resetBankFilters() {
