@@ -1,5 +1,5 @@
 // ============================================================
-// admin-accounting.js – Accounting Module (with Net bar in Cash Flow)
+// admin-accounting.js – Accounting Module (with Net bar in Cash Flow, sync removed)
 // ============================================================
 
 let journalCurrentPage = 1;
@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
-// DASHBOARD (unchanged)
+// DASHBOARD (unchanged, sync removed)
 // ============================================================
 
 async function loadDashboard() {
@@ -214,26 +214,7 @@ async function loadDashboard() {
     }
 }
 
-async function runAccountingSync() {
-    const status = document.getElementById('sync-status');
-    status.textContent = '⏳ Running sync...';
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/sync`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            status.textContent = '✅ Synced ' + data.processed + ' orders.';
-            loadDashboard();
-        } else {
-            status.textContent = '❌ ' + (data.error || 'Sync failed');
-        }
-    } catch (err) {
-        status.textContent = '❌ Error: ' + err.message;
-    }
-}
+// runAccountingSync() removed
 
 // ============================================================
 // ACCOUNT DROPDOWNS (unchanged)
