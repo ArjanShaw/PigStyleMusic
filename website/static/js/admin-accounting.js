@@ -1,5 +1,5 @@
 // ============================================================
-// admin-accounting.js – Accounting Module (Filter-based Bulk Apply)
+// admin-accounting.js – Accounting Module (with Net bar in Cash Flow)
 // ============================================================
 
 let journalCurrentPage = 1;
@@ -992,10 +992,7 @@ function resetBankFilters() {
     loadBankTransactions();
 }
 
-// ============================================================
-// APPLY ALL (per-row selections – unchanged)
-// ============================================================
-
+// Apply All (per-row selections)
 async function applyAllSelections() {
     const selects = document.querySelectorAll('#bank-body .tx-account-select');
     const updates = [];
@@ -1034,10 +1031,7 @@ async function applyAllSelections() {
     }
 }
 
-// ============================================================
-// BULK APPLY – sends the filter, not a list of IDs
-// ============================================================
-
+// Bulk Apply – sends filter parameters, not a list of IDs
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
     const accountSelect = document.getElementById('bank-apply-account');
@@ -1076,7 +1070,6 @@ async function applyFilterToTransactions() {
         const data = await res.json();
         if (data.status === 'success') {
             statusSpan.textContent = `✅ ${data.message}`;
-            // Auto-refresh the table with the same filter
             loadBankTransactions();
         } else {
             statusSpan.textContent = '❌ Error: ' + (data.error || 'Unknown');
@@ -1368,7 +1361,7 @@ function renderMonthlyCharts(data) {
 }
 
 // ============================================================
-// MODAL FUNCTIONS (unchanged)
+// MODAL FUNCTIONS (updated for Net bar)
 // ============================================================
 
 function closeMonthlyModal() {
@@ -1383,7 +1376,10 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
     modal.classList.add('active');
 
-    let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}&account_id=${accountId}`;
+    let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
+    if (accountId) {
+        url += `&account_id=${accountId}`;
+    }
     if (excludeOrders) {
         url += '&exclude_orders=true';
     }
@@ -1436,7 +1432,7 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW DETAIL (fixed)
+// CASH FLOW DETAIL (with Net bar)
 // ============================================================
 
 async function loadCashFlow() {
@@ -1484,6 +1480,7 @@ function renderCashFlowCharts(data) {
         return;
     }
 
+    // Collect all unique account names
     const allAccounts = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1491,6 +1488,7 @@ function renderCashFlowCharts(data) {
     });
     const accountNames = Array.from(allAccounts).sort();
 
+    // Build account name -> ID mapping (normalized)
     const accountNameToId = {};
     bankAccounts.forEach(acc => {
         const trimmed = acc.name.trim();
@@ -1499,6 +1497,7 @@ function renderCashFlowCharts(data) {
         accountNameToId[trimmed] = acc.id;
     });
 
+    // Determine global max absolute value for y-axis
     let globalMax = 0;
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1506,9 +1505,16 @@ function renderCashFlowCharts(data) {
             const val = monthData[acc] || 0;
             if (Math.abs(val) > globalMax) globalMax = Math.abs(val);
         });
+        // Also consider net values (sum per month)
+        let net = 0;
+        accountNames.forEach(acc => {
+            net += monthData[acc] || 0;
+        });
+        if (Math.abs(net) > globalMax) globalMax = Math.abs(net);
     });
     const yMax = Math.ceil(globalMax / 500) * 500 || 100;
 
+    // Destroy old charts
     if (window._cashFlowCharts) {
         window._cashFlowCharts.forEach(chart => chart.destroy());
     }
@@ -1517,8 +1523,26 @@ function renderCashFlowCharts(data) {
     months.forEach((month, idx) => {
         const monthData = account_breakdown[month] || {};
         const values = accountNames.map(acc => monthData[acc] || 0);
-        const labels = accountNames;
+        const labels = accountNames.slice(); // copy
 
+        // Compute net cash flow for this month
+        const net = values.reduce((sum, v) => sum + v, 0);
+
+        // Extend labels and values with "Net"
+        labels.push('Net');
+        values.push(net);
+
+        // Define bar colors: green for positive, red for negative, purple for Net
+        const barColors = values.map((v, i) => {
+            if (i === values.length - 1) return 'rgba(111, 66, 193, 0.8)'; // purple for Net
+            return v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)';
+        });
+        const borderColors = values.map((v, i) => {
+            if (i === values.length - 1) return '#6f42c1';
+            return v >= 0 ? '#28a745' : '#dc3545';
+        });
+
+        // Create card
         const card = document.createElement('div');
         card.className = 'monthly-chart-card';
         card.innerHTML = `<h4>${month}</h4><canvas id="cash-flow-chart-${idx}"></canvas>`;
@@ -1526,9 +1550,6 @@ function renderCashFlowCharts(data) {
 
         const canvas = card.querySelector('canvas');
         const ctx = canvas.getContext('2d');
-
-        const barColors = values.map(v => v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)');
-        const borderColors = values.map(v => v >= 0 ? '#28a745' : '#dc3545');
 
         const chart = new Chart(ctx, {
             type: 'bar',
@@ -1575,18 +1596,24 @@ function renderCashFlowCharts(data) {
                     if (elements.length === 0) return;
                     const element = elements[0];
                     const index = element.index;
-                    const accountName = this.data.labels[index];
+                    const label = this.data.labels[index];
                     const amount = this.data.datasets[0].data[index];
                     if (Math.abs(amount) < 0.01) return;
 
-                    const trimmed = accountName.trim();
-                    const norm = trimmed.toLowerCase();
-                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
-                    if (!accountId) {
-                        alert('Account not found: ' + accountName);
-                        return;
+                    if (label === 'Net') {
+                        // Show all transactions for this month (all accounts, exclude orders)
+                        showMonthlyTransactions(month, null, 'Net Cash Flow', true);
+                    } else {
+                        // Normalized lookup for account ID
+                        const trimmed = label.trim();
+                        const norm = trimmed.toLowerCase();
+                        let accountId = accountNameToId[norm] || accountNameToId[trimmed];
+                        if (!accountId) {
+                            alert('Account not found: ' + label);
+                            return;
+                        }
+                        showMonthlyTransactions(month, accountId, label, true);
                     }
-                    showMonthlyTransactions(month, accountId, accountName, true);
                 }
             }
         });

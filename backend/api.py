@@ -7866,15 +7866,16 @@ def monthly_performance():
 @login_required
 @role_required(['admin'])
 def monthly_account_transactions():
-    """Return journal entries for a given account and month.
+    """Return journal entries for a given month.
+       If account_id is provided, filter by that account.
        If exclude_orders=true, skip entries with source_type = 'order'.
     """
     month = request.args.get('month')
-    account_id = request.args.get('account_id')
+    account_id = request.args.get('account_id', type=int)  # can be None
     exclude_orders = request.args.get('exclude_orders', 'false').lower() == 'true'
 
-    if not month or not account_id:
-        return jsonify({'status': 'error', 'error': 'month and account_id required'}), 400
+    if not month:
+        return jsonify({'status': 'error', 'error': 'month required'}), 400
 
     conn = get_db()
     cursor = conn.cursor()
@@ -7890,10 +7891,13 @@ def monthly_account_transactions():
         FROM journal_lines jl
         JOIN journal_entries je ON je.id = jl.journal_entry_id
         JOIN accounts a ON a.id = jl.account_id
-        WHERE jl.account_id = ?
-          AND strftime('%Y-%m', je.transaction_date) = ?
+        WHERE strftime('%Y-%m', je.transaction_date) = ?
     '''
-    params = [account_id, month]
+    params = [month]
+
+    if account_id is not None:
+        query += ' AND jl.account_id = ?'
+        params.append(account_id)
 
     if exclude_orders:
         query += ' AND je.source_type != ?'
@@ -7919,6 +7923,7 @@ def monthly_account_transactions():
         'status': 'success',
         'transactions': transactions
     })
+
 
 @app.route('/api/accounting/cash-flow', methods=['GET'])
 @login_required
