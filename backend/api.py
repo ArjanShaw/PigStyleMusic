@@ -34,6 +34,8 @@ from werkzeug.utils import secure_filename
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from datetime import datetime
+import re
 
 # ===== NEW IMPORTS FOR ACCOUNTING =====
 from decimal import Decimal
@@ -117,6 +119,80 @@ SPOTIFY_REDIRECT_URI = '/spotify/callback'
 user_tokens = {}
 background_jobs = {}
 square_payment_sessions = {}  # Store active payment sessions
+
+def get_transactions_matching_filter(search, unprocessed_only, source_type):
+    """
+    Returns a list of transaction dicts that match the given filter.
+    Uses the same logic as the table endpoint.
+    """
+    # Fetch all transactions (replace with your actual fetch function)
+    all_tx = fetch_bank_transactions()  # your existing function
+
+    # Apply search filter
+    if search:
+        search_lower = search.lower()
+        all_tx = [tx for tx in all_tx if search_lower in tx.get('description', '').lower()]
+
+    # Filter by source_type if provided
+    if source_type:
+        all_tx = [tx for tx in all_tx if tx.get('source_type') == source_type]
+
+    # Add processed flag
+    conn = get_db()
+    cursor = conn.cursor()
+    for tx in all_tx:
+        source_type_for_check = 'plaid_transaction' if tx.get('id', '').startswith('plaid_') else 'bank_transaction'
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
+                       (source_type_for_check, str(tx['id'])))
+        tx['processed'] = cursor.fetchone() is not None
+    conn.close()
+
+    # Filter unprocessed if requested
+    if unprocessed_only:
+        all_tx = [tx for tx in all_tx if not tx['processed']]
+
+    return all_tx
+
+
+def parse_plaid_date(date_str):
+    """Convert various date formats to YYYY-MM-DD."""
+    if date_str is None:
+        return None
+    
+    # If it's already a date or datetime object, convert to ISO string
+    if isinstance(date_str, (date, datetime)):
+        return date_str.isoformat()
+    
+    # Ensure it's a string
+    if not isinstance(date_str, str):
+        date_str = str(date_str)
+    
+    # Clean up common prefixes
+    date_str = date_str.strip()
+    
+    # Try ISO format first (e.g., '2026-06-22' or '2026-06-22T...')
+    try:
+        return datetime.fromisoformat(date_str.replace('Z', '+00:00')).date().isoformat()
+    except:
+        pass
+    
+    # Try RFC 2822 (e.g., 'Mon, 15 Jun 2026 00:00:00 GMT')
+    try:
+        return datetime.strptime(date_str, '%a, %d %b %Y %H:%M:%S %Z').date().isoformat()
+    except:
+        pass
+    
+    # Try the mangled format: 'un 2-06-22' or 'ay 2-05-18'
+    match = re.search(r'(\d{2})-(\d{2})-(\d{2})$', date_str)
+    if match:
+        month = match.group(1)
+        day = match.group(2)
+        year = '20' + match.group(3)
+        return f"{year}-{month}-{day}"
+    
+    # Fallback to today
+    return datetime.now().date().isoformat()
+
 
 def allowed_file(filename):
     """Check if file extension is allowed for accessory images"""
@@ -7577,79 +7653,40 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         })
     return result
 
-
 @app.route('/api/accounting/bank-transactions', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def accounting_get_bank_transactions():
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
         search = request.args.get('search', '').strip()
         unprocessed_only = request.args.get('unprocessed_only', 'false').lower() == 'true'
+        source_type = request.args.get('source_type')  # or 'all'
+        if source_type == 'all':
+            source_type = None
 
-        all_tx = fetch_bank_transactions(date_from, date_to)
-
-        if search:
-            search_lower = search.lower()
-            all_tx = [tx for tx in all_tx if search_lower in tx['description'].lower()]
-
-        conn = get_db()
-        cursor = conn.cursor()
-
-        # Get processed IDs and their account_id
-        cursor.execute('''
-            SELECT je.source_id, jl.account_id
-            FROM journal_entries je
-            JOIN journal_lines jl ON jl.journal_entry_id = je.id
-            WHERE je.source_type = 'plaid_transaction'
-              AND jl.account_id != (SELECT id FROM accounts WHERE code = '1010')
-        ''')
-        processed_map = {}
-        for row in cursor.fetchall():
-            processed_map[row['source_id']] = row['account_id']
-        conn.close()
-
-        # Mark each transaction
-        for tx in all_tx:
-            tx['processed'] = tx['id'] in processed_map
-            if tx['processed']:
-                tx['account_id'] = processed_map[tx['id']]
-            else:
-                tx['account_id'] = None
-
-        if unprocessed_only:
-            all_tx = [tx for tx in all_tx if not tx['processed']]
-
-        all_tx.sort(key=lambda x: x['date'], reverse=True)
-        total = len(all_tx)
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated = all_tx[start:end]
-
-        total_count = len(all_tx)
-        unprocessed_count = len([tx for tx in all_tx if not tx['processed']])
+        transactions = get_transactions_matching_filter(search, unprocessed_only, source_type)
+        total = len(transactions)
+        unprocessed_count = len([tx for tx in transactions if not tx['processed']])
 
         return jsonify({
             'status': 'success',
-            'transactions': paginated,
+            'transactions': transactions,
             'total': total,
-            'page': page,
-            'per_page': per_page,
-            'total_count': total_count,
+            'total_count': total,
             'unprocessed_count': unprocessed_count
         })
     except Exception as e:
         app.logger.error(f"Error fetching bank transactions: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/accounting/bank/apply-multiple', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def apply_multiple():
-    """Apply multiple transactions to their respective accounts in one go."""
+    """Apply multiple transactions to their respective accounts in one go.
+       Positive amount = expense, negative = income.
+    """
     data = request.json
     updates = data.get('updates', [])
     if not updates:
@@ -7668,9 +7705,9 @@ def apply_multiple():
         return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
     cash_id = cash_row['id']
 
-    # Fetch all Plaid transactions for the last 90 days
+    # Fetch all Plaid transactions for the last 90 days (or a wider range)
     try:
-        all_tx = fetch_bank_transactions(date_from=(datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'))
+        all_tx = fetch_bank_transactions(date_from=(datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d'))
     except Exception as e:
         conn.close()
         return jsonify({'status': 'error', 'error': f'Failed to fetch transactions: {str(e)}'}), 500
@@ -7689,8 +7726,13 @@ def apply_multiple():
             continue
 
         amount = tx['amount']
-        date = tx['date']
+        date_raw = tx['date']
         description = tx['description']
+
+        # ---------- DATE PARSING ----------
+        date_str = parse_plaid_date(date_raw)
+        if not date_str:
+            date_str = datetime.now().date().isoformat()
 
         # Check if already processed
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
@@ -7705,22 +7747,24 @@ def apply_multiple():
             cursor.execute('''
                 INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                 VALUES (?, ?, ?, ?)
-            ''', (date, f"Bank transaction: {description}", 'plaid_transaction', str(transaction_id)))
+            ''', (date_str, f"Bank transaction: {description}", 'plaid_transaction', str(transaction_id)))
             entry_id = cursor.lastrowid
 
-        amount_cents = int(round(amount * 100))
-        if amount_cents < 0:
-            # Expense: debit account, credit cash
+        amount_cents = int(round(abs(amount) * 100))
+        is_expense = amount > 0   # Positive = expense
+
+        if is_expense:
+            # Withdrawal: Debit account, Credit cash
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, abs(amount_cents), 0))
+            ''', (entry_id, account_id, amount_cents, 0))
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, 0, abs(amount_cents)))
+            ''', (entry_id, cash_id, 0, amount_cents))
         else:
-            # Income: debit cash, credit account
+            # Deposit: Debit cash, Credit account
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
@@ -7741,6 +7785,7 @@ def apply_multiple():
         'errors': errors if errors else None,
         'message': f'Processed {processed} transactions' + (f', errors: {len(errors)}' if errors else '')
     })
+
 
 @app.route('/api/accounting/monthly-performance', methods=['GET'])
 @login_required
@@ -7943,11 +7988,14 @@ def cash_flow():
         'net': net_arr
     })
 
+
 @app.route('/api/accounting/cash-flow-detail', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def cash_flow_detail():
-    """Monthly cash flow breakdown by account: positive = inflow, negative = outflow."""
+    """Monthly cash flow breakdown by account: positive = inflow, negative = outflow.
+       Excludes order entries so only bank transactions appear.
+    """
     start = request.args.get('start')  # YYYY-MM
     end = request.args.get('end')      # YYYY-MM
     if not start or not end:
@@ -7977,6 +8025,7 @@ def cash_flow_detail():
         JOIN accounts a ON a.id = jl.account_id
         WHERE a.type IN ('revenue', 'expense')
           AND je.transaction_date >= ? AND je.transaction_date <= ?
+          AND je.source_type != 'order'   -- <-- EXCLUDE ORDER ENTRIES
         GROUP BY month, a.id
         ORDER BY month, a.type DESC, a.name
     ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
@@ -8013,11 +8062,14 @@ def accounting_bank_sync():
     # Just return success; the GET will fetch fresh data
     return jsonify({'status': 'success', 'message': 'Sync triggered'})
 
+
 @app.route('/api/accounting/bank/apply-filter', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def accounting_apply_filter():
-    """Apply a list of transactions to an account, creating journal entries."""
+    """Apply a list of transactions to an account, creating or replacing journal entries.
+       Always processes every transaction – if an entry exists, it is updated.
+    """
     try:
         data = request.json
         transactions = data.get('transactions', [])
@@ -8047,7 +8099,6 @@ def accounting_apply_filter():
         cash_id = cash_row['id']
 
         processed_count = 0
-        skipped_count = 0
         error_count = 0
         created_entries = []
 
@@ -8055,84 +8106,64 @@ def accounting_apply_filter():
             try:
                 tx_id = tx.get('id')
                 amount = tx.get('amount', 0)
-                date = tx.get('date')
+                date_raw = tx.get('date')
                 description = tx.get('description', '')
 
-                if not tx_id or amount == 0 or not date:
-                    skipped_count += 1
+                if not tx_id or amount == 0 or not date_raw:
+                    error_count += 1
                     continue
 
-                # Check if already processed (by source_id)
+                # ---------- DATE PARSING ----------
+                date_str = parse_plaid_date(date_raw)
+                if not date_str:
+                    app.logger.warning(f"Could not parse date {date_raw} for tx {tx_id}, using today")
+                    date_str = datetime.now().date().isoformat()
+
+                amount_cents = int(round(abs(amount) * 100))
+                is_expense = amount > 0   # Positive = withdrawal (expense)
+
+                # Check if already processed
                 cursor.execute('''
                     SELECT id FROM journal_entries
                     WHERE source_type IN ('bank_transaction', 'plaid_transaction') AND source_id = ?
                 ''', (str(tx_id),))
-                if cursor.fetchone():
-                    skipped_count += 1
-                    continue
+                existing = cursor.fetchone()
 
-                amount_cents = int(round(abs(amount) * 100))
-                is_expense = amount < 0  # Negative amount = expense (withdrawal)
-                
-                # Create journal entry
-                entry_description = f"Bank transaction: {description}"
-                cursor.execute('''
-                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (date, entry_description, 'bank_transaction', str(tx_id)))
-                entry_id = cursor.lastrowid
-
-                # Check if the selected account is an expense type
-                is_expense_account = account['type'] == 'expense'
-                
-                if is_expense:
-                    # This is a withdrawal (expense)
-                    if is_expense_account:
-                        # For expense accounts: Debit expense, Credit cash
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, account_id, amount_cents, 0))
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, cash_id, 0, amount_cents))
-                        app.logger.info(f"Expense: Debit {account['name']} ${amount_cents/100:.2f}, Credit Cash ${amount_cents/100:.2f}")
-                    else:
-                        # For non-expense accounts with negative amount
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, cash_id, amount_cents, 0))
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, account_id, 0, amount_cents))
-                        app.logger.info(f"Credit account: Debit Cash ${amount_cents/100:.2f}, Credit {account['name']} ${amount_cents/100:.2f}")
+                if existing:
+                    # Entry exists – delete its old lines
+                    cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                    entry_id = existing['id']
                 else:
-                    # This is a deposit (income)
-                    if is_expense_account:
-                        # If depositing to an expense account
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, account_id, 0, amount_cents))
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, cash_id, amount_cents, 0))
-                        app.logger.info(f"Expense refund: Debit Cash ${amount_cents/100:.2f}, Credit {account['name']} ${amount_cents/100:.2f}")
-                    else:
-                        # For income/revenue accounts: Debit cash, Credit income
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, cash_id, amount_cents, 0))
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, account_id, 0, amount_cents))
-                        app.logger.info(f"Income: Debit Cash ${amount_cents/100:.2f}, Credit {account['name']} ${amount_cents/100:.2f}")
+                    # Create new entry
+                    cursor.execute('''
+                        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                        VALUES (?, ?, ?, ?)
+                    ''', (date_str, f"Bank transaction: {description}", 'bank_transaction', str(tx_id)))
+                    entry_id = cursor.lastrowid
+
+                # Insert the new lines for this entry
+                if is_expense:
+                    # Withdrawal: Debit expense, Credit cash
+                    cursor.execute('''
+                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                        VALUES (?, ?, ?, ?)
+                    ''', (entry_id, account_id, amount_cents, 0))
+                    cursor.execute('''
+                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                        VALUES (?, ?, ?, ?)
+                    ''', (entry_id, cash_id, 0, amount_cents))
+                    app.logger.info(f"Expense: Debit {account['name']} ${amount_cents/100:.2f}, Credit Cash ${amount_cents/100:.2f}")
+                else:
+                    # Deposit: Debit cash, Credit account
+                    cursor.execute('''
+                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                        VALUES (?, ?, ?, ?)
+                    ''', (entry_id, cash_id, amount_cents, 0))
+                    cursor.execute('''
+                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                        VALUES (?, ?, ?, ?)
+                    ''', (entry_id, account_id, 0, amount_cents))
+                    app.logger.info(f"Income: Debit Cash ${amount_cents/100:.2f}, Credit {account['name']} ${amount_cents/100:.2f}")
 
                 created_entries.append({
                     'entry_id': entry_id,
@@ -8144,20 +8175,19 @@ def accounting_apply_filter():
                     'description': description
                 })
                 processed_count += 1
+                conn.commit()
 
             except Exception as e:
                 app.logger.error(f"Error processing transaction {tx.get('id')}: {str(e)}")
                 error_count += 1
                 continue
 
-        conn.commit()
         conn.close()
 
         return jsonify({
             'status': 'success',
-            'message': f'Applied {processed_count} transactions to {account["name"]}. Skipped {skipped_count} already processed.',
+            'message': f'Applied {processed_count} transactions to {account["name"]}. Errors: {error_count}',
             'count': processed_count,
-            'skipped': skipped_count,
             'errors': error_count,
             'account': {
                 'id': account['id'],
@@ -8770,6 +8800,118 @@ def search_records_by_barcode():
         app.logger.error(f"Error searching records by barcode: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/accounting/bank/apply-filter-bulk', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_apply_filter_bulk():
+    """
+    Applies a target account to ALL transactions matching the given filter.
+    The filter parameters are passed directly, ensuring the set is identical to the table.
+    """
+    data = request.json
+    search = data.get('search', '').strip()
+    unprocessed_only = data.get('unprocessed_only', True)
+    source_type = data.get('source_type')  # None or 'plaid'/'historic'
+    account_id = data.get('account_id')
+
+    if not account_id:
+        return jsonify({'status': 'error', 'error': 'account_id required'}), 400
+
+    # Get the matching transactions using the helper
+    transactions = get_transactions_matching_filter(search, unprocessed_only, source_type)
+
+    if not transactions:
+        return jsonify({'status': 'success', 'message': 'No transactions match the filter.', 'count': 0})
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get account details
+    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
+    account = cursor.fetchone()
+    if not account:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+
+    # Get cash account (1010)
+    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+    cash_row = cursor.fetchone()
+    if not cash_row:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Cash account not found'}), 500
+    cash_id = cash_row['id']
+
+    processed_count = 0
+    for tx in transactions:
+        try:
+            tx_id = tx['id']
+            amount = tx['amount']
+            date_raw = tx['date']
+            description = tx.get('description', '')
+
+            # Parse date
+            date_str = parse_plaid_date(date_raw) if date_raw else datetime.now().date().isoformat()
+            if not date_str:
+                date_str = datetime.now().date().isoformat()
+
+            amount_cents = int(round(abs(amount) * 100))
+            is_expense = amount > 0   # Positive = withdrawal
+
+            # Check if already processed
+            source_type_for_check = 'plaid_transaction' if str(tx_id).startswith('plaid_') else 'bank_transaction'
+            cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
+                           (source_type_for_check, str(tx_id)))
+            existing = cursor.fetchone()
+
+            if existing:
+                # Delete old lines
+                cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                entry_id = existing['id']
+            else:
+                # Create new entry
+                cursor.execute('''
+                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (date_str, f"Bank transaction: {description}", 'bank_transaction', str(tx_id)))
+                entry_id = cursor.lastrowid
+
+            # Insert new lines
+            if is_expense:
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, account_id, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, cash_id, 0, amount_cents))
+            else:
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, cash_id, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, account_id, 0, amount_cents))
+
+            conn.commit()
+            processed_count += 1
+        except Exception as e:
+            app.logger.error(f"Error processing transaction {tx.get('id')}: {str(e)}")
+            continue
+
+    conn.close()
+
+    return jsonify({
+        'status': 'success',
+        'message': f'Applied {processed_count} transactions to {account["name"]}.',
+        'count': processed_count
+    })
+
+
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

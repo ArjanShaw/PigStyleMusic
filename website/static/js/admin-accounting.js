@@ -1,16 +1,11 @@
 // ============================================================
-// admin-accounting.js – Accounting Module
+// admin-accounting.js – Accounting Module (Filter-based Bulk Apply)
 // ============================================================
 
 let journalCurrentPage = 1;
 const journalPageSize = 20;
 let journalTotalEntries = 0;
 let currentReportData = null;
-
-// Bank transactions pagination
-let bankCurrentPage = 1;
-const bankPageSize = 20;
-let bankTotalEntries = 0;
 
 // Account Transactions pagination
 let accountTxCurrentPage = 1;
@@ -20,7 +15,7 @@ let accountTxTotalEntries = 0;
 // Global list of accounts for bank dropdowns
 let bankAccounts = [];
 
-// Monthly charts – store chart instances and their data for click handling
+// Monthly charts
 let monthlyChartsData = [];
 
 // ============================================================
@@ -126,15 +121,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
-    // Pagination for bank transactions
-    document.getElementById('bank-prev')?.addEventListener('click', () => {
-        if (bankCurrentPage > 1) { bankCurrentPage--; loadBankTransactions(); }
-    });
-    document.getElementById('bank-next')?.addEventListener('click', () => {
-        const totalPages = Math.ceil(bankTotalEntries / bankPageSize);
-        if (bankCurrentPage < totalPages) { bankCurrentPage++; loadBankTransactions(); }
-    });
-
     // Pagination for account transactions
     document.getElementById('account-tx-prev')?.addEventListener('click', () => {
         if (accountTxCurrentPage > 1) { accountTxCurrentPage--; loadAccountTransactions(); }
@@ -154,21 +140,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load accounts into dropdowns
     loadAccountSelects();
 
-    // Load default date range for reports, bank, and account transactions
+    // Load default date range for reports and account transactions
     const today = new Date().toISOString().split('T')[0];
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     document.getElementById('report-date-from').value = firstDay;
     document.getElementById('report-date-to').value = today;
     document.getElementById('manual-date').value = today;
-    document.getElementById('bank-date-from').value = firstDay;
-    document.getElementById('bank-date-to').value = today;
     document.getElementById('account-tx-date-from').value = firstDay;
     document.getElementById('account-tx-date-to').value = today;
 
     // Load dashboard by default
     loadDashboard();
 
-    // ---- Handle OAuth redirect from Plaid (fallback) ----
+    // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
     const publicToken = urlParams.get('public_token');
     if (publicToken) {
@@ -797,7 +781,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (unchanged)
+// BANK TRANSACTIONS (with filter-based bulk apply)
 // ============================================================
 
 async function checkBankConnection() {
@@ -870,12 +854,9 @@ async function loadBankTransactions() {
     body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const params = new URLSearchParams();
-    params.append('page', bankCurrentPage);
-    params.append('per_page', bankPageSize);
-    const from = document.getElementById('bank-date-from').value;
-    const to = document.getElementById('bank-date-to').value;
-    if (from) params.append('date_from', from);
-    if (to) params.append('date_to', to);
+    params.append('page', 1);
+    params.append('per_page', 999999);
+    
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
 
@@ -901,10 +882,12 @@ async function loadBankTransactions() {
         if (!res.ok) throw new Error('Failed to load bank transactions');
         const data = await res.json();
         if (data.status === 'success') {
-            bankTotalEntries = data.total || data.transactions?.length || 0;
-            renderBankTransactions(data.transactions || []);
-            updateBankPagination();
-            updateBankCounts(data.unprocessed_count || 0, data.total_count || 0);
+            const transactions = data.transactions || [];
+            renderBankTransactions(transactions);
+            const total = data.total_count || transactions.length;
+            const unprocessed = data.unprocessed_count || 0;
+            updateBankCounts(unprocessed, total);
+            document.getElementById('bank-pagination-info').textContent = `Showing ${transactions.length} entries (${total} total)`;
         } else {
             body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
@@ -952,20 +935,12 @@ function renderBankTransactions(transactions) {
     body.innerHTML = html;
 }
 
-function updateBankPagination() {
-    const totalPages = Math.ceil(bankTotalEntries / bankPageSize);
-    document.getElementById('bank-pagination-info').textContent = `Showing ${bankTotalEntries} entries (Page ${bankCurrentPage} of ${totalPages || 1})`;
-    document.getElementById('bank-prev').disabled = bankCurrentPage <= 1;
-    document.getElementById('bank-next').disabled = bankCurrentPage >= totalPages || totalPages === 0;
-    document.getElementById('bank-page-info').textContent = `Page ${bankCurrentPage}`;
-}
-
 function updateBankCounts(unprocessed, total) {
-    const showAll = document.getElementById('bank-show-all')?.checked || false;
     const countEl = document.getElementById('bank-unprocessed-count');
     const labelEl = document.getElementById('bank-count-label');
     const totalEl = document.getElementById('bank-total-count');
 
+    const showAll = document.getElementById('bank-show-all')?.checked || false;
     if (showAll) {
         countEl.textContent = total;
         labelEl.textContent = ' transactions';
@@ -978,12 +953,14 @@ function updateBankCounts(unprocessed, total) {
 }
 
 function toggleBankShowAll() {
-    bankCurrentPage = 1;
     loadBankTransactions();
 }
 
 function bankSourceFilterChanged() {
-    bankCurrentPage = 1;
+    loadBankTransactions();
+}
+
+function refreshBankTable() {
     loadBankTransactions();
 }
 
@@ -1009,14 +986,15 @@ async function syncBankTransactions() {
 }
 
 function resetBankFilters() {
-    document.getElementById('bank-date-from').value = '';
-    document.getElementById('bank-date-to').value = '';
     document.getElementById('bank-filter').value = '';
     document.getElementById('bank-show-all').checked = false;
     document.getElementById('bank-source-filter').value = 'all';
-    bankCurrentPage = 1;
     loadBankTransactions();
 }
+
+// ============================================================
+// APPLY ALL (per-row selections – unchanged)
+// ============================================================
 
 async function applyAllSelections() {
     const selects = document.querySelectorAll('#bank-body .tx-account-select');
@@ -1056,6 +1034,10 @@ async function applyAllSelections() {
     }
 }
 
+// ============================================================
+// BULK APPLY – sends the filter, not a list of IDs
+// ============================================================
+
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
     const accountSelect = document.getElementById('bank-apply-account');
@@ -1073,58 +1055,31 @@ async function applyFilterToTransactions() {
         return;
     }
 
-    statusSpan.textContent = '⏳ Fetching transactions...';
+    const showAll = document.getElementById('bank-show-all')?.checked || false;
+    const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
+
+    statusSpan.textContent = '⏳ Applying...';
+
     try {
-        const params = new URLSearchParams();
-        params.append('per_page', 9999);
-        params.append('search', pattern);
-        const from = document.getElementById('bank-date-from').value;
-        const to = document.getElementById('bank-date-to').value;
-        if (from) params.append('date_from', from);
-        if (to) params.append('date_to', to);
-        params.append('unprocessed_only', 'true');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        if (data.status !== 'success') {
-            statusSpan.textContent = '❌ Failed to fetch transactions: ' + (data.error || 'Unknown');
-            return;
-        }
-        const transactions = data.transactions || [];
-        if (transactions.length === 0) {
-            statusSpan.textContent = 'ℹ️ No unprocessed transactions found matching the filter.';
-            return;
-        }
-
-        const confirmMsg = `Found ${transactions.length} unprocessed transaction(s) matching "${pattern}". Apply them to account "${accountSelect.options[accountSelect.selectedIndex].text}"?`;
-        if (!confirm(confirmMsg)) {
-            statusSpan.textContent = '⏹️ Cancelled.';
-            return;
-        }
-
-        statusSpan.textContent = '⏳ Applying...';
-        const applyRes = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter`, {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter-bulk`, {
             method: 'POST',
             credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                transactions: transactions.map(t => ({
-                    id: t.id,
-                    date: t.date,
-                    amount: t.amount,
-                    description: t.description
-                })),
+                search: pattern,
+                unprocessed_only: !showAll,
+                source_type: sourceFilter === 'all' ? null : sourceFilter,
                 account_id: accountId
             })
         });
-        const applyData = await applyRes.json();
-        if (applyData.status === 'success') {
-            statusSpan.textContent = `✅ ${applyData.message}`;
+
+        const data = await res.json();
+        if (data.status === 'success') {
+            statusSpan.textContent = `✅ ${data.message}`;
+            // Auto-refresh the table with the same filter
             loadBankTransactions();
         } else {
-            statusSpan.textContent = '❌ Error: ' + (applyData.error || 'Failed');
+            statusSpan.textContent = '❌ Error: ' + (data.error || 'Unknown');
         }
     } catch (e) {
         statusSpan.textContent = '❌ Error: ' + e.message;
@@ -1420,7 +1375,7 @@ function closeMonthlyModal() {
     document.getElementById('monthly-tx-modal').classList.remove('active');
 }
 
-function showMonthlyTransactions(month, accountId, accountName) {
+function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false) {
     const modal = document.getElementById('monthly-tx-modal');
     const body = document.getElementById('modal-body');
     const title = document.getElementById('modal-title');
@@ -1428,7 +1383,12 @@ function showMonthlyTransactions(month, accountId, accountName) {
     body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
     modal.classList.add('active');
 
-    fetch(`${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}&account_id=${accountId}`, {
+    let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}&account_id=${accountId}`;
+    if (excludeOrders) {
+        url += '&exclude_orders=true';
+    }
+
+    fetch(url, {
         credentials: 'include',
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
     })
@@ -1489,7 +1449,6 @@ async function loadCashFlow() {
         return;
     }
 
-    // Ensure bankAccounts is loaded for mapping
     if (bankAccounts.length === 0) {
         await loadBankAccountsForRowDropdowns();
     }
@@ -1525,7 +1484,6 @@ function renderCashFlowCharts(data) {
         return;
     }
 
-    // Collect all unique account names
     const allAccounts = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1533,7 +1491,6 @@ function renderCashFlowCharts(data) {
     });
     const accountNames = Array.from(allAccounts).sort();
 
-    // Build robust account name -> ID mapping (normalized)
     const accountNameToId = {};
     bankAccounts.forEach(acc => {
         const trimmed = acc.name.trim();
@@ -1542,7 +1499,6 @@ function renderCashFlowCharts(data) {
         accountNameToId[trimmed] = acc.id;
     });
 
-    // Determine global max absolute value for y-axis
     let globalMax = 0;
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1553,7 +1509,6 @@ function renderCashFlowCharts(data) {
     });
     const yMax = Math.ceil(globalMax / 500) * 500 || 100;
 
-    // Destroy old charts
     if (window._cashFlowCharts) {
         window._cashFlowCharts.forEach(chart => chart.destroy());
     }
@@ -1564,7 +1519,6 @@ function renderCashFlowCharts(data) {
         const values = accountNames.map(acc => monthData[acc] || 0);
         const labels = accountNames;
 
-        // Create card
         const card = document.createElement('div');
         card.className = 'monthly-chart-card';
         card.innerHTML = `<h4>${month}</h4><canvas id="cash-flow-chart-${idx}"></canvas>`;
@@ -1573,7 +1527,6 @@ function renderCashFlowCharts(data) {
         const canvas = card.querySelector('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Bar colors based on sign
         const barColors = values.map(v => v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)');
         const borderColors = values.map(v => v >= 0 ? '#28a745' : '#dc3545');
 
@@ -1626,7 +1579,6 @@ function renderCashFlowCharts(data) {
                     const amount = this.data.datasets[0].data[index];
                     if (Math.abs(amount) < 0.01) return;
 
-                    // Normalized lookup
                     const trimmed = accountName.trim();
                     const norm = trimmed.toLowerCase();
                     let accountId = accountNameToId[norm] || accountNameToId[trimmed];
@@ -1634,7 +1586,7 @@ function renderCashFlowCharts(data) {
                         alert('Account not found: ' + accountName);
                         return;
                     }
-                    showMonthlyTransactions(month, accountId, accountName);
+                    showMonthlyTransactions(month, accountId, accountName, true);
                 }
             }
         });

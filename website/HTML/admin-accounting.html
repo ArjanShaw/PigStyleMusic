@@ -21,7 +21,7 @@
         .sub-tab-content { display: none; background: white; padding: 20px; border-radius: 0 8px 8px 8px; border: 1px solid #ddd; border-top: none; }
         .sub-tab-content.active { display: block; }
 
-        /* ====== OTHER STYLES (unchanged) ====== */
+        /* ====== OTHER STYLES ====== */
         .accounting-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .accounting-stat-card { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #007bff; }
         .accounting-stat-card .stat-value { font-size: 28px; font-weight: bold; color: #007bff; }
@@ -183,7 +183,7 @@
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
 
-            <!-- ====== DASHBOARD (unchanged) ====== -->
+            <!-- ====== DASHBOARD ====== -->
             <div id="sub-dashboard" class="sub-tab-content active">
                 <div class="accounting-stats" id="dashboard-stats">
                     <div class="accounting-stat-card success"><div class="stat-value" id="dash-revenue">$0.00</div><div class="stat-label">Revenue (This Month)</div></div>
@@ -201,7 +201,7 @@
                 </div>
             </div>
 
-            <!-- ====== JOURNAL (unchanged) ====== -->
+            <!-- ====== JOURNAL ====== -->
             <div id="sub-journal" class="sub-tab-content">
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
                     <div class="form-group"><label>Account</label><select id="journal-account-filter"><option value="">All Accounts</option></select></div>
@@ -222,7 +222,7 @@
                 </div>
             </div>
 
-            <!-- ====== ACCOUNT TRANSACTIONS (unchanged) ====== -->
+            <!-- ====== ACCOUNT TRANSACTIONS ====== -->
             <div id="sub-account-transactions" class="sub-tab-content">
                 <h4><i class="fas fa-receipt"></i> Account Transactions</h4>
                 <p class="text-muted">View all journal entries filtered by account. Select an account to see its transaction history.</p>
@@ -249,13 +249,13 @@
                 </div>
             </div>
 
-            <!-- ====== ADJUSTMENTS (unchanged) ====== -->
+            <!-- ====== ADJUSTMENTS ====== -->
             <div id="sub-adjustments" class="sub-tab-content">
                 <h4><i class="fas fa-pencil-alt"></i> Post a Manual Journal Entry</h4>
                 <p class="text-muted">Use this for inventory write‑offs, initial seed, cash register adjustments, etc.</p>
                 <div style="background:#f8f9fa; padding:20px; border-radius:8px; margin-top:15px;">
                     <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
-                        <div class="form-group"><label>Date</label><input type="date" id="manual-date" value="2026-06-16"></div>
+                        <div class="form-group"><label>Date</label><input type="date" id="manual-date" value="2026-06-23"></div>
                         <div class="form-group" style="flex:2;"><label>Description</label><input type="text" id="manual-description" placeholder="e.g., Write-off damaged record #123" style="width:100%;"></div>
                     </div>
                     <div id="manual-lines-container">
@@ -272,7 +272,7 @@
                 </div>
             </div>
 
-            <!-- ====== RECONCILIATION (unchanged) ====== -->
+            <!-- ====== RECONCILIATION ====== -->
             <div id="sub-reconcile" class="sub-tab-content">
                 <h4><i class="fas fa-handshake"></i> Bank Reconciliation</h4>
                 <p class="text-muted">Upload your bank statement (CSV) and match deposits to expected payments.</p>
@@ -298,7 +298,7 @@
                 <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
 
-            <!-- ====== BANK (unchanged) ====== -->
+            <!-- ====== BANK (no pagination, with Refresh button) ====== -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
                 <p class="text-muted">Select an account for each transaction, then click <strong>Apply All</strong> to process all at once.</p>
@@ -313,16 +313,28 @@
                         <label class="toggle-label"><input type="checkbox" id="bank-show-all" onchange="toggleBankShowAll()"><span>Show all transactions</span></label>
                     </div>
                 </div>
+                <!-- Filter + Refresh + Bulk Apply -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
-                    <div class="form-group" style="flex:2;"><label>Filter by description</label><input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM"></div>
-                    <div class="form-group"><label>Bulk apply to account</label><select id="bank-apply-account"><option value="">Select Account</option></select></div>
-                    <div class="form-group" style="flex:0 0 auto;"><label>&nbsp;</label><button class="btn btn-warning" onclick="applyFilterToTransactions()"><i class="fas fa-tag"></i> Bulk Apply</button></div>
+                    <div class="form-group" style="flex:2;">
+                        <label>Filter by description</label>
+                        <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-primary" onclick="refreshBankTable()"><i class="fas fa-sync-alt"></i> Refresh</button>
+                    </div>
+                    <div class="form-group">
+                        <label>Bulk apply to account</label>
+                        <select id="bank-apply-account"><option value="">Select Account</option></select>
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-warning" onclick="applyFilterToTransactions()"><i class="fas fa-tag"></i> Bulk Apply</button>
+                    </div>
                     <span id="filter-apply-status" class="text-muted"></span>
                 </div>
+                <!-- Action buttons without date filters -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
-                    <div class="form-group"><label>Date From</label><input type="date" id="bank-date-from"></div>
-                    <div class="form-group"><label>Date To</label><input type="date" id="bank-date-to"></div>
-                    <button class="btn btn-primary" onclick="loadBankTransactions()"><i class="fas fa-search"></i> Filter</button>
                     <button class="btn btn-secondary" onclick="resetBankFilters()"><i class="fas fa-undo"></i> Reset</button>
                     <button class="btn btn-success" onclick="syncBankTransactions()"><i class="fas fa-sync-alt"></i> Sync Now</button>
                     <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply All</button>
@@ -334,13 +346,13 @@
                         <tbody id="bank-body"><tr><td colspan="6" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
                     </table>
                 </div>
-                <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
+                <!-- No pagination – just total count -->
+                <div style="margin-top:15px;">
                     <span id="bank-pagination-info">Showing 0 entries</span>
-                    <div><button class="btn btn-sm btn-secondary" id="bank-prev" disabled>Prev</button><span id="bank-page-info">Page 1</span><button class="btn btn-sm btn-secondary" id="bank-next" disabled>Next</button></div>
                 </div>
             </div>
 
-            <!-- ====== REPORTS (unchanged) ====== -->
+            <!-- ====== REPORTS ====== -->
             <div id="sub-reports" class="sub-tab-content">
                 <h4><i class="fas fa-chart-pie"></i> Financial Reports</h4>
                 <div class="report-selector">
@@ -353,7 +365,7 @@
                 <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
             </div>
 
-            <!-- ====== MONTHLY (unchanged) ====== -->
+            <!-- ====== MONTHLY ====== -->
             <div id="sub-monthly" class="sub-tab-content">
                 <h4><i class="fas fa-chart-line"></i> Monthly Performance</h4>
                 <p class="text-muted">Select a month range to see a breakdown bar chart for each month. Click any bar to see the underlying transactions.</p>
@@ -367,7 +379,7 @@
                 </div>
             </div>
 
-            <!-- ====== NEW: CASH FLOW DETAIL SUBTAB ====== -->
+            <!-- ====== CASH FLOW ====== -->
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
                 <p class="text-muted">Positive bars = cash inflows (revenue), negative bars = cash outflows (expenses). Click any bar to see the underlying transactions.</p>
@@ -381,7 +393,7 @@
                 </div>
             </div>
 
-            <!-- ====== ORDERS (unchanged) ====== -->
+            <!-- ====== ORDERS ====== -->
             <div id="sub-orders" class="sub-tab-content">
                 <h2><i class="fas fa-shopping-bag"></i> Order Management</h2>
                 <div class="stats-grid" style="margin-bottom:20px;">
@@ -442,6 +454,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=2"></script>
+    <script src="/static/js/admin-accounting.js?v=4"></script>
 </body>
 </html>
