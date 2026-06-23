@@ -7863,6 +7863,149 @@ def monthly_account_transactions():
     })
 
 
+@app.route('/api/accounting/cash-flow', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def cash_flow():
+    """Monthly cash inflows and outflows from bank transactions."""
+    start = request.args.get('start')  # YYYY-MM
+    end = request.args.get('end')      # YYYY-MM
+    if not start or not end:
+        return jsonify({'status': 'error', 'error': 'start and end months required'}), 400
+
+    from datetime import datetime, timedelta
+    start_date = datetime.strptime(start + '-01', '%Y-%m-%d')
+    end_date = datetime.strptime(end + '-01', '%Y-%m-%d')
+    if end_date.month == 12:
+        end_date = end_date.replace(year=end_date.year+1, month=1, day=1) - timedelta(days=1)
+    else:
+        end_date = end_date.replace(month=end_date.month+1, day=1) - timedelta(days=1)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get all bank account IDs (asset accounts with code 1010, 1020, 1025, or name like 'Bank')
+    cursor.execute('''
+        SELECT id FROM accounts
+        WHERE type = 'asset' AND (code IN ('1010', '1020', '1025') OR name LIKE '%Bank%' OR name LIKE '%Cash%')
+    ''')
+    bank_ids = [row['id'] for row in cursor.fetchall()]
+    if not bank_ids:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'No bank accounts found'}), 400
+
+    placeholders = ','.join('?' for _ in bank_ids)
+
+    # For each month, sum debit_amount (inflows) and credit_amount (outflows)
+    cursor.execute(f'''
+        SELECT
+            strftime('%Y-%m', je.transaction_date) as month,
+            COALESCE(SUM(jl.debit_amount), 0) / 100.0 as cash_in,
+            COALESCE(SUM(jl.credit_amount), 0) / 100.0 as cash_out
+        FROM journal_lines jl
+        JOIN journal_entries je ON je.id = jl.journal_entry_id
+        WHERE jl.account_id IN ({placeholders})
+          AND je.transaction_date >= ? AND je.transaction_date <= ?
+        GROUP BY month
+        ORDER BY month
+    ''', bank_ids + [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')])
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Build month list
+    months = []
+    current = datetime.strptime(start + '-01', '%Y-%m-%d')
+    while current <= end_date:
+        months.append(current.strftime('%Y-%m'))
+        if current.month == 12:
+            current = current.replace(year=current.year+1, month=1, day=1)
+        else:
+            current = current.replace(month=current.month+1, day=1)
+
+    # Map results
+    data = {row['month']: {'cash_in': row['cash_in'], 'cash_out': row['cash_out']} for row in rows}
+
+    cash_in_arr = []
+    cash_out_arr = []
+    net_arr = []
+    for m in months:
+        ci = data.get(m, {}).get('cash_in', 0)
+        co = data.get(m, {}).get('cash_out', 0)
+        cash_in_arr.append(ci)
+        cash_out_arr.append(co)
+        net_arr.append(ci - co)
+
+    return jsonify({
+        'status': 'success',
+        'months': months,
+        'cash_in': cash_in_arr,
+        'cash_out': cash_out_arr,
+        'net': net_arr
+    })
+
+@app.route('/api/accounting/cash-flow-detail', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def cash_flow_detail():
+    """Monthly cash flow breakdown by account: positive = inflow, negative = outflow."""
+    start = request.args.get('start')  # YYYY-MM
+    end = request.args.get('end')      # YYYY-MM
+    if not start or not end:
+        return jsonify({'status': 'error', 'error': 'start and end months required'}), 400
+
+    from datetime import datetime, timedelta
+    start_date = datetime.strptime(start + '-01', '%Y-%m-%d')
+    end_date = datetime.strptime(end + '-01', '%Y-%m-%d')
+    if end_date.month == 12:
+        end_date = end_date.replace(year=end_date.year+1, month=1, day=1) - timedelta(days=1)
+    else:
+        end_date = end_date.replace(month=end_date.month+1, day=1) - timedelta(days=1)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get net credit amount per account per month: credit - debit
+    # For revenue accounts this is positive (inflow), for expenses it's negative (outflow)
+    cursor.execute('''
+        SELECT
+            strftime('%Y-%m', je.transaction_date) as month,
+            a.name,
+            a.type,
+            COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as net_credit
+        FROM journal_lines jl
+        JOIN journal_entries je ON je.id = jl.journal_entry_id
+        JOIN accounts a ON a.id = jl.account_id
+        WHERE a.type IN ('revenue', 'expense')
+          AND je.transaction_date >= ? AND je.transaction_date <= ?
+        GROUP BY month, a.id
+        ORDER BY month, a.type DESC, a.name
+    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Build month list
+    months = []
+    current = datetime.strptime(start + '-01', '%Y-%m-%d')
+    while current <= end_date:
+        months.append(current.strftime('%Y-%m'))
+        if current.month == 12:
+            current = current.replace(year=current.year+1, month=1, day=1)
+        else:
+            current = current.replace(month=current.month+1, day=1)
+
+    # Group by month
+    data = {m: {} for m in months}
+    for row in rows:
+        month = row['month']
+        if month in data:
+            data[month][row['name']] = row['net_credit']
+
+    return jsonify({
+        'status': 'success',
+        'months': months,
+        'account_breakdown': data
+    })
+
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
 @role_required(['admin'])

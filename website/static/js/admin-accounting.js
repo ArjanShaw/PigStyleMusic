@@ -61,7 +61,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const endInput = document.getElementById('monthly-end');
                 if (!startInput.value) startInput.value = startMonth;
                 if (!endInput.value) endInput.value = endMonth;
-                // Ensure bankAccounts are loaded for account lookup
                 if (bankAccounts.length === 0) {
                     loadBankAccountsForRowDropdowns().then(() => {
                         loadMonthlyPerformance();
@@ -69,6 +68,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     loadMonthlyPerformance();
                 }
+            }
+            else if (sub === 'cash-flow') {
+                const now = new Date();
+                const endMonth = now.toISOString().slice(0, 7);
+                const startMonth = '2026-01';
+                const startInput = document.getElementById('cash-flow-start');
+                const endInput = document.getElementById('cash-flow-end');
+                if (!startInput.value) startInput.value = startMonth;
+                if (!endInput.value) endInput.value = endMonth;
+                loadCashFlow();
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
@@ -187,7 +196,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
-// DASHBOARD
+// DASHBOARD (unchanged)
 // ============================================================
 
 async function loadDashboard() {
@@ -243,7 +252,7 @@ async function runAccountingSync() {
 }
 
 // ============================================================
-// ACCOUNT DROPDOWNS
+// ACCOUNT DROPDOWNS (unchanged)
 // ============================================================
 
 async function loadAccountSelects() {
@@ -343,7 +352,7 @@ async function loadAccountTransactionsSelect() {
 }
 
 // ============================================================
-// JOURNAL ENTRIES
+// JOURNAL ENTRIES (unchanged)
 // ============================================================
 
 async function loadJournalEntries() {
@@ -451,7 +460,7 @@ function viewJournalEntry(entryId) {
 }
 
 // ============================================================
-// MANUAL ADJUSTMENTS
+// MANUAL ADJUSTMENTS (unchanged)
 // ============================================================
 
 function addManualLine() {
@@ -562,7 +571,7 @@ async function submitManualEntry() {
 }
 
 // ============================================================
-// RECONCILIATION
+// RECONCILIATION (unchanged)
 // ============================================================
 
 function handleBankUpload(file) {
@@ -704,7 +713,7 @@ function manualMatch(id) {
 }
 
 // ============================================================
-// REPORTS
+// REPORTS (unchanged)
 // ============================================================
 
 async function runReport() {
@@ -788,7 +797,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS
+// BANK TRANSACTIONS (unchanged)
 // ============================================================
 
 async function checkBankConnection() {
@@ -1123,7 +1132,7 @@ async function applyFilterToTransactions() {
 }
 
 // ============================================================
-// ACCOUNT TRANSACTIONS
+// ACCOUNT TRANSACTIONS (unchanged)
 // ============================================================
 
 async function loadAccountTransactions() {
@@ -1262,7 +1271,7 @@ function exportAccountTransactionsCSV() {
 }
 
 // ============================================================
-// MONTHLY PERFORMANCE (with account lookup fix)
+// MONTHLY PERFORMANCE (unchanged)
 // ============================================================
 
 async function loadMonthlyPerformance() {
@@ -1275,7 +1284,6 @@ async function loadMonthlyPerformance() {
         return;
     }
 
-    // Ensure bankAccounts are loaded
     if (bankAccounts.length === 0) {
         await loadBankAccountsForRowDropdowns();
     }
@@ -1311,7 +1319,6 @@ function renderMonthlyCharts(data) {
         return;
     }
 
-    // Collect all unique account names
     const allAccounts = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1319,13 +1326,15 @@ function renderMonthlyCharts(data) {
     });
     const accountNames = Array.from(allAccounts).sort();
 
-    // Build a map from account name to account ID
+    // Build robust account name -> ID mapping (normalized)
     const accountNameToId = {};
     bankAccounts.forEach(acc => {
-        accountNameToId[acc.name] = acc.id;
+        const trimmed = acc.name.trim();
+        const norm = trimmed.toLowerCase();
+        accountNameToId[norm] = acc.id;
+        accountNameToId[trimmed] = acc.id;
     });
 
-    // Global max for Y axis
     let globalMax = 0;
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1338,19 +1347,16 @@ function renderMonthlyCharts(data) {
 
     const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14', '#20c997', '#17a2b8', '#e83e8c', '#6c757d'];
 
-    // Destroy old charts
     if (window._monthlyCharts) {
         window._monthlyCharts.forEach(chart => chart.destroy());
     }
     window._monthlyCharts = [];
 
-    // For each month
     months.forEach((month, idx) => {
         const monthData = account_breakdown[month] || {};
         const values = accountNames.map(acc => monthData[acc] || 0);
         const labels = accountNames;
 
-        // Create card
         const card = document.createElement('div');
         card.className = 'monthly-chart-card';
         card.innerHTML = `<h4>${month}</h4><canvas id="monthly-chart-${idx}"></canvas>`;
@@ -1359,7 +1365,6 @@ function renderMonthlyCharts(data) {
         const canvas = card.querySelector('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Define the chart
         const chart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -1377,27 +1382,12 @@ function renderMonthlyCharts(data) {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => `$${ctx.raw.toFixed(2)}`
-                        }
-                    }
+                    tooltip: { callbacks: { label: (ctx) => `$${ctx.raw.toFixed(2)}` } }
                 },
                 scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: yMax,
-                        ticks: { callback: (val) => '$' + val }
-                    },
-                    x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45,
-                            font: { size: 10 }
-                        }
-                    }
+                    y: { beginAtZero: true, max: yMax, ticks: { callback: (val) => '$' + val } },
+                    x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } } }
                 },
-                // Click handler – uses the accountNameToId map
                 onClick: function(e, elements) {
                     if (elements.length === 0) return;
                     const element = elements[0];
@@ -1405,7 +1395,11 @@ function renderMonthlyCharts(data) {
                     const accountName = this.data.labels[index];
                     const amount = this.data.datasets[0].data[index];
                     if (amount === 0) return;
-                    const accountId = accountNameToId[accountName];
+                    
+                    // Normalized lookup
+                    const trimmed = accountName.trim();
+                    const norm = trimmed.toLowerCase();
+                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
                     if (!accountId) {
                         alert('Account not found: ' + accountName);
                         return;
@@ -1419,7 +1413,7 @@ function renderMonthlyCharts(data) {
 }
 
 // ============================================================
-// MODAL FUNCTIONS
+// MODAL FUNCTIONS (unchanged)
 // ============================================================
 
 function closeMonthlyModal() {
@@ -1479,4 +1473,171 @@ function renderModalTransactions(transactions) {
     html += `<tr class="total-row"><td colspan="4">Total</td><td>$${total.toFixed(2)}</td></tr>`;
     html += '</tbody></table>';
     body.innerHTML = html;
+}
+
+// ============================================================
+// CASH FLOW DETAIL (fixed)
+// ============================================================
+
+async function loadCashFlow() {
+    const startInput = document.getElementById('cash-flow-start');
+    const endInput = document.getElementById('cash-flow-end');
+    const start = startInput.value;
+    const end = endInput.value;
+    if (!start || !end) {
+        alert('Please select both start and end months.');
+        return;
+    }
+
+    // Ensure bankAccounts is loaded for mapping
+    if (bankAccounts.length === 0) {
+        await loadBankAccountsForRowDropdowns();
+    }
+
+    const container = document.getElementById('cash-flow-chart-grid');
+    container.innerHTML = '<p class="monthly-loading">Loading...</p>';
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${start}&end=${end}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to fetch cash flow data');
+        const data = await res.json();
+        if (data.status === 'success') {
+            renderCashFlowCharts(data);
+        } else {
+            container.innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
+        }
+    } catch (err) {
+        container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+        console.error('Cash flow error:', err);
+    }
+}
+
+function renderCashFlowCharts(data) {
+    const { months, account_breakdown } = data;
+    const container = document.getElementById('cash-flow-chart-grid');
+    container.innerHTML = '';
+
+    if (!months || months.length === 0) {
+        container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
+        return;
+    }
+
+    // Collect all unique account names
+    const allAccounts = new Set();
+    months.forEach(m => {
+        const monthData = account_breakdown[m] || {};
+        Object.keys(monthData).forEach(acc => allAccounts.add(acc));
+    });
+    const accountNames = Array.from(allAccounts).sort();
+
+    // Build robust account name -> ID mapping (normalized)
+    const accountNameToId = {};
+    bankAccounts.forEach(acc => {
+        const trimmed = acc.name.trim();
+        const norm = trimmed.toLowerCase();
+        accountNameToId[norm] = acc.id;
+        accountNameToId[trimmed] = acc.id;
+    });
+
+    // Determine global max absolute value for y-axis
+    let globalMax = 0;
+    months.forEach(m => {
+        const monthData = account_breakdown[m] || {};
+        accountNames.forEach(acc => {
+            const val = monthData[acc] || 0;
+            if (Math.abs(val) > globalMax) globalMax = Math.abs(val);
+        });
+    });
+    const yMax = Math.ceil(globalMax / 500) * 500 || 100;
+
+    // Destroy old charts
+    if (window._cashFlowCharts) {
+        window._cashFlowCharts.forEach(chart => chart.destroy());
+    }
+    window._cashFlowCharts = [];
+
+    months.forEach((month, idx) => {
+        const monthData = account_breakdown[month] || {};
+        const values = accountNames.map(acc => monthData[acc] || 0);
+        const labels = accountNames;
+
+        // Create card
+        const card = document.createElement('div');
+        card.className = 'monthly-chart-card';
+        card.innerHTML = `<h4>${month}</h4><canvas id="cash-flow-chart-${idx}"></canvas>`;
+        container.appendChild(card);
+
+        const canvas = card.querySelector('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Bar colors based on sign
+        const barColors = values.map(v => v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)');
+        const borderColors = values.map(v => v >= 0 ? '#28a745' : '#dc3545');
+
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Amount',
+                    data: values,
+                    backgroundColor: barColors,
+                    borderColor: borderColors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const val = ctx.raw;
+                                return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: yMax,
+                        min: -yMax,
+                        ticks: { callback: (val) => '$' + val }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            font: { size: 10 }
+                        }
+                    }
+                },
+                onClick: function(e, elements) {
+                    if (elements.length === 0) return;
+                    const element = elements[0];
+                    const index = element.index;
+                    const accountName = this.data.labels[index];
+                    const amount = this.data.datasets[0].data[index];
+                    if (Math.abs(amount) < 0.01) return;
+
+                    // Normalized lookup
+                    const trimmed = accountName.trim();
+                    const norm = trimmed.toLowerCase();
+                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
+                    if (!accountId) {
+                        alert('Account not found: ' + accountName);
+                        return;
+                    }
+                    showMonthlyTransactions(month, accountId, accountName);
+                }
+            }
+        });
+        window._cashFlowCharts.push(chart);
+    });
 }
