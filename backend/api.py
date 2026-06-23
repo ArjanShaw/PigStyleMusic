@@ -124,10 +124,10 @@ square_payment_sessions = {}  # Store active payment sessions
 def get_transactions_matching_filter(search, unprocessed_only, source_type):
     """
     Returns a list of transaction dicts that match the given filter.
-    Uses the same logic as the table endpoint.
+    Adds 'processed' flag and, if processed, the 'account_id' of the non-cash account.
     """
-    # Fetch all transactions (replace with your actual fetch function)
-    all_tx = fetch_bank_transactions()  # your existing function
+    # Fetch all transactions (from Plaid or CSV import)
+    all_tx = fetch_bank_transactions()
 
     # Apply search filter
     if search:
@@ -138,13 +138,39 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
     if source_type:
         all_tx = [tx for tx in all_tx if tx.get('source_type') == source_type]
 
-    # Add processed flag – always use 'bank_transaction'
     conn = get_db()
     cursor = conn.cursor()
+
+    # Get the cash account ID (1010) to exclude it from the lookup
+    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+    cash_row = cursor.fetchone()
+    cash_id = cash_row['id'] if cash_row else None
+
     for tx in all_tx:
-        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
-                       ('bank_transaction', str(tx['id'])))
-        tx['processed'] = cursor.fetchone() is not None
+        tx_id = str(tx['id'])
+
+        # Check if a journal entry exists for this transaction
+        cursor.execute('''
+            SELECT je.id FROM journal_entries je
+            WHERE je.source_type = 'bank_transaction' AND je.source_id = ?
+        ''', (tx_id,))
+        entry = cursor.fetchone()
+        if entry:
+            tx['processed'] = True
+            # Find the non-cash account in this entry
+            cursor.execute('''
+                SELECT jl.account_id
+                FROM journal_lines jl
+                WHERE jl.journal_entry_id = ?
+                  AND jl.account_id != ?
+                LIMIT 1
+            ''', (entry['id'], cash_id))
+            account = cursor.fetchone()
+            tx['account_id'] = account['account_id'] if account else None
+        else:
+            tx['processed'] = False
+            tx['account_id'] = None
+
     conn.close()
 
     # Filter unprocessed if requested
@@ -152,7 +178,6 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
         all_tx = [tx for tx in all_tx if not tx['processed']]
 
     return all_tx
-
 
 def parse_plaid_date(date_str):
     """Convert various date formats to YYYY-MM-DD."""
