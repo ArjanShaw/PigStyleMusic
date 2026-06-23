@@ -183,7 +183,7 @@
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
 
-            <!-- ====== DASHBOARD ====== -->
+            <!-- ====== DASHBOARD (sync button removed) ====== -->
             <div id="sub-dashboard" class="sub-tab-content active">
                 <div class="accounting-stats" id="dashboard-stats">
                     <div class="accounting-stat-card success"><div class="stat-value" id="dash-revenue">$0.00</div><div class="stat-label">Revenue (This Month)</div></div>
@@ -195,10 +195,7 @@
                 <div style="margin-top:20px;"><h4><i class="fas fa-clock"></i> Recent Journal Entries</h4>
                     <div id="dash-recent-journal" style="max-height:300px; overflow-y:auto;"><p class="text-muted">Loading...</p></div>
                 </div>
-                <div style="margin-top:20px;">
-                    <button class="btn btn-primary" onclick="runAccountingSync()"><i class="fas fa-sync-alt"></i> Run Sync Now</button>
-                    <span id="sync-status" class="text-muted" style="margin-left:15px;"></span>
-                </div>
+                <!-- sync button removed -->
             </div>
 
             <!-- ====== JOURNAL ====== -->
@@ -379,10 +376,10 @@
                 </div>
             </div>
 
-            <!-- ====== CASH FLOW ====== -->
+            <!-- ====== CASH FLOW (with Net bar) ====== -->
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
-                <p class="text-muted">Positive bars = cash inflows (revenue), negative bars = cash outflows (expenses). Click any bar to see the underlying transactions.</p>
+                <p class="text-muted">Positive bars = cash inflows (revenue), negative bars = cash outflows (expenses). Click any bar to see the underlying transactions. The purple bar is the net cash flow for the month.</p>
                 <div class="monthly-controls">
                     <div class="form-group"><label>Start Month</label><input type="month" id="cash-flow-start"></div>
                     <div class="form-group"><label>End Month</label><input type="month" id="cash-flow-end"></div>

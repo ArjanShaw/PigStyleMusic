@@ -1398,7 +1398,7 @@ def process_checkout():
 
 @app.route('/api/order/complete', methods=['POST'])
 def order_complete():
-    """Update order status and mark records as sold after successful payment, then auto‑account."""
+    """Update order status and mark records as sold after successful payment."""
     try:
         data = request.json
         transaction_id = data.get('transaction_id')
@@ -1441,25 +1441,7 @@ def order_complete():
                 placeholders = ','.join('?' for _ in record_ids)
                 cursor.execute(f'UPDATE records SET status_id = 3, date_sold = CURRENT_DATE WHERE id IN ({placeholders})', record_ids)
             
-            # ---- NEW: Auto‑account for this order ----
-            # Re‑fetch the full order to get all columns (including shipping_charged alias)
-            cursor.execute('''
-                SELECT o.id, o.created_at, o.total, 
-                       o.shipping_cost as shipping_charged, 
-                       o.tax as tax_total,
-                       o.channel, o.external_order_id
-                FROM orders o
-                WHERE o.id = ?
-            ''', (order_id,))
-            order = cursor.fetchone()
-            if order:
-                try:
-                    process_order_for_accounting(order, conn, cursor)
-                    # The function sets is_accounted = 1 internally
-                except Exception as e:
-                    app.logger.error(f"Auto‑accounting failed for order {order_id}: {str(e)}")
-                    # We don't rollback here – the order is still completed; we just log
-            # ---- End of auto‑accounting ----
+            # --- Auto‑accounting removed ---
             
             conn.commit()
             
@@ -1507,6 +1489,8 @@ Questions? Reply to this email or contact us at the store.
     except Exception as e:
         app.logger.error(f"Order complete error: {str(e)}")
         return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500
+
+
 
 # ==================== SQUARE TERMINAL ENDPOINTS ====================
 
@@ -6844,31 +6828,7 @@ def process_order_for_accounting(order, conn, cursor):
     app.logger.info(f"    ✅ Order {order_id} marked as accounted")
 
 
-@app.route('/api/accounting/sync', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def accounting_run_sync():
-    """Process all paid orders that are not yet accounted"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT o.id, o.created_at, o.total, 
-               o.shipping_cost as shipping_charged, 
-               o.tax as tax_total,
-               o.channel, o.external_order_id
-        FROM orders o
-        WHERE o.payment_status = 'paid' AND (o.is_accounted IS NULL OR o.is_accounted = 0)
-    ''')
-    orders = cursor.fetchall()
-    
-    processed = 0
-    for order in orders:
-        process_order_for_accounting(order, conn, cursor)
-        processed += 1
-    
-    conn.close()
-    return jsonify({'status': 'success', 'processed': processed})
+
 
 
 # ==================== ACCOUNTING: RECONCILIATION UPLOAD ====================
@@ -7311,10 +7271,11 @@ def accounting_reports():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+
 @app.route('/api/checkout/create-order', methods=['POST'])
 @login_required
 def create_order_from_checkout():
-    """Create an order from checkout (Cash, Square, Gift Card, Discogs) and auto‑account."""
+    """Create an order from checkout (Cash, Square, Gift Card, Discogs)."""
     try:
         data = request.json
         order = data.get('order')
@@ -7375,24 +7336,7 @@ def create_order_from_checkout():
         
         conn.commit()
         
-        # ---- NEW: Auto‑account for this order ----
-        # Re‑fetch the order to get the shipping_cost alias and other fields
-        cursor.execute('''
-            SELECT o.id, o.created_at, o.total, 
-                   o.shipping_cost as shipping_charged, 
-                   o.tax as tax_total,
-                   o.channel, o.external_order_id
-            FROM orders o
-            WHERE o.id = ?
-        ''', (order_id,))
-        new_order = cursor.fetchone()
-        if new_order:
-            try:
-                process_order_for_accounting(new_order, conn, cursor)
-            except Exception as e:
-                app.logger.error(f"Auto‑accounting failed for checkout order {order_id}: {str(e)}")
-                # Order is already committed, we just log the error
-        # ---- End of auto‑accounting ----
+        # --- Auto‑accounting removed ---
         
         conn.close()
         
