@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 checkBankConnection();
                 loadAccountSelectsForBank();
                 loadBankAccountsForRowDropdowns();
+                loadBulkApplyAccounts();
             }
             else if (sub === 'monthly') {
                 const now = new Date();
@@ -301,6 +302,42 @@ async function loadBankAccountsForRowDropdowns() {
     } catch (e) {
         console.error('Failed to load accounts for row dropdowns:', e);
         throw e;
+    }
+}
+
+async function loadBulkApplyAccounts() {
+    const sourceSelect = document.getElementById('bank-apply-source');
+    const targetSelect = document.getElementById('bank-apply-target');
+    if (!sourceSelect || !targetSelect) return;
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            // Source dropdown – only Bluevine (1) and FNBO (21)
+            const sourceOptions = data.accounts.filter(acc => acc.id == 1 || acc.id == 21);
+            sourceSelect.innerHTML = '<option value="">Select Source</option>';
+            sourceOptions.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = acc.code + ' - ' + acc.name;
+                sourceSelect.appendChild(opt);
+            });
+
+            // Target dropdown – all non‑cash accounts (exclude 1 and 21)
+            const targetOptions = data.accounts.filter(acc => acc.id != 1 && acc.id != 21);
+            targetSelect.innerHTML = '<option value="">Select Target</option>';
+            targetOptions.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = acc.code + ' - ' + acc.name;
+                targetSelect.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.error('Failed to load bulk apply accounts:', e);
     }
 }
 
@@ -1057,18 +1094,20 @@ async function applyAllSelections() {
 
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
-    const accountSelect = document.getElementById('bank-apply-account');
+    const sourceSelect = document.getElementById('bank-apply-source');
+    const targetSelect = document.getElementById('bank-apply-target');
     const statusSpan = document.getElementById('filter-apply-status');
 
     const pattern = filterInput.value.trim();
-    const accountId = parseInt(accountSelect.value);
+    const sourceId = parseInt(sourceSelect.value);
+    const targetId = parseInt(targetSelect.value);
 
     if (!pattern) {
         alert('Please enter a filter pattern (e.g. STAMPS.COM).');
         return;
     }
-    if (!accountId) {
-        alert('Please select an account to apply.');
+    if (!sourceId || !targetId) {
+        alert('Please select both a Source and a Target account.');
         return;
     }
 
@@ -1086,7 +1125,8 @@ async function applyFilterToTransactions() {
                 search: pattern,
                 unprocessed_only: !showAll,
                 source_type: sourceFilter === 'all' ? null : sourceFilter,
-                account_id: accountId
+                source_account_id: sourceId,
+                target_account_id: targetId
             })
         });
 
