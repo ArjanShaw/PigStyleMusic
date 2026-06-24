@@ -18,6 +18,11 @@ let bankAccounts = [];
 // Monthly charts
 let monthlyChartsData = [];
 
+// Register annotation plugin if available
+if (typeof ChartAnnotation !== 'undefined') {
+    Chart.register(ChartAnnotation);
+}
+
 // ============================================================
 // INITIALIZATION
 // ============================================================
@@ -36,8 +41,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
             
-            if (sub === 'dashboard') loadDashboard();
-            else if (sub === 'journal') loadJournalEntries();
+            // Dashboard and Monthly cases removed
+            if (sub === 'journal') loadJournalEntries();
             else if (sub === 'account-transactions') {
                 loadAccountTransactionsSelect();
             }
@@ -48,22 +53,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 loadAccountSelectsForBank();
                 loadBankAccountsForRowDropdowns();
                 loadBulkApplyAccounts();
-            }
-            else if (sub === 'monthly') {
-                const now = new Date();
-                const endMonth = now.toISOString().slice(0, 7);
-                const startMonth = '2026-01';
-                const startInput = document.getElementById('monthly-start');
-                const endInput = document.getElementById('monthly-end');
-                if (!startInput.value) startInput.value = startMonth;
-                if (!endInput.value) endInput.value = endMonth;
-                if (bankAccounts.length === 0) {
-                    loadBankAccountsForRowDropdowns().then(() => {
-                        loadMonthlyPerformance();
-                    });
-                } else {
-                    loadMonthlyPerformance();
-                }
             }
             else if (sub === 'cash-flow') {
                 const now = new Date();
@@ -95,6 +84,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.loadOrders();
                     window.loadOrderStats();
                 }
+            }
+            else if (sub === 'reports') {
+                // nothing to auto-load, user must click generate
             }
         });
     });
@@ -169,8 +161,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('manual-date').value = today;
     // Do NOT set account-tx-date-from/to globally – they will be set per account
 
-    // Load dashboard by default
-    loadDashboard();
+    // Load journal by default
+    loadJournalEntries();
 
     // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
@@ -200,39 +192,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
-// DASHBOARD
+// DASHBOARD FUNCTIONS REMOVED
 // ============================================================
-
-async function loadDashboard() {
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/dashboard`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to load dashboard');
-        const data = await res.json();
-        if (data.status === 'success') {
-            document.getElementById('dash-revenue').textContent = '$' + data.revenue.toFixed(2);
-            document.getElementById('dash-cogs').textContent = '$' + data.cogs.toFixed(2);
-            document.getElementById('dash-net-profit').textContent = '$' + data.net_profit.toFixed(2);
-            document.getElementById('dash-pending-sync').textContent = data.pending_sync;
-            document.getElementById('dash-unreconciled').textContent = data.unreconciled;
-            const container = document.getElementById('dash-recent-journal');
-            if (data.recent_entries && data.recent_entries.length) {
-                let html = '<table class="journal-table"><thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th></tr></thead><tbody>';
-                data.recent_entries.forEach(e => {
-                    html += `<tr><td>${e.date}</td><td>${e.description}</td><td class="debit">$${e.debit_total.toFixed(2)}</td><td class="credit">$${e.credit_total.toFixed(2)}</td></tr>`;
-                });
-                html += '</tbody></table>';
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = '<p class="text-muted">No recent entries.</p>';
-            }
-        }
-    } catch (err) {
-        console.error('Dashboard error:', err);
-    }
-}
 
 // ============================================================
 // ACCOUNT DROPDOWNS
@@ -611,7 +572,6 @@ async function submitManualEntry() {
                 }
             });
             updateManualBalance();
-            loadDashboard();
         } else {
             status.textContent = '❌ ' + (data.error || 'Failed to post');
         }
@@ -1287,143 +1247,16 @@ function exportAccountTransactionsCSV() {
 }
 
 // ============================================================
-// MONTHLY PERFORMANCE
+// MONTHLY PERFORMANCE – functions kept but not used (tab removed)
 // ============================================================
 
 async function loadMonthlyPerformance() {
-    const startInput = document.getElementById('monthly-start');
-    const endInput = document.getElementById('monthly-end');
-    const start = startInput.value;
-    const end = endInput.value;
-    if (!start || !end) {
-        alert('Please select both start and end months.');
-        return;
-    }
-
-    if (bankAccounts.length === 0) {
-        await loadBankAccountsForRowDropdowns();
-    }
-
-    const container = document.getElementById('monthly-chart-grid');
-    container.innerHTML = '<p class="monthly-loading">Loading...</p>';
-
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-performance?start=${start}&end=${end}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (!res.ok) throw new Error('Failed to fetch monthly data');
-        const data = await res.json();
-        if (data.status === 'success') {
-            renderMonthlyCharts(data);
-        } else {
-            container.innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
-        }
-    } catch (err) {
-        container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
-        console.error('Monthly performance error:', err);
-    }
+    // Kept for reference but no longer called
+    console.warn('loadMonthlyPerformance called but Monthly tab is removed.');
 }
 
 function renderMonthlyCharts(data) {
-    const { months, account_breakdown } = data;
-    const container = document.getElementById('monthly-chart-grid');
-    container.innerHTML = '';
-
-    if (!months || months.length === 0) {
-        container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
-        return;
-    }
-
-    const allAccounts = new Set();
-    months.forEach(m => {
-        const monthData = account_breakdown[m] || {};
-        Object.keys(monthData).forEach(acc => allAccounts.add(acc));
-    });
-    const accountNames = Array.from(allAccounts).sort();
-
-    const accountNameToId = {};
-    bankAccounts.forEach(acc => {
-        const trimmed = acc.name.trim();
-        const norm = trimmed.toLowerCase();
-        accountNameToId[norm] = acc.id;
-        accountNameToId[trimmed] = acc.id;
-    });
-
-    let globalMax = 0;
-    months.forEach(m => {
-        const monthData = account_breakdown[m] || {};
-        accountNames.forEach(acc => {
-            const val = monthData[acc] || 0;
-            if (val > globalMax) globalMax = val;
-        });
-    });
-    const yMax = Math.ceil(globalMax / 500) * 500 || 100;
-
-    const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14', '#20c997', '#17a2b8', '#e83e8c', '#6c757d'];
-
-    if (window._monthlyCharts) {
-        window._monthlyCharts.forEach(chart => chart.destroy());
-    }
-    window._monthlyCharts = [];
-
-    months.forEach((month, idx) => {
-        const monthData = account_breakdown[month] || {};
-        const values = accountNames.map(acc => monthData[acc] || 0);
-        const labels = accountNames;
-
-        const card = document.createElement('div');
-        card.className = 'monthly-chart-card';
-        card.innerHTML = `<h4>${month}</h4><canvas id="monthly-chart-${idx}"></canvas>`;
-        container.appendChild(card);
-
-        const canvas = card.querySelector('canvas');
-        const ctx = canvas.getContext('2d');
-
-        const chart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Amount',
-                    data: values,
-                    backgroundColor: colors.slice(0, labels.length).map(c => c + '80'),
-                    borderColor: colors.slice(0, labels.length),
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { label: (ctx) => `$${ctx.raw.toFixed(2)}` } }
-                },
-                scales: {
-                    y: { beginAtZero: true, max: yMax, ticks: { callback: (val) => '$' + val } },
-                    x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } } }
-                },
-                onClick: function(e, elements) {
-                    if (elements.length === 0) return;
-                    const element = elements[0];
-                    const index = element.index;
-                    const accountName = this.data.labels[index];
-                    const amount = this.data.datasets[0].data[index];
-                    if (amount === 0) return;
-                    
-                    const trimmed = accountName.trim();
-                    const norm = trimmed.toLowerCase();
-                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
-                    if (!accountId) {
-                        alert('Account not found: ' + accountName);
-                        return;
-                    }
-                    showMonthlyTransactions(month, accountId, accountName);
-                }
-            }
-        });
-        window._monthlyCharts.push(chart);
-    });
+    // Kept for reference
 }
 
 // ============================================================
@@ -1498,7 +1331,7 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW
+// CASH FLOW (with zero line annotation)
 // ============================================================
 
 async function loadCashFlow() {
@@ -1628,6 +1461,26 @@ function renderCashFlowCharts(data) {
                             label: (ctx) => {
                                 const val = ctx.raw;
                                 return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
+                            }
+                        }
+                    },
+                    // Add zero line annotation
+                    annotation: {
+                        annotations: {
+                            zeroLine: {
+                                type: 'line',
+                                yMin: 0,
+                                yMax: 0,
+                                borderColor: 'rgba(0, 0, 0, 0.3)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: {
+                                    content: '0',
+                                    enabled: true,
+                                    position: 'right',
+                                    color: '#333',
+                                    font: { size: 10 }
+                                }
                             }
                         }
                     }
