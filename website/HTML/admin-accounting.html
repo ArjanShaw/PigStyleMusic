@@ -183,7 +183,7 @@
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
 
-            <!-- ====== DASHBOARD (sync button removed) ====== -->
+            <!-- ====== DASHBOARD ====== -->
             <div id="sub-dashboard" class="sub-tab-content active">
                 <div class="accounting-stats" id="dashboard-stats">
                     <div class="accounting-stat-card success"><div class="stat-value" id="dash-revenue">$0.00</div><div class="stat-label">Revenue (This Month)</div></div>
@@ -195,7 +195,6 @@
                 <div style="margin-top:20px;"><h4><i class="fas fa-clock"></i> Recent Journal Entries</h4>
                     <div id="dash-recent-journal" style="max-height:300px; overflow-y:auto;"><p class="text-muted">Loading...</p></div>
                 </div>
-                <!-- sync button removed -->
             </div>
 
             <!-- ====== JOURNAL ====== -->
@@ -295,10 +294,10 @@
                 <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
 
-            <!-- ====== BANK (no pagination, Refresh button, no Sync button) ====== -->
+            <!-- ====== BANK TAB (UPDATED) ====== -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">Select an account for each transaction, then click <strong>Apply All</strong> to process all at once.</p>
+                <p class="text-muted">Select a <strong>Source</strong> account (Bluevine or FNBO) and a <strong>Destination</strong> account for each transaction, then click <strong>Apply All</strong> to process all at once.</p>
                 <div style="margin-bottom:15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display:none;"><i class="fas fa-university"></i> Connect Bank Account</button>
                     <span id="bank-connection-status" class="text-muted"></span>
@@ -310,7 +309,7 @@
                         <label class="toggle-label"><input type="checkbox" id="bank-show-all" onchange="toggleBankShowAll()"><span>Show all transactions</span></label>
                     </div>
                 </div>
-                <!-- Filter + Refresh + Bulk Apply -->
+                <!-- Filter + Refresh + Bulk Apply with Source and Target -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
                     <div class="form-group" style="flex:2;">
                         <label>Filter by description</label>
@@ -320,29 +319,41 @@
                         <label>&nbsp;</label>
                         <button class="btn btn-primary" onclick="refreshBankTable()"><i class="fas fa-sync-alt"></i> Refresh</button>
                     </div>
-                    <div class="form-group">
-                        <label>Bulk apply to account</label>
-                        <select id="bank-apply-account"><option value="">Select Account</option></select>
+                    <div class="filter-group">
+                        <label>Bulk apply source</label>
+                        <select id="bank-apply-source"><option value="">Select Source</option></select>
                     </div>
-                    <div class="form-group" style="flex:0 0 auto;">
+                    <div class="filter-group">
+                        <label>Bulk apply target</label>
+                        <select id="bank-apply-target"><option value="">Select Target</option></select>
+                    </div>
+                    <div class="filter-group" style="flex:0 0 auto;">
                         <label>&nbsp;</label>
                         <button class="btn btn-warning" onclick="applyFilterToTransactions()"><i class="fas fa-tag"></i> Bulk Apply</button>
                     </div>
                     <span id="filter-apply-status" class="text-muted"></span>
                 </div>
-                <!-- Action buttons without date filters and without Sync button -->
+                <!-- Action buttons -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
                     <button class="btn btn-secondary" onclick="resetBankFilters()"><i class="fas fa-undo"></i> Reset</button>
                     <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply All</button>
-                    <!-- sync button removed -->
                 </div>
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
-                        <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>Status</th><th>Account</th></tr></thead>
-                        <tbody id="bank-body"><tr><td colspan="6" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Amount</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th>Source</th>
+                                <th>Destination</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bank-body"><tr><td colspan="7" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
                     </table>
                 </div>
-                <!-- No pagination – just total count -->
                 <div style="margin-top:15px;">
                     <span id="bank-pagination-info">Showing 0 entries</span>
                 </div>
@@ -375,7 +386,7 @@
                 </div>
             </div>
 
-            <!-- ====== CASH FLOW (with Net bar) ====== -->
+            <!-- ====== CASH FLOW ====== -->
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
                 <p class="text-muted">Positive bars = cash inflows (revenue), negative bars = cash outflows (expenses). Click any bar to see the underlying transactions. The purple bar is the net cash flow for the month.</p>
