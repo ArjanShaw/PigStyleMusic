@@ -121,13 +121,87 @@ background_jobs = {}
 square_payment_sessions = {}  # Store active payment sessions
 
 
+# ==================== HELPER: GET CASH ACCOUNT BY SOURCE TYPE ====================
+
+def get_cash_account_id(source_type):
+    """
+    Return the account_id for the cash account associated with the given source type.
+    Mapping is stored in app_config:
+        cash_account_plaid    -> account id for FNBO (e.g., '1011')
+        cash_account_historic -> account id for Bluevine (e.g., '1010')
+    If not set, fallback to account with code '1010'.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    if source_type == 'plaid':
+        key = 'cash_account_plaid'
+    elif source_type == 'historic':
+        key = 'cash_account_historic'
+    else:
+        # fallback to default cash account
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+        row = cursor.fetchone()
+        conn.close()
+        return row['id'] if row else None
+
+    cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', (key,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        try:
+            acc_id = int(row['config_value'])
+            # verify it exists
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute('SELECT id FROM accounts WHERE id = ?', (acc_id,))
+            if cur2.fetchone():
+                conn2.close()
+                return acc_id
+            conn2.close()
+        except:
+            pass
+    # fallback to default
+    conn3 = get_db()
+    cur3 = conn3.cursor()
+    cur3.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+    row3 = cur3.fetchone()
+    conn3.close()
+    return row3['id'] if row3 else None
+
+
 def get_transactions_matching_filter(search, unprocessed_only, source_type):
     """
     Returns a list of transaction dicts that match the given filter.
-    Adds 'processed' flag and, if processed, the 'account_id' of the non-cash account.
+    Adds 'processed' flag, 'source_type' ('plaid' or 'historic'), and if processed,
+    the 'account_id' of the non-cash account.
     """
-    # Fetch all transactions (from Plaid or CSV import)
-    all_tx = fetch_bank_transactions()
+    # Fetch Plaid transactions
+    plaid_tx = fetch_bank_transactions()  # returns list with id, date, amount, description
+    for tx in plaid_tx:
+        tx['source_type'] = 'plaid'
+
+    # Fetch historic transactions from bank_transactions table
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, transaction_date as date, amount, description, processed
+        FROM bank_transactions
+        ORDER BY transaction_date DESC
+    ''')
+    historic_rows = cursor.fetchall()
+    conn.close()
+    historic_tx = []
+    for row in historic_rows:
+        historic_tx.append({
+            'id': row['id'],
+            'date': row['date'],
+            'amount': row['amount'] / 100.0,  # stored in cents
+            'description': row['description'],
+            'processed': bool(row['processed']),
+            'source_type': 'historic'
+        })
+
+    all_tx = plaid_tx + historic_tx
 
     # Apply search filter
     if search:
@@ -138,6 +212,7 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
     if source_type:
         all_tx = [tx for tx in all_tx if tx.get('source_type') == source_type]
 
+    # Determine processed status and account_id for each transaction
     conn = get_db()
     cursor = conn.cursor()
 
@@ -148,12 +223,13 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
 
     for tx in all_tx:
         tx_id = str(tx['id'])
-
+        # Determine which source_type to look for in journal_entries
+        source_type_val = tx['source_type']  # 'plaid' or 'historic'
         # Check if a journal entry exists for this transaction
         cursor.execute('''
             SELECT je.id FROM journal_entries je
-            WHERE je.source_type = 'bank_transaction' AND je.source_id = ?
-        ''', (tx_id,))
+            WHERE je.source_type = ? AND je.source_id = ?
+        ''', (source_type_val, tx_id))
         entry = cursor.fetchone()
         if entry:
             tx['processed'] = True
@@ -178,6 +254,7 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
         all_tx = [tx for tx in all_tx if not tx['processed']]
 
     return all_tx
+
 
 def parse_plaid_date(date_str):
     """Convert various date formats to YYYY-MM-DD."""
@@ -6853,9 +6930,6 @@ def process_order_for_accounting(order, conn, cursor):
     app.logger.info(f"    ✅ Order {order_id} marked as accounted")
 
 
-
-
-
 # ==================== ACCOUNTING: RECONCILIATION UPLOAD ====================
 
 @app.route('/api/accounting/reconcile/upload', methods=['POST'])
@@ -7442,7 +7516,7 @@ def apply_rule(rule_id, dry_run=False):
     pattern = rule['pattern'].upper()
     account_id = rule['account_id']
 
-    # Get unprocessed withdrawals (amount > 0)
+    # Get unprocessed withdrawals (amount > 0) from historic bank_transactions
     cursor.execute('''
         SELECT id, transaction_date, amount, description
         FROM bank_transactions
@@ -7462,13 +7536,15 @@ def apply_rule(rule_id, dry_run=False):
 
     # Process matched transactions
     processed_count = 0
+    # Get cash account for historic transactions
+    cash_id = get_cash_account_id('historic')
     for tx in matched:
         amount_cents = int(round(tx['amount'] * 100))
-        # Create journal entry
+        # Create journal entry with source_type 'historic'
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
-        ''', (tx['transaction_date'], f"Bank expense: {tx['description']}", 'bank_transaction', tx['id']))
+        ''', (tx['transaction_date'], f"Bank expense: {tx['description']}", 'historic', str(tx['id'])))
         entry_id = cursor.lastrowid
 
         # Debit expense account
@@ -7477,14 +7553,11 @@ def apply_rule(rule_id, dry_run=False):
             VALUES (?, ?, ?, ?)
         ''', (entry_id, account_id, amount_cents, 0))
 
-        # Credit Cash (1010)
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
-        cash_row = cursor.fetchone()
-        if cash_row:
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_row['id'], 0, amount_cents))
+        # Credit cash account (specific to historic)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, cash_id, 0, amount_cents))
 
         # Mark processed
         cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (tx['id'],))
@@ -7493,6 +7566,7 @@ def apply_rule(rule_id, dry_run=False):
     conn.commit()
     conn.close()
     return {'transactions': matched, 'count': processed_count}
+
 
 # ===== RULES ENDPOINTS =====
 
@@ -7629,7 +7703,7 @@ def accounting_get_bank_transactions():
     try:
         search = request.args.get('search', '').strip()
         unprocessed_only = request.args.get('unprocessed_only', 'false').lower() == 'true'
-        source_type = request.args.get('source_type')  # or 'all'
+        source_type = request.args.get('source_type')  # 'plaid' or 'historic' or None
         if source_type == 'all':
             source_type = None
 
@@ -7667,32 +7741,40 @@ def apply_multiple():
     processed = 0
     errors = []
 
-    # Get cash account (1010)
-    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
-    cash_row = cursor.fetchone()
-    if not cash_row:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
-    cash_id = cash_row['id']
-
-    # Fetch all Plaid transactions for the last 90 days (or a wider range)
+    # Pre-fetch Plaid transactions once
     try:
-        all_tx = fetch_bank_transactions(date_from=(datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d'))
+        all_plaid_tx = fetch_bank_transactions()
     except Exception as e:
-        conn.close()
-        return jsonify({'status': 'error', 'error': f'Failed to fetch transactions: {str(e)}'}), 500
+        all_plaid_tx = []
 
     for item in updates:
         transaction_id = item.get('transaction_id')
         account_id = item.get('account_id')
+        source_type = item.get('source_type', 'plaid')  # from frontend
         if not transaction_id or not account_id:
             errors.append(f'Missing fields for {transaction_id}')
             continue
 
-        # Find the transaction in the fetched list
-        tx = next((t for t in all_tx if t['id'] == transaction_id), None)
+        # Find the transaction in the appropriate source
+        tx = None
+        if source_type == 'plaid':
+            tx = next((t for t in all_plaid_tx if t['id'] == transaction_id), None)
+        else:  # historic
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute('SELECT id, transaction_date, amount, description FROM bank_transactions WHERE id = ?', (transaction_id,))
+            row = cur2.fetchone()
+            conn2.close()
+            if row:
+                tx = {
+                    'id': row['id'],
+                    'date': row['transaction_date'],
+                    'amount': row['amount'] / 100.0,
+                    'description': row['description']
+                }
+
         if not tx:
-            errors.append(f'Transaction {transaction_id} not found in Plaid')
+            errors.append(f'Transaction {transaction_id} not found in source {source_type}')
             continue
 
         amount = tx['amount']
@@ -7706,22 +7788,28 @@ def apply_multiple():
 
         # Check if already processed
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
-                       ('bank_transaction', str(transaction_id)))
+                       (source_type, str(transaction_id)))
         existing = cursor.fetchone()
         if existing:
             # Remove old lines and keep entry
             cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
             entry_id = existing['id']
         else:
-            # Create new entry – always use 'bank_transaction'
+            # Create new entry with source_type = 'plaid' or 'historic'
             cursor.execute('''
                 INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                 VALUES (?, ?, ?, ?)
-            ''', (date_str, f"Bank transaction: {description}", 'bank_transaction', str(transaction_id)))
+            ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
             entry_id = cursor.lastrowid
 
         amount_cents = int(round(abs(amount) * 100))
         is_expense = amount > 0   # Positive = expense
+
+        # Get cash account for this source type
+        cash_id = get_cash_account_id(source_type)
+        if not cash_id:
+            errors.append(f'Cash account not found for source {source_type}')
+            continue
 
         if is_expense:
             # Withdrawal: Debit account, Credit cash
@@ -7755,6 +7843,519 @@ def apply_multiple():
         'errors': errors if errors else None,
         'message': f'Processed {processed} transactions' + (f', errors: {len(errors)}' if errors else '')
     })
+
+@app.route('/api/accounting/bank/apply-filter-bulk', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def apply_filter_bulk():
+    """Apply a target account to ALL transactions matching the given filter."""
+    data = request.json
+    search = data.get('search', '').strip()
+    unprocessed_only = data.get('unprocessed_only', True)
+    source_type = data.get('source_type')  # None or 'plaid'/'historic'
+    account_id = data.get('account_id')
+
+    if not account_id:
+        return jsonify({'status': 'error', 'error': 'account_id required'}), 400
+
+    # Get the matching transactions using the helper
+    transactions = get_transactions_matching_filter(search, unprocessed_only, source_type)
+
+    if not transactions:
+        return jsonify({'status': 'success', 'message': 'No transactions match the filter.', 'count': 0})
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get account details
+    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
+    account = cursor.fetchone()
+    if not account:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+
+    processed_count = 0
+    for tx in transactions:
+        try:
+            tx_id = tx['id']
+            amount = tx['amount']
+            date_raw = tx['date']
+            description = tx.get('description', '')
+            src_type = tx.get('source_type', 'historic')  # should be set
+
+            # Parse date
+            date_str = parse_plaid_date(date_raw) if date_raw else datetime.now().date().isoformat()
+            if not date_str:
+                date_str = datetime.now().date().isoformat()
+
+            amount_cents = int(round(abs(amount) * 100))
+            is_expense = amount > 0   # Positive = withdrawal
+
+            # Check if already processed
+            cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
+                           (src_type, str(tx_id)))
+            existing = cursor.fetchone()
+
+            if existing:
+                # Delete old lines
+                cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                entry_id = existing['id']
+            else:
+                # Create new entry with correct source_type
+                cursor.execute('''
+                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (date_str, f"Bank transaction: {description}", src_type, str(tx_id)))
+                entry_id = cursor.lastrowid
+
+            # Get cash account for this source type
+            cash_id = get_cash_account_id(src_type)
+            if not cash_id:
+                app.logger.warning(f"No cash account for source {src_type}, skipping tx {tx_id}")
+                continue
+
+            # Insert new lines
+            if is_expense:
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, account_id, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, cash_id, 0, amount_cents))
+            else:
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, cash_id, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, account_id, 0, amount_cents))
+
+            conn.commit()
+            processed_count += 1
+        except Exception as e:
+            app.logger.error(f"Error processing transaction {tx.get('id')}: {str(e)}")
+            continue
+
+    conn.close()
+
+    return jsonify({
+        'status': 'success',
+        'message': f'Applied {processed_count} transactions to {account["name"]}.',
+        'count': processed_count
+    })
+
+
+@app.route('/api/accounting/bank/process-transaction', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_process_single_transaction():
+    """
+    Process a single transaction by assigning it to an account.
+    Handles both historic (CSV) and Plaid transactions.
+    """
+    data = request.json
+    transaction_id = data.get('transaction_id')
+    account_id = data.get('account_id')
+    source = data.get('source', 'plaid')   # 'plaid' or 'historic'
+    date = data.get('date')
+    amount = data.get('amount')
+    description = data.get('description', '')
+    
+    if not transaction_id or not account_id:
+        return jsonify({'status': 'error', 'error': 'transaction_id and account_id required'}), 400
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get the account details
+    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
+    account = cursor.fetchone()
+    if not account:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+    
+    # Determine the transaction details based on source
+    if source == 'historic':
+        cursor.execute('''
+            SELECT id, transaction_date as date, amount, description, processed
+            FROM bank_transactions 
+            WHERE id = ?
+        ''', (int(transaction_id),))
+        tx = cursor.fetchone()
+        if not tx:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Historic transaction not found'}), 404
+        if tx['processed'] == 1:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
+        
+        tx_date = tx['date']
+        tx_amount = tx['amount'] / 100.0  # stored in cents
+        tx_description = tx['description']
+        
+    else:
+        # For Plaid transactions, use the data passed from the frontend
+        if not date or amount is None:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Missing transaction data for Plaid transaction'}), 400
+        
+        # Check if already processed
+        cursor.execute('''
+            SELECT id FROM journal_entries
+            WHERE source_type = 'plaid' AND source_id = ?
+        ''', (str(transaction_id),))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
+        
+        tx_date = date
+        tx_amount = amount
+        tx_description = description or 'Plaid transaction'
+    
+    amount_cents = int(round(abs(tx_amount) * 100))
+    is_expense = tx_amount < 0
+    is_expense_account = account['type'] == 'expense'
+    
+    # Get cash account for this source
+    cash_id = get_cash_account_id(source)
+    if not cash_id:
+        conn.close()
+        return jsonify({'status': 'error', 'error': f'Cash account not configured for source {source}'}), 500
+    
+    # Create journal entry with source_type = source
+    entry_description = f"Bank transaction: {tx_description}"
+    cursor.execute('''
+        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+        VALUES (?, ?, ?, ?)
+    ''', (tx_date, entry_description, source, str(transaction_id)))
+    entry_id = cursor.lastrowid
+    
+    if is_expense:
+        if is_expense_account:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, 0, amount_cents))
+        else:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+    else:
+        if is_expense_account:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+        else:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, account_id, 0, amount_cents))
+    
+    # Mark as processed in the appropriate table
+    if source == 'historic':
+        cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'status': 'success',
+        'message': f'Transaction processed successfully to {account["name"]}',
+        'entry_id': entry_id,
+        'account': {
+            'id': account['id'],
+            'code': account['code'],
+            'name': account['name'],
+            'type': account['type']
+        }
+    })
+
+
+# ==================== DISCOGS ORDERS ENDPOINTS ====================
+
+@app.route('/api/discogs/orders', methods=['GET'])
+def get_discogs_orders():
+    """
+    Get orders from Discogs API.
+    
+    Query params:
+        status: Filter by status (New, Paid, Shipped, etc.)
+        page: Page number (default: 1)
+        per_page: Items per page (default: 50, max: 100)
+        all: If 'true', fetch all pages (default: false)
+    """
+    try:
+        # Check if Discogs token exists
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({
+                'status': 'error',
+                'error': 'Discogs token not configured'
+            }), 500
+        
+        # Get query parameters
+        status = request.args.get('status')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        fetch_all = request.args.get('all', 'false').lower() == 'true'
+        
+        # Initialize Discogs handler
+        handler = DiscogsHandler(TOKEN)
+        
+        if fetch_all:
+            # Fetch all orders (handles pagination internally)
+            orders = handler.get_all_orders(status=status)
+            
+            return jsonify({
+                'status': 'success',
+                'orders': orders,
+                'total': len(orders),
+                'pagination': {
+                    'page': 1,
+                    'per_page': len(orders),
+                    'pages': 1,
+                    'items': len(orders)
+                }
+            })
+        else:
+            # Fetch a single page
+            result = handler.get_orders(status=status, page=page, per_page=per_page)
+            
+            if not result['success']:
+                return jsonify({
+                    'status': 'error',
+                    'error': result.get('error', 'Failed to fetch orders')
+                }), 500
+            
+            return jsonify({
+                'status': 'success',
+                'orders': result['orders'],
+                'pagination': result['pagination']
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Error fetching Discogs orders: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/discogs/orders/<order_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_discogs_order_detail(order_id):
+    """
+    Get detailed information for a specific Discogs order.
+    """
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({
+                'status': 'error',
+                'error': 'Discogs token not configured'
+            }), 500
+        
+        handler = DiscogsHandler(TOKEN)
+        result = handler.get_order_details(order_id)
+        
+        if not result['success']:
+            return jsonify({
+                'status': 'error',
+                'error': result.get('error', 'Failed to fetch order')
+            }), 500
+        
+        return jsonify({
+            'status': 'success',
+            'order': result['order']
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching Discogs order detail: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+ 
+
+@app.route('/api/records/mark-sold-on-discogs', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_sold_on_discogs():
+    """
+    Mark a record as sold on Discogs.
+    Updates status_id to 4, sets actual_sale_price, and date_sold.
+    
+    Request body:
+    {
+        "record_id": 9976,
+        "sale_price": 34.99
+    }
+    """
+    try:
+        data = request.json
+        record_id = data.get('record_id')
+        sale_price = data.get('sale_price')
+        
+        if not record_id:
+            return jsonify({'status': 'error', 'error': 'record_id is required'}), 400
+        
+        if sale_price is None:
+            return jsonify({'status': 'error', 'error': 'sale_price is required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if record exists
+        cursor.execute('SELECT id, artist, title, status_id FROM records WHERE id = ?', (record_id,))
+        record = cursor.fetchone()
+        
+        if not record:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Record #{record_id} not found'}), 404
+        
+        # Check if already sold
+        if record['status_id'] == 3 or record['status_id'] == 4:
+            conn.close()
+            return jsonify({
+                'status': 'error', 
+                'error': f'Record #{record_id} is already marked as sold (status_id: {record["status_id"]})'
+            }), 400
+        
+        # Update the record - NO discogs_order_id
+        cursor.execute('''
+            UPDATE records 
+            SET status_id = 4, 
+                actual_sale_price = ?, 
+                date_sold = CURRENT_DATE
+            WHERE id = ?
+        ''', (sale_price, record_id))
+        
+        conn.commit()
+        
+        # Get updated record
+        cursor.execute('''
+            SELECT id, artist, title, status_id, actual_sale_price, date_sold
+            FROM records 
+            WHERE id = ?
+        ''', (record_id,))
+        
+        updated_record = cursor.fetchone()
+        conn.close()
+        
+        app.logger.info(f"✅ Record #{record_id} marked as sold on Discogs for ${sale_price}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Record #{record_id} marked as sold on Discogs',
+            'record': {
+                'id': updated_record['id'],
+                'artist': updated_record['artist'],
+                'title': updated_record['title'],
+                'status_id': updated_record['status_id'],
+                'actual_sale_price': float(updated_record['actual_sale_price']) if updated_record['actual_sale_price'] else None,
+                'date_sold': updated_record['date_sold']
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error marking record as sold on Discogs: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/records/search-by-barcode', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def search_records_by_barcode():
+    """
+    Search for records by barcode.
+    Returns all records that match the barcode.
+    
+    Query params:
+        barcode: The barcode to search for
+    """
+    try:
+        barcode = request.args.get('barcode', '').strip()
+        
+        if not barcode:
+            return jsonify({
+                'status': 'error',
+                'error': 'barcode parameter is required'
+            }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Search for records with this barcode
+        cursor.execute('''
+            SELECT 
+                r.id, r.artist, r.title, r.barcode, r.catalog_number,
+                r.store_price, r.status_id, r.location,
+                s.status_name,
+                cs.condition_name as sleeve_condition_name,
+                cd.condition_name as disc_condition_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            WHERE r.barcode = ?
+            ORDER BY r.created_at DESC
+        ''', (barcode,))
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        records_list = []
+        for record in records:
+            records_list.append({
+                'id': record['id'],
+                'artist': record['artist'],
+                'title': record['title'],
+                'barcode': record['barcode'],
+                'catalog_number': record['catalog_number'],
+                'store_price': float(record['store_price']) if record['store_price'] else 0,
+                'status_id': record['status_id'],
+                'status_name': record['status_name'],
+                'location': record['location'],
+                'sleeve_condition': record['sleeve_condition_name'],
+                'disc_condition': record['disc_condition_name']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'records': records_list,
+            'count': len(records_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error searching records by barcode: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/accounting/monthly-performance', methods=['GET'])
 @login_required
@@ -8076,14 +8677,6 @@ def accounting_apply_filter():
         
         app.logger.info(f"Applying transactions to account: {account['code']} - {account['name']} (type: {account['type']})")
 
-        # Get cash account (1010)
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
-        cash_row = cursor.fetchone()
-        if not cash_row:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
-        cash_id = cash_row['id']
-
         processed_count = 0
         error_count = 0
         created_entries = []
@@ -8094,6 +8687,7 @@ def accounting_apply_filter():
                 amount = tx.get('amount', 0)
                 date_raw = tx.get('date')
                 description = tx.get('description', '')
+                source_type = tx.get('source_type', 'plaid')  # should be provided
 
                 if not tx_id or amount == 0 or not date_raw:
                     error_count += 1
@@ -8111,8 +8705,8 @@ def accounting_apply_filter():
                 # Check if already processed
                 cursor.execute('''
                     SELECT id FROM journal_entries
-                    WHERE source_type IN ('bank_transaction', 'plaid_transaction') AND source_id = ?
-                ''', (str(tx_id),))
+                    WHERE source_type = ? AND source_id = ?
+                ''', (source_type, str(tx_id)))
                 existing = cursor.fetchone()
 
                 if existing:
@@ -8124,8 +8718,15 @@ def accounting_apply_filter():
                     cursor.execute('''
                         INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                         VALUES (?, ?, ?, ?)
-                    ''', (date_str, f"Bank transaction: {description}", 'bank_transaction', str(tx_id)))
+                    ''', (date_str, f"Bank transaction: {description}", source_type, str(tx_id)))
                     entry_id = cursor.lastrowid
+
+                # Get cash account for this source type
+                cash_id = get_cash_account_id(source_type)
+                if not cash_id:
+                    app.logger.warning(f"No cash account for source {source_type}, skipping tx {tx_id}")
+                    error_count += 1
+                    continue
 
                 # Insert the new lines for this entry
                 if is_expense:
@@ -8376,527 +8977,6 @@ def accounting_delete_journal_entry(entry_id):
         app.logger.error(f"Error deleting journal entry: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-# ==================== ACCOUNTING: PROCESS SINGLE TRANSACTION ====================
- 
-@app.route('/api/accounting/bank/process-transaction', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def accounting_process_single_transaction():
-    """
-    Process a single transaction by assigning it to an account.
-    Handles both historic (CSV) and Plaid transactions.
-    """
-    data = request.json
-    transaction_id = data.get('transaction_id')
-    account_id = data.get('account_id')
-    source = data.get('source', 'plaid')
-    date = data.get('date')
-    amount = data.get('amount')
-    description = data.get('description', '')
-    
-    if not transaction_id or not account_id:
-        return jsonify({'status': 'error', 'error': 'transaction_id and account_id required'}), 400
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Get the account details
-    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
-    account = cursor.fetchone()
-    if not account:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Account not found'}), 404
-    
-    # Get cash account (1010)
-    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
-    cash_row = cursor.fetchone()
-    if not cash_row:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Cash account (1010) not found'}), 500
-    cash_id = cash_row['id']
-    
-    # Determine the transaction details based on source
-    if source == 'historic':
-        cursor.execute('''
-            SELECT id, transaction_date as date, amount, description, processed
-            FROM historic_bank_transactions 
-            WHERE id = ?
-        ''', (int(transaction_id),))
-        tx = cursor.fetchone()
-        if not tx:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Historic transaction not found'}), 404
-        if tx['processed'] == 1:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
-        
-        tx_date = tx['date']
-        tx_amount = tx['amount']
-        tx_description = tx['description']
-        
-    else:
-        # For Plaid transactions, use the data passed from the frontend
-        if not date or amount is None:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Missing transaction data for Plaid transaction'}), 400
-        
-        # Check if already processed
-        cursor.execute('''
-            SELECT id FROM journal_entries
-            WHERE source_type IN ('bank_transaction', 'plaid_transaction') AND source_id = ?
-        ''', (str(transaction_id),))
-        if cursor.fetchone():
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Transaction already processed'}), 400
-        
-        tx_date = date
-        tx_amount = amount
-        tx_description = description or 'Plaid transaction'
-    
-    amount_cents = int(round(abs(tx_amount) * 100))
-    is_expense = tx_amount < 0
-    is_expense_account = account['type'] == 'expense'
-    
-    # Create journal entry
-    entry_description = f"Bank transaction: {tx_description}"
-    cursor.execute('''
-        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-        VALUES (?, ?, ?, ?)
-    ''', (tx_date, entry_description, 'bank_transaction', str(transaction_id)))
-    entry_id = cursor.lastrowid
-    
-    if is_expense:
-        if is_expense_account:
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, amount_cents, 0))
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, 0, amount_cents))
-        else:
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, amount_cents, 0))
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, 0, amount_cents))
-    else:
-        if is_expense_account:
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, 0, amount_cents))
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, amount_cents, 0))
-        else:
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, amount_cents, 0))
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, 0, amount_cents))
-    
-    # Mark as processed in the appropriate table
-    if source == 'historic':
-        cursor.execute('UPDATE historic_bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({
-        'status': 'success',
-        'message': f'Transaction processed successfully to {account["name"]}',
-        'entry_id': entry_id,
-        'account': {
-            'id': account['id'],
-            'code': account['code'],
-            'name': account['name'],
-            'type': account['type']
-        }
-    })
-
-# ==================== DISCOGS ORDERS ENDPOINTS ====================
-
-@app.route('/api/discogs/orders', methods=['GET'])
-def get_discogs_orders():
-    """
-    Get orders from Discogs API.
-    
-    Query params:
-        status: Filter by status (New, Paid, Shipped, etc.)
-        page: Page number (default: 1)
-        per_page: Items per page (default: 50, max: 100)
-        all: If 'true', fetch all pages (default: false)
-    """
-    try:
-        # Check if Discogs token exists
-        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
-        if not TOKEN:
-            return jsonify({
-                'status': 'error',
-                'error': 'Discogs token not configured'
-            }), 500
-        
-        # Get query parameters
-        status = request.args.get('status')
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 50, type=int)
-        fetch_all = request.args.get('all', 'false').lower() == 'true'
-        
-        # Initialize Discogs handler
-        handler = DiscogsHandler(TOKEN)
-        
-        if fetch_all:
-            # Fetch all orders (handles pagination internally)
-            orders = handler.get_all_orders(status=status)
-            
-            return jsonify({
-                'status': 'success',
-                'orders': orders,
-                'total': len(orders),
-                'pagination': {
-                    'page': 1,
-                    'per_page': len(orders),
-                    'pages': 1,
-                    'items': len(orders)
-                }
-            })
-        else:
-            # Fetch a single page
-            result = handler.get_orders(status=status, page=page, per_page=per_page)
-            
-            if not result['success']:
-                return jsonify({
-                    'status': 'error',
-                    'error': result.get('error', 'Failed to fetch orders')
-                }), 500
-            
-            return jsonify({
-                'status': 'success',
-                'orders': result['orders'],
-                'pagination': result['pagination']
-            })
-            
-    except Exception as e:
-        app.logger.error(f"Error fetching Discogs orders: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/discogs/orders/<order_id>', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_discogs_order_detail(order_id):
-    """
-    Get detailed information for a specific Discogs order.
-    """
-    try:
-        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
-        if not TOKEN:
-            return jsonify({
-                'status': 'error',
-                'error': 'Discogs token not configured'
-            }), 500
-        
-        handler = DiscogsHandler(TOKEN)
-        result = handler.get_order_details(order_id)
-        
-        if not result['success']:
-            return jsonify({
-                'status': 'error',
-                'error': result.get('error', 'Failed to fetch order')
-            }), 500
-        
-        return jsonify({
-            'status': 'success',
-            'order': result['order']
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error fetching Discogs order detail: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
- 
-
-@app.route('/api/records/mark-sold-on-discogs', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def mark_sold_on_discogs():
-    """
-    Mark a record as sold on Discogs.
-    Updates status_id to 4, sets actual_sale_price, and date_sold.
-    
-    Request body:
-    {
-        "record_id": 9976,
-        "sale_price": 34.99
-    }
-    """
-    try:
-        data = request.json
-        record_id = data.get('record_id')
-        sale_price = data.get('sale_price')
-        
-        if not record_id:
-            return jsonify({'status': 'error', 'error': 'record_id is required'}), 400
-        
-        if sale_price is None:
-            return jsonify({'status': 'error', 'error': 'sale_price is required'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Check if record exists
-        cursor.execute('SELECT id, artist, title, status_id FROM records WHERE id = ?', (record_id,))
-        record = cursor.fetchone()
-        
-        if not record:
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'Record #{record_id} not found'}), 404
-        
-        # Check if already sold
-        if record['status_id'] == 3 or record['status_id'] == 4:
-            conn.close()
-            return jsonify({
-                'status': 'error', 
-                'error': f'Record #{record_id} is already marked as sold (status_id: {record["status_id"]})'
-            }), 400
-        
-        # Update the record - NO discogs_order_id
-        cursor.execute('''
-            UPDATE records 
-            SET status_id = 4, 
-                actual_sale_price = ?, 
-                date_sold = CURRENT_DATE
-            WHERE id = ?
-        ''', (sale_price, record_id))
-        
-        conn.commit()
-        
-        # Get updated record
-        cursor.execute('''
-            SELECT id, artist, title, status_id, actual_sale_price, date_sold
-            FROM records 
-            WHERE id = ?
-        ''', (record_id,))
-        
-        updated_record = cursor.fetchone()
-        conn.close()
-        
-        app.logger.info(f"✅ Record #{record_id} marked as sold on Discogs for ${sale_price}")
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Record #{record_id} marked as sold on Discogs',
-            'record': {
-                'id': updated_record['id'],
-                'artist': updated_record['artist'],
-                'title': updated_record['title'],
-                'status_id': updated_record['status_id'],
-                'actual_sale_price': float(updated_record['actual_sale_price']) if updated_record['actual_sale_price'] else None,
-                'date_sold': updated_record['date_sold']
-            }
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error marking record as sold on Discogs: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/api/records/search-by-barcode', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def search_records_by_barcode():
-    """
-    Search for records by barcode.
-    Returns all records that match the barcode.
-    
-    Query params:
-        barcode: The barcode to search for
-    """
-    try:
-        barcode = request.args.get('barcode', '').strip()
-        
-        if not barcode:
-            return jsonify({
-                'status': 'error',
-                'error': 'barcode parameter is required'
-            }), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Search for records with this barcode
-        cursor.execute('''
-            SELECT 
-                r.id, r.artist, r.title, r.barcode, r.catalog_number,
-                r.store_price, r.status_id, r.location,
-                s.status_name,
-                cs.condition_name as sleeve_condition_name,
-                cd.condition_name as disc_condition_name
-            FROM records r
-            LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            WHERE r.barcode = ?
-            ORDER BY r.created_at DESC
-        ''', (barcode,))
-        
-        records = cursor.fetchall()
-        conn.close()
-        
-        records_list = []
-        for record in records:
-            records_list.append({
-                'id': record['id'],
-                'artist': record['artist'],
-                'title': record['title'],
-                'barcode': record['barcode'],
-                'catalog_number': record['catalog_number'],
-                'store_price': float(record['store_price']) if record['store_price'] else 0,
-                'status_id': record['status_id'],
-                'status_name': record['status_name'],
-                'location': record['location'],
-                'sleeve_condition': record['sleeve_condition_name'],
-                'disc_condition': record['disc_condition_name']
-            })
-        
-        return jsonify({
-            'status': 'success',
-            'records': records_list,
-            'count': len(records_list)
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error searching records by barcode: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/api/accounting/bank/apply-filter-bulk', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def accounting_apply_filter_bulk():
-    """
-    Applies a target account to ALL transactions matching the given filter.
-    The filter parameters are passed directly, ensuring the set is identical to the table.
-    """
-    data = request.json
-    search = data.get('search', '').strip()
-    unprocessed_only = data.get('unprocessed_only', True)
-    source_type = data.get('source_type')  # None or 'plaid'/'historic'
-    account_id = data.get('account_id')
-
-    if not account_id:
-        return jsonify({'status': 'error', 'error': 'account_id required'}), 400
-
-    # Get the matching transactions using the helper
-    transactions = get_transactions_matching_filter(search, unprocessed_only, source_type)
-
-    if not transactions:
-        return jsonify({'status': 'success', 'message': 'No transactions match the filter.', 'count': 0})
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # Get account details
-    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
-    account = cursor.fetchone()
-    if not account:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Account not found'}), 404
-
-    # Get cash account (1010)
-    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
-    cash_row = cursor.fetchone()
-    if not cash_row:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Cash account not found'}), 500
-    cash_id = cash_row['id']
-
-    processed_count = 0
-    for tx in transactions:
-        try:
-            tx_id = tx['id']
-            amount = tx['amount']
-            date_raw = tx['date']
-            description = tx.get('description', '')
-
-            # Parse date
-            date_str = parse_plaid_date(date_raw) if date_raw else datetime.now().date().isoformat()
-            if not date_str:
-                date_str = datetime.now().date().isoformat()
-
-            amount_cents = int(round(abs(amount) * 100))
-            is_expense = amount > 0   # Positive = withdrawal
-
-            # Check if already processed
-            source_type_for_check = 'plaid_transaction' if str(tx_id).startswith('plaid_') else 'bank_transaction'
-            cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
-                           (source_type_for_check, str(tx_id)))
-            existing = cursor.fetchone()
-
-            if existing:
-                # Delete old lines
-                cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
-                entry_id = existing['id']
-            else:
-                # Create new entry
-                cursor.execute('''
-                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (date_str, f"Bank transaction: {description}", 'bank_transaction', str(tx_id)))
-                entry_id = cursor.lastrowid
-
-            # Insert new lines
-            if is_expense:
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, account_id, amount_cents, 0))
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, cash_id, 0, amount_cents))
-            else:
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, cash_id, amount_cents, 0))
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, account_id, 0, amount_cents))
-
-            conn.commit()
-            processed_count += 1
-        except Exception as e:
-            app.logger.error(f"Error processing transaction {tx.get('id')}: {str(e)}")
-            continue
-
-    conn.close()
-
-    return jsonify({
-        'status': 'success',
-        'message': f'Applied {processed_count} transactions to {account["name"]}.',
-        'count': processed_count
-    })
-
-
 
 
 if __name__ == '__main__':

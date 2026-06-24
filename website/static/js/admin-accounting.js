@@ -1,5 +1,5 @@
 // ============================================================
-// admin-accounting.js – Accounting Module (with Net bar, sync removed)
+// admin-accounting.js – Accounting Module (final)
 // ============================================================
 
 let journalCurrentPage = 1;
@@ -213,6 +213,8 @@ async function loadDashboard() {
         console.error('Dashboard error:', err);
     }
 }
+
+// runAccountingSync() removed
 
 // ============================================================
 // ACCOUNT DROPDOWNS (unchanged)
@@ -896,8 +898,10 @@ function renderBankTransactions(transactions) {
             const selected = (assignedAccountId === acc.id) ? 'selected' : '';
             options += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
         });
+        // Add data-source-type so per‑row Apply All can send source_type
+        const sourceType = t.source_type || 'bank_transaction';
         const accountHtml = `
-            <select class="tx-account-select" id="tx-select-${t.id}">
+            <select class="tx-account-select" id="tx-select-${t.id}" data-source-type="${sourceType}">
                 ${options}
             </select>
         `;
@@ -950,7 +954,7 @@ function resetBankFilters() {
     loadBankTransactions();
 }
 
-// Apply All (per-row selections)
+// Apply All (per-row selections) – now includes source_type
 async function applyAllSelections() {
     const selects = document.querySelectorAll('#bank-body .tx-account-select');
     const updates = [];
@@ -960,7 +964,12 @@ async function applyAllSelections() {
         const idParts = sel.id.split('-');
         if (idParts.length < 3) return;
         const transactionId = idParts.slice(2).join('-');
-        updates.push({ transaction_id: transactionId, account_id: parseInt(accountId) });
+        const sourceType = sel.dataset.sourceType || 'bank_transaction';
+        updates.push({ 
+            transaction_id: transactionId, 
+            account_id: parseInt(accountId),
+            source_type: sourceType
+        });
     });
 
     if (updates.length === 0) {
