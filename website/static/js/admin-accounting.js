@@ -1,5 +1,5 @@
 // ============================================================
-// admin-accounting.js – Accounting Module
+// admin-accounting.js – Accounting Module (final)
 // ============================================================
 
 let journalCurrentPage = 1;
@@ -337,10 +337,6 @@ async function loadAccountTransactionsSelect() {
     }
 }
 
-/**
- * Fetches min/max dates for an account and sets the date inputs.
- * If no data, uses fallback: 2026-02-01 to today.
- */
 async function updateAccountDateRange(accountId) {
     const fromInput = document.getElementById('account-tx-date-from');
     const toInput = document.getElementById('account-tx-date-to');
@@ -353,7 +349,6 @@ async function updateAccountDateRange(accountId) {
         );
         const data = await res.json();
         if (data.status === 'success' && data.min_date && data.max_date) {
-            // Set from/to to the min/max
             fromInput.value = data.min_date;
             toInput.value = data.max_date;
         } else {
@@ -363,11 +358,9 @@ async function updateAccountDateRange(accountId) {
         }
     } catch (e) {
         console.error('Failed to fetch account date range:', e);
-        // Fallback
         fromInput.value = '2026-02-01';
         toInput.value = today;
     }
-    // Load transactions with the new dates
     await loadAccountTransactions();
 }
 
@@ -817,7 +810,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS
+// BANK TRANSACTIONS – with source + target dropdowns
 // ============================================================
 
 async function checkBankConnection() {
@@ -887,7 +880,7 @@ async function connectBank() {
 
 async function loadBankTransactions() {
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const params = new URLSearchParams();
     params.append('page', 1);
@@ -925,17 +918,17 @@ async function loadBankTransactions() {
             updateBankCounts(unprocessed, total);
             document.getElementById('bank-pagination-info').textContent = `Showing ${transactions.length} entries (${total} total)`;
         } else {
-            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
     let html = '';
@@ -946,19 +939,26 @@ function renderBankTransactions(transactions) {
         const status = t.status || (t.pending ? 'Pending' : 'Posted');
         const category = t.category || '';
         const processed = t.processed || false;
-        const assignedAccountId = t.account_id || null;
+        const assignedCashId = t.cash_account_id || null;
+        const assignedTargetId = t.account_id || null;
 
-        let options = '<option value="">-- Select --</option>';
-        bankAccounts.forEach(acc => {
-            const selected = (assignedAccountId === acc.id) ? 'selected' : '';
-            options += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
+        // Source dropdown – only Bluevine (1) and FNBO (21)
+        const sourceOptions = bankAccounts.filter(acc => acc.id == 1 || acc.id == 21);
+        let sourceHtml = `<select class="tx-source-select" id="tx-source-${t.id}" data-source-type="${t.source_type}">`;
+        sourceOptions.forEach(acc => {
+            const selected = (assignedCashId == acc.id) ? 'selected' : '';
+            sourceHtml += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
         });
-        const sourceType = t.source_type || 'bank_transaction';
-        const accountHtml = `
-            <select class="tx-account-select" id="tx-select-${t.id}" data-source-type="${sourceType}">
-                ${options}
-            </select>
-        `;
+        sourceHtml += '</select>';
+
+        // Target dropdown – all accounts except cash accounts (exclude 1 and 21)
+        const targetOptions = bankAccounts.filter(acc => acc.id != 1 && acc.id != 21);
+        let targetHtml = `<select class="tx-target-select" id="tx-target-${t.id}">`;
+        targetOptions.forEach(acc => {
+            const selected = (assignedTargetId == acc.id) ? 'selected' : '';
+            targetHtml += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
+        });
+        targetHtml += '</select>';
 
         html += `<tr>
             <td>${t.date || ''}</td>
@@ -966,7 +966,8 @@ function renderBankTransactions(transactions) {
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>${category}</td>
             <td><span class="status-badge ${status === 'Pending' ? 'warning' : 'active'}">${status}</span></td>
-            <td>${accountHtml}</td>
+            <td>${sourceHtml}</td>
+            <td>${targetHtml}</td>
         </tr>`;
     });
     body.innerHTML = html;
@@ -1009,24 +1010,27 @@ function resetBankFilters() {
 }
 
 async function applyAllSelections() {
-    const selects = document.querySelectorAll('#bank-body .tx-account-select');
+    const sourceSelects = document.querySelectorAll('#bank-body .tx-source-select');
+    const targetSelects = document.querySelectorAll('#bank-body .tx-target-select');
     const updates = [];
-    selects.forEach(sel => {
-        const accountId = sel.value;
-        if (!accountId) return;
+    sourceSelects.forEach((sel, index) => {
+        const sourceId = sel.value;
+        const targetId = targetSelects[index].value;
+        if (!sourceId || !targetId) return;
         const idParts = sel.id.split('-');
         if (idParts.length < 3) return;
         const transactionId = idParts.slice(2).join('-');
         const sourceType = sel.dataset.sourceType || 'bank_transaction';
-        updates.push({ 
-            transaction_id: transactionId, 
-            account_id: parseInt(accountId),
+        updates.push({
+            transaction_id: transactionId,
+            source_account_id: parseInt(sourceId),
+            target_account_id: parseInt(targetId),
             source_type: sourceType
         });
     });
 
     if (updates.length === 0) {
-        alert('No selections to apply. Please select an account for at least one transaction.');
+        alert('No selections to apply. Please select both source and target accounts for at least one transaction.');
         return;
     }
 
@@ -1194,7 +1198,6 @@ async function updateAccountBalance(accountId) {
 }
 
 function resetAccountTxFilters() {
-    // Instead of clearing, re-fetch the date range for the selected account
     const accountId = document.getElementById('account-transactions-select').value;
     if (accountId) {
         updateAccountDateRange(accountId);
