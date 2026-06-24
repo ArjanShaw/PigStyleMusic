@@ -8978,6 +8978,37 @@ def accounting_delete_journal_entry(entry_id):
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/accounting/account-date-range', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_account_date_range():
+    """Return the earliest and latest transaction dates for a given account."""
+    account_id = request.args.get('account_id', type=int)
+    if not account_id:
+        return jsonify({'status': 'error', 'error': 'account_id required'}), 400
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT MIN(je.transaction_date) as min_date, MAX(je.transaction_date) as max_date
+        FROM journal_lines jl
+        JOIN journal_entries je ON jl.journal_entry_id = je.id
+        WHERE jl.account_id = ?
+    ''', (account_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row and row['min_date'] and row['max_date']:
+        return jsonify({
+            'status': 'success',
+            'min_date': row['min_date'],
+            'max_date': row['max_date']
+        })
+    else:
+        return jsonify({
+            'status': 'success',
+            'min_date': None,
+            'max_date': None
+        })
+
 @app.route('/api/accounting/earliest-transaction', methods=['GET'])
 @login_required
 @role_required(['admin'])
