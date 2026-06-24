@@ -1,5 +1,5 @@
 // ============================================================
-// admin-accounting.js – Accounting Module (final)
+// admin-accounting.js – Accounting Module
 // ============================================================
 
 let journalCurrentPage = 1;
@@ -65,13 +65,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             else if (sub === 'cash-flow') {
-                // Set end month to current
                 const now = new Date();
                 const endMonth = now.toISOString().slice(0, 7);
                 const endInput = document.getElementById('cash-flow-end');
                 if (!endInput.value) endInput.value = endMonth;
 
-                // Fetch earliest transaction and set start month
                 fetch(`${AppConfig.baseUrl}/api/accounting/earliest-transaction`, {
                     credentials: 'include',
                     headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
@@ -84,12 +82,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         const startInput = document.getElementById('cash-flow-start');
                         if (!startInput.value) startInput.value = startMonth;
                     }
-                    // Load the chart
                     loadCashFlow();
                 })
                 .catch(err => {
                     console.error('Failed to fetch earliest transaction:', err);
-                    loadCashFlow(); // fallback with current inputs
+                    loadCashFlow();
                 });
             }
             else if (sub === 'orders') {
@@ -104,7 +101,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // AUTO‑LOAD when dropdown changes
     document.getElementById('account-transactions-select')?.addEventListener('change', function() {
         accountTxCurrentPage = 1;
-        loadAccountTransactions();
+        const accountId = this.value;
+        if (accountId) {
+            updateAccountDateRange(accountId);
+        } else {
+            loadAccountTransactions();
+        }
     });
 
     // Bank upload drag & drop
@@ -164,8 +166,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('report-date-from').value = firstDay;
     document.getElementById('report-date-to').value = today;
     document.getElementById('manual-date').value = today;
-    document.getElementById('account-tx-date-from').value = firstDay;
-    document.getElementById('account-tx-date-to').value = today;
+    // Do NOT set account-tx-date-from/to globally – they will be set per account
 
     // Load dashboard by default
     loadDashboard();
@@ -198,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
-// DASHBOARD (unchanged)
+// DASHBOARD
 // ============================================================
 
 async function loadDashboard() {
@@ -232,10 +233,8 @@ async function loadDashboard() {
     }
 }
 
-// runAccountingSync() removed
-
 // ============================================================
-// ACCOUNT DROPDOWNS (unchanged)
+// ACCOUNT DROPDOWNS
 // ============================================================
 
 async function loadAccountSelects() {
@@ -288,7 +287,6 @@ async function loadAccountSelectsForBank() {
     }
 }
 
-// Load accounts for per‑row dropdowns and store globally
 async function loadBankAccountsForRowDropdowns() {
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
@@ -306,7 +304,10 @@ async function loadBankAccountsForRowDropdowns() {
     }
 }
 
-// === ACCOUNT TRANSACTIONS DROPDOWN ===
+// ============================================================
+// ACCOUNT TRANSACTIONS – with dynamic date range
+// ============================================================
+
 async function loadAccountTransactionsSelect() {
     const select = document.getElementById('account-transactions-select');
     if (!select) return;
@@ -325,8 +326,10 @@ async function loadAccountTransactionsSelect() {
                 select.appendChild(opt);
             });
             if (data.accounts.length > 0) {
-                select.value = data.accounts[0].id;
-                loadAccountTransactions();
+                const firstAccount = data.accounts[0];
+                select.value = firstAccount.id;
+                // Set date range and load
+                await updateAccountDateRange(firstAccount.id);
             }
         }
     } catch (e) {
@@ -334,8 +337,42 @@ async function loadAccountTransactionsSelect() {
     }
 }
 
+/**
+ * Fetches min/max dates for an account and sets the date inputs.
+ * If no data, uses fallback: 2026-02-01 to today.
+ */
+async function updateAccountDateRange(accountId) {
+    const fromInput = document.getElementById('account-tx-date-from');
+    const toInput = document.getElementById('account-tx-date-to');
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+        const res = await fetch(
+            `${AppConfig.baseUrl}/api/accounting/account-date-range?account_id=${accountId}`,
+            { credentials: 'include', headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {} }
+        );
+        const data = await res.json();
+        if (data.status === 'success' && data.min_date && data.max_date) {
+            // Set from/to to the min/max
+            fromInput.value = data.min_date;
+            toInput.value = data.max_date;
+        } else {
+            // No transactions – fallback to Feb 2026 to today
+            fromInput.value = '2026-02-01';
+            toInput.value = today;
+        }
+    } catch (e) {
+        console.error('Failed to fetch account date range:', e);
+        // Fallback
+        fromInput.value = '2026-02-01';
+        toInput.value = today;
+    }
+    // Load transactions with the new dates
+    await loadAccountTransactions();
+}
+
 // ============================================================
-// JOURNAL ENTRIES (unchanged)
+// JOURNAL ENTRIES
 // ============================================================
 
 async function loadJournalEntries() {
@@ -443,7 +480,7 @@ function viewJournalEntry(entryId) {
 }
 
 // ============================================================
-// MANUAL ADJUSTMENTS (unchanged)
+// MANUAL ADJUSTMENTS
 // ============================================================
 
 function addManualLine() {
@@ -554,7 +591,7 @@ async function submitManualEntry() {
 }
 
 // ============================================================
-// RECONCILIATION (unchanged)
+// RECONCILIATION
 // ============================================================
 
 function handleBankUpload(file) {
@@ -696,7 +733,7 @@ function manualMatch(id) {
 }
 
 // ============================================================
-// REPORTS (unchanged)
+// REPORTS
 // ============================================================
 
 async function runReport() {
@@ -780,7 +817,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS (with filter-based bulk apply, no sync)
+// BANK TRANSACTIONS
 // ============================================================
 
 async function checkBankConnection() {
@@ -916,7 +953,6 @@ function renderBankTransactions(transactions) {
             const selected = (assignedAccountId === acc.id) ? 'selected' : '';
             options += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
         });
-        // Add data-source-type so per‑row Apply All can send source_type
         const sourceType = t.source_type || 'bank_transaction';
         const accountHtml = `
             <select class="tx-account-select" id="tx-select-${t.id}" data-source-type="${sourceType}">
@@ -972,7 +1008,6 @@ function resetBankFilters() {
     loadBankTransactions();
 }
 
-// Apply All (per-row selections) – now includes source_type
 async function applyAllSelections() {
     const selects = document.querySelectorAll('#bank-body .tx-account-select');
     const updates = [];
@@ -1016,7 +1051,6 @@ async function applyAllSelections() {
     }
 }
 
-// Bulk Apply – sends filter parameters, not a list of IDs
 async function applyFilterToTransactions() {
     const filterInput = document.getElementById('bank-filter');
     const accountSelect = document.getElementById('bank-apply-account');
@@ -1065,7 +1099,7 @@ async function applyFilterToTransactions() {
 }
 
 // ============================================================
-// ACCOUNT TRANSACTIONS (unchanged)
+// ACCOUNT TRANSACTIONS (load function)
 // ============================================================
 
 async function loadAccountTransactions() {
@@ -1160,10 +1194,16 @@ async function updateAccountBalance(accountId) {
 }
 
 function resetAccountTxFilters() {
-    document.getElementById('account-tx-date-from').value = '';
-    document.getElementById('account-tx-date-to').value = '';
-    accountTxCurrentPage = 1;
-    loadAccountTransactions();
+    // Instead of clearing, re-fetch the date range for the selected account
+    const accountId = document.getElementById('account-transactions-select').value;
+    if (accountId) {
+        updateAccountDateRange(accountId);
+    } else {
+        document.getElementById('account-tx-date-from').value = '';
+        document.getElementById('account-tx-date-to').value = '';
+        accountTxCurrentPage = 1;
+        loadAccountTransactions();
+    }
 }
 
 function exportAccountTransactionsCSV() {
@@ -1204,7 +1244,7 @@ function exportAccountTransactionsCSV() {
 }
 
 // ============================================================
-// MONTHLY PERFORMANCE (unchanged)
+// MONTHLY PERFORMANCE
 // ============================================================
 
 async function loadMonthlyPerformance() {
@@ -1259,7 +1299,6 @@ function renderMonthlyCharts(data) {
     });
     const accountNames = Array.from(allAccounts).sort();
 
-    // Build robust account name -> ID mapping (normalized)
     const accountNameToId = {};
     bankAccounts.forEach(acc => {
         const trimmed = acc.name.trim();
@@ -1329,7 +1368,6 @@ function renderMonthlyCharts(data) {
                     const amount = this.data.datasets[0].data[index];
                     if (amount === 0) return;
                     
-                    // Normalized lookup
                     const trimmed = accountName.trim();
                     const norm = trimmed.toLowerCase();
                     let accountId = accountNameToId[norm] || accountNameToId[trimmed];
@@ -1346,7 +1384,7 @@ function renderMonthlyCharts(data) {
 }
 
 // ============================================================
-// MODAL FUNCTIONS (updated for Net bar)
+// MODAL FUNCTIONS
 // ============================================================
 
 function closeMonthlyModal() {
@@ -1417,7 +1455,7 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW DETAIL (with Net bar)
+// CASH FLOW
 // ============================================================
 
 async function loadCashFlow() {
@@ -1465,7 +1503,6 @@ function renderCashFlowCharts(data) {
         return;
     }
 
-    // Collect all unique account names
     const allAccounts = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1473,7 +1510,6 @@ function renderCashFlowCharts(data) {
     });
     const accountNames = Array.from(allAccounts).sort();
 
-    // Build account name -> ID mapping (normalized)
     const accountNameToId = {};
     bankAccounts.forEach(acc => {
         const trimmed = acc.name.trim();
@@ -1482,7 +1518,6 @@ function renderCashFlowCharts(data) {
         accountNameToId[trimmed] = acc.id;
     });
 
-    // Determine global max absolute value for y-axis
     let globalMax = 0;
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -1490,7 +1525,6 @@ function renderCashFlowCharts(data) {
             const val = monthData[acc] || 0;
             if (Math.abs(val) > globalMax) globalMax = Math.abs(val);
         });
-        // Also consider net values (sum per month)
         let net = 0;
         accountNames.forEach(acc => {
             net += monthData[acc] || 0;
@@ -1499,7 +1533,6 @@ function renderCashFlowCharts(data) {
     });
     const yMax = Math.ceil(globalMax / 500) * 500 || 100;
 
-    // Destroy old charts
     if (window._cashFlowCharts) {
         window._cashFlowCharts.forEach(chart => chart.destroy());
     }
@@ -1508,18 +1541,13 @@ function renderCashFlowCharts(data) {
     months.forEach((month, idx) => {
         const monthData = account_breakdown[month] || {};
         const values = accountNames.map(acc => monthData[acc] || 0);
-        const labels = accountNames.slice(); // copy
-
-        // Compute net cash flow for this month
+        const labels = accountNames.slice();
         const net = values.reduce((sum, v) => sum + v, 0);
-
-        // Extend labels and values with "Net"
         labels.push('Net');
         values.push(net);
 
-        // Define bar colors: green for positive, red for negative, purple for Net
         const barColors = values.map((v, i) => {
-            if (i === values.length - 1) return 'rgba(111, 66, 193, 0.8)'; // purple for Net
+            if (i === values.length - 1) return 'rgba(111, 66, 193, 0.8)';
             return v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)';
         });
         const borderColors = values.map((v, i) => {
@@ -1527,7 +1555,6 @@ function renderCashFlowCharts(data) {
             return v >= 0 ? '#28a745' : '#dc3545';
         });
 
-        // Create card
         const card = document.createElement('div');
         card.className = 'monthly-chart-card';
         card.innerHTML = `<h4>${month}</h4><canvas id="cash-flow-chart-${idx}"></canvas>`;
@@ -1586,10 +1613,8 @@ function renderCashFlowCharts(data) {
                     if (Math.abs(amount) < 0.01) return;
 
                     if (label === 'Net') {
-                        // Show all transactions for this month (all accounts, exclude orders)
                         showMonthlyTransactions(month, null, 'Net Cash Flow', true);
                     } else {
-                        // Normalized lookup for account ID
                         const trimmed = label.trim();
                         const norm = trimmed.toLowerCase();
                         let accountId = accountNameToId[norm] || accountNameToId[trimmed];
