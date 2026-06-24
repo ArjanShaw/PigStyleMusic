@@ -7848,15 +7848,16 @@ def apply_multiple():
 @login_required
 @role_required(['admin'])
 def apply_filter_bulk():
-    """Apply a target account to ALL transactions matching the given filter."""
+    """Apply source and target accounts to ALL transactions matching the given filter."""
     data = request.json
     search = data.get('search', '').strip()
     unprocessed_only = data.get('unprocessed_only', True)
     source_type = data.get('source_type')  # None or 'plaid'/'historic'
-    account_id = data.get('account_id')
+    source_account_id = data.get('source_account_id')
+    target_account_id = data.get('target_account_id')
 
-    if not account_id:
-        return jsonify({'status': 'error', 'error': 'account_id required'}), 400
+    if not source_account_id or not target_account_id:
+        return jsonify({'status': 'error', 'error': 'source_account_id and target_account_id required'}), 400
 
     # Get the matching transactions using the helper
     transactions = get_transactions_matching_filter(search, unprocessed_only, source_type)
@@ -7867,12 +7868,18 @@ def apply_filter_bulk():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Get account details
-    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
-    account = cursor.fetchone()
-    if not account:
+    # Verify accounts exist
+    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (source_account_id,))
+    source = cursor.fetchone()
+    if not source:
         conn.close()
-        return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+        return jsonify({'status': 'error', 'error': 'Source account not found'}), 404
+
+    cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (target_account_id,))
+    target = cursor.fetchone()
+    if not target:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Target account not found'}), 404
 
     processed_count = 0
     for tx in transactions:
@@ -7881,15 +7888,12 @@ def apply_filter_bulk():
             amount = tx['amount']
             date_raw = tx['date']
             description = tx.get('description', '')
-            src_type = tx.get('source_type', 'historic')  # should be set
+            src_type = tx.get('source_type', 'historic')
 
-            # Parse date
-            date_str = parse_plaid_date(date_raw) if date_raw else datetime.now().date().isoformat()
-            if not date_str:
-                date_str = datetime.now().date().isoformat()
+            date_str = parse_plaid_date(date_raw) or datetime.now().date().isoformat()
 
             amount_cents = int(round(abs(amount) * 100))
-            is_expense = amount > 0   # Positive = withdrawal
+            is_expense = amount > 0   # Positive = withdrawal (expense)
 
             # Check if already processed
             cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
@@ -7897,42 +7901,36 @@ def apply_filter_bulk():
             existing = cursor.fetchone()
 
             if existing:
-                # Delete old lines
                 cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
                 entry_id = existing['id']
             else:
-                # Create new entry with correct source_type
                 cursor.execute('''
                     INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                     VALUES (?, ?, ?, ?)
                 ''', (date_str, f"Bank transaction: {description}", src_type, str(tx_id)))
                 entry_id = cursor.lastrowid
 
-            # Get cash account for this source type
-            cash_id = get_cash_account_id(src_type)
-            if not cash_id:
-                app.logger.warning(f"No cash account for source {src_type}, skipping tx {tx_id}")
-                continue
-
-            # Insert new lines
+            # Insert lines using the provided source and target accounts
             if is_expense:
+                # Debit target, Credit source
                 cursor.execute('''
                     INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                     VALUES (?, ?, ?, ?)
-                ''', (entry_id, account_id, amount_cents, 0))
+                ''', (entry_id, target_account_id, amount_cents, 0))
                 cursor.execute('''
                     INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                     VALUES (?, ?, ?, ?)
-                ''', (entry_id, cash_id, 0, amount_cents))
+                ''', (entry_id, source_account_id, 0, amount_cents))
             else:
+                # Debit source, Credit target
                 cursor.execute('''
                     INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                     VALUES (?, ?, ?, ?)
-                ''', (entry_id, cash_id, amount_cents, 0))
+                ''', (entry_id, source_account_id, amount_cents, 0))
                 cursor.execute('''
                     INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                     VALUES (?, ?, ?, ?)
-                ''', (entry_id, account_id, 0, amount_cents))
+                ''', (entry_id, target_account_id, 0, amount_cents))
 
             conn.commit()
             processed_count += 1
@@ -7944,7 +7942,7 @@ def apply_filter_bulk():
 
     return jsonify({
         'status': 'success',
-        'message': f'Applied {processed_count} transactions to {account["name"]}.',
+        'message': f'Applied {processed_count} transactions to source "{source["name"]}" and target "{target["name"]}".',
         'count': processed_count
     })
 
