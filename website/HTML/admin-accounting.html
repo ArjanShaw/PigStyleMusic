@@ -47,8 +47,8 @@
         .reconciliation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
         .reconciliation-grid .col { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; }
         .reconciliation-grid .col h4 { margin-top: 0; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
-        .match-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; }
-        .match-row .amount { font-weight: 600; }
+        .match-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; color: #333 !important; }
+        .match-row .amount { font-weight: 600; color: #333; }
 
         .upload-area { border: 2px dashed #ddd; padding: 30px; text-align: center; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
         .upload-area:hover { border-color: #007bff; background: #f0f7ff; }
@@ -171,34 +171,19 @@
         <div class="admin-container" id="accounting-container">
             <h1 class="accounting-title"><i class="fas fa-calculator"></i> Accounting</h1>
             <div class="sub-tabs" id="accounting-sub-tabs">
-                <button class="sub-tab active" data-subtab="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</button>
-                <button class="sub-tab" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
+                <!-- Dashboard and Monthly tabs removed -->
+                <button class="sub-tab active" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
                 <button class="sub-tab" data-subtab="account-transactions"><i class="fas fa-receipt"></i> Account Transactions</button>
                 <button class="sub-tab" data-subtab="adjustments"><i class="fas fa-pencil-alt"></i> Adjustments</button>
                 <button class="sub-tab" data-subtab="reconcile"><i class="fas fa-handshake"></i> Reconciliation</button>
                 <button class="sub-tab" data-subtab="bank"><i class="fas fa-university"></i> Bank</button>
                 <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
-                <button class="sub-tab" data-subtab="monthly"><i class="fas fa-chart-line"></i> Monthly</button>
                 <button class="sub-tab" data-subtab="cash-flow"><i class="fas fa-money-bill-wave"></i> Cash Flow</button>
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
 
-            <!-- ====== DASHBOARD ====== -->
-            <div id="sub-dashboard" class="sub-tab-content active">
-                <div class="accounting-stats" id="dashboard-stats">
-                    <div class="accounting-stat-card success"><div class="stat-value" id="dash-revenue">$0.00</div><div class="stat-label">Revenue (This Month)</div></div>
-                    <div class="accounting-stat-card"><div class="stat-value" id="dash-cogs">$0.00</div><div class="stat-label">COGS (This Month)</div></div>
-                    <div class="accounting-stat-card success"><div class="stat-value" id="dash-net-profit">$0.00</div><div class="stat-label">Net Profit (This Month)</div></div>
-                    <div class="accounting-stat-card warning"><div class="stat-value" id="dash-pending-sync">0</div><div class="stat-label">Orders Pending Accounting</div></div>
-                    <div class="accounting-stat-card danger"><div class="stat-value" id="dash-unreconciled">0</div><div class="stat-label">Unreconciled Payments</div></div>
-                </div>
-                <div style="margin-top:20px;"><h4><i class="fas fa-clock"></i> Recent Journal Entries</h4>
-                    <div id="dash-recent-journal" style="max-height:300px; overflow-y:auto;"><p class="text-muted">Loading...</p></div>
-                </div>
-            </div>
-
             <!-- ====== JOURNAL ====== -->
-            <div id="sub-journal" class="sub-tab-content">
+            <div id="sub-journal" class="sub-tab-content active">
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
                     <div class="form-group"><label>Account</label><select id="journal-account-filter"><option value="">All Accounts</option></select></div>
                     <div class="form-group"><label>Search</label><input type="text" id="journal-search" placeholder="Description or order ID..."></div>
@@ -370,20 +355,6 @@
                     <button class="btn btn-success" onclick="exportReportCSV()"><i class="fas fa-download"></i> Export CSV</button>
                 </div>
                 <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
-            </div>
-
-            <!-- ====== MONTHLY ====== -->
-            <div id="sub-monthly" class="sub-tab-content">
-                <h4><i class="fas fa-chart-line"></i> Monthly Performance</h4>
-                <p class="text-muted">Select a month range to see a breakdown bar chart for each month. Click any bar to see the underlying transactions.</p>
-                <div class="monthly-controls">
-                    <div class="form-group"><label>Start Month</label><input type="month" id="monthly-start"></div>
-                    <div class="form-group"><label>End Month</label><input type="month" id="monthly-end"></div>
-                    <button class="btn btn-primary" onclick="loadMonthlyPerformance()"><i class="fas fa-sync-alt"></i> Generate</button>
-                </div>
-                <div id="monthly-chart-grid" class="monthly-chart-grid">
-                    <p class="monthly-loading">Select a date range and click Generate.</p>
-                </div>
             </div>
 
             <!-- ====== CASH FLOW ====== -->
