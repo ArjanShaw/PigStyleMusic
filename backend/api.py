@@ -173,7 +173,7 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
     """
     Returns a list of transaction dicts that match the given filter.
     Adds 'processed' flag, 'source_type' ('plaid' or 'historic'), and if processed,
-    the 'account_id' of the non-cash account.
+    the 'account_id' of the non-cash account and 'cash_account_id'.
     """
     # Fetch Plaid transactions
     plaid_tx = fetch_bank_transactions()  # returns list with id, date, amount, description
@@ -216,15 +216,17 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
     conn = get_db()
     cursor = conn.cursor()
 
-    # Get the cash account ID (1010) to exclude it from the lookup
-    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
-    cash_row = cursor.fetchone()
-    cash_id = cash_row['id'] if cash_row else None
-
     for tx in all_tx:
         tx_id = str(tx['id'])
-        # Determine which source_type to look for in journal_entries
-        source_type_val = tx['source_type']  # 'plaid' or 'historic'
+        source_type_val = tx['source_type']
+        # Get the cash account for this source type
+        cash_id = get_cash_account_id(source_type_val)
+        if not cash_id:
+            # fallback to 1010
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1010',))
+            row = cursor.fetchone()
+            cash_id = row['id'] if row else None
+
         # Check if a journal entry exists for this transaction
         cursor.execute('''
             SELECT je.id FROM journal_entries je
@@ -233,19 +235,31 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
         entry = cursor.fetchone()
         if entry:
             tx['processed'] = True
-            # Find the non-cash account in this entry
+            # Get both lines
             cursor.execute('''
-                SELECT jl.account_id
+                SELECT jl.account_id, a.code
                 FROM journal_lines jl
+                JOIN accounts a ON a.id = jl.account_id
                 WHERE jl.journal_entry_id = ?
-                  AND jl.account_id != ?
-                LIMIT 1
-            ''', (entry['id'], cash_id))
-            account = cursor.fetchone()
-            tx['account_id'] = account['account_id'] if account else None
+            ''', (entry['id'],))
+            lines = cursor.fetchall()
+            # Determine which line is cash
+            cash_account_id = None
+            non_cash_account_id = None
+            for line in lines:
+                if line['account_id'] == cash_id:
+                    cash_account_id = line['account_id']
+                else:
+                    non_cash_account_id = line['account_id']
+            # If cash not found (shouldn't happen), fallback
+            if not cash_account_id:
+                cash_account_id = cash_id
+            tx['cash_account_id'] = cash_account_id
+            tx['account_id'] = non_cash_account_id
         else:
             tx['processed'] = False
             tx['account_id'] = None
+            tx['cash_account_id'] = None
 
     conn.close()
 
@@ -7723,14 +7737,10 @@ def accounting_get_bank_transactions():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-
 @app.route('/api/accounting/bank/apply-multiple', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def apply_multiple():
-    """Apply multiple transactions to their respective accounts in one go.
-       Positive amount = expense, negative = income.
-    """
     data = request.json
     updates = data.get('updates', [])
     if not updates:
@@ -7749,17 +7759,18 @@ def apply_multiple():
 
     for item in updates:
         transaction_id = item.get('transaction_id')
-        account_id = item.get('account_id')
-        source_type = item.get('source_type', 'plaid')  # from frontend
-        if not transaction_id or not account_id:
+        source_account_id = item.get('source_account_id')  # new
+        target_account_id = item.get('target_account_id')  # renamed
+        source_type = item.get('source_type', 'plaid')
+        if not transaction_id or not source_account_id or not target_account_id:
             errors.append(f'Missing fields for {transaction_id}')
             continue
 
-        # Find the transaction in the appropriate source
+        # Find the transaction
         tx = None
         if source_type == 'plaid':
             tx = next((t for t in all_plaid_tx if t['id'] == transaction_id), None)
-        else:  # historic
+        else:
             conn2 = get_db()
             cur2 = conn2.cursor()
             cur2.execute('SELECT id, transaction_date, amount, description FROM bank_transactions WHERE id = ?', (transaction_id,))
@@ -7781,21 +7792,16 @@ def apply_multiple():
         date_raw = tx['date']
         description = tx['description']
 
-        # ---------- DATE PARSING ----------
-        date_str = parse_plaid_date(date_raw)
-        if not date_str:
-            date_str = datetime.now().date().isoformat()
+        date_str = parse_plaid_date(date_raw) or datetime.now().date().isoformat()
 
         # Check if already processed
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
                        (source_type, str(transaction_id)))
         existing = cursor.fetchone()
         if existing:
-            # Remove old lines and keep entry
             cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
             entry_id = existing['id']
         else:
-            # Create new entry with source_type = 'plaid' or 'historic'
             cursor.execute('''
                 INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                 VALUES (?, ?, ?, ?)
@@ -7805,44 +7811,38 @@ def apply_multiple():
         amount_cents = int(round(abs(amount) * 100))
         is_expense = amount > 0   # Positive = expense
 
-        # Get cash account for this source type
-        cash_id = get_cash_account_id(source_type)
-        if not cash_id:
-            errors.append(f'Cash account not found for source {source_type}')
-            continue
-
         if is_expense:
-            # Withdrawal: Debit account, Credit cash
+            # Debit target, Credit source
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, amount_cents, 0))
+            ''', (entry_id, target_account_id, amount_cents, 0))
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, 0, amount_cents))
+            ''', (entry_id, source_account_id, 0, amount_cents))
         else:
-            # Deposit: Debit cash, Credit account
+            # Debit source, Credit target
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, cash_id, amount_cents, 0))
+            ''', (entry_id, source_account_id, amount_cents, 0))
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (entry_id, account_id, 0, amount_cents))
+            ''', (entry_id, target_account_id, 0, amount_cents))
 
         conn.commit()
         processed += 1
 
     conn.close()
-
     return jsonify({
         'status': 'success',
         'processed': processed,
         'errors': errors if errors else None,
         'message': f'Processed {processed} transactions' + (f', errors: {len(errors)}' if errors else '')
     })
+
 
 @app.route('/api/accounting/bank/apply-filter-bulk', methods=['POST'])
 @login_required
@@ -9026,5 +9026,5 @@ def earliest_transaction():
         fallback = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
         return jsonify({'status': 'success', 'earliest': fallback})
 
-if __name__ == '__main__':
+if __name__ == '__main__': 
     app.run(debug=True, port=5000)
