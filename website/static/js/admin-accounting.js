@@ -65,14 +65,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             else if (sub === 'cash-flow') {
+                // Set end month to current
                 const now = new Date();
                 const endMonth = now.toISOString().slice(0, 7);
-                const startMonth = '2026-01';
-                const startInput = document.getElementById('cash-flow-start');
                 const endInput = document.getElementById('cash-flow-end');
-                if (!startInput.value) startInput.value = startMonth;
                 if (!endInput.value) endInput.value = endMonth;
-                loadCashFlow();
+
+                // Fetch earliest transaction and set start month
+                fetch(`${AppConfig.baseUrl}/api/accounting/earliest-transaction`, {
+                    credentials: 'include',
+                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success' && data.earliest) {
+                        const earliestDate = new Date(data.earliest);
+                        const startMonth = earliestDate.toISOString().slice(0, 7);
+                        const startInput = document.getElementById('cash-flow-start');
+                        if (!startInput.value) startInput.value = startMonth;
+                    }
+                    // Load the chart
+                    loadCashFlow();
+                })
+                .catch(err => {
+                    console.error('Failed to fetch earliest transaction:', err);
+                    loadCashFlow(); // fallback with current inputs
+                });
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {

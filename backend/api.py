@@ -8978,6 +8978,22 @@ def accounting_delete_journal_entry(entry_id):
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/accounting/earliest-transaction', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def earliest_transaction():
+    """Return the earliest transaction date from journal_entries."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT MIN(transaction_date) as earliest FROM journal_entries')
+    row = cursor.fetchone()
+    conn.close()
+    if row and row['earliest']:
+        return jsonify({'status': 'success', 'earliest': row['earliest']})
+    else:
+        # Fallback to 1 year ago if no entries
+        fallback = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+        return jsonify({'status': 'success', 'earliest': fallback})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
