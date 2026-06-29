@@ -1,5 +1,5 @@
 // ============================================================================
-// discogs-orders.js - Discogs Orders Management with Barcode Scanning
+// discogs-orders.js - Discogs Orders Management with "Mark Sold" Button
 // ============================================================================
 
 console.log('📦 discogs-orders.js loading...');
@@ -304,7 +304,7 @@ async function checkDiscogsAuth() {
 }
 
 // ============================================================================
-// Render Orders Table
+// Render Orders Table (list view)
 // ============================================================================
 
 function renderOrdersTable(orders) {
@@ -569,7 +569,99 @@ async function loadOrderDetail(orderId) {
 }
 
 // ============================================================================
-// Render Order Detail with Barcode Scanning
+// Helper: Extract PigStyle ID from item fields
+// ============================================================================
+
+function extractPigstyleIdFromItem(item) {
+    // Try condition_comments first (most common)
+    if (item.condition_comments) {
+        const match = item.condition_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
+        if (match) {
+            return parseInt(match[1], 10);
+        }
+    }
+    
+    // Try private_comments
+    if (item.private_comments) {
+        const match = item.private_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
+        if (match) {
+            return parseInt(match[1], 10);
+        }
+    }
+    
+    // Try release.description (unlikely but just in case)
+    if (item.release && item.release.description) {
+        const match = item.release.description.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
+        if (match) {
+            return parseInt(match[1], 10);
+        }
+    }
+    
+    return null;
+}
+
+// ============================================================================
+// Mark Record as Sold (called by the button)
+// ============================================================================
+
+async function markRecordSold(recordId, salePrice, orderId, artist, title, buttonElement, rowElement) {
+    // Disable button and show loading state
+    buttonElement.disabled = true;
+    buttonElement.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> ...';
+    buttonElement.style.opacity = '0.7';
+    
+    try {
+        const url = `${AppConfig.baseUrl}/api/records/mark-sold-on-discogs`;
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                record_id: recordId,
+                sale_price: salePrice,
+                discogs_order_id: orderId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Update the UI
+            buttonElement.innerHTML = '✔ Sold';
+            buttonElement.style.background = '#28a745';
+            buttonElement.style.color = 'white';
+            buttonElement.disabled = true;
+            
+            if (rowElement) {
+                rowElement.style.background = '#d4edda';
+            }
+            
+            showToast(`✅ "${artist} - ${title}" marked as sold for $${salePrice.toFixed(2)}`, 'success');
+            
+            // Refresh orders list after a delay
+            setTimeout(() => {
+                loadDiscogsOrders();
+            }, 3000);
+            
+        } else {
+            throw new Error(data.error || 'Failed to mark as sold');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error marking record as sold:', error);
+        buttonElement.innerHTML = '❌ Error';
+        buttonElement.style.background = '#dc3545';
+        buttonElement.style.color = 'white';
+        buttonElement.disabled = false;
+        showToast(`❌ Error: ${error.message}`, 'error');
+    }
+}
+
+// ============================================================================
+// Render Order Detail (with "Mark Sold" button, checks status)
 // ============================================================================
 
 function renderOrderDetail(order) {
@@ -622,20 +714,16 @@ function renderOrderDetail(order) {
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <div style="font-weight: 600;">Items (${items.length})</div>
             </div>
-            <div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 13px; color: #856404;">
-                <i class="fas fa-info-circle"></i> 
-                <strong>SCAN BARCODE:</strong> Type or scan the barcode, then press Enter.
-            </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                 <thead>
                     <tr style="background: #f8f9fa;">
                         <th style="padding: 8px; text-align: left;">Artist</th>
                         <th style="padding: 8px; text-align: left;">Title</th>
+                        <th style="padding: 8px; text-align: center;">PigStyle ID</th>
                         <th style="padding: 8px; text-align: left;">Condition</th>
                         <th style="padding: 8px; text-align: right;">Price</th>
                         <th style="padding: 8px; text-align: center;">Qty</th>
-                        <th style="padding: 8px; text-align: center;">Barcode Scan</th>
-                        <th style="padding: 8px; text-align: center;">Status</th>
+                        <th style="padding: 8px; text-align: center;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -649,29 +737,51 @@ function renderOrderDetail(order) {
         const itemTitle = item.title || 'Unknown';
         const rowId = `item-${orderId}-${i}`;
         
+        // Extract PigStyle ID
+        const pigstyleId = extractPigstyleIdFromItem(item);
+        const pigstyleDisplay = pigstyleId ? `#${pigstyleId}` : '—';
+        
+        // Determine record status
+        const statusId = item.record_status_id; // from backend
+        const isActive = (statusId === 2); // only status_id = 2 means "Active"
+        
+        // Build the action column
+        let actionHtml = '';
+        if (!pigstyleId) {
+            actionHtml = `<span style="font-size: 12px; color: #999;">No ID</span>`;
+        } else if (isActive) {
+            // Show clickable "Mark Sold" button
+            actionHtml = `
+                <button class="btn btn-sm btn-success mark-sold-btn" 
+                        data-record-id="${pigstyleId}"
+                        data-sale-price="${itemPrice}"
+                        data-order-id="${escapeHtml(orderId)}"
+                        data-artist="${escapeHtml(itemArtist)}"
+                        data-title="${escapeHtml(itemTitle)}"
+                        style="padding: 4px 12px; font-size: 12px; white-space: nowrap;">
+                    <i class="fas fa-check-circle"></i> Mark Sold
+                </button>
+            `;
+        } else {
+            // Not active – show status label
+            let label = 'Inactive';
+            if (statusId === 3) label = 'Sold';
+            else if (statusId === 4) label = 'Sold on Discogs';
+            else if (statusId === 1) label = 'New';
+            else if (statusId === null || statusId === undefined) label = 'Unknown';
+            actionHtml = `<span style="font-size: 12px; color: #999;">${label}</span>`;
+        }
+        
         html += `
             <tr style="border-bottom: 1px solid #eee;" id="${rowId}">
                 <td style="padding: 8px;">${escapeHtml(itemArtist)}</td>
                 <td style="padding: 8px;">${escapeHtml(itemTitle)}</td>
+                <td style="padding: 8px; text-align: center; font-weight: bold; color: #007bff;">${pigstyleDisplay}</td>
                 <td style="padding: 8px; font-size: 12px;">${escapeHtml(item.media_condition || '—')}</td>
                 <td style="padding: 8px; text-align: right; font-weight: 600;">${itemCurrency} ${itemPrice.toFixed(2)}</td>
                 <td style="padding: 8px; text-align: center;">${item.quantity || 1}</td>
                 <td style="padding: 8px; text-align: center;">
-                    <input type="text" 
-                        class="barcode-scan-input" 
-                        data-order-id="${escapeHtml(orderId)}" 
-                        data-item-index="${i}"
-                        data-price="${itemPrice}"
-                        data-artist="${escapeHtml(itemArtist)}"
-                        data-title="${escapeHtml(itemTitle)}"
-                        data-row-id="${rowId}"
-                        placeholder="Scan barcode..."
-                        style="width: 160px; padding: 8px 10px; border: 3px solid #28a745; border-radius: 4px; font-size: 14px; text-align: center; background: #f0fff0; font-weight: bold;"
-                        ${i === 0 ? 'autofocus' : ''}
-                    >
-                </td>
-                <td style="padding: 8px; text-align: center;">
-                    <span class="item-status" style="font-size: 12px; color: #999; font-weight: bold;">Waiting...</span>
+                    ${actionHtml}
                 </td>
             </tr>
         `;
@@ -704,302 +814,31 @@ function renderOrderDetail(order) {
     
     content.innerHTML = html;
     
-    // Add event listeners for barcode inputs
-    const inputs = content.querySelectorAll('.barcode-scan-input');
-    console.log(`✅ Found ${inputs.length} barcode input fields - THEY SHOULD BE VISIBLE NOW!`);
-    
-    inputs.forEach(input => {
-        input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                const barcode = this.value.trim();
-                if (barcode) {
-                    handleBarcodeScan(this);
-                }
-            }
-        });
-    });
-    
-    if (inputs.length > 0) {
-        inputs[0].focus();
-    }
-}
-
-// ============================================================================
-// Handle Barcode Scan
-// ============================================================================
-
-async function handleBarcodeScan(inputElement) {
-    console.log('🔍 handleBarcodeScan called');
-    const barcode = inputElement.value.trim();
-    
-    if (!barcode) {
-        showToast('Please enter or scan a barcode.', 'warning');
-        return;
-    }
-    
-    const orderId = inputElement.dataset.orderId;
-    const salePrice = parseFloat(inputElement.dataset.price);
-    const artist = inputElement.dataset.artist;
-    const title = inputElement.dataset.title;
-    const rowId = inputElement.dataset.rowId;
-    
-    // Show loading state
-    const statusSpan = document.querySelector(`#${rowId} .item-status`);
-    if (statusSpan) {
-        statusSpan.innerHTML = '⏳ Searching...';
-        statusSpan.style.color = '#ffc107';
-    }
-    
-    inputElement.disabled = true;
-    
-    try {
-        // Search for records with this barcode
-        const searchUrl = `${AppConfig.baseUrl}/api/records/search-by-barcode?barcode=${encodeURIComponent(barcode)}`;
-        console.log('🔍 Searching:', searchUrl);
-        
-        const response = await fetch(searchUrl, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('🔍 Search results:', data);
-        
-        if (data.status === 'success') {
-            const matches = data.records || [];
+    // Attach click event listeners to all "Mark Sold" buttons
+    const buttons = content.querySelectorAll('.mark-sold-btn');
+    buttons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const recordId = parseInt(this.dataset.recordId);
+            const salePrice = parseFloat(this.dataset.salePrice);
+            const orderId = this.dataset.orderId;
+            const artist = this.dataset.artist;
+            const title = this.dataset.title;
+            const rowElement = this.closest('tr');
             
-            if (matches.length === 0) {
-                // No matches found
-                if (statusSpan) {
-                    statusSpan.innerHTML = '❌ No match found';
-                    statusSpan.style.color = '#dc3545';
-                }
-                inputElement.style.borderColor = '#dc3545';
-                inputElement.disabled = false;
-                inputElement.focus();
-                inputElement.select();
-                showToast(`No record found with barcode: ${barcode}`, 'error');
+            if (!recordId || isNaN(salePrice)) {
+                showToast('Invalid record ID or price.', 'error');
                 return;
             }
             
-            if (matches.length === 1) {
-                // Single match - mark it as sold
-                const record = matches[0];
-                await markRecordSold(record.id, salePrice, orderId, artist, title, rowId, inputElement);
-            } else {
-                // Multiple matches - let user choose
-                await handleMultipleMatches(matches, {
-                    orderId,
-                    salePrice,
-                    artist,
-                    title,
-                    rowId,
-                    inputElement
-                });
+            // Confirm before proceeding
+            if (!confirm(`Mark "${artist} - ${title}" as sold for $${salePrice.toFixed(2)}?`)) {
+                return;
             }
-        } else {
-            throw new Error(data.error || 'Failed to search for barcode');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error scanning barcode:', error);
-        if (statusSpan) {
-            statusSpan.innerHTML = '❌ Error';
-            statusSpan.style.color = '#dc3545';
-        }
-        inputElement.style.borderColor = '#dc3545';
-        inputElement.disabled = false;
-        showToast(`Error: ${error.message}`, 'error');
-    }
-}
-
-// ============================================================================
-// Handle Multiple Matches
-// ============================================================================
-
-function handleMultipleMatches(matches, itemData) {
-    // Create a modal for selecting the correct record
-    let modal = document.getElementById('duplicate-record-selection-modal');
-    
-    if (!modal) {
-        const modalHtml = `
-            <div id="duplicate-record-selection-modal" class="modal-overlay" style="display: none; z-index: 10003;">
-                <div class="modal-content" style="max-width: 600px; width: 90%; background: white; border-radius: 8px;">
-                    <div class="modal-header" style="background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%); color: #333; padding: 15px 20px; border-radius: 8px 8px 0 0;">
-                        <h3 style="margin: 0; color: #333;">Multiple Records Found</h3>
-                        <button class="modal-close" onclick="closeDuplicateSelectionModal()" style="background: none; border: none; color: #333; font-size: 24px; cursor: pointer; float: right;">&times;</button>
-                    </div>
-                    <div class="modal-body" style="padding: 20px; max-height: 400px; overflow-y: auto;">
-                        <p style="margin-bottom: 15px; color: #856404; background: #fff3cd; padding: 10px; border-radius: 4px;">
-                            <i class="fas fa-exclamation-triangle"></i> 
-                            Multiple records found with this barcode. Please select the correct one:
-                        </p>
-                        <div id="duplicate-selection-list"></div>
-                    </div>
-                    <div class="modal-footer" style="padding: 15px 20px; background: #f8f9fa; border-top: 1px solid #ddd; border-radius: 0 0 8px 8px; display: flex; justify-content: flex-end;">
-                        <button class="btn btn-secondary" onclick="closeDuplicateSelectionModal()">Cancel</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        modal = document.getElementById('duplicate-record-selection-modal');
-    }
-    
-    // Store the item data for use in selection
-    modal.dataset.itemData = JSON.stringify(itemData);
-    
-    // Render the list of matches
-    const listContainer = document.getElementById('duplicate-selection-list');
-    if (listContainer) {
-        let html = '';
-        for (const record of matches) {
-            const statusText = record.status_name || 'Unknown';
-            const statusColor = record.status_id === 2 ? '#28a745' : '#ffc107';
-            html += `
-                <div class="record-selection-item" 
-                     style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px; cursor: pointer; hover:background: #f0f0f0;"
-                     onclick="selectDuplicateRecord(${record.id}, '${escapeHtml(record.artist)}', '${escapeHtml(record.title)}')">
-                    <div>
-                        <div style="font-weight: 600;">${escapeHtml(record.artist)} - ${escapeHtml(record.title)}</div>
-                        <div style="font-size: 12px; color: #666;">ID: ${record.id} | Catalog: ${escapeHtml(record.catalog_number || 'N/A')} | Price: $${(record.store_price || 0).toFixed(2)}</div>
-                        <div style="font-size: 12px; color: ${statusColor};">Status: ${statusText}</div>
-                    </div>
-                    <div>
-                        <button class="btn btn-sm btn-primary" style="padding: 4px 12px;">Select</button>
-                    </div>
-                </div>
-            `;
-        }
-        listContainer.innerHTML = html;
-    }
-    
-    modal.style.display = 'flex';
-}
-
-// ============================================================================
-// Select Duplicate Record
-// ============================================================================
-
-async function selectDuplicateRecord(recordId, artist, title) {
-    const modal = document.getElementById('duplicate-record-selection-modal');
-    if (!modal) return;
-    
-    const itemData = JSON.parse(modal.dataset.itemData || '{}');
-    
-    closeDuplicateSelectionModal();
-    
-    // Mark the selected record as sold
-    await markRecordSold(
-        recordId,
-        itemData.salePrice,
-        itemData.orderId,
-        itemData.artist,
-        itemData.title,
-        itemData.rowId,
-        itemData.inputElement
-    );
-}
-
-function closeDuplicateSelectionModal() {
-    const modal = document.getElementById('duplicate-record-selection-modal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-
-// ============================================================================
-// Mark Record as Sold
-// ============================================================================
-
-async function markRecordSold(recordId, salePrice, orderId, artist, title, rowId, inputElement) {
-    const statusSpan = document.querySelector(`#${rowId} .item-status`);
-    
-    if (statusSpan) {
-        statusSpan.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Marking as sold...';
-        statusSpan.style.color = '#ffc107';
-    }
-    
-    try {
-        const url = `${AppConfig.baseUrl}/api/records/mark-sold-on-discogs`;
-        
-        const response = await fetch(url, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                record_id: recordId,
-                sale_price: salePrice,
-                discogs_order_id: orderId
-            })
+            
+            markRecordSold(recordId, salePrice, orderId, artist, title, this, rowElement);
         });
-        
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            // Update the UI
-            if (statusSpan) {
-                statusSpan.innerHTML = '✅ SOLD!';
-                statusSpan.style.color = '#28a745';
-            }
-            
-            if (inputElement) {
-                inputElement.style.borderColor = '#28a745';
-                inputElement.style.background = '#d4edda';
-                inputElement.disabled = true;
-            }
-            
-            // Update the row background
-            const row = document.getElementById(rowId);
-            if (row) {
-                row.style.background = '#d4edda';
-            }
-            
-            showToast(`✅ "${artist} - ${title}" marked as sold for $${salePrice.toFixed(2)}`, 'success');
-            
-            // Focus the next input if available
-            const inputs = document.querySelectorAll('.barcode-scan-input:not([disabled])');
-            let currentIndex = -1;
-            for (let i = 0; i < inputs.length; i++) {
-                if (inputs[i] === inputElement) {
-                    currentIndex = i;
-                    break;
-                }
-            }
-            if (currentIndex >= 0 && currentIndex < inputs.length - 1) {
-                setTimeout(() => {
-                    inputs[currentIndex + 1].focus();
-                }, 500);
-            }
-            
-            // Refresh orders list after a delay
-            setTimeout(() => {
-                loadDiscogsOrders();
-            }, 3000);
-            
-        } else {
-            throw new Error(data.error || 'Failed to mark as sold');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error marking record as sold:', error);
-        if (statusSpan) {
-            statusSpan.innerHTML = '❌ Error';
-            statusSpan.style.color = '#dc3545';
-        }
-        if (inputElement) {
-            inputElement.style.borderColor = '#dc3545';
-            inputElement.disabled = false;
-        }
-        showToast(`❌ Error: ${error.message}`, 'error');
-    }
+    });
 }
 
 // ============================================================================
@@ -1154,19 +993,11 @@ styleSheet.textContent = `
             opacity: 1;
         }
     }
-    .barcode-scan-input:focus {
-        border-color: #007bff !important;
-        box-shadow: 0 0 0 3px rgba(0,123,255,0.25);
-        outline: none;
-    }
-    .barcode-scan-input:disabled {
-        background: #e9ecef;
+    .mark-sold-btn:disabled {
+        opacity: 0.7;
         cursor: not-allowed;
-    }
-    .record-selection-item:hover {
-        background: #f0f0f0 !important;
     }
 `;
 document.head.appendChild(styleSheet);
 
-console.log('✅ discogs-orders.js loaded');
+console.log('✅ discogs-orders.js loaded (with status check)');

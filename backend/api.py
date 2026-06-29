@@ -8168,6 +8168,7 @@ def get_discogs_orders():
 def get_discogs_order_detail(order_id):
     """
     Get detailed information for a specific Discogs order.
+    Adds record_status_id for each item (if the PigStyle ID is found).
     """
     try:
         TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
@@ -8186,9 +8187,37 @@ def get_discogs_order_detail(order_id):
                 'error': result.get('error', 'Failed to fetch order')
             }), 500
         
+        order = result['order']
+        items = order.get('items', [])
+        
+        # Connect to DB to lookup record status by PigStyle ID
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        for item in items:
+            # Extract PigStyle ID from condition_comments
+            condition_comments = item.get('condition_comments', '')
+            pigstyle_id = None
+            if condition_comments:
+                match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', condition_comments, re.IGNORECASE)
+                if match:
+                    pigstyle_id = int(match.group(1))
+            
+            if pigstyle_id:
+                cursor.execute('SELECT status_id FROM records WHERE id = ?', (pigstyle_id,))
+                row = cursor.fetchone()
+                if row:
+                    item['record_status_id'] = row['status_id']
+                else:
+                    item['record_status_id'] = None
+            else:
+                item['record_status_id'] = None
+        
+        conn.close()
+        
         return jsonify({
             'status': 'success',
-            'order': result['order']
+            'order': order
         })
         
     except Exception as e:
@@ -8198,7 +8227,7 @@ def get_discogs_order_detail(order_id):
             'status': 'error',
             'error': str(e)
         }), 500
- 
+
 
 @app.route('/api/records/mark-sold-on-discogs', methods=['POST'])
 @login_required
