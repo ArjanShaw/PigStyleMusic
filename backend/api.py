@@ -2613,6 +2613,7 @@ def get_inventory_purchases():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+
 @app.route('/api/inventory-purchases', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -2632,16 +2633,36 @@ def create_inventory_purchase():
         if amount_spent <= 0:
             return jsonify({'status': 'error', 'error': 'amount_spent must be greater than 0'}), 400
         
+        # ===== VALIDATE PAYMENT ACCOUNT CODE =====
+        payment_account_code = data.get('payment_account_id')  # frontend sends "payment_account_id"
+        if not payment_account_code:
+            return jsonify({
+                'status': 'error',
+                'error': 'payment_account_id is required. Please select how you paid for this purchase.'
+            }), 400
+        
+        # Verify account exists by code (not by id)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', (payment_account_code,))
+        account_row = cursor.fetchone()
+        if not account_row:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Invalid payment_account_id: {payment_account_code}. Account does not exist.'
+            }), 400
+        
+        # Get the actual account ID for the journal entry
+        payment_account_id = account_row['id']
+        
         purchase_date = data.get('purchase_date', datetime.now().strftime('%Y-%m-%d'))
         seller_name = data.get('seller_name', '').strip()
         seller_contact = data.get('seller_contact', '').strip()
         description = data.get('description', '').strip()
         bill_of_sale_path = data.get('bill_of_sale_path', '').strip()
-        payment_account_id = data.get('payment_account_id')  # NEW: source of funds
         
-        conn = get_db()
-        cursor = conn.cursor()
-        
+        # Insert purchase
         cursor.execute('''
             INSERT INTO inventory_purchases (
                 purchase_date, seller_name, seller_contact, amount_spent, 
@@ -2652,49 +2673,39 @@ def create_inventory_purchase():
         purchase_id = cursor.lastrowid
         conn.commit()
         
-        # ========== NEW: Create journal entry for the purchase ==========
-        # Debit Inventory (1050), Credit the payment account
-        if payment_account_id:
-            try:
-                # Verify account exists
-                cursor.execute('SELECT id FROM accounts WHERE id = ?', (payment_account_id,))
-                if cursor.fetchone():
-                    # Create journal entry
-                    cursor.execute('''
-                        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                        VALUES (?, ?, ?, ?)
-                    ''', (purchase_date, f"Inventory purchase from {seller_name or 'Unknown'}", 'purchase', str(purchase_id)))
-                    entry_id = cursor.lastrowid
-                    
-                    amount_cents = int(round(amount_spent * 100))
-                    
-                    # Debit Inventory (1050)
-                    cursor.execute('''
-                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                        VALUES (?, ?, ?, ?)
-                    ''', (entry_id, 1050, amount_cents, 0))
-                    
-                    # Credit payment account
-                    cursor.execute('''
-                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                        VALUES (?, ?, ?, ?)
-                    ''', (entry_id, payment_account_id, 0, amount_cents))
-                    
-                    conn.commit()
-                    app.logger.info(f"Created journal entry #{entry_id} for purchase #{purchase_id}")
-            except Exception as e:
-                app.logger.error(f"Failed to create journal entry for purchase: {e}")
-                # Rollback? We keep the purchase but log the error.
-                # Optionally, you could rollback the entire transaction.
-        # ================================================================
+        # ===== CREATE JOURNAL ENTRY =====
+        # Debit Inventory (1050), Credit payment account
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (purchase_date, f"Inventory purchase from {seller_name or 'Unknown'}", 'purchase', str(purchase_id)))
+        entry_id = cursor.lastrowid
+        
+        amount_cents = int(round(amount_spent * 100))
+        
+        # Debit Inventory (1050)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, 1050, amount_cents, 0))
+        
+        # Credit payment account
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, payment_account_id, 0, amount_cents))
+        
+        conn.commit()
+        conn.close()
         
         # Fetch the created record
+        conn = get_db()
+        cursor = conn.cursor()
         cursor.execute('''
             SELECT id, purchase_date, seller_name, seller_contact, amount_spent, 
                    description, bill_of_sale_path, created_at, updated_at
             FROM inventory_purchases WHERE id = ?
         ''', (purchase_id,))
-        
         new_purchase = cursor.fetchone()
         conn.close()
         
@@ -2710,7 +2721,6 @@ def create_inventory_purchase():
     except Exception as e:
         app.logger.error(f"Error creating inventory purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/inventory-purchases/upload-bill', methods=['POST'])
 @login_required
