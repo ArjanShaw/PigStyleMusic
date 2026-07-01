@@ -41,7 +41,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
             
-            // Dashboard and Monthly cases removed
             if (sub === 'journal') loadJournalEntries();
             else if (sub === 'account-transactions') {
                 loadAccountTransactionsSelect();
