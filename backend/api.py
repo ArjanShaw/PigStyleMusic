@@ -1557,7 +1557,7 @@ def order_complete():
                 placeholders = ','.join('?' for _ in record_ids)
                 cursor.execute(f'UPDATE records SET status_id = 3, date_sold = CURRENT_DATE WHERE id IN ({placeholders})', record_ids)
             
-            # --- Auto‑accounting removed ---
+            # --- Auto‑accounting removed (moved to create_order_from_checkout) ---
             
             conn.commit()
             
@@ -2637,6 +2637,7 @@ def create_inventory_purchase():
         seller_contact = data.get('seller_contact', '').strip()
         description = data.get('description', '').strip()
         bill_of_sale_path = data.get('bill_of_sale_path', '').strip()
+        payment_account_id = data.get('payment_account_id')  # NEW: source of funds
         
         conn = get_db()
         cursor = conn.cursor()
@@ -2650,6 +2651,42 @@ def create_inventory_purchase():
         
         purchase_id = cursor.lastrowid
         conn.commit()
+        
+        # ========== NEW: Create journal entry for the purchase ==========
+        # Debit Inventory (1050), Credit the payment account
+        if payment_account_id:
+            try:
+                # Verify account exists
+                cursor.execute('SELECT id FROM accounts WHERE id = ?', (payment_account_id,))
+                if cursor.fetchone():
+                    # Create journal entry
+                    cursor.execute('''
+                        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                        VALUES (?, ?, ?, ?)
+                    ''', (purchase_date, f"Inventory purchase from {seller_name or 'Unknown'}", 'purchase', str(purchase_id)))
+                    entry_id = cursor.lastrowid
+                    
+                    amount_cents = int(round(amount_spent * 100))
+                    
+                    # Debit Inventory (1050)
+                    cursor.execute('''
+                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                        VALUES (?, ?, ?, ?)
+                    ''', (entry_id, 1050, amount_cents, 0))
+                    
+                    # Credit payment account
+                    cursor.execute('''
+                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                        VALUES (?, ?, ?, ?)
+                    ''', (entry_id, payment_account_id, 0, amount_cents))
+                    
+                    conn.commit()
+                    app.logger.info(f"Created journal entry #{entry_id} for purchase #{purchase_id}")
+            except Exception as e:
+                app.logger.error(f"Failed to create journal entry for purchase: {e}")
+                # Rollback? We keep the purchase but log the error.
+                # Optionally, you could rollback the entire transaction.
+        # ================================================================
         
         # Fetch the created record
         cursor.execute('''
@@ -6831,23 +6868,33 @@ def process_order_for_accounting(order, conn, cursor):
     
     # Map payment source to account code
     account_map = {
-        'cash': '1010',
-        'paypal': '1020',
-        'square': '1030',
-        'discogs': '1020',
-        'giftcard': '1010'
+        'cash': '1015',  # Cash - Register (NEW)
+        'paypal': '1020', # PayPal
+        'square': '1030', # Square Asset (NEW)
+        'discogs': '1020', # PayPal (Discogs payments)
+        'giftcard': '1015' # Cash - Register (or gift card liability if you have one)
     }
-    debit_account_code = account_map.get(payment_source, '1010')
+    debit_account_code = account_map.get(payment_source, '1015') # fallback to register
     
     # Get account IDs
     cursor.execute('SELECT id, code FROM accounts')
     accounts = {row['code']: row['id'] for row in cursor.fetchall()}
     
     # Verify required accounts exist
-    required = ['4000', '1050', '5000', '4010', '5010', '5020', '2010']
-    missing = [code for code in required if code not in accounts]
-    if missing:
-        raise KeyError(f"Missing account codes: {missing}")
+    required = ['4000', '1050', '5000', '4010', '5010', '5020', '2010'] # revenue accounts will be mapped separately
+    # Revenue account mapping
+    revenue_map = {
+        'cash': '4001',  # Sales Revenue - Cash
+        'paypal': '4003', # Sales Revenue - PayPal
+        'square': '4000', # Sales Revenue - Square
+        'discogs': '4003' # Sales Revenue - PayPal (or create a separate Discogs revenue account)
+    }
+    revenue_account_code = revenue_map.get(payment_source, '4000')
+    
+    # Verify all required accounts exist
+    for code in required + [debit_account_code, revenue_account_code, '1015', '1050', '5000']:
+        if code not in accounts:
+            raise KeyError(f"Missing account code: {code}")
     
     total_sales = sum(item['price_at_time'] for item in items) if items else 0
     total_cogs = sum(item['cogs'] or 0 for item in items) if items else 0
@@ -6873,8 +6920,8 @@ def process_order_for_accounting(order, conn, cursor):
     entry_id = cursor.lastrowid
     app.logger.info(f"    Created journal entry {entry_id}")
     
-    # Revenue entry
-    debit_amount = total_sales + shipping_charged
+    # Revenue entry (debit asset, credit revenue)
+    debit_amount = total_sales  # only the item sales, shipping separate
     if debit_amount > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -6886,16 +6933,9 @@ def process_order_for_accounting(order, conn, cursor):
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
-        ''', (entry_id, accounts['4000'], 0, int(round(total_sales * 100))))
+        ''', (entry_id, accounts[revenue_account_code], 0, int(round(total_sales * 100))))
     
-    # Credit Shipping Revenue
-    if shipping_charged > 0:
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, accounts['4010'], 0, int(round(shipping_charged * 100))))
-    
-    # COGS entry
+    # COGS entry (debit COGS, credit Inventory)
     if total_cogs > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -6906,7 +6946,20 @@ def process_order_for_accounting(order, conn, cursor):
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts['1050'], 0, int(round(total_cogs * 100))))
     
-    # Shipping expense
+    # Shipping Revenue (credit) and Shipping Expense (debit), but shipping may be charged separately
+    if shipping_charged > 0:
+        # Debit the same asset account? Actually, shipping is part of total revenue.
+        # We'll credit Shipping Revenue (4010) and debit the asset.
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts[debit_account_code], int(round(shipping_charged * 100)), 0))
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, accounts['4010'], 0, int(round(shipping_charged * 100))))
+    
+    # Shipping expense (if postage cost incurred)
     if postage_cost > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -6928,7 +6981,7 @@ def process_order_for_accounting(order, conn, cursor):
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts['2010'], 0, int(round(tax_total * 100))))
     
-    # Fees
+    # Fees (e.g., PayPal, Square)
     if total_fees > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -7449,7 +7502,23 @@ def create_order_from_checkout():
         
         conn.commit()
         
-        # --- Auto‑accounting removed ---
+        # ========== RE‑ENABLE AUTO‑ACCOUNTING ==========
+        # Now create journal entry for this order
+        try:
+            # Fetch the order and its lines to pass to process_order_for_accounting
+            cursor.execute('SELECT * FROM orders WHERE id = ?', (order_id,))
+            order_row = cursor.fetchone()
+            if order_row:
+                # We need to pass the order row (as dict) and the cursor/conn
+                # The function expects (order, conn, cursor)
+                process_order_for_accounting(order_row, conn, cursor)
+                app.logger.info(f"Auto‑accounting created for order {order_id}")
+            else:
+                app.logger.error(f"Order {order_id} not found for accounting")
+        except Exception as e:
+            app.logger.error(f"Auto‑accounting failed for order {order_id}: {str(e)}")
+            # Don't rollback the order; just log the error
+        # ================================================
         
         conn.close()
         

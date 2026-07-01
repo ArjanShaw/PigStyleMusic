@@ -91,6 +91,25 @@ window.getStatusText = function(statusId) {
 };
 
 // ============================================================================
+// centerText - used for receipt formatting
+// ============================================================================
+function centerText(text, width) {
+    if (!text) return ''.padEnd(width, ' ');
+    
+    text = String(text);
+    const padding = Math.max(0, width - text.length);
+    const leftPad = Math.floor(padding / 2);
+    const rightPad = padding - leftPad;
+    const result = ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
+    
+    if (result.length !== width) {
+        return result.substring(0, width);
+    }
+    
+    return result;
+}
+
+// ============================================================================
 // Helper Functions for Order Creation
 // ============================================================================
 
@@ -249,7 +268,7 @@ async function validateTaxRate() {
 }
 
 // ============================================================================
-// VCP-8370 Thermal Printer Functions (RESTORED for Cash payments only)
+// VCP-8370 Thermal Printer Functions – simplified, no device selection popup
 // ============================================================================
 
 function isWebUSBSupported() {
@@ -262,39 +281,21 @@ async function connectVCP8370() {
             throw new Error('WebUSB not supported. Use Chrome/Edge for thermal printing.');
         }
 
-        const vendorId = await getConfigValue('PRINTER_VENDOR_ID');
-        const productId = await getConfigValue('PRINTER_PRODUCT_ID');
-        
-        let filters = [];
-        
-        if (vendorId && productId) {
-            filters.push({ 
-                vendorId: parseInt(vendorId, 16), 
-                productId: parseInt(productId, 16) 
-            });
-            console.log(`Using configured vendor ID: ${vendorId}, product ID: ${productId}`);
-        } else {
-            filters = [
-                { vendorId: 0x0416 },
-                { vendorId: 0x067B },
-                { vendorId: 0x1A86 },
-                { vendorId: 0x10C4 },
-                { vendorId: 0x0403 },
-                { vendorId: 0x0557 },
-            ];
+        // Instead of showing a device selection popup, try to get already paired devices.
+        const devices = await navigator.usb.getDevices();
+        if (devices.length === 0) {
+            throw new Error('No paired printer found. Please pair your printer via Chrome settings.');
         }
 
-        console.log('Requesting USB device with filters:', filters);
-        
-        const device = await navigator.usb.requestDevice({ filters });
-        
-        console.log('Device selected:', {
+        // Assume the first paired printer is the one we want.
+        const device = devices[0];
+        console.log('Using already paired device:', {
             vendorId: '0x' + device.vendorId.toString(16),
             productId: '0x' + device.productId.toString(16),
             manufacturer: device.manufacturerName,
             product: device.productName
         });
-        
+
         try {
             await device.open();
             console.log('Device opened successfully');
@@ -444,7 +445,7 @@ window.printToVCP8370 = async function(receiptText) {
     try {
         const statusEl = document.getElementById('printer-status');
         if (statusEl) {
-            statusEl.innerHTML = '🔌 Please select your VCP-8370 printer from the popup...';
+            statusEl.innerHTML = '🔌 Looking for paired printer...';
             statusEl.style.color = '#007bff';
         }
         
@@ -510,67 +511,74 @@ window.printToThermalPrinter = async function(receiptText) {
         return true;
     } catch (error) {
         console.log('⚠️ VCP-8370 failed:', error.message);
-        // Only show popup if thermal printer fails
-        showPrintableReceipt(receiptText);
         throw error;
     }
 };
 
-function showPrintableReceipt(receiptText) {
-    let modal = document.getElementById('printable-receipt-modal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'printable-receipt-modal';
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 400px; width: 90%;">
-                <div class="modal-header">
-                    <h3 class="modal-title">Receipt</h3>
-                    <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; font-size: 14px; line-height: 1.5;" id="receipt-content-display">
-                        ${escapeHtml(receiptText).replace(/\n/g, '<br>')}
-                    </div>
-                    <p style="color: #666; font-size: 12px; margin-top: 15px; text-align: center;">
-                        <i class="fas fa-info-circle"></i> You can print this receipt using your browser's print function.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-primary" onclick="window.print()">
-                        <i class="fas fa-print"></i> Browser Print
-                    </button>
-                    <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').style.display='none'">
-                        Close
-                    </button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-    } else {
-        const contentDiv = modal.querySelector('#receipt-content-display');
-        if (contentDiv) {
-            contentDiv.innerHTML = escapeHtml(receiptText).replace(/\n/g, '<br>');
-        }
-    }
-    
-    modal.style.display = 'flex';
-}
+// ============================================================================
+// Printer Options Modal (single popup, no text about selecting printer)
+// ============================================================================
 
-function centerText(text, width) {
-    if (!text) return ''.padEnd(width, ' ');
-    
-    text = String(text);
-    const padding = Math.max(0, width - text.length);
-    const leftPad = Math.floor(padding / 2);
-    const rightPad = padding - leftPad;
-    const result = ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
-    
-    if (result.length !== width) {
-        return result.substring(0, width);
-    }
-    
-    return result;
+function showPrinterOptionsModal() {
+    return new Promise((resolve) => {
+        let modal = document.getElementById('printer-options-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'printer-options-modal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 400px; width: 90%;">
+                    <div class="modal-header" style="background: #ffc107; color: #333;">
+                        <h3 class="modal-title"><i class="fas fa-print"></i> Print Receipt</h3>
+                        <button class="modal-close" onclick="document.getElementById('printer-options-modal').style.display='none'" style="color: #333;">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="font-size: 16px; margin-bottom: 15px;">Would you like to print a receipt?</p>
+                    </div>
+                    <div class="modal-footer" style="display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn btn-primary" id="printer-print-btn" style="flex: 1; padding: 12px;">
+                            <i class="fas fa-print"></i> Print Receipt
+                        </button>
+                        <button class="btn btn-secondary" id="printer-skip-btn" style="flex: 1; padding: 12px; background: #6c757d; color: white;">
+                            <i class="fas fa-times"></i> No Receipt
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        modal.style.display = 'flex';
+        
+        // Remove old listeners to avoid duplicates
+        const printBtn = modal.querySelector('#printer-print-btn');
+        const skipBtn = modal.querySelector('#printer-skip-btn');
+        const closeBtn = modal.querySelector('.modal-close');
+        
+        // Clone and replace to remove old listeners
+        const newPrintBtn = printBtn.cloneNode(true);
+        const newSkipBtn = skipBtn.cloneNode(true);
+        const newCloseBtn = closeBtn.cloneNode(true);
+        printBtn.parentNode.replaceChild(newPrintBtn, printBtn);
+        skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        
+        newPrintBtn.addEventListener('click', function() {
+            modal.style.display = 'none';
+            resolve('print');
+        });
+        
+        newSkipBtn.addEventListener('click', function() {
+            modal.style.display = 'none';
+            resolve('skip');
+        });
+        
+        // If user clicks the X, treat as skip (or we could ignore)
+        newCloseBtn.addEventListener('click', function() {
+            modal.style.display = 'none';
+            resolve('skip');
+        });
+    });
 }
 
 // ============================================================================
@@ -1897,7 +1905,8 @@ async function processSquarePaymentSuccess() {
         if (discountType) discountType.value = 'percentage';
         if (customPriceInput) customPriceInput.value = '';
         updateCartDisplay();
-        searchRecordsAndAccessories();
+        // Do NOT auto-search after sale – it would overwrite the confirmation message.
+        // searchRecordsAndAccessories(); // <-- REMOVED to preserve confirmation
         
         showCheckoutStatus(`Successfully sold ${successCount} items via Square Terminal`, 'success');
     } else {
@@ -2197,195 +2206,185 @@ window.processCashPayment = async function() {
         }))
     };
 
-    try {
-        await createOrderForTransaction(orderTransaction, 'cash', null);
-    } catch (orderError) {
-        showCheckoutStatus(`Order creation failed: ${orderError.message}`, 'error');
-        showCheckoutLoading(false);
-        return;
-    }
+    await createOrderForTransaction(orderTransaction, 'cash', null);
     // ========== End of order creation ==========
     
-    try {
-        for (const item of checkoutCart) {
-            if (item.type === 'custom') {
-                successCount++;
-                soldItems.push({
-                    ...item,
-                    description: item.note || 'Custom Item',
-                    store_price: item.store_price
-                });
-                
-                if (item.bern_it) {
-                    bernTotal += item.store_price;
-                }
-            } else {
-                try {
-                    
-                    const todayMST = getLocalMSTDate();
-                    
-                    const itemStorePrice = parseFloat(item.store_price) || 0;
-                    let proportionalActualPrice;
-                    
-                    if (currentCustomSalePrice !== null && currentCustomSalePrice > 0) {
-                        proportionalActualPrice = (itemStorePrice / originalSubtotal) * currentCustomSalePrice;
-                    } else {
-                        proportionalActualPrice = (itemStorePrice / originalSubtotal) * discountedSubtotal;
-                    }
-                    
-                    const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            status_id: 3,
-                            date_sold: todayMST,
-                            actual_sale_price: proportionalActualPrice
-                        })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`Failed to update record: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    if (data.status !== 'success') {
-                        throw new Error(data.error || 'Failed to update record');
-                    }
-                    
-                    successCount++;
-                    soldItems.push({
-                        ...item,
-                        actual_sale_price: proportionalActualPrice
-                    });
-                    
-                    if (item.consignor_id && item.consignor_id !== 1) {
-                        const commissionRate = parseFloat(item.commission_rate);
-                        if (isNaN(commissionRate)) {
-                            throw new Error(`Invalid commission rate for consignor item: ${item.artist} - ${item.title}`);
-                        }
-                        const consignorShare = proportionalActualPrice * (1 - (commissionRate / 100));
-                        
-                        if (!consignorPayments[item.consignor_id]) {
-                            consignorPayments[item.consignor_id] = 0;
-                        }
-                        consignorPayments[item.consignor_id] += consignorShare;
-                    }
-                } catch (error) {
-                    console.error(`Error updating record ${item.id}:`, error);
-                    errorCount++;
-                    throw error;
-                }
+    // ========== Process each item (update status, etc.) ==========
+    for (const item of checkoutCart) {
+        if (item.type === 'custom') {
+            successCount++;
+            soldItems.push({
+                ...item,
+                description: item.note || 'Custom Item',
+                store_price: item.store_price
+            });
+            
+            if (item.bern_it) {
+                bernTotal += item.store_price;
             }
-        }
-        
-        if (bernTotal > 0) {
-            await updateBernFund(bernTotal);
-            showCheckoutStatus(`🔥 Added $${bernTotal.toFixed(2)} to BERN fund!`, 'success');
-        }
-        
-        if (Object.keys(consignorPayments).length > 0) {
-            let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
-            for (const [consignorId, amount] of Object.entries(consignorPayments)) {
-                storedOwed[consignorId] = (storedOwed[consignorId] || 0) + amount;
-            }
-            localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
-            if (typeof window.consignorOwedAmounts !== 'undefined') {
-                window.consignorOwedAmounts = storedOwed;
-            }
-        }
-        
-        if (successCount > 0) {
-            let cashierName = 'Admin';
-            try {
-                const userData = localStorage.getItem('user');
-                if (userData) {
-                    const user = JSON.parse(userData);
-                    cashierName = user.username || 'Admin';
-                }
-            } catch (e) {
-                console.error('Error parsing user data:', e);
-            }
-            
-            const taxRate = await validateTaxRate();
-            const discount = currentDiscount.value || 0;
-            const tax = discountedSubtotal * taxRate;
-            
-            const cleanedItems = soldItems.map(item => ({
-                id: item.id || null,
-                type: item.type || 'record',
-                artist: item.artist || null,
-                title: item.title || null,
-                description: item.description || item.note || null,
-                note: item.note || null,
-                store_price: parseFloat(item.store_price) || 0,
-                actual_sale_price: item.actual_sale_price || null,
-                catalog_number: item.catalog_number || null,
-                barcode: item.barcode || null,
-                consignor_id: item.consignor_id || null,
-                original_id: item.original_id || null,
-                bern_it: item.bern_it || false
-            }));
-            
-            const transaction = {
-                id: `CASH-${Date.now()}`,
-                date: new Date().toISOString(),
-                items: cleanedItems,
-                originalSubtotal: originalSubtotal,
-                subtotal: discountedSubtotal,
-                discount: discount,
-                discountType: currentDiscount.type,
-                discountAmount: currentDiscount.amount,
-                customSalePrice: currentCustomSalePrice,
-                tax: tax,
-                taxRate: taxRate * 100,
-                total: total,
-                tendered: tendered,
-                change: change,
-                paymentMethod: 'Cash',
-                cashier: cashierName,
-                storeName: await getConfigValue('STORE_NAME'),
-                storeAddress: await getConfigValue('STORE_ADDRESS'),
-                storePhone: await getConfigValue('STORE_PHONE'),
-                footer: await getConfigValue('RECEIPT_FOOTER'),
-                consignorPayments: consignorPayments,
-                bernDonation: bernTotal
-            };
-            
-            if (typeof window.saveReceipt === 'function') {
-                await window.saveReceipt(transaction);
-            }
-            
-            // ===== CASH PAYMENT: Print thermal receipt =====
-            const receiptText = await formatReceiptForPrinter(transaction);
-            await window.printToThermalPrinter(receiptText);
-            // ================================================
-            
-            checkoutCart = [];
-            currentDiscount = { amount: 0, type: 'percentage', value: 0 };
-            currentCustomSalePrice = null;
-            const discountAmount = document.getElementById('discount-amount');
-            const discountType = document.getElementById('discount-type');
-            const customPriceInput = document.getElementById('custom-sale-price');
-            if (discountAmount) discountAmount.value = '';
-            if (discountType) discountType.value = 'percentage';
-            if (customPriceInput) customPriceInput.value = '';
-            updateCartDisplay();
-            searchRecordsAndAccessories();
-            
-            showCheckoutStatus(`Successfully sold ${successCount} items.`, 'success');
         } else {
-            throw new Error('No items were successfully processed');
+            const todayMST = getLocalMSTDate();
+            
+            const itemStorePrice = parseFloat(item.store_price) || 0;
+            let proportionalActualPrice;
+            
+            if (currentCustomSalePrice !== null && currentCustomSalePrice > 0) {
+                proportionalActualPrice = (itemStorePrice / originalSubtotal) * currentCustomSalePrice;
+            } else {
+                proportionalActualPrice = (itemStorePrice / originalSubtotal) * discountedSubtotal;
+            }
+            
+            const response = await fetch(`${AppConfig.baseUrl}/records/${item.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    status_id: 3,
+                    date_sold: todayMST,
+                    actual_sale_price: proportionalActualPrice
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to update record: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            if (data.status !== 'success') {
+                throw new Error(data.error || 'Failed to update record');
+            }
+            
+            successCount++;
+            soldItems.push({
+                ...item,
+                actual_sale_price: proportionalActualPrice
+            });
+            
+            if (item.consignor_id && item.consignor_id !== 1) {
+                const commissionRate = parseFloat(item.commission_rate);
+                if (isNaN(commissionRate)) {
+                    throw new Error(`Invalid commission rate for consignor item: ${item.artist} - ${item.title}`);
+                }
+                const consignorShare = proportionalActualPrice * (1 - (commissionRate / 100));
+                
+                if (!consignorPayments[item.consignor_id]) {
+                    consignorPayments[item.consignor_id] = 0;
+                }
+                consignorPayments[item.consignor_id] += consignorShare;
+            }
         }
-    } catch (error) {
-        console.error('Error processing payment:', error);
-        showCheckoutStatus(`Payment failed: ${error.message}`, 'error');
-    } finally {
-        showCheckoutLoading(false);
     }
+    
+    if (bernTotal > 0) {
+        await updateBernFund(bernTotal);
+        showCheckoutStatus(`🔥 Added $${bernTotal.toFixed(2)} to BERN fund!`, 'success');
+    }
+    
+    if (Object.keys(consignorPayments).length > 0) {
+        let storedOwed = JSON.parse(localStorage.getItem('consignor_owed') || '{}');
+        for (const [consignorId, amount] of Object.entries(consignorPayments)) {
+            storedOwed[consignorId] = (storedOwed[consignorId] || 0) + amount;
+        }
+        localStorage.setItem('consignor_owed', JSON.stringify(storedOwed));
+        if (typeof window.consignorOwedAmounts !== 'undefined') {
+            window.consignorOwedAmounts = storedOwed;
+        }
+    }
+    
+    if (successCount > 0) {
+        let cashierName = 'Admin';
+        const userData = localStorage.getItem('user');
+        if (userData) {
+            const user = JSON.parse(userData);
+            cashierName = user.username || 'Admin';
+        }
+        
+        const taxRate = await validateTaxRate();
+        const discount = currentDiscount.value || 0;
+        const tax = discountedSubtotal * taxRate;
+        
+        const cleanedItems = soldItems.map(item => ({
+            id: item.id || null,
+            type: item.type || 'record',
+            artist: item.artist || null,
+            title: item.title || null,
+            description: item.description || item.note || null,
+            note: item.note || null,
+            store_price: parseFloat(item.store_price) || 0,
+            actual_sale_price: item.actual_sale_price || null,
+            catalog_number: item.catalog_number || null,
+            barcode: item.barcode || null,
+            consignor_id: item.consignor_id || null,
+            original_id: item.original_id || null,
+            bern_it: item.bern_it || false
+        }));
+        
+        const transaction = {
+            id: `CASH-${Date.now()}`,
+            date: new Date().toISOString(),
+            items: cleanedItems,
+            originalSubtotal: originalSubtotal,
+            subtotal: discountedSubtotal,
+            discount: discount,
+            discountType: currentDiscount.type,
+            discountAmount: currentDiscount.amount,
+            customSalePrice: currentCustomSalePrice,
+            tax: tax,
+            taxRate: taxRate * 100,
+            total: total,
+            tendered: tendered,
+            change: change,
+            paymentMethod: 'Cash',
+            cashier: cashierName,
+            storeName: await getConfigValue('STORE_NAME'),
+            storeAddress: await getConfigValue('STORE_ADDRESS'),
+            storePhone: await getConfigValue('STORE_PHONE'),
+            footer: await getConfigValue('RECEIPT_FOOTER'),
+            consignorPayments: consignorPayments,
+            bernDonation: bernTotal
+        };
+        
+        if (typeof window.saveReceipt === 'function') {
+            await window.saveReceipt(transaction);
+        }
+        
+        // ===== CASH PAYMENT: Show printer options modal =====
+        const receiptText = await formatReceiptForPrinter(transaction);
+        const choice = await showPrinterOptionsModal();
+        
+        if (choice === 'print') {
+            await window.printToThermalPrinter(receiptText);
+            showCheckoutStatus('✅ Receipt printed successfully.', 'success');
+        } else {
+            showCheckoutStatus('✅ Sale completed without receipt.', 'info');
+        }
+        // =========================================================
+        
+        // Clear cart and reset state
+        checkoutCart = [];
+        currentDiscount = { amount: 0, type: 'percentage', value: 0 };
+        currentCustomSalePrice = null;
+        const discountAmount = document.getElementById('discount-amount');
+        const discountType = document.getElementById('discount-type');
+        const customPriceInput = document.getElementById('custom-sale-price');
+        if (discountAmount) discountAmount.value = '';
+        if (discountType) discountType.value = 'percentage';
+        if (customPriceInput) customPriceInput.value = '';
+        updateCartDisplay();
+        // Do NOT auto-search after sale – it would overwrite the confirmation message.
+        // searchRecordsAndAccessories(); // <-- REMOVED to preserve confirmation
+        
+        // Final confirmation message (overwrites any previous status)
+        showCheckoutStatus(`✅ Sale completed successfully! ${successCount} item(s) sold.`, 'success');
+    } else {
+        throw new Error('No items were successfully processed');
+    }
+    
+    showCheckoutLoading(false);
 };
+
 
 // ============================================================================
 // Gift Card Payment Functions
@@ -2896,7 +2895,7 @@ document.addEventListener('keypress', function(e) {
         e.preventDefault();
         searchRecordsAndAccessories();
     }
-});
+}); 
 
 window.printToVCP8370 = printToVCP8370;
 window.printToThermalPrinter = printToThermalPrinter;
