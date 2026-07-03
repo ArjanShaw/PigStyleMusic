@@ -322,6 +322,7 @@ async function refreshMarkupCharts() {
     }
 }
 
+
 function renderMarkupCurveChart(data) {
     const canvas = document.getElementById('markup-curve-chart');
     if (!canvas) return;
@@ -370,6 +371,26 @@ function renderMarkupCurveChart(data) {
         return;
     }
     
+    // Calculate min and max for y-axis with padding
+    const minMarkup = Math.min(...markups);
+    const maxMarkup = Math.max(...markups);
+    const yPadding = Math.max(5, Math.abs(maxMarkup - minMarkup) * 0.1);
+    
+    // Use chart_max_days from API, or fallback to max days
+    const xMax = data.chart_max_days || Math.max(...days);
+    
+    // Determine tick intervals based on range
+    let xStepSize = 30;
+    if (xMax > 730) {
+        xStepSize = 90;
+    } else if (xMax > 365) {
+        xStepSize = 60;
+    }
+    
+    // Find the markup value at 365 days
+    const day365Point = points.find(p => p.days === 365);
+    
+    // Create the chart
     markupCurveChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -396,28 +417,36 @@ function renderMarkupCurveChart(data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `Markup: ${context.parsed.y}%`;
+                            return `Markup: ${context.parsed.y}% at ${context.parsed.x} days`;
                         }
                     }
                 }
             },
             scales: {
                 x: {
+                    type: 'linear',
+                    position: 'bottom',
+                    min: 0,
+                    max: xMax,
                     title: {
                         display: true,
                         text: 'Days Since Created'
                     },
                     ticks: {
-                        maxTicksLimit: 15,
-                        callback: function(value, index, ticks) {
-                            const val = parseInt(value);
-                            if (val === 0) return '0';
-                            if (val % 30 === 0) return val + 'd';
-                            return '';
+                        stepSize: xStepSize,
+                        callback: function(value) {
+                            if (value === 0) return '0';
+                            if (value === 365) return '365d';
+                            return value + 'd';
                         }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
                     }
                 },
                 y: {
+                    min: minMarkup - yPadding,
+                    max: maxMarkup + yPadding,
                     title: {
                         display: true,
                         text: 'Markup %'
@@ -425,13 +454,88 @@ function renderMarkupCurveChart(data) {
                     ticks: {
                         callback: function(value) {
                             return value + '%';
-                        }
+                        },
+                        stepSize: 5
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
                     }
                 }
             }
         }
     });
+    
+    // Draw 365-day annotation after the chart is rendered
+    if (day365Point && markupCurveChart) {
+        // Use the afterDraw event to draw the annotation
+        const originalAfterDraw = markupCurveChart.afterDraw || function() {};
+        
+        markupCurveChart.afterDraw = function(chart) {
+            // Call original afterDraw if it exists
+            if (typeof originalAfterDraw === 'function') {
+                originalAfterDraw(chart);
+            }
+            
+            const ctx = chart.ctx;
+            const xScale = chart.scales.x;
+            const yScale = chart.scales.y;
+            
+            // Only draw if 365 is within the x-axis range
+            if (365 > xScale.max) return;
+            
+            const xPos = xScale.getPixelForValue(365);
+            const yPos = yScale.getPixelForValue(day365Point.markup_percent);
+            
+            if (xPos >= 0 && xPos <= chart.width && yPos >= 0 && yPos <= chart.height) {
+                // Draw vertical line at 365 days
+                ctx.save();
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(xPos, yScale.top);
+                ctx.lineTo(xPos, yScale.bottom);
+                ctx.stroke();
+                ctx.restore();
+                
+                // Draw label
+                ctx.save();
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('365d', xPos, yScale.top - 5);
+                ctx.restore();
+                
+                // Draw point marker
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(xPos, yPos, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+                
+                // Draw value label
+                ctx.save();
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.9)';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(`${day365Point.markup_percent}%`, xPos + 8, yPos - 4);
+                ctx.restore();
+            }
+        };
+        
+        // Trigger the afterDraw to draw the annotation
+        setTimeout(function() {
+            if (markupCurveChart) {
+                markupCurveChart.draw();
+            }
+        }, 100);
+    }
 }
+
 
 function renderMarkupDistributionChart(data) {
     const canvas = document.getElementById('markup-distribution-chart');
