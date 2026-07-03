@@ -2520,6 +2520,8 @@ def get_last_seen_distribution_stats():
  
 # ==================== MARKUP ANALYSIS ENDPOINT ====================
 
+# ==================== MARKUP ANALYSIS ENDPOINT ====================
+
 @app.route('/api/markup-analysis', methods=['GET'])
 def get_markup_analysis():
     """Get data for markup curve and distribution charts"""
@@ -2533,8 +2535,11 @@ def get_markup_analysis():
         
         # Convert rules to list of tuples for interpolation
         rules_list = []
+        max_rule_days = 0
         for r in rules:
             rules_list.append((r['days_old'], r['markup_percent']))
+            if r['days_old'] > max_rule_days:
+                max_rule_days = r['days_old']
         
         if not rules_list:
             return jsonify({
@@ -2545,6 +2550,7 @@ def get_markup_analysis():
                 'active_records_count': 0,
                 'rules_count': 0,
                 'max_days': 0,
+                'max_rule_days': 0,
                 'age_stats': {'min_days': 0, 'max_days': 0, 'avg_days': 0},
                 'warning': 'No markup rules configured'
             })
@@ -2597,12 +2603,15 @@ def get_markup_analysis():
             'total_records': len(record_ages)
         }
         
-        # Generate curve points (every day from 0 to max_days + 30)
-        if max_days == 0:
-            max_days = 30
-            
+        # Determine the maximum days to show on the chart
+        # Use the maximum of: max record age, max rule days, or at least 365
+        chart_max_days = max(max_days, max_rule_days, 365)
+        # Add a buffer so we can see the curve level out
+        chart_max_days = chart_max_days + 30
+        
+        # Generate curve points (every day from 0 to chart_max_days)
         curve_points = []
-        for days in range(0, max_days + 31, 1):
+        for days in range(0, chart_max_days + 1, 1):
             markup = interpolate_markup(days, rules_list)
             curve_points.append({
                 'days': days,
@@ -2623,12 +2632,9 @@ def get_markup_analysis():
                 distribution[label] = 0
             distribution[label] += 1
         
-        # ============================================================
-        # NEW: Calculate age distribution - bucket by 30-day increments
-        # ============================================================
+        # Calculate age distribution - bucket by 30-day increments
         age_distribution = {}
         for age in record_ages:
-            # Use 30-day buckets (0-29, 30-59, 60-89, etc.)
             bucket_start = (age // 30) * 30
             bucket_end = bucket_start + 29
             bucket_key = f"{bucket_start}-{bucket_end}"
@@ -2637,28 +2643,27 @@ def get_markup_analysis():
                 age_distribution[bucket_key] = 0
             age_distribution[bucket_key] += 1
         
-        # ============================================================
-        # Also add a debug field to help verify the data
-        # ============================================================
-        sample_ages = record_ages[:10] if len(record_ages) > 10 else record_ages
-        
         return jsonify({
             'status': 'success',
             'curve_points': curve_points,
             'distribution': distribution,
-            'age_distribution': age_distribution,  # THIS IS THE NEW FIELD
+            'age_distribution': age_distribution,
             'active_records_count': len(record_ages),
             'rules_count': len(rules_list),
             'max_days': max_days,
+            'max_rule_days': max_rule_days,
+            'chart_max_days': chart_max_days,
             'records_with_data': len(record_ages),
             'age_stats': age_stats,
-            'sample_ages': sample_ages  # For debugging
+            'rules_list': rules_list  # Include for debugging
         })
         
     except Exception as e:
         app.logger.error(f"Error in markup analysis: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 
 
 # Create upload folder for bills of sale if not exists
