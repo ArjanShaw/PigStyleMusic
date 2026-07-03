@@ -2857,149 +2857,220 @@
         </div>
         
         <!-- Discogs Tab - Location-Based Bulk Posting -->
-        <div id="discogs-tab" class="tab-content">
-            <h2><i class="fab fa-discogs"></i> Discogs Management - Location Based</h2>
+<div id="discogs-tab" class="tab-content">
+    <h2><i class="fab fa-discogs"></i> Discogs Management - Location Based</h2>
+    
+    <!-- COLLAPSIBLE MARKUP RULES TABLE -->
+    <div style="margin-bottom: 20px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 12px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupRules()">
+            <span><i class="fas fa-chart-line"></i> Markup Rules (based on record age)</span>
+            <span><i class="fas fa-chevron-down" id="markup-rules-toggle-icon" style="transition: transform 0.3s;"></i></span>
+        </div>
+        <div id="markup-rules-content" style="display: none; padding: 20px; background: #f8f9fa;">
+            <div class="records-table-container">
+                <table class="records-table">
+                    <thead>
+                        <tr>
+                            <th>Days Old</th>
+                            <th>Markup %</th>
+                            <th>Description</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="markup-rules-body">
+                        <tr><td colspan="4" style="text-align: center; padding: 40px;">Loading rules...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: 15px;">
+                <input type="number" id="new-rule-days" placeholder="Days" style="width: 80px; padding: 5px;">
+                <input type="number" id="new-rule-percent" placeholder="%" step="1" style="width: 80px; padding: 5px;">
+                <input type="text" id="new-rule-desc" placeholder="Description" style="width: 150px; padding: 5px;">
+                <button class="btn btn-success btn-sm" onclick="addMarkupRule()">Add Rule</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MARKUP ANALYSIS CHARTS - ALL 3 IN ONE ROW -->
+    <div style="margin-bottom: 20px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%); color: white; padding: 12px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupCharts()">
+            <span><i class="fas fa-chart-line"></i> Markup Analysis Charts</span>
+            <span><i class="fas fa-chevron-down" id="markup-charts-toggle-icon" style="transition: transform 0.3s;"></i></span>
+        </div>
+        <div id="markup-charts-content" style="display: none; padding: 20px; background: #f8f9fa;">
+            <!-- ALL 3 CHARTS IN ONE ROW -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                <!-- Chart 1: Markup Curve -->
+                <div style="background: white; padding: 12px; border-radius: 8px; border: 1px solid #dee2e6;">
+                    <h4 style="margin-top: 0; margin-bottom: 8px; text-align: center; font-size: 13px;">
+                        <i class="fas fa-chart-line"></i> Markup Curve
+                        <span style="font-size: 10px; color: #666; display: block; font-weight: normal;">Based on record age</span>
+                    </h4>
+                    <div style="height: 180px; position: relative;">
+                        <canvas id="markup-curve-chart" style="width: 100% !important; height: 100% !important;"></canvas>
+                    </div>
+                    <div style="font-size: 10px; color: #666; margin-top: 6px; text-align: center;">
+                        <span style="display: inline-block; background: #007bff; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;"></span>
+                        Markup % at each age
+                    </div>
+                </div>
+                
+                <!-- Chart 2: Markup Distribution -->
+                <div style="background: white; padding: 12px; border-radius: 8px; border: 1px solid #dee2e6;">
+                    <h4 style="margin-top: 0; margin-bottom: 8px; text-align: center; font-size: 13px;">
+                        <i class="fas fa-chart-bar"></i> Markup Distribution
+                        <span style="font-size: 10px; color: #666; display: block; font-weight: normal;">How records are priced</span>
+                    </h4>
+                    <div style="height: 180px; position: relative;">
+                        <canvas id="markup-distribution-chart" style="width: 100% !important; height: 100% !important;"></canvas>
+                    </div>
+                    <div style="font-size: 10px; color: #666; margin-top: 6px; text-align: center;">
+                        <span style="display: inline-block; background: #28a745; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;"></span>
+                        Markup
+                        <span style="display: inline-block; background: #dc3545; width: 10px; height: 10px; border-radius: 2px; margin-left: 10px; margin-right: 4px;"></span>
+                        Markdown
+                        <span style="display: inline-block; background: #ffc107; width: 10px; height: 10px; border-radius: 2px; margin-left: 10px; margin-right: 4px;"></span>
+                        No change
+                    </div>
+                </div>
+                
+                <!-- Chart 3: Age Distribution -->
+                <div style="background: white; padding: 12px; border-radius: 8px; border: 1px solid #dee2e6;">
+                    <h4 style="margin-top: 0; margin-bottom: 8px; text-align: center; font-size: 13px;">
+                        <i class="fas fa-calendar-alt"></i> Age Distribution
+                        <span style="font-size: 10px; color: #666; display: block; font-weight: normal;">Same cohorts as Markup Distribution</span>
+                    </h4>
+                    <div style="height: 180px; position: relative;">
+                        <canvas id="age-distribution-chart" style="width: 100% !important; height: 100% !important;"></canvas>
+                    </div>
+                    <div style="font-size: 10px; color: #666; margin-top: 6px; text-align: center;">
+                        <span style="display: inline-block; background: #17a2b8; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;"></span>
+                        Records by age cohort
+                        <span id="age-chart-stats" style="margin-left: 8px; font-weight: bold;"></span>
+                    </div>
+                </div>
+            </div>
             
-            <!-- COLLAPSIBLE MARKUP RULES TABLE -->
-            <div style="margin-bottom: 20px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
-                <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 12px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupRules()">
-                    <span><i class="fas fa-chart-line"></i> Markup Rules (based on record age)</span>
-                    <span><i class="fas fa-chevron-down" id="markup-rules-toggle-icon" style="transition: transform 0.3s;"></i></span>
-                </div>
-                <div id="markup-rules-content" style="display: none; padding: 20px; background: #f8f9fa;">
-                    <div class="records-table-container">
-                        <table class="records-table">
-                            <thead>
-                                <tr>
-                                    <th>Days Old</th>
-                                    <th>Markup %</th>
-                                    <th>Description</th>
-                                    <th>Actions</th>
-                                </thead>
-                                <tbody id="markup-rules-body">
-                                    <tr><td colspan="4" style="text-align: center; padding: 40px;">Loading rules...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div style="margin-top: 15px;">
-                            <input type="number" id="new-rule-days" placeholder="Days" style="width: 80px; padding: 5px;">
-                            <input type="number" id="new-rule-percent" placeholder="%" step="1" style="width: 80px; padding: 5px;">
-                            <input type="text" id="new-rule-desc" placeholder="Description" style="width: 150px; padding: 5px;">
-                            <button class="btn btn-success btn-sm" onclick="addMarkupRule()">Add Rule</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- LAST SEEN DATE FILTER -->
-                <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); border-radius: 8px; color: white;">
-                    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                        <div>
-                            <i class="fas fa-calendar-alt" style="font-size: 20px;"></i>
-                            <strong style="margin-left: 8px;">Last Seen Filter:</strong>
-                        </div>
-                        <div>
-                            <label style="font-weight: normal;">Only post records last seen on or after:</label>
-                            <input type="date" id="last-seen-cutoff-date" class="filter-select" style="padding: 8px 12px; font-size: 14px; border-radius: 4px; border: none; margin-left: 10px; color: #333;">
-                        </div>
-                        <div>
-                            <button id="apply-last-seen-filter" class="btn btn-light btn-sm" style="background: white; color: #17a2b8;">
-                                <i class="fas fa-sync-alt"></i> Apply Filter
-                            </button>
-                        </div>
-                        <div style="font-size: 12px; opacity: 0.9;">
-                            <i class="fas fa-info-circle"></i> Records with last_seen = NULL or older than selected date will be skipped when posting
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Location Selector with Repost Entire Store Button -->
-                <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
-                    <div class="filter-group" style="flex: 2;">
-                        <label for="discogs-location-select"><i class="fas fa-map-marker-alt"></i> Select Location:</label>
-                        <select id="discogs-location-select" class="filter-select" style="min-width: 400px; padding: 8px 12px; font-size: 14px;">
-                            <option value="">-- Select a location --</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <button class="btn btn-secondary" onclick="refreshDiscogsLocations()">
-                            <i class="fas fa-sync-alt"></i> Refresh Locations
-                        </button>
-                    </div>
-                    <div class="filter-group">
-                        <button id="repost-entire-store-btn" class="btn btn-warning" onclick="repostEntireStoreToDiscogs()" style="background: #ffc107; color: #333;">
-                            <i class="fas fa-store"></i> Repost Entire Store to Discogs
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Search Bar -->
-                <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #28a745; padding: 15px;">
-                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                        <div style="flex: 1; min-width: 250px;">
-                            <label for="discogs-search-input" style="display: block; margin-bottom: 5px; font-weight: 600; color: #28a745;">
-                                <i class="fas fa-search"></i> Search Within Location
-                            </label>
-                            <div style="display: flex; gap: 10px;">
-                                <input type="text" id="discogs-search-input" class="search-input" placeholder="Search by artist, title, or catalog number..." style="flex: 1;">
-                                <button class="btn btn-success" id="discogs-search-button"><i class="fas fa-search"></i> Search</button>
-                                <button class="btn btn-secondary" onclick="clearDiscogsSearch()"><i class="fas fa-times"></i> Clear</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Status Message -->
-                <div id="discogs-status-message" class="status-message" style="display: none;"></div>
-                
-                <!-- Post Button -->
-                <div style="margin-bottom: 20px;">
-                    <button id="post-location-button" class="btn btn-success" disabled style="opacity: 0.5;">
-                        <i class="fab fa-discogs"></i> Post to Discogs
-                    </button>
-                </div>
-                
-                <!-- Records Table -->
-                <div class="records-table-container">
-                    <table class="records-table">
-                        <thead>
-                            <tr>
-                                <th>Image</th>
-                                <th>ID</th>
-                                <th>Artist</th>
-                                <th>Title</th>
-                                <th>Catalog #</th>
-                                <th>Media Cond</th>
-                                <th>Sleeve Cond</th>
-                                <th>Store Price</th>
-                                <th>Discogs Price</th>
-                                <th>Markup %</th>
-                                <th>Last Seen</th>
-                                <th>Location</th>
-                                <th>Post</th>
-                            </thead>
-                        <tbody id="combined-inventory-body">
-                            <tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Info Box -->
-                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
-                    <h4><i class="fas fa-info-circle"></i> How it works:</h4>
-                    <ul style="margin: 10px 0 0 20px;">
-                        <li><strong>Last Seen Filter:</strong> Set a cutoff date - only records seen on or after that date will be posted</li>
-                        <li><strong>Select a Location:</strong> Choose a location from the dropdown</li>
-                        <li><strong>Review Records:</strong> See all records currently assigned to that location</li>
-                        <li><strong>Discogs Price:</strong> Calculated using the markup rules based on record age</li>
-                        <li><strong>Post to Discogs:</strong> Click "Post to Discogs" to list all eligible records</li>
-                        <li><strong>Repost Entire Store:</strong> Click the yellow button to post ALL active store records (respects last_seen filter)</li>
-                        <li><strong>Single Post:</strong> Use the "Post" button next to individual records to test a single listing</li>
-                    </ul>
-                    <p style="margin-top: 10px;"><strong>Formula:</strong> Discogs Price = Store Price × (1 + Markup% / 100)</p>
-                    <p><strong>💡 Tip:</strong> Only records with status "Active" and last_seen on/after cutoff date can be posted.</p>
+            <!-- Info footer -->
+            <div style="margin-top: 12px; font-size: 11px; color: #666; text-align: center; padding: 8px; background: #fff3cd; border-radius: 4px;">
+                <i class="fas fa-info-circle"></i> 
+                <strong>Note:</strong> These charts show how records are priced based on markup rules. 
+                Markdowns (negative %) happen when records get older. 
+                <span id="chart-record-count" style="font-weight: bold;"></span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- LAST SEEN DATE FILTER -->
+    <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); border-radius: 8px; color: white;">
+        <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+            <div>
+                <i class="fas fa-calendar-alt" style="font-size: 20px;"></i>
+                <strong style="margin-left: 8px;">Last Seen Filter:</strong>
+            </div>
+            <div>
+                <label style="font-weight: normal;">Only post records last seen on or after:</label>
+                <input type="date" id="last-seen-cutoff-date" class="filter-select" style="padding: 8px 12px; font-size: 14px; border-radius: 4px; border: none; margin-left: 10px; color: #333;">
+            </div>
+            <div>
+                <button id="apply-last-seen-filter" class="btn btn-light btn-sm" style="background: white; color: #17a2b8;">
+                    <i class="fas fa-sync-alt"></i> Apply Filter
+                </button>
+            </div>
+            <div style="font-size: 12px; opacity: 0.9;">
+                <i class="fas fa-info-circle"></i> Records with last_seen = NULL or older than selected date will be skipped when posting
+            </div>
+        </div>
+    </div>
+    
+    <!-- Location Selector with Repost Entire Store Button -->
+    <div class="filter-controls" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="filter-group" style="flex: 2;">
+            <label for="discogs-location-select"><i class="fas fa-map-marker-alt"></i> Select Location:</label>
+            <select id="discogs-location-select" class="filter-select" style="min-width: 400px; padding: 8px 12px; font-size: 14px;">
+                <option value="">-- Select a location --</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <button class="btn btn-secondary" onclick="refreshDiscogsLocations()">
+                <i class="fas fa-sync-alt"></i> Refresh Locations
+            </button>
+        </div>
+        <div class="filter-group">
+            <button id="repost-entire-store-btn" class="btn btn-warning" onclick="repostEntireStoreToDiscogs()" style="background: #ffc107; color: #333;">
+                <i class="fas fa-store"></i> Repost Entire Store to Discogs
+            </button>
+        </div>
+    </div>
+    
+    <!-- Search Bar -->
+    <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #28a745; padding: 15px;">
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+                <label for="discogs-search-input" style="display: block; margin-bottom: 5px; font-weight: 600; color: #28a745;">
+                    <i class="fas fa-search"></i> Search Within Location
+                </label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="discogs-search-input" class="search-input" placeholder="Search by artist, title, or catalog number..." style="flex: 1;">
+                    <button class="btn btn-success" id="discogs-search-button"><i class="fas fa-search"></i> Search</button>
+                    <button class="btn btn-secondary" onclick="clearDiscogsSearch()"><i class="fas fa-times"></i> Clear</button>
                 </div>
             </div>
         </div>
+    </div>
+    
+    <!-- Status Message -->
+    <div id="discogs-status-message" class="status-message" style="display: none;"></div>
+    
+    <!-- Post Button -->
+    <div style="margin-bottom: 20px;">
+        <button id="post-location-button" class="btn btn-success" disabled style="opacity: 0.5;">
+            <i class="fab fa-discogs"></i> Post to Discogs
+        </button>
+    </div>
+    
+    <!-- Records Table -->
+    <div class="records-table-container">
+        <table class="records-table">
+            <thead>
+                <tr>
+                    <th>Image</th>
+                    <th>ID</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                    <th>Catalog #</th>
+                    <th>Media Cond</th>
+                    <th>Sleeve Cond</th>
+                    <th>Store Price</th>
+                    <th>Discogs Price</th>
+                    <th>Markup %</th>
+                    <th>Last Seen</th>
+                    <th>Location</th>
+                    <th>Post</th>
+                </tr>
+            </thead>
+            <tbody id="combined-inventory-body">
+                <tr><td colspan="13" style="text-align: center; padding: 40px;">Select a location to view records</td></tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Info Box -->
+    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
+        <h4><i class="fas fa-info-circle"></i> How it works:</h4>
+        <ul style="margin: 10px 0 0 20px;">
+            <li><strong>Last Seen Filter:</strong> Set a cutoff date - only records seen on or after that date will be posted</li>
+            <li><strong>Select a Location:</strong> Choose a location from the dropdown</li>
+            <li><strong>Review Records:</strong> See all records currently assigned to that location</li>
+            <li><strong>Discogs Price:</strong> Calculated using the markup rules based on record age</li>
+            <li><strong>Post to Discogs:</strong> Click "Post to Discogs" to list all eligible records</li>
+            <li><strong>Repost Entire Store:</strong> Click the yellow button to post ALL active store records (respects last_seen filter)</li>
+            <li><strong>Single Post:</strong> Use the "Post" button next to individual records to test a single listing</li>
+        </ul>
+        <p style="margin-top: 10px;"><strong>Formula:</strong> Discogs Price = Store Price × (1 + Markup% / 100)</p>
+        <p><strong>💡 Tip:</strong> Only records with status "Active" and last_seen on/after cutoff date can be posted.</p>
+    </div>
+</div>
 
         <!-- ====== DISCOGS ORDERS TAB (NEW) ====== -->
         <div id="discogs-orders-tab" class="tab-content">

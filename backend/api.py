@@ -2517,7 +2517,149 @@ def get_last_seen_distribution_stats():
         'week_numbers': week_numbers,
         'counts': counts
     })
-# ==================== INVENTORY PURCHASES ENDPOINTS ====================
+ 
+# ==================== MARKUP ANALYSIS ENDPOINT ====================
+
+@app.route('/api/markup-analysis', methods=['GET'])
+def get_markup_analysis():
+    """Get data for markup curve and distribution charts"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all markup rules
+        cursor.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
+        rules = cursor.fetchall()
+        
+        # Convert rules to list of tuples for interpolation
+        rules_list = []
+        for r in rules:
+            rules_list.append((r['days_old'], r['markup_percent']))
+        
+        if not rules_list:
+            return jsonify({
+                'status': 'success',
+                'curve_points': [],
+                'distribution': {},
+                'age_distribution': {},
+                'active_records_count': 0,
+                'rules_count': 0,
+                'max_days': 0,
+                'age_stats': {'min_days': 0, 'max_days': 0, 'avg_days': 0},
+                'warning': 'No markup rules configured'
+            })
+        
+        # Get active records with created_at
+        cursor.execute('''
+            SELECT created_at, store_price 
+            FROM records 
+            WHERE status_id = 2 AND created_at IS NOT NULL
+        ''')
+        records = cursor.fetchall()
+        conn.close()
+        
+        from datetime import date, datetime
+        
+        today = date.today()
+        max_days = 0
+        total_days = 0
+        
+        # Calculate days old for each record
+        record_ages = []
+        
+        for record in records:
+            created_at = record['created_at']
+            if isinstance(created_at, str):
+                try:
+                    created_date = datetime.strptime(created_at.split('T')[0], '%Y-%m-%d').date()
+                except:
+                    try:
+                        created_date = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S').date()
+                    except:
+                        continue
+            else:
+                created_date = created_at
+            
+            days_old = (today - created_date).days
+            if days_old < 0:
+                days_old = 0
+            
+            record_ages.append(days_old)
+            total_days += days_old
+            if days_old > max_days:
+                max_days = days_old
+        
+        # Calculate age statistics
+        age_stats = {
+            'min_days': min(record_ages) if record_ages else 0,
+            'max_days': max_days,
+            'avg_days': round(total_days / len(record_ages), 1) if record_ages else 0,
+            'total_records': len(record_ages)
+        }
+        
+        # Generate curve points (every day from 0 to max_days + 30)
+        if max_days == 0:
+            max_days = 30
+            
+        curve_points = []
+        for days in range(0, max_days + 31, 1):
+            markup = interpolate_markup(days, rules_list)
+            curve_points.append({
+                'days': days,
+                'markup_percent': round(markup, 1)
+            })
+        
+        # Calculate markup distribution - bucket by 5% increments
+        distribution = {}
+        for age in record_ages:
+            markup = interpolate_markup(age, rules_list)
+            bucket = round(markup / 5) * 5
+            if bucket >= 0:
+                label = f"+{bucket}%"
+            else:
+                label = f"{bucket}%"
+            
+            if label not in distribution:
+                distribution[label] = 0
+            distribution[label] += 1
+        
+        # ============================================================
+        # NEW: Calculate age distribution - bucket by 30-day increments
+        # ============================================================
+        age_distribution = {}
+        for age in record_ages:
+            # Use 30-day buckets (0-29, 30-59, 60-89, etc.)
+            bucket_start = (age // 30) * 30
+            bucket_end = bucket_start + 29
+            bucket_key = f"{bucket_start}-{bucket_end}"
+            
+            if bucket_key not in age_distribution:
+                age_distribution[bucket_key] = 0
+            age_distribution[bucket_key] += 1
+        
+        # ============================================================
+        # Also add a debug field to help verify the data
+        # ============================================================
+        sample_ages = record_ages[:10] if len(record_ages) > 10 else record_ages
+        
+        return jsonify({
+            'status': 'success',
+            'curve_points': curve_points,
+            'distribution': distribution,
+            'age_distribution': age_distribution,  # THIS IS THE NEW FIELD
+            'active_records_count': len(record_ages),
+            'rules_count': len(rules_list),
+            'max_days': max_days,
+            'records_with_data': len(record_ages),
+            'age_stats': age_stats,
+            'sample_ages': sample_ages  # For debugging
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in markup analysis: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 # Create upload folder for bills of sale if not exists
 BILLS_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'bills')
@@ -5922,7 +6064,19 @@ def interpolate_markup(days_old, rules):
     if not rules:
         return 0
     
-    rules_list = [(r['days_old'], r['markup_percent']) for r in rules]
+    # Convert rules to list of tuples (days, markup_percent) if they're dicts
+    rules_list = []
+    for r in rules:
+        if isinstance(r, dict):
+            rules_list.append((r['days_old'], r['markup_percent']))
+        elif isinstance(r, (list, tuple)) and len(r) >= 2:
+            rules_list.append((r[0], r[1]))
+        else:
+            continue
+    
+    if not rules_list:
+        return 0
+    
     rules_list.sort()
     
     # If days_old is less than first rule, use first rule
@@ -5947,7 +6101,8 @@ def interpolate_markup(days_old, rules):
             return y1 + t * (y2 - y1)
     
     return rules_list[-1][1]
-  
+
+
 @app.route('/api/discogs/calculate-markup', methods=['POST'])
 def calculate_markup():
     """Calculate Discogs price based on record age and markup rules (NO FALLBACK)"""

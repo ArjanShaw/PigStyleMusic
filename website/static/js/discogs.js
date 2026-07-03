@@ -30,6 +30,12 @@ let modalProgressText = null;
 let modalLog = null;
 let modalCancelBtn = null;
 
+// Chart variables
+let markupCurveChart = null;
+let markupDistributionChart = null;
+let ageDistributionChart = null;
+let markupChartsLoaded = false;
+
 // ============================================================================
 // Helper: Check if record has a consignor
 // ============================================================================
@@ -228,6 +234,458 @@ window.toggleMarkupRules = function() {
         icon.style.transform = 'rotate(0deg)';
     }
 };
+
+// ============================================================================
+// Toggle Markup Charts Collapsible Section
+// ============================================================================
+
+window.toggleMarkupCharts = function() {
+    const content = document.getElementById('markup-charts-content');
+    const icon = document.getElementById('markup-charts-toggle-icon');
+    
+    if (!content || !icon) {
+        console.error('Markup charts elements not found');
+        return;
+    }
+    
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+        // Load charts after a small delay to ensure DOM is ready
+        setTimeout(loadMarkupAnalysisCharts, 300);
+    } else {
+        content.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+};
+
+// ============================================================================
+// Markup Analysis Charts
+// ============================================================================
+
+async function loadMarkupAnalysisCharts() {
+    try {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/markup-analysis', {
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+        });
+        
+        if (!response.ok) throw new Error('Failed to load markup analysis data');
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            renderMarkupCurveChart(data);
+            renderMarkupDistributionChart(data);
+            renderAgeDistributionChart(data);
+            
+            // Update record count
+            const countEl = document.getElementById('chart-record-count');
+            if (countEl) {
+                countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed | ${data.rules_count || 0} markup rules applied`;
+            }
+            
+            markupChartsLoaded = true;
+        } else {
+            console.error('Error loading markup analysis:', data.error);
+            showDiscogsStatus('Error loading markup charts: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error loading markup analysis:', error);
+        showDiscogsStatus('Error loading markup charts: ' + error.message, 'error');
+    }
+}
+
+async function refreshMarkupCharts() {
+    try {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/markup-analysis', {
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+        });
+        
+        if (!response.ok) throw new Error('Failed to refresh markup analysis data');
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            renderMarkupCurveChart(data);
+            renderMarkupDistributionChart(data);
+            renderAgeDistributionChart(data);
+            
+            const countEl = document.getElementById('chart-record-count');
+            if (countEl) {
+                countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed | ${data.rules_count || 0} markup rules applied`;
+            }
+        }
+    } catch (error) {
+        console.error('Error refreshing markup charts:', error);
+    }
+}
+
+function renderMarkupCurveChart(data) {
+    const canvas = document.getElementById('markup-curve-chart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy existing chart
+    if (markupCurveChart) {
+        markupCurveChart.destroy();
+        markupCurveChart = null;
+    }
+    
+    // Prepare data
+    const points = data.curve_points || [];
+    const days = points.map(p => p.days);
+    const markups = points.map(p => p.markup_percent);
+    
+    if (days.length === 0) {
+        // Show empty state
+        markupCurveChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['No Data'],
+                datasets: [{
+                    label: 'Markup %',
+                    data: [0],
+                    borderColor: '#ccc',
+                    backgroundColor: 'rgba(200, 200, 200, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'No markup rules configured' } },
+                    y: { title: { display: true, text: 'Markup %' } }
+                }
+            }
+        });
+        return;
+    }
+    
+    markupCurveChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: days,
+            datasets: [{
+                label: 'Markup %',
+                data: markups,
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `Markup: ${context.parsed.y}%`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Days Since Created'
+                    },
+                    ticks: {
+                        maxTicksLimit: 15,
+                        callback: function(value, index, ticks) {
+                            const val = parseInt(value);
+                            if (val === 0) return '0';
+                            if (val % 30 === 0) return val + 'd';
+                            return '';
+                        }
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Markup %'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderMarkupDistributionChart(data) {
+    const canvas = document.getElementById('markup-distribution-chart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy existing chart
+    if (markupDistributionChart) {
+        markupDistributionChart.destroy();
+        markupDistributionChart = null;
+    }
+    
+    // Prepare data from distribution
+    const distribution = data.distribution || {};
+    
+    // If no distribution data, show empty state
+    if (Object.keys(distribution).length === 0) {
+        markupDistributionChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['No Data'],
+                datasets: [{
+                    label: 'Records',
+                    data: [0],
+                    backgroundColor: ['#ccc'],
+                    borderColor: ['#999'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'No active records found' } },
+                    y: { title: { display: true, text: 'Number of Records' } }
+                }
+            }
+        });
+        return;
+    }
+    
+    // Sort keys by numeric value
+    const sortedKeys = Object.keys(distribution).sort((a, b) => {
+        const numA = parseFloat(a);
+        const numB = parseFloat(b);
+        return numA - numB;
+    });
+    
+    const labels = sortedKeys;
+    const counts = sortedKeys.map(key => distribution[key]);
+    const totalRecords = data.active_records_count || 0;
+    
+    // Color based on positive/negative markup
+    const colors = labels.map(label => {
+        const value = parseFloat(label);
+        if (value > 0) return 'rgba(40, 167, 69, 0.8)'; // Green for markup
+        if (value < 0) return 'rgba(220, 53, 69, 0.8)'; // Red for markdown
+        return 'rgba(255, 193, 7, 0.8)'; // Yellow for no change
+    });
+    
+    markupDistributionChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Records',
+                data: counts,
+                backgroundColor: colors,
+                borderColor: colors.map(c => c.replace('0.8', '1')),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const count = context.parsed.y;
+                            const pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(1) : 0;
+                            return `${count} records (${pct}%)`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Markup %'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Number of Records'
+                    },
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+}
+
+// ============================================================================
+// Render Age Distribution Chart
+// ============================================================================
+
+function renderAgeDistributionChart(data) {
+    const canvas = document.getElementById('age-distribution-chart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy existing chart
+    if (ageDistributionChart) {
+        ageDistributionChart.destroy();
+        ageDistributionChart = null;
+    }
+    
+    // Get the age distribution data from the API
+    const ageData = data.age_distribution || {};
+    
+    if (Object.keys(ageData).length === 0) {
+        ageDistributionChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['No Data'],
+                datasets: [{
+                    label: 'Records',
+                    data: [0],
+                    backgroundColor: ['#ccc'],
+                    borderColor: ['#999'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'No age data available' } },
+                    y: { title: { display: true, text: 'Number of Records' } }
+                }
+            }
+        });
+        return;
+    }
+    
+    // Sort keys by numeric value (age in days)
+    const sortedKeys = Object.keys(ageData).sort((a, b) => {
+        return parseInt(a) - parseInt(b);
+    });
+    
+    // Create labels that are readable (e.g., "0-5 days", "6-10 days", etc.)
+    const labels = sortedKeys.map(key => {
+        const parts = key.split('-');
+        if (parts.length === 2) {
+            return `${parts[0]}-${parts[1]}d`;
+        }
+        return key + 'd';
+    });
+    
+    const counts = sortedKeys.map(key => ageData[key]);
+    const totalRecords = data.active_records_count || 0;
+    
+    // Color gradient from blue to purple
+    const colors = sortedKeys.map((key, index) => {
+        const opacity = 0.6 + (index / sortedKeys.length) * 0.3;
+        return `rgba(23, 162, 184, ${opacity})`;
+    });
+    
+    ageDistributionChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Records',
+                data: counts,
+                backgroundColor: colors,
+                borderColor: 'rgba(23, 162, 184, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const count = context.parsed.y;
+                            const pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(1) : 0;
+                            return `${count} records (${pct}%)`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Age Cohort (days)'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Number of Records'
+                    },
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1,
+                        precision: 0
+                    }
+                }
+            }
+        }
+    });
+    
+    // Update stats in the footer
+    const statsEl = document.getElementById('age-chart-stats');
+    if (statsEl && data.age_stats) {
+        statsEl.textContent = `| Avg: ${data.age_stats.avg_days}d | Min: ${data.age_stats.min_days} | Max: ${data.age_stats.max_days}`;
+    }
+}
 
 // ============================================================================
 // Last Seen Filter Handlers
@@ -1463,6 +1921,12 @@ window.initDiscogsTab = function() {
     loadLocations();
     loadMarkupRules();
     
+    // Check if markup charts section is already visible
+    const chartsContent = document.getElementById('markup-charts-content');
+    if (chartsContent && chartsContent.style.display === 'block') {
+        setTimeout(loadMarkupAnalysisCharts, 500);
+    }
+    
     tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
     
     console.log('✅ Discogs Tab initialized');
@@ -1487,3 +1951,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 console.log('✅ discogs.js loaded - Location-based bulk posting with last_seen filter, consignor items SKIPPED');
+console.log('✅ Markup analysis charts loaded (3 charts: Curve, Distribution, Age Distribution)');
