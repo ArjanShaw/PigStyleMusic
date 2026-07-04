@@ -9292,5 +9292,213 @@ def earliest_transaction():
         fallback = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
         return jsonify({'status': 'success', 'earliest': fallback})
 
+
+@app.route('/api/records/<int:record_id>/mark-discogs-sold', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_discogs_sold(record_id):
+    """
+    Mark a record as sold on Discogs.
+    1. Look for PIGSTYLE ID in the record's notes
+    2. Search Discogs orders for that PIGSTYLE ID
+    3. If found, update status to 4 and set store_price to the sale price
+    4. If not found, return an error
+    """
+    app.logger.info("=" * 60)
+    app.logger.info(f"📝 [DISOOGS_SOLD] Starting mark_discogs_sold for record_id: {record_id}")
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # 1. Get the record
+        app.logger.info(f"📡 [DISOOGS_SOLD] Fetching record #{record_id} from database")
+        cursor.execute('SELECT id, artist, title, notes, store_price, status_id FROM records WHERE id = ?', (record_id,))
+        record = cursor.fetchone()
+        
+        if not record:
+            app.logger.error(f"❌ [DISOOGS_SOLD] Record #{record_id} not found in database")
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record #{record_id} not found'
+            }), 404
+        
+        app.logger.info(f"✅ [DISOOGS_SOLD] Record found: {record['artist']} - {record['title']}")
+        app.logger.info(f"📊 [DISOOGS_SOLD] Current status: {record['status_id']}, Store price: ${record['store_price']}")
+        app.logger.info(f"📝 [DISOOGS_SOLD] Notes: {record['notes']}")
+        
+        # 2. Check if already sold
+        if record['status_id'] in [3, 4]:
+            app.logger.warning(f"⚠️ [DISOOGS_SOLD] Record #{record_id} is already marked as sold (status_id: {record['status_id']})")
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record #{record_id} is already marked as sold (status_id: {record["status_id"]})'
+            }), 400
+        
+        # 3. Extract PIGSTYLE ID from notes
+        app.logger.info(f"🔍 [DISOOGS_SOLD] Looking for PIGSTYLE ID in notes...")
+        pigstyle_id = None
+        if record['notes']:
+            match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', record['notes'], re.IGNORECASE)
+            if match:
+                pigstyle_id = int(match.group(1))
+                app.logger.info(f"✅ [DISOOGS_SOLD] Found PIGSTYLE ID {pigstyle_id} in record notes")
+            else:
+                app.logger.warning(f"⚠️ [DISOOGS_SOLD] No PIGSTYLE ID pattern found in notes")
+        
+        # If no PIGSTYLE ID in notes, use the record ID itself
+        if not pigstyle_id:
+            pigstyle_id = record_id
+            app.logger.info(f"🔄 [DISOOGS_SOLD] No PIGSTYLE ID in notes, using record ID as fallback: {pigstyle_id}")
+            app.logger.info(f"💡 [DISOOGS_SOLD] This is for later additions where barcode = record ID")
+        
+        app.logger.info(f"🎯 [DISOOGS_SOLD] Final PIGSTYLE ID: {pigstyle_id}")
+        
+        # 4. Get Discogs token
+        token = os.environ.get('DISCOGS_USER_TOKEN')
+        if not token:
+            app.logger.error(f"❌ [DISOOGS_SOLD] DISCOGS_USER_TOKEN not configured in environment")
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': 'DISCOGS_USER_TOKEN not configured in environment'
+            }), 500
+        
+        app.logger.info(f"🔑 [DISOOGS_SOLD] Discogs token found: {token[:10]}...")
+        
+        # 5. Initialize Discogs handler
+        app.logger.info(f"📡 [DISOOGS_SOLD] Initializing DiscogsHandler")
+        handler = DiscogsHandler(token)
+        
+        # 6. Search for the record in ALL Discogs orders
+        app.logger.info(f"🔍 [DISOOGS_SOLD] Searching for PIGSTYLE ID {pigstyle_id} in Discogs orders...")
+        orders_result = handler.get_all_orders()
+        
+        if not orders_result:
+            app.logger.error(f"❌ [DISOOGS_SOLD] Could not fetch Discogs orders. Check Discogs token.")
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Could not fetch Discogs orders. Please check your Discogs token.'
+            }), 500
+        
+        app.logger.info(f"✅ [DISOOGS_SOLD] Fetched {len(orders_result)} orders from Discogs")
+        
+        # 7. Find the order with this PIGSTYLE ID
+        app.logger.info(f"🔍 [DISOOGS_SOLD] Searching {len(orders_result)} orders for PIGSTYLE ID {pigstyle_id}")
+        sale_price = None
+        found_order_id = None
+        found_item = None
+        
+        order_count = 0
+        for order in orders_result:
+            order_count += 1
+            if 'items' not in order:
+                continue
+            
+            order_id = order.get('order_id', 'unknown')
+            app.logger.debug(f"   📦 [DISOOGS_SOLD] Checking order {order_count}: {order_id} ({len(order.get('items', []))} items)")
+                
+            for item in order.get('items', []):
+                # Check condition_comments
+                if 'condition_comments' in item:
+                    match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', item['condition_comments'], re.IGNORECASE)
+                    if match and int(match.group(1)) == pigstyle_id:
+                        sale_price = item.get('price', 0)
+                        found_order_id = order_id
+                        found_item = item
+                        app.logger.info(f"✅ [DISOOGS_SOLD] Found PIGSTYLE ID {pigstyle_id} in order {found_order_id}")
+                        app.logger.info(f"💰 [DISOOGS_SOLD] Sale price: ${sale_price}")
+                        app.logger.info(f"📝 [DISOOGS_SOLD] Item comments: {item.get('condition_comments', '')}")
+                        break
+                
+                # Check private_comments
+                if 'private_comments' in item:
+                    match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', item['private_comments'], re.IGNORECASE)
+                    if match and int(match.group(1)) == pigstyle_id:
+                        sale_price = item.get('price', 0)
+                        found_order_id = order_id
+                        found_item = item
+                        app.logger.info(f"✅ [DISOOGS_SOLD] Found PIGSTYLE ID {pigstyle_id} in private_comments of order {found_order_id}")
+                        app.logger.info(f"💰 [DISOOGS_SOLD] Sale price: ${sale_price}")
+                        break
+                
+                # Check release description
+                if 'release' in item and 'description' in item['release']:
+                    match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', item['release']['description'], re.IGNORECASE)
+                    if match and int(match.group(1)) == pigstyle_id:
+                        sale_price = item.get('price', 0)
+                        found_order_id = order_id
+                        found_item = item
+                        app.logger.info(f"✅ [DISOOGS_SOLD] Found PIGSTYLE ID {pigstyle_id} in release description of order {found_order_id}")
+                        app.logger.info(f"💰 [DISOOGS_SOLD] Sale price: ${sale_price}")
+                        break
+            
+            if sale_price is not None:
+                break
+        
+        # 8. If not found, raise error
+        if sale_price is None:
+            app.logger.error(f"❌ [DISOOGS_SOLD] Could not find PIGSTYLE ID {pigstyle_id} in any Discogs order")
+            app.logger.info(f"📋 [DISOOGS_SOLD] Searched through {order_count} orders")
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Could not find Discogs order containing PIGSTYLE ID {pigstyle_id}. '
+                         f'Make sure the record has been sold on Discogs and the PIGSTYLE ID is correct.'
+            }), 404
+        
+        # 9. Update the record
+        app.logger.info(f"🔄 [DISOOGS_SOLD] Updating record #{record_id} with sale price ${sale_price}")
+        cursor.execute('''
+            UPDATE records 
+            SET status_id = 4, 
+                store_price = ?,
+                actual_sale_price = ?,
+                date_sold = CURRENT_DATE
+            WHERE id = ?
+        ''', (sale_price, sale_price, record_id))
+        
+        conn.commit()
+        app.logger.info(f"✅ [DISOOGS_SOLD] Record #{record_id} updated in database")
+        
+        # 10. Get updated record
+        cursor.execute('''
+            SELECT id, artist, title, store_price, actual_sale_price, date_sold, status_id
+            FROM records 
+            WHERE id = ?
+        ''', (record_id,))
+        
+        updated_record = cursor.fetchone()
+        conn.close()
+        
+        app.logger.info(f"✅ [DISOOGS_SOLD] Record #{record_id} marked as sold on Discogs for ${sale_price}")
+        app.logger.info(f"📋 [DISOOGS_SOLD] Order ID: {found_order_id}")
+        app.logger.info("=" * 60)
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Record marked as sold on Discogs for ${sale_price:.2f}',
+            'record': {
+                'id': updated_record['id'],
+                'artist': updated_record['artist'],
+                'title': updated_record['title'],
+                'store_price': float(updated_record['store_price']),
+                'actual_sale_price': float(updated_record['actual_sale_price']) if updated_record['actual_sale_price'] else None,
+                'date_sold': updated_record['date_sold'],
+                'status_id': updated_record['status_id']
+            },
+            'discogs_order_id': found_order_id,
+            'pigstyle_id': pigstyle_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"❌ [DISOOGS_SOLD] Error marking record as sold: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

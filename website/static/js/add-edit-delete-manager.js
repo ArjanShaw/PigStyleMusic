@@ -21,11 +21,13 @@ class AddEditDeleteManager {
         this.defaultCogs = null;
         this.autoEstimatePrice = true;
         this.storePriceMultiplier = null;
+        this._statusChangeHandler = null;
         
         this.init();
     }
 
     async init() {
+        console.log('🔧 [AddEditDeleteManager] Initializing...');
         await this.loadMinimumPrice();
         await this.loadStats();
         await this.loadConditions();
@@ -36,6 +38,7 @@ class AddEditDeleteManager {
         this.loadSavedSettings();
         this.setupEventListeners();
         this.renderGlobalSettings();
+        console.log('✅ [AddEditDeleteManager] Initialization complete');
     }
 
     async loadStatuses() {
@@ -43,12 +46,12 @@ class AddEditDeleteManager {
             const response = await APIUtils.get('/statuses');
             if (response && response.statuses) {
                 this.statuses = response.statuses;
-                console.log('LOAD_STATUSES: Statuses loaded from database:', this.statuses);
+                console.log('📋 [LOAD_STATUSES] Statuses loaded from database:', this.statuses);
             } else {
                 this.statuses = [];
             }
         } catch (error) {
-            console.error('Error loading statuses:', error);
+            console.error('❌ [LOAD_STATUSES] Error loading statuses:', error);
             this.statuses = [];
         }
     }
@@ -60,9 +63,9 @@ class AddEditDeleteManager {
                 throw new Error('STORE_PRICE_ESTIMATED_MULTIPLIER not configured');
             }
             this.storePriceMultiplier = parseFloat(response.config_value);
-            console.log(`STORE_PRICE_MULTIPLIER: Loaded: ${this.storePriceMultiplier}`);
+            console.log(`💰 [STORE_PRICE_MULTIPLIER] Loaded: ${this.storePriceMultiplier}`);
         } catch (error) {
-            console.error('Failed to load STORE_PRICE_ESTIMATED_MULTIPLIER:', error);
+            console.error('❌ [STORE_PRICE_MULTIPLIER] Failed to load:', error);
             showMessage('Store price multiplier not configured. Please set it in Admin Config.', 'error');
             this.storePriceMultiplier = null;
         }
@@ -103,12 +106,12 @@ class AddEditDeleteManager {
                 if (commissionElement) {
                     commissionElement.textContent = response.commission_rate_percent;
                 }
-                console.log(`💰 Commission rate loaded: ${response.commission_rate_percent} (${response.store_fill_percentage}% full)`);
+                console.log(`💰 [COMMISSION] Commission rate loaded: ${response.commission_rate_percent} (${response.store_fill_percentage}% full)`);
             } else {
                 throw new Error('Invalid response');
             }
         } catch (error) {
-            console.error('Error loading commission rate:', error);
+            console.error('❌ [COMMISSION] Error loading commission rate:', error);
             const commissionElement = document.getElementById('commission-rate');
             if (commissionElement) {
                 commissionElement.textContent = 'N/A';
@@ -130,9 +133,9 @@ class AddEditDeleteManager {
                 throw new Error('MIN_STORE_PRICE not configured');
             }
             this.minimumPrice = parseFloat(response.config_value);
-            console.log(`MIN_PRICE: Minimum store price loaded: $${this.minimumPrice.toFixed(2)}`);
+            console.log(`💰 [MIN_PRICE] Minimum store price loaded: $${this.minimumPrice.toFixed(2)}`);
         } catch (error) {
-            console.error('Failed to load MIN_STORE_PRICE:', error);
+            console.error('❌ [MIN_PRICE] Failed to load:', error);
             showMessage('Minimum store price not configured. Please set it in Admin Config.', 'error');
             this.minimumPrice = null;
         }
@@ -155,7 +158,7 @@ class AddEditDeleteManager {
 
             await this.loadLastAddedRecord();
         } catch (error) {
-            console.error('Error loading stats:', error);
+            console.error('❌ [STATS] Error loading stats:', error);
         }
     }
 
@@ -178,37 +181,37 @@ class AddEditDeleteManager {
     }
 
     async loadConditions() {
-        console.log('LOAD_CONDITIONS: Loading conditions from /api/conditions');
+        console.log('📋 [LOAD_CONDITIONS] Loading conditions from /api/conditions');
         try {
             const response = await APIUtils.get('/api/conditions');
             if (response && response.conditions) {
                 this.conditions = response.conditions;
-                console.log('LOAD_CONDITIONS: Conditions loaded successfully:', this.conditions);
+                console.log('✅ [LOAD_CONDITIONS] Conditions loaded successfully:', this.conditions);
             } else {
-                console.error('LOAD_CONDITIONS: Invalid response format:', response);
+                console.error('❌ [LOAD_CONDITIONS] Invalid response format:', response);
                 this.conditions = [];
             }
         } catch (error) {
-            console.error('Error loading conditions:', error);
+            console.error('❌ [LOAD_CONDITIONS] Error loading conditions:', error);
             this.conditions = [];
         }
     }
 
     async loadConsignors() {
-        console.log('LOAD_CONSIGNORS: Starting to load consignors from /users endpoint');
+        console.log('👤 [LOAD_CONSIGNORS] Starting to load consignors from /users endpoint');
         try {
             const response = await APIUtils.get('/users');
             if (response && response.users) {
                 this.consignors = response.users
                     .filter(user => user.role === 'consignor')
                     .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
-                console.log('LOAD_CONSIGNORS: Consignors loaded successfully:', this.consignors);
+                console.log('✅ [LOAD_CONSIGNORS] Consignors loaded successfully:', this.consignors);
             } else {
-                console.error('LOAD_CONSIGNORS: Invalid response format:', response);
+                console.error('❌ [LOAD_CONSIGNORS] Invalid response format:', response);
                 this.consignors = [];
             }
         } catch (error) {
-            console.error('Error loading consignors:', error);
+            console.error('❌ [LOAD_CONSIGNORS] Error loading consignors:', error);
             this.consignors = [];
         }
     }
@@ -223,25 +226,25 @@ class AddEditDeleteManager {
             const savedSleeveCondition = localStorage.getItem('add_record_default_sleeve_condition_id');
             if (savedSleeveCondition) {
                 this.defaultSleeveConditionId = parseInt(savedSleeveCondition);
-                console.log('LOAD_SETTINGS: Loaded default sleeve condition ID:', this.defaultSleeveConditionId);
+                console.log('📋 [LOAD_SETTINGS] Loaded default sleeve condition ID:', this.defaultSleeveConditionId);
             }
             
             const savedDiscCondition = localStorage.getItem('add_record_default_disc_condition_id');
             if (savedDiscCondition) {
                 this.defaultDiscConditionId = parseInt(savedDiscCondition);
-                console.log('LOAD_SETTINGS: Loaded default disc condition ID:', this.defaultDiscConditionId);
+                console.log('📋 [LOAD_SETTINGS] Loaded default disc condition ID:', this.defaultDiscConditionId);
             }
             
             const savedDefaultNotes = localStorage.getItem('add_record_default_notes');
             if (savedDefaultNotes !== null) {
                 this.defaultNotes = savedDefaultNotes;
-                console.log('LOAD_SETTINGS: Loaded default notes:', this.defaultNotes);
+                console.log('📋 [LOAD_SETTINGS] Loaded default notes:', this.defaultNotes);
             }
             
             const savedDefaultCogs = localStorage.getItem('add_record_default_cogs');
             if (savedDefaultCogs !== null && savedDefaultCogs !== '') {
                 this.defaultCogs = parseFloat(savedDefaultCogs);
-                console.log('LOAD_SETTINGS: Loaded default COGS:', this.defaultCogs);
+                console.log('📋 [LOAD_SETTINGS] Loaded default COGS:', this.defaultCogs);
             } else {
                 this.defaultCogs = null;
             }
@@ -251,12 +254,14 @@ class AddEditDeleteManager {
                 this.autoEstimatePrice = savedAutoEstimate === 'true';
             }
             
-            console.log('LOAD_SETTINGS: Loaded consignor ID:', this.selectedConsignorId);
-            console.log('LOAD_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
-            console.log('LOAD_SETTINGS: Default notes:', this.defaultNotes);
-            console.log('LOAD_SETTINGS: Default COGS:', this.defaultCogs);
+            console.log('📋 [LOAD_SETTINGS] Summary:', {
+                selectedConsignorId: this.selectedConsignorId,
+                autoEstimatePrice: this.autoEstimatePrice,
+                defaultNotes: this.defaultNotes,
+                defaultCogs: this.defaultCogs
+            });
         } catch (error) {
-            console.error('Error loading saved settings:', error);
+            console.error('❌ [LOAD_SETTINGS] Error loading saved settings:', error);
         }
     }
 
@@ -294,14 +299,9 @@ class AddEditDeleteManager {
             
             localStorage.setItem('add_record_auto_estimate', this.autoEstimatePrice.toString());
             
-            console.log('SAVE_SETTINGS: Saved consignor ID:', this.selectedConsignorId);
-            console.log('SAVE_SETTINGS: Saved sleeve condition ID:', this.defaultSleeveConditionId);
-            console.log('SAVE_SETTINGS: Saved disc condition ID:', this.defaultDiscConditionId);
-            console.log('SAVE_SETTINGS: Saved default notes:', this.defaultNotes);
-            console.log('SAVE_SETTINGS: Saved default COGS:', this.defaultCogs);
-            console.log('SAVE_SETTINGS: Auto estimate price:', this.autoEstimatePrice);
+            console.log('💾 [SAVE_SETTINGS] Settings saved');
         } catch (error) {
-            console.error('Error saving settings:', error);
+            console.error('❌ [SAVE_SETTINGS] Error saving settings:', error);
         }
     }
 
@@ -951,7 +951,9 @@ class AddEditDeleteManager {
             const record = this.currentResults.find(r => r.id == recordId);
             return this.statuses.map(status => {
                 const selected = record && (record.status_id == status.id) ? 'selected' : '';
-                return `<option value="${status.id}" ${selected}>${status.status_name}</option>`;
+                // Show "Sold on Discogs" for status_id 4
+                const displayName = status.id === 4 ? 'Sold on Discogs' : status.status_name;
+                return `<option value="${status.id}" ${selected}>${displayName}</option>`;
             }).join('');
         };
         
@@ -1136,6 +1138,137 @@ class AddEditDeleteManager {
             }).join('')}
         `;
     }
+
+    // ============================================================================
+    // STATUS CHANGE HANDLER - UPDATED with DEBUGGING
+    // ============================================================================
+    async handleStatusChange(recordId, newStatusId) {
+        console.log('🔄 [STATUS_CHANGE] ========== START ==========');
+        console.log(`🔄 [STATUS_CHANGE] Record ID: ${recordId}`);
+        console.log(`🔄 [STATUS_CHANGE] New Status ID: ${newStatusId}`);
+        
+        // If status is "Sold on Discogs" (status_id = 4)
+        if (newStatusId === 4) {
+            console.log('🎯 [STATUS_CHANGE] Status is "Sold on Discogs" - starting sale lookup');
+            showMessage('🔍 Searching Discogs for sale price...', 'info');
+            
+            try {
+                // Step 1: Get the record details
+                console.log('📡 [STEP 1] Fetching record details from API...');
+                const record = await APIUtils.get(`/records/${recordId}`);
+                
+                if (!record) {
+                    console.error('❌ [STEP 1] Record not found!');
+                    showMessage('❌ Record not found', 'error');
+                    return;
+                }
+                
+                console.log('✅ [STEP 1] Record found:', {
+                    id: record.id,
+                    artist: record.artist,
+                    title: record.title,
+                    notes: record.notes,
+                    status_id: record.status_id,
+                    store_price: record.store_price
+                });
+                
+                // Step 2: Extract or determine PIGSTYLE ID
+                console.log('🔍 [STEP 2] Looking for PIGSTYLE ID in notes...');
+                let pigstyleId = null;
+                let pigstyleSource = 'none';
+                
+                if (record.notes) {
+                    const match = record.notes.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
+                    if (match) {
+                        pigstyleId = parseInt(match[1]);
+                        pigstyleSource = 'notes';
+                        console.log(`✅ [STEP 2] Found PIGSTYLE ID in notes: ${pigstyleId}`);
+                    } else {
+                        console.log('⚠️ [STEP 2] No PIGSTYLE ID pattern found in notes');
+                        console.log(`📝 [STEP 2] Notes content: "${record.notes}"`);
+                    }
+                } else {
+                    console.log('⚠️ [STEP 2] Record has no notes');
+                }
+                
+                // If no PIGSTYLE ID in notes, use the record ID itself
+                if (!pigstyleId) {
+                    pigstyleId = recordId;
+                    pigstyleSource = 'record_id_fallback';
+                    console.log(`🔄 [STEP 2] Using record ID as fallback PIGSTYLE ID: ${pigstyleId}`);
+                    console.log(`💡 [STEP 2] This is for later additions where barcode = record ID`);
+                }
+                
+                console.log(`🎯 [STEP 2] Final PIGSTYLE ID: ${pigstyleId} (source: ${pigstyleSource})`);
+                
+                // Step 3: Call the backend to mark as sold
+                console.log('📡 [STEP 3] Calling backend API: /api/records/${recordId}/mark-discogs-sold');
+                console.log(`📦 [STEP 3] Payload: { pigstyle_id: ${pigstyleId} }`);
+                
+                const response = await APIUtils.post(`/api/records/${recordId}/mark-discogs-sold`);
+                
+                console.log('📥 [STEP 3] Backend response received:', response);
+                
+                if (response.status === 'success') {
+                    console.log(`✅ [STEP 3] Success! ${response.message}`);
+                    console.log(`📊 [STEP 3] Record updated:`, response.record);
+                    if (response.discogs_order_id) {
+                        console.log(`📋 [STEP 3] Found in Discogs order: ${response.discogs_order_id}`);
+                    }
+                    showMessage(`✅ ${response.message}`, 'success');
+                    
+                    // Refresh the results
+                    const searchInput = document.getElementById('searchInput');
+                    if (searchInput && searchInput.value) {
+                        console.log('🔄 [STEP 4] Refreshing search results...');
+                        await this.performSearch(searchInput.value);
+                    } else {
+                        console.log('🔄 [STEP 4] Loading stats...');
+                        await this.loadStats();
+                    }
+                } else {
+                    console.error(`❌ [STEP 3] Backend error: ${response.error}`);
+                    showMessage(`❌ Error: ${response.error}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('❌ [STATUS_CHANGE] Exception caught:', error);
+                console.error('❌ [STATUS_CHANGE] Error stack:', error.stack);
+                const errorMessage = error.message || 'Unknown error';
+                showMessage(`❌ Error: ${errorMessage}`, 'error');
+            }
+        } else {
+            // Normal status update (not Discogs sold)
+            console.log(`📝 [STATUS_CHANGE] Normal status update to ${newStatusId}`);
+            try {
+                const response = await APIUtils.put(`/records/${recordId}`, {
+                    status_id: newStatusId
+                });
+                
+                if (response.status === 'success') {
+                    console.log('✅ [STATUS_CHANGE] Status updated successfully');
+                    showMessage('Status updated successfully', 'success');
+                    
+                    // Refresh the results
+                    const searchInput = document.getElementById('searchInput');
+                    if (searchInput && searchInput.value) {
+                        await this.performSearch(searchInput.value);
+                    }
+                } else {
+                    console.error(`❌ [STATUS_CHANGE] Error: ${response.error}`);
+                    showMessage(`❌ Error: ${response.error || 'Failed to update status'}`, 'error');
+                }
+            } catch (error) {
+                console.error('❌ [STATUS_CHANGE] Exception:', error);
+                showMessage(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        console.log('🔄 [STATUS_CHANGE] ========== END ==========');
+    }
+
+    // ============================================================================
+    // CONDITION CHANGE HANDLERS
+    // ============================================================================
 
     async handleSleeveConditionChange(event, isEditMode = false) {
         const selectElement = event.target;
@@ -1474,6 +1607,7 @@ class AddEditDeleteManager {
     }
 
     addConditionChangeListeners() {
+        // Sleeve condition change listeners
         document.querySelectorAll('.sleeve-condition-select').forEach(select => {
             const defaultValue = select.getAttribute('data-default');
             if (defaultValue && defaultValue !== '' && !select.value) {
@@ -1487,6 +1621,7 @@ class AddEditDeleteManager {
             select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, false));
         });
         
+        // Disc condition change listeners
         document.querySelectorAll('.disc-condition-select').forEach(select => {
             const defaultValue = select.getAttribute('data-default');
             if (defaultValue && defaultValue !== '' && !select.value) {
@@ -1495,6 +1630,7 @@ class AddEditDeleteManager {
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, false));
         });
         
+        // Edit mode condition change listeners
         document.querySelectorAll('.edit-sleeve-condition-select').forEach(select => {
             select.addEventListener('change', (e) => this.handleSleeveConditionChange(e, true));
         });
@@ -1502,6 +1638,7 @@ class AddEditDeleteManager {
             select.addEventListener('change', (e) => this.handleDiscConditionChange(e, true));
         });
         
+        // Estimate buttons
         document.querySelectorAll('.estimate-now-btn, .edit-estimate-now-btn').forEach(button => {
             button.addEventListener('click', (e) => {
                 const card = e.target.closest('.record-card');
@@ -1511,6 +1648,7 @@ class AddEditDeleteManager {
             });
         });
         
+        // No original sleeve checkboxes
         document.querySelectorAll('.no-original-sleeve-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const card = e.target.closest('.record-card');
@@ -1555,6 +1693,7 @@ class AddEditDeleteManager {
     }
 
     attachResultEventListeners() {
+        // Add record buttons
         document.querySelectorAll('.add-record-btn').forEach(button => {
             button.addEventListener('click', async (e) => {
                 const card = e.target.closest('.record-card');
@@ -1563,12 +1702,16 @@ class AddEditDeleteManager {
                 await this.addRecordFromDiscogs(card, record);
             });
         });
+        
+        // Save changes buttons
         document.querySelectorAll('.save-changes-btn').forEach(button => {
             button.addEventListener('click', async (e) => {
                 const recordId = e.target.getAttribute('data-record-id');
                 await this.saveRecordChanges(recordId);
             });
         });
+        
+        // Delete buttons
         document.querySelectorAll('.delete-record-btn').forEach(button => {
             button.addEventListener('click', async (e) => {
                 const recordId = e.target.getAttribute('data-record-id');
@@ -1577,6 +1720,30 @@ class AddEditDeleteManager {
                 }
             });
         });
+        
+        // Status change listeners for edit mode with the new handler
+        document.querySelectorAll('.edit-status-select').forEach(select => {
+            // Remove old listener if any
+            if (this._statusChangeHandler) {
+                select.removeEventListener('change', this._statusChangeHandler);
+            }
+            
+            // Store reference to handler for removal
+            this._statusChangeHandler = async (e) => {
+                const select = e.target;
+                const card = select.closest('.record-card');
+                const recordId = card ? card.getAttribute('data-record-id') : null;
+                const newStatusId = parseInt(select.value);
+                
+                if (recordId) {
+                    await this.handleStatusChange(recordId, newStatusId);
+                }
+            };
+            
+            select.addEventListener('change', this._statusChangeHandler);
+        });
+        
+        // Condition change listeners
         this.addConditionChangeListeners();
     }
 
