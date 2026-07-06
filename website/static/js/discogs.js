@@ -281,7 +281,20 @@ async function calculateMarkupBatch(records) {
 
 async function loadMarkupAnalysisCharts() {
     try {
-        const response = await fetch(window.AppConfig.baseUrl + '/api/markup-analysis', {
+        // --- Get current cutoff date ---
+        const cutoffInput = document.getElementById('last-seen-cutoff-date');
+        let cutoff = '';
+        if (cutoffInput && cutoffInput.value) {
+            cutoff = cutoffInput.value;
+        } else {
+            // fallback to default (30 days ago)
+            const date = new Date();
+            date.setDate(date.getDate() - 30);
+            cutoff = date.toISOString().split('T')[0];
+        }
+
+        const url = window.AppConfig.baseUrl + '/api/markup-analysis?cutoff=' + cutoff;
+        const response = await fetch(url, {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
@@ -293,7 +306,7 @@ async function loadMarkupAnalysisCharts() {
             renderAgeDistributionChart(data);
             const countEl = document.getElementById('chart-record-count');
             if (countEl) {
-                countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed | ${data.rules_count || 0} markup rules applied`;
+                countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed (cutoff: ${data.cutoff_date || 'N/A'}) | ${data.rules_count || 0} markup rules applied`;
             }
             markupChartsLoaded = true;
         } else {
@@ -308,7 +321,18 @@ async function loadMarkupAnalysisCharts() {
 
 async function refreshMarkupCharts() {
     try {
-        const response = await fetch(window.AppConfig.baseUrl + '/api/markup-analysis', {
+        const cutoffInput = document.getElementById('last-seen-cutoff-date');
+        let cutoff = '';
+        if (cutoffInput && cutoffInput.value) {
+            cutoff = cutoffInput.value;
+        } else {
+            const date = new Date();
+            date.setDate(date.getDate() - 30);
+            cutoff = date.toISOString().split('T')[0];
+        }
+
+        const url = window.AppConfig.baseUrl + '/api/markup-analysis?cutoff=' + cutoff;
+        const response = await fetch(url, {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
@@ -320,7 +344,7 @@ async function refreshMarkupCharts() {
             renderAgeDistributionChart(data);
             const countEl = document.getElementById('chart-record-count');
             if (countEl) {
-                countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed | ${data.rules_count || 0} markup rules applied`;
+                countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed (cutoff: ${data.cutoff_date || 'N/A'}) | ${data.rules_count || 0} markup rules applied`;
             }
         }
     } catch (error) {
