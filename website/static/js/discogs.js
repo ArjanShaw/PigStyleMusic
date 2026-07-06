@@ -65,10 +65,7 @@ function getLastSeenCutoffDate() {
 function meetsLastSeenFilter(record) {
     const cutoffDate = getLastSeenCutoffDate();
     if (!cutoffDate) return true;
-    
-    // No last_seen date - exclude
     if (!record.last_seen) return false;
-    
     try {
         const lastSeenDate = record.last_seen.split('T')[0];
         return lastSeenDate >= cutoffDate;
@@ -84,20 +81,17 @@ function meetsLastSeenFilter(record) {
 
 function formatLastSeen(lastSeen) {
     if (!lastSeen) return '<span style="color: #dc3545;">Never</span>';
-    
     try {
         const lastSeenDate = new Date(lastSeen);
         const today = new Date();
         const daysSince = Math.floor((today - lastSeenDate) / (1000 * 60 * 60 * 24));
         const cutoffDate = getLastSeenCutoffDate();
-        
         if (cutoffDate) {
             const cutoffDateObj = new Date(cutoffDate);
             if (lastSeenDate < cutoffDateObj) {
                 return `<span style="color: #dc3545;" title="Before cutoff date">${daysSince} days ago (⚠️)</span>`;
             }
         }
-        
         if (daysSince === 0) return '<span style="color: #28a745;">Today</span>';
         if (daysSince === 1) return '<span style="color: #28a745;">Yesterday</span>';
         if (daysSince <= 7) return `<span style="color: #ffc107;">${daysSince} days ago</span>`;
@@ -114,7 +108,6 @@ function formatLastSeen(lastSeen) {
 
 function createProgressModal() {
     if (document.getElementById('discogs-progress-modal')) return;
-    
     const modalHtml = `
         <div id="discogs-progress-modal" class="modal-overlay" style="display: none; z-index: 10001;">
             <div class="modal-content" style="max-width: 600px; width: 90%; background: white; border-radius: 8px;">
@@ -142,7 +135,6 @@ function createProgressModal() {
         </div>
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
     progressModal = document.getElementById('discogs-progress-modal');
     modalTitle = document.getElementById('modal-title');
     modalProgressBar = document.getElementById('modal-progress-bar');
@@ -154,14 +146,12 @@ function createProgressModal() {
 function openProgressModal(title) {
     createProgressModal();
     if (!progressModal) return;
-    
     modalTitle.textContent = title;
     modalProgressBar.style.width = '0%';
     if (modalProgressText) modalProgressText.textContent = '0%';
     if (modalLog) modalLog.innerHTML = '';
     progressModal.style.display = 'flex';
     cancelResolve = false;
-    
     if (modalCancelBtn) {
         modalCancelBtn.onclick = () => {
             cancelResolve = true;
@@ -193,14 +183,12 @@ function updateModalProgress(current, total) {
 function appendToModalLog(message, type) {
     if (!modalLog) return;
     type = type || 'info';
-    
     const colors = {
         success: '#4ec9b0',
         error: '#f48771',
         warning: '#ce9178',
         info: '#9cdcfe'
     };
-    
     const logEntry = document.createElement('div');
     logEntry.style.marginBottom = '4px';
     logEntry.style.padding = '2px 0';
@@ -219,12 +207,10 @@ function appendToModalLog(message, type) {
 window.toggleMarkupRules = function() {
     const content = document.getElementById('markup-rules-content');
     const icon = document.getElementById('markup-rules-toggle-icon');
-    
     if (!content || !icon) {
         console.error('Markup rules elements not found');
         return;
     }
-    
     if (content.style.display === 'none' || content.style.display === '') {
         content.style.display = 'block';
         icon.style.transform = 'rotate(180deg)';
@@ -242,22 +228,52 @@ window.toggleMarkupRules = function() {
 window.toggleMarkupCharts = function() {
     const content = document.getElementById('markup-charts-content');
     const icon = document.getElementById('markup-charts-toggle-icon');
-    
     if (!content || !icon) {
         console.error('Markup charts elements not found');
         return;
     }
-    
     if (content.style.display === 'none' || content.style.display === '') {
         content.style.display = 'block';
         icon.style.transform = 'rotate(180deg)';
-        // Load charts after a small delay to ensure DOM is ready
         setTimeout(loadMarkupAnalysisCharts, 300);
     } else {
         content.style.display = 'none';
         icon.style.transform = 'rotate(0deg)';
     }
 };
+
+// ============================================================================
+// Batch Markup Calculation (Replaces per-record calls)
+// ============================================================================
+
+async function calculateMarkupBatch(records) {
+    if (!records || records.length === 0) {
+        return [];
+    }
+
+    try {
+        const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/calculate-markup-batch', {
+            method: 'POST',
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ records: records })
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            return result.results; // Array of {id, discogs_price, markup_percent, days_old}
+        } else {
+            console.error('Batch markup error:', result.error);
+            return [];
+        }
+    } catch (error) {
+        console.error('Error in batch markup:', error);
+        return [];
+    }
+}
 
 // ============================================================================
 // Markup Analysis Charts
@@ -269,22 +285,16 @@ async function loadMarkupAnalysisCharts() {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
-        
         if (!response.ok) throw new Error('Failed to load markup analysis data');
-        
         const data = await response.json();
-        
         if (data.status === 'success') {
             renderMarkupCurveChart(data);
             renderMarkupDistributionChart(data);
             renderAgeDistributionChart(data);
-            
-            // Update record count
             const countEl = document.getElementById('chart-record-count');
             if (countEl) {
                 countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed | ${data.rules_count || 0} markup rules applied`;
             }
-            
             markupChartsLoaded = true;
         } else {
             console.error('Error loading markup analysis:', data.error);
@@ -302,16 +312,12 @@ async function refreshMarkupCharts() {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
-        
         if (!response.ok) throw new Error('Failed to refresh markup analysis data');
-        
         const data = await response.json();
-        
         if (data.status === 'success') {
             renderMarkupCurveChart(data);
             renderMarkupDistributionChart(data);
             renderAgeDistributionChart(data);
-            
             const countEl = document.getElementById('chart-record-count');
             if (countEl) {
                 countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed | ${data.rules_count || 0} markup rules applied`;
@@ -322,26 +328,18 @@ async function refreshMarkupCharts() {
     }
 }
 
-
 function renderMarkupCurveChart(data) {
     const canvas = document.getElementById('markup-curve-chart');
     if (!canvas) return;
-    
     const ctx = canvas.getContext('2d');
-    
-    // Destroy existing chart
     if (markupCurveChart) {
         markupCurveChart.destroy();
         markupCurveChart = null;
     }
-    
-    // Prepare data
     const points = data.curve_points || [];
     const days = points.map(p => p.days);
     const markups = points.map(p => p.markup_percent);
-    
     if (days.length === 0) {
-        // Show empty state
         markupCurveChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -350,7 +348,7 @@ function renderMarkupCurveChart(data) {
                     label: 'Markup %',
                     data: [0],
                     borderColor: '#ccc',
-                    backgroundColor: 'rgba(200, 200, 200, 0.1)',
+                    backgroundColor: 'rgba(200,200,200,0.1)',
                     borderWidth: 2,
                     pointRadius: 0
                 }]
@@ -358,10 +356,7 @@ function renderMarkupCurveChart(data) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false }
-                },
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: {
                     x: { title: { display: true, text: 'No markup rules configured' } },
                     y: { title: { display: true, text: 'Markup %' } }
@@ -370,27 +365,14 @@ function renderMarkupCurveChart(data) {
         });
         return;
     }
-    
-    // Calculate min and max for y-axis with padding
     const minMarkup = Math.min(...markups);
     const maxMarkup = Math.max(...markups);
     const yPadding = Math.max(5, Math.abs(maxMarkup - minMarkup) * 0.1);
-    
-    // Use chart_max_days from API, or fallback to max days
     const xMax = data.chart_max_days || Math.max(...days);
-    
-    // Determine tick intervals based on range
     let xStepSize = 30;
-    if (xMax > 730) {
-        xStepSize = 90;
-    } else if (xMax > 365) {
-        xStepSize = 60;
-    }
-    
-    // Find the markup value at 365 days
+    if (xMax > 730) xStepSize = 90;
+    else if (xMax > 365) xStepSize = 60;
     const day365Point = points.find(p => p.days === 365);
-    
-    // Create the chart
     markupCurveChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -399,7 +381,7 @@ function renderMarkupCurveChart(data) {
                 label: 'Markup %',
                 data: markups,
                 borderColor: '#007bff',
-                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                backgroundColor: 'rgba(0,123,255,0.1)',
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 5,
@@ -411,9 +393,7 @@ function renderMarkupCurveChart(data) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false
-                },
+                legend: { display: false },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
@@ -428,10 +408,7 @@ function renderMarkupCurveChart(data) {
                     position: 'bottom',
                     min: 0,
                     max: xMax,
-                    title: {
-                        display: true,
-                        text: 'Days Since Created'
-                    },
+                    title: { display: true, text: 'Days Since Created' },
                     ticks: {
                         stepSize: xStepSize,
                         callback: function(value) {
@@ -440,119 +417,76 @@ function renderMarkupCurveChart(data) {
                             return value + 'd';
                         }
                     },
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)'
-                    }
+                    grid: { color: 'rgba(0,0,0,0.05)' }
                 },
                 y: {
                     min: minMarkup - yPadding,
                     max: maxMarkup + yPadding,
-                    title: {
-                        display: true,
-                        text: 'Markup %'
-                    },
-                    ticks: {
-                        callback: function(value) {
-                            return value + '%';
-                        },
-                        stepSize: 5
-                    },
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)'
-                    }
+                    title: { display: true, text: 'Markup %' },
+                    ticks: { callback: function(value) { return value + '%'; }, stepSize: 5 },
+                    grid: { color: 'rgba(0,0,0,0.05)' }
                 }
             }
         }
     });
-    
-    // Draw 365-day annotation after the chart is rendered
     if (day365Point && markupCurveChart) {
-        // Use the afterDraw event to draw the annotation
         const originalAfterDraw = markupCurveChart.afterDraw || function() {};
-        
         markupCurveChart.afterDraw = function(chart) {
-            // Call original afterDraw if it exists
-            if (typeof originalAfterDraw === 'function') {
-                originalAfterDraw(chart);
-            }
-            
+            if (typeof originalAfterDraw === 'function') originalAfterDraw(chart);
             const ctx = chart.ctx;
             const xScale = chart.scales.x;
             const yScale = chart.scales.y;
-            
-            // Only draw if 365 is within the x-axis range
             if (365 > xScale.max) return;
-            
             const xPos = xScale.getPixelForValue(365);
             const yPos = yScale.getPixelForValue(day365Point.markup_percent);
-            
             if (xPos >= 0 && xPos <= chart.width && yPos >= 0 && yPos <= chart.height) {
-                // Draw vertical line at 365 days
                 ctx.save();
                 ctx.setLineDash([5, 5]);
-                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                ctx.strokeStyle = 'rgba(255,0,0,0.5)';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(xPos, yScale.top);
                 ctx.lineTo(xPos, yScale.bottom);
                 ctx.stroke();
                 ctx.restore();
-                
-                // Draw label
                 ctx.save();
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+                ctx.fillStyle = 'rgba(255,0,0,0.7)';
                 ctx.font = '10px Arial';
                 ctx.textAlign = 'center';
                 ctx.fillText('365d', xPos, yScale.top - 5);
                 ctx.restore();
-                
-                // Draw point marker
                 ctx.save();
                 ctx.beginPath();
                 ctx.arc(xPos, yPos, 6, 0, 2 * Math.PI);
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+                ctx.fillStyle = 'rgba(255,0,0,0.8)';
                 ctx.fill();
                 ctx.strokeStyle = 'white';
                 ctx.lineWidth = 2;
                 ctx.stroke();
                 ctx.restore();
-                
-                // Draw value label
                 ctx.save();
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.9)';
+                ctx.fillStyle = 'rgba(255,0,0,0.9)';
                 ctx.font = 'bold 10px Arial';
                 ctx.textAlign = 'left';
                 ctx.fillText(`${day365Point.markup_percent}%`, xPos + 8, yPos - 4);
                 ctx.restore();
             }
         };
-        
-        // Trigger the afterDraw to draw the annotation
         setTimeout(function() {
-            if (markupCurveChart) {
-                markupCurveChart.draw();
-            }
+            if (markupCurveChart) markupCurveChart.draw();
         }, 100);
     }
 }
 
-
 function renderMarkupDistributionChart(data) {
     const canvas = document.getElementById('markup-distribution-chart');
     if (!canvas) return;
-    
     const ctx = canvas.getContext('2d');
-    
-    // Destroy existing chart
     if (markupDistributionChart) {
         markupDistributionChart.destroy();
         markupDistributionChart = null;
     }
-    
-    // Prepare data from distribution
     const distribution = data.distribution || {};
-    
-    // If no distribution data, show empty state
     if (Object.keys(distribution).length === 0) {
         markupDistributionChart = new Chart(ctx, {
             type: 'bar',
@@ -569,10 +503,7 @@ function renderMarkupDistributionChart(data) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false }
-                },
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: {
                     x: { title: { display: true, text: 'No active records found' } },
                     y: { title: { display: true, text: 'Number of Records' } }
@@ -581,26 +512,16 @@ function renderMarkupDistributionChart(data) {
         });
         return;
     }
-    
-    // Sort keys by numeric value
-    const sortedKeys = Object.keys(distribution).sort((a, b) => {
-        const numA = parseFloat(a);
-        const numB = parseFloat(b);
-        return numA - numB;
-    });
-    
+    const sortedKeys = Object.keys(distribution).sort((a, b) => parseFloat(a) - parseFloat(b));
     const labels = sortedKeys;
     const counts = sortedKeys.map(key => distribution[key]);
     const totalRecords = data.active_records_count || 0;
-    
-    // Color based on positive/negative markup
     const colors = labels.map(label => {
         const value = parseFloat(label);
-        if (value > 0) return 'rgba(40, 167, 69, 0.8)'; // Green for markup
-        if (value < 0) return 'rgba(220, 53, 69, 0.8)'; // Red for markdown
-        return 'rgba(255, 193, 7, 0.8)'; // Yellow for no change
+        if (value > 0) return 'rgba(40,167,69,0.8)';
+        if (value < 0) return 'rgba(220,53,69,0.8)';
+        return 'rgba(255,193,7,0.8)';
     });
-    
     markupDistributionChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -617,9 +538,7 @@ function renderMarkupDistributionChart(data) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false
-                },
+                legend: { display: false },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
@@ -632,49 +551,28 @@ function renderMarkupDistributionChart(data) {
             },
             scales: {
                 x: {
-                    title: {
-                        display: true,
-                        text: 'Markup %'
-                    },
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45
-                    }
+                    title: { display: true, text: 'Markup %' },
+                    ticks: { maxRotation: 45, minRotation: 45 }
                 },
                 y: {
-                    title: {
-                        display: true,
-                        text: 'Number of Records'
-                    },
+                    title: { display: true, text: 'Number of Records' },
                     beginAtZero: true,
-                    ticks: {
-                        stepSize: 1
-                    }
+                    ticks: { stepSize: 1 }
                 }
             }
         }
     });
 }
 
-// ============================================================================
-// Render Age Distribution Chart
-// ============================================================================
-
 function renderAgeDistributionChart(data) {
     const canvas = document.getElementById('age-distribution-chart');
     if (!canvas) return;
-    
     const ctx = canvas.getContext('2d');
-    
-    // Destroy existing chart
     if (ageDistributionChart) {
         ageDistributionChart.destroy();
         ageDistributionChart = null;
     }
-    
-    // Get the age distribution data from the API
     const ageData = data.age_distribution || {};
-    
     if (Object.keys(ageData).length === 0) {
         ageDistributionChart = new Chart(ctx, {
             type: 'bar',
@@ -691,10 +589,7 @@ function renderAgeDistributionChart(data) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false }
-                },
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: {
                     x: { title: { display: true, text: 'No age data available' } },
                     y: { title: { display: true, text: 'Number of Records' } }
@@ -703,30 +598,15 @@ function renderAgeDistributionChart(data) {
         });
         return;
     }
-    
-    // Sort keys by numeric value (age in days)
-    const sortedKeys = Object.keys(ageData).sort((a, b) => {
-        return parseInt(a) - parseInt(b);
-    });
-    
-    // Create labels that are readable (e.g., "0-5 days", "6-10 days", etc.)
+    const sortedKeys = Object.keys(ageData).sort((a, b) => parseInt(a) - parseInt(b));
     const labels = sortedKeys.map(key => {
         const parts = key.split('-');
-        if (parts.length === 2) {
-            return `${parts[0]}-${parts[1]}d`;
-        }
+        if (parts.length === 2) return `${parts[0]}-${parts[1]}d`;
         return key + 'd';
     });
-    
     const counts = sortedKeys.map(key => ageData[key]);
     const totalRecords = data.active_records_count || 0;
-    
-    // Color gradient from blue to purple
-    const colors = sortedKeys.map((key, index) => {
-        const opacity = 0.6 + (index / sortedKeys.length) * 0.3;
-        return `rgba(23, 162, 184, ${opacity})`;
-    });
-    
+    const colors = sortedKeys.map((_, index) => `rgba(23,162,184,${0.6 + (index / sortedKeys.length) * 0.3})`);
     ageDistributionChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -735,7 +615,7 @@ function renderAgeDistributionChart(data) {
                 label: 'Records',
                 data: counts,
                 backgroundColor: colors,
-                borderColor: 'rgba(23, 162, 184, 1)',
+                borderColor: 'rgba(23,162,184,1)',
                 borderWidth: 1
             }]
         },
@@ -743,9 +623,7 @@ function renderAgeDistributionChart(data) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false
-                },
+                legend: { display: false },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
@@ -758,33 +636,17 @@ function renderAgeDistributionChart(data) {
             },
             scales: {
                 x: {
-                    title: {
-                        display: true,
-                        text: 'Age Cohort (days)'
-                    },
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45,
-                        autoSkip: true,
-                        maxTicksLimit: 10
-                    }
+                    title: { display: true, text: 'Age Cohort (days)' },
+                    ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 10 }
                 },
                 y: {
-                    title: {
-                        display: true,
-                        text: 'Number of Records'
-                    },
+                    title: { display: true, text: 'Number of Records' },
                     beginAtZero: true,
-                    ticks: {
-                        stepSize: 1,
-                        precision: 0
-                    }
+                    ticks: { stepSize: 1, precision: 0 }
                 }
             }
         }
     });
-    
-    // Update stats in the footer
     const statsEl = document.getElementById('age-chart-stats');
     if (statsEl && data.age_stats) {
         statsEl.textContent = `| Avg: ${data.age_stats.avg_days}d | Min: ${data.age_stats.min_days} | Max: ${data.age_stats.max_days}`;
@@ -800,12 +662,9 @@ function applyLastSeenFilter() {
         lastSeenCutoffDate = lastSeenCutoffDateInput.value;
     }
     console.log(`📅 Last seen cutoff date set to: ${lastSeenCutoffDate || 'none'}`);
-    
-    // Re-render the table if we have records loaded
     if (currentLocationRecords.length > 0) {
         applyDiscogsSearchFilter();
     }
-    
     showDiscogsStatus(`Last seen filter set to: ${lastSeenCutoffDate || 'disabled'}`, 'info');
 }
 
@@ -815,21 +674,14 @@ function applyLastSeenFilter() {
 
 async function loadLocations() {
     console.log('📍 Loading locations from API...');
-    
     try {
         const url = window.AppConfig.baseUrl + '/api/locations';
-        
         const response = await fetch(url, {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
-        
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-        
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
-        
         if (data.status === 'success') {
             renderLocationSelect(data.locations);
             console.log('✅ Loaded ' + data.locations.length + ' bins/locations');
@@ -848,14 +700,11 @@ function renderLocationSelect(locations) {
         console.error('locationSelect element not found!');
         return;
     }
-    
     discogsLocationSelect.innerHTML = '<option value="">-- Select a bin/location --</option>';
-    
     if (!locations || locations.length === 0) {
         discogsLocationSelect.innerHTML = '<option value="">-- No locations found --</option>';
         return;
     }
-    
     locations.forEach(function(location) {
         const option = document.createElement('option');
         option.value = location;
@@ -870,7 +719,6 @@ function renderLocationSelect(locations) {
 
 async function loadLocationRecords() {
     const selectedLocation = discogsLocationSelect ? discogsLocationSelect.value : null;
-    
     if (!selectedLocation) {
         if (tableBody) {
             tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
@@ -882,43 +730,30 @@ async function loadLocationRecords() {
         }
         return;
     }
-    
     currentLocation = selectedLocation;
     isLoading = true;
-    
     if (tableBody) {
         tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-pulse"></i> Loading records...</td></tr>';
     }
-    
     try {
         const url = window.AppConfig.baseUrl + '/api/records/by-location?location=' + encodeURIComponent(selectedLocation);
-        
         const response = await fetch(url, {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
-        
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-        
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
-        
         if (data.status === 'success') {
             currentLocationRecords = data.records || [];
             console.log('✅ Loaded ' + currentLocationRecords.length + ' records from bin "' + selectedLocation + '"');
-            
             if (currentLocationRecords.length > 0) {
                 console.log('Sample record location:', currentLocationRecords[0].location);
             }
-            
             applyDiscogsSearchFilter();
-            
             if (discogsPostButton) {
                 discogsPostButton.disabled = false;
                 discogsPostButton.style.opacity = '1';
-                // Only count store items (no consignor) that meet last_seen filter for posting
-                const eligibleCount = discogsFilteredRecords.filter(function(r) { 
+                const eligibleCount = discogsFilteredRecords.filter(function(r) {
                     return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r);
                 }).length;
                 discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post Entire "' + selectedLocation + '" (' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' records)';
@@ -926,7 +761,6 @@ async function loadLocationRecords() {
         } else {
             throw new Error(data.error || 'Failed to load records');
         }
-        
     } catch (error) {
         console.error('Error loading location records:', error);
         if (tableBody) {
@@ -948,7 +782,6 @@ async function loadLocationRecords() {
 
 function applyDiscogsSearchFilter() {
     const searchTerm = (discogsSearchInput && discogsSearchInput.value) ? discogsSearchInput.value.trim().toLowerCase() : '';
-    
     if (searchTerm) {
         discogsFilteredRecords = currentLocationRecords.filter(function(record) {
             const matchesArtist = record.artist && record.artist.toLowerCase().indexOf(searchTerm) !== -1;
@@ -959,18 +792,15 @@ function applyDiscogsSearchFilter() {
     } else {
         discogsFilteredRecords = currentLocationRecords.slice();
     }
-    
     renderDiscogsTable();
-    
     if (discogsPostButton && currentLocation) {
-        const eligibleCount = discogsFilteredRecords.filter(function(r) { 
+        const eligibleCount = discogsFilteredRecords.filter(function(r) {
             return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r);
         }).length;
         discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post Entire "' + currentLocation + '" (' + eligibleCount + ' of ' + discogsFilteredRecords.length + ' records)';
         discogsPostButton.disabled = (eligibleCount === 0);
         discogsPostButton.style.opacity = (eligibleCount === 0) ? '0.5' : '1';
     }
-    
     if (discogsStatusMessage && currentLocation) {
         const searchInfo = searchTerm ? ' (matching "' + searchTerm + '")' : '';
         discogsStatusMessage.innerHTML = '📍 Bin: ' + currentLocation + ' | ' + discogsFilteredRecords.length + ' record(s) found in this bin' + searchInfo;
@@ -992,79 +822,60 @@ window.clearDiscogsSearch = function() {
 };
 
 // ============================================================================
-// Calculate markup based on record age using API
-// ============================================================================
-
-async function calculateMarkupForRecord(createdAt, storePrice) {
-    if (!createdAt) {
-        return {
-            success: false,
-            error: 'Missing creation date'
-        };
-    }
-    
-    try {
-        const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/calculate-markup', {
-            method: 'POST',
-            credentials: 'include',
-            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                created_at: createdAt,
-                store_price: storePrice
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            return {
-                success: true,
-                discogs_price: result.discogs_price,
-                markup_percent: result.markup_percent,
-                days_old: result.days_old
-            };
-        } else {
-            return {
-                success: false,
-                error: result.error || 'Failed to calculate markup'
-            };
-        }
-    } catch (error) {
-        console.error('Error in calculateMarkupForRecord:', error);
-        return {
-            success: false,
-            error: error.message
-        };
-    }
-}
-
-// ============================================================================
-// Render table from discogsFilteredRecords
+// Render table from discogsFilteredRecords (USES BATCH ENDPOINT)
 // ============================================================================
 
 async function renderDiscogsTable() {
     if (!tableBody) return;
-    
     if (discogsFilteredRecords.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">' + (currentLocation ? 'No records found in this bin.' : 'Select a bin above') + '</td></tr>';
         return;
     }
-    
+
+    // 1. Build list of records that need price calculation
+    const priceRequests = [];
+    const recordMap = {};
+    for (const record of discogsFilteredRecords) {
+        recordMap[record.id] = record;
+        const canPost = (record.status_id === 2);
+        const hasConsignorFlag = hasConsignor(record);
+        const meetsLastSeen = meetsLastSeenFilter(record);
+        if (canPost && !hasConsignorFlag && meetsLastSeen && record.created_at) {
+            priceRequests.push({
+                id: record.id,
+                created_at: record.created_at,
+                store_price: record.store_price
+            });
+        }
+    }
+
+    // 2. Fetch all prices in ONE batch call
+    let pricesMap = {};
+    let errorsMap = {};
+    if (priceRequests.length > 0) {
+        const batchResults = await calculateMarkupBatch(priceRequests);
+        batchResults.forEach(item => {
+            if (item.id) {
+                if (item.error) {
+                    errorsMap[item.id] = item.error;
+                } else {
+                    pricesMap[item.id] = item;
+                }
+            }
+        });
+    }
+
+    // 3. Build the HTML table
     let html = '';
     let processedCount = 0;
-    
     for (const record of discogsFilteredRecords) {
         let imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
-        
         const canPost = (record.status_id === 2);
         const hasConsignorFlag = hasConsignor(record);
         const meetsLastSeen = meetsLastSeenFilter(record);
         let discogsPrice = null;
         let markupPercent = null;
         let priceError = null;
-        
         if (canPost) {
             if (hasConsignorFlag) {
                 discogsPrice = record.store_price;
@@ -1075,37 +886,24 @@ async function renderDiscogsTable() {
             } else if (!record.created_at) {
                 priceError = 'Missing creation date';
             } else {
-                try {
-                    const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
-                    if (markupInfo.success) {
-                        discogsPrice = markupInfo.discogs_price;
-                        markupPercent = markupInfo.markup_percent;
-                    } else {
-                        priceError = markupInfo.error;
-                    }
-                } catch (err) {
-                    priceError = err.message;
-                    console.error('Error calculating markup for record ' + record.id + ':', err);
+                const cached = pricesMap[record.id];
+                if (cached) {
+                    discogsPrice = cached.discogs_price;
+                    markupPercent = cached.markup_percent;
+                } else {
+                    priceError = errorsMap[record.id] || 'Failed to calculate price';
                 }
             }
         }
-        
         const displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
         const markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
         const displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
-        
         const displayLocation = record.location || '—';
         const shortLocation = displayLocation.length > 30 ? displayLocation.substring(0, 27) + '...' : displayLocation;
-        
         const lastSeenDisplay = formatLastSeen(record.last_seen);
-        
-        // Add consignor badge if applicable
         const consignorBadge = hasConsignorFlag ? '<span style="display: inline-block; background: #ffc107; color: #333; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 5px;" title="Consignor item - cannot auto-post">👤 Consignor</span>' : '';
-        
-        // Add warning if last_seen fails filter
         const lastSeenWarning = (!meetsLastSeen && record.last_seen) ? '<span style="display: inline-block; background: #dc3545; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 5px;" title="Last seen before cutoff date">⚠️ Old</span>' : '';
         const noLastSeenWarning = (!record.last_seen) ? '<span style="display: inline-block; background: #6c757d; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 5px;" title="Never scanned">⚠️ Never</span>' : '';
-        
         html += '<tr style="' + ((!meetsLastSeen && record.last_seen) ? 'background: #fff0f0;' : (hasConsignorFlag ? 'background: #fff8e7;' : '')) + '">';
         html += '<td style="text-align: center;">' + (imageUrl ? '<img src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(record.artist) + '" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">' : '<div style="width: 40px; height: 40px; background: #e0e0e0; border-radius: 4px; display: inline-block;"></div>') + '</td>';
         html += '<td>' + (record.id || '—') + consignorBadge + lastSeenWarning + noLastSeenWarning + '</td>';
@@ -1120,7 +918,6 @@ async function renderDiscogsTable() {
         html += '<td style="font-size: 11px;">' + lastSeenDisplay + '</td>';
         html += '<td title="' + escapeHtml(displayLocation) + '" style="font-size: 12px;">' + escapeHtml(shortLocation) + '</td>';
         html += '<td style="text-align: center;">';
-        
         if (canPost && discogsPrice && !hasConsignorFlag && meetsLastSeen) {
             html += '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(record.artist) + '" data-title="' + escapeHtml(record.title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + (record.disc_condition_name || '') + '" data-sleeve-condition="' + (record.sleeve_condition_name || '') + '" data-catalog="' + escapeHtml(record.catalog_number || '') + '" data-location="' + escapeHtml(record.location || '') + '" data-notes="' + escapeHtml(record.notes || '') + '" data-has-consignor="false"><i class="fab fa-discogs"></i> Post</button>';
         } else if (canPost && hasConsignorFlag) {
@@ -1134,16 +931,12 @@ async function renderDiscogsTable() {
         }
         html += '</td>';
         html += '</tr>';
-        
         processedCount++;
         if (processedCount % 10 === 0) {
             await new Promise(resolve => setTimeout(resolve, 10));
         }
     }
-    
     tableBody.innerHTML = html;
-    
-    // Attach event listeners to post buttons
     document.querySelectorAll('.post-single-btn').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
@@ -1171,22 +964,17 @@ async function renderDiscogsTable() {
 
 window.postSingleRecordToDiscogs = async function(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes, hasConsignorFlag) {
     console.log('postSingleRecordToDiscogs called', { recordId, artist, title, price, discogsPrice });
-    
-    // Prevent posting consignor items
     if (hasConsignorFlag) {
         showDiscogsStatus('Consignor items cannot be auto-posted to Discogs. Must be posted manually.', 'error');
         return;
     }
-    
     if (!recordId || !mediaCondition || !sleeveCondition || !price || !discogsPrice) {
         showDiscogsStatus('Missing required information', 'error');
         return;
     }
-    
     if (!confirm('📋 Post "' + artist + ' - ' + title + '" to Discogs?\n\nStore Price: $' + price + '\nDiscogs Price: $' + discogsPrice + ' (' + (markupPercent > 0 ? '+' : '') + markupPercent + '%)\nMedia: ' + mediaCondition + '\nSleeve: ' + sleeveCondition)) {
         return;
     }
-    
     openProgressModal('Posting to Discogs: ' + artist + ' - ' + title);
     appendToModalLog('🚀 Starting to post "' + artist + ' - ' + title + '" to Discogs...', 'info');
     appendToModalLog('💰 Store Price: $' + price, 'info');
@@ -1195,12 +983,10 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
     appendToModalLog('📀 Sleeve Condition: ' + sleeveCondition, 'info');
     if (location) appendToModalLog('📍 Location: ' + location, 'info');
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-    
-    // RETRY LOGIC: Try up to 5 times for single post
+
     let success = false;
     let lastError = null;
     const maxRetries = 5;
-    
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         if (attempt > 1) {
             appendToModalLog('🔄 Retry attempt ' + attempt + ' of ' + maxRetries + '...', 'warning');
@@ -1208,7 +994,6 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
             appendToModalLog('   Waiting ' + (waitTime / 1000) + ' seconds before retry...', 'info');
             await new Promise(resolve => setTimeout(resolve, waitTime));
         }
-        
         const listingData = {
             record: {
                 id: recordId,
@@ -1222,10 +1007,8 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
                 location: location || ''
             }
         };
-        
         try {
             appendToModalLog('📤 Sending to Discogs API (attempt ' + attempt + ')...', 'info');
-            
             const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
                 method: 'POST',
                 credentials: 'include',
@@ -1234,28 +1017,23 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
                 },
                 body: JSON.stringify(listingData)
             });
-            
             const result = await response.json();
-            
             if (result.success) {
                 success = true;
                 let discogsUrl = result.listing_url;
                 if (!discogsUrl && result.listing_id) {
                     discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
                 }
-                
                 appendToModalLog('✅ SUCCESS! Record posted to Discogs!', 'success');
                 appendToModalLog('🔗 Discogs URL: ' + discogsUrl, 'success');
                 appendToModalLog('🆔 Listing ID: ' + result.listing_id, 'info');
                 appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'success');
-                
                 showDiscogsStatusWithLink('✅ Successfully posted "' + artist + ' - ' + title + '" to Discogs!', discogsUrl, 'success');
                 await loadLocationRecords();
                 break;
             } else {
                 lastError = result.error || 'Unknown error';
                 appendToModalLog('❌ Attempt ' + attempt + ' failed: ' + lastError, 'error');
-                
                 if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate') && !result.error.includes('timeout'))) {
                     appendToModalLog('   ⚠️ Non-retryable error, stopping attempts', 'warning');
                     break;
@@ -1267,31 +1045,27 @@ window.postSingleRecordToDiscogs = async function(recordId, artist, title, price
             console.error('Fetch error:', error);
         }
     }
-    
     if (!success) {
         appendToModalLog('❌ PERMANENT FAILURE after ' + maxRetries + ' attempts: ' + lastError, 'error');
         showDiscogsStatus('Error: ' + lastError, 'error');
     }
-    
     setTimeout(function() { closeProgressModal(); }, 2000);
 };
 
 // ============================================================================
-// Bulk Post All Records in Current Bin - SKIP CONSIGNOR ITEMS & LAST SEEN
+// Bulk Post All Records in Current Bin (USES BATCH ENDPOINT)
 // ============================================================================
 
 async function bulkPostToDiscogs() {
-    // Only include store items (no consignor) that meet last_seen filter for posting
-    const eligibleRecords = discogsFilteredRecords.filter(function(r) { 
+    const eligibleRecords = discogsFilteredRecords.filter(function(r) {
         return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r);
     });
-    const consignorCount = discogsFilteredRecords.filter(function(r) { 
+    const consignorCount = discogsFilteredRecords.filter(function(r) {
         return r.status_id === 2 && hasConsignor(r);
     }).length;
-    const lastSeenFilteredCount = discogsFilteredRecords.filter(function(r) { 
+    const lastSeenFilteredCount = discogsFilteredRecords.filter(function(r) {
         return r.status_id === 2 && !hasConsignor(r) && !meetsLastSeenFilter(r);
     }).length;
-    
     if (eligibleRecords.length === 0) {
         let msg = 'No eligible records to post. ';
         if (consignorCount > 0) msg += `${consignorCount} consignor item(s) skipped. `;
@@ -1299,82 +1073,83 @@ async function bulkPostToDiscogs() {
         showDiscogsStatus(msg, 'warning');
         return;
     }
-    
     const totalTimeMinutes = Math.ceil(eligibleRecords.length * 3 / 60);
     let confirmMessage = `📋 Post ${eligibleRecords.length} store record(s) from bin "${currentLocation}" to Discogs?\n\n`;
     if (consignorCount > 0) confirmMessage += `⚠️ ${consignorCount} consignor item(s) will be SKIPPED (cannot auto-post)\n`;
     if (lastSeenFilteredCount > 0) confirmMessage += `⚠️ ${lastSeenFilteredCount} record(s) will be SKIPPED (last_seen before cutoff)\n`;
     confirmMessage += `⏱️ Estimated total time: ~${totalTimeMinutes} minute(s)\n\nContinue?`;
-    
-    if (!confirm(confirmMessage)) {
-        return;
-    }
-    
+    if (!confirm(confirmMessage)) return;
+
     openProgressModal('Posting ' + eligibleRecords.length + ' Records from Bin "' + currentLocation + '" to Discogs');
     appendToModalLog('🚀 Starting bulk post for ' + eligibleRecords.length + ' store records from bin "' + currentLocation + '"...', 'info');
-    if (consignorCount > 0) {
-        appendToModalLog('⚠️ Skipping ' + consignorCount + ' consignor item(s) (cannot auto-post)', 'warning');
-    }
-    if (lastSeenFilteredCount > 0) {
-        appendToModalLog(`⚠️ Skipping ${lastSeenFilteredCount} record(s) (last_seen before cutoff date)`, 'warning');
-    }
+    if (consignorCount > 0) appendToModalLog('⚠️ Skipping ' + consignorCount + ' consignor item(s) (cannot auto-post)', 'warning');
+    if (lastSeenFilteredCount > 0) appendToModalLog(`⚠️ Skipping ${lastSeenFilteredCount} record(s) (last_seen before cutoff date)`, 'warning');
     appendToModalLog('⏱️ 3-second delay between requests for reliability', 'warning');
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-    
+
+    // --- 1. BATCH FETCH ALL MARKUPS ---
+    const priceRequests = eligibleRecords.map(r => ({
+        id: r.id,
+        created_at: r.created_at,
+        store_price: r.store_price
+    }));
+    let pricesMap = {};
+    let errorsMap = {};
+    if (priceRequests.length > 0) {
+        const batchResults = await calculateMarkupBatch(priceRequests);
+        batchResults.forEach(item => {
+            if (item.id) {
+                if (item.error) {
+                    errorsMap[item.id] = item.error;
+                } else {
+                    pricesMap[item.id] = item;
+                }
+            }
+        });
+    }
+
     let posted = 0;
     let failed = 0;
     let skipped = 0;
     const failedRecords = [];
-    
+
     for (let i = 0; i < eligibleRecords.length; i++) {
         if (cancelResolve) {
             appendToModalLog('⏹️ Operation cancelled by user.', 'warning');
             break;
         }
-        
         const record = eligibleRecords[i];
         updateModalProgress(i + 1, eligibleRecords.length);
-        
-        // Quick validation
         if (!record.created_at) {
             skipped++;
             appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing creation date, skipping`, 'warning');
             continue;
         }
-        
         if (!record.disc_condition_name && !record.sleeve_condition_name) {
             skipped++;
             appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing condition, skipping`, 'warning');
             continue;
         }
-        
-        appendToModalLog(`[${i+1}/${eligibleRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
-        
-        // Calculate markup (1 API call)
-        const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
-        
-        if (!markupInfo.success) {
+        const markupInfo = pricesMap[record.id];
+        if (!markupInfo) {
+            const errorMsg = errorsMap[record.id] || 'Failed to calculate markup';
             failed++;
-            failedRecords.push(`${record.artist} - ${record.title}: ${markupInfo.error}`);
-            appendToModalLog(`   ❌ Cannot post: ${markupInfo.error}`, 'error');
+            failedRecords.push(`${record.artist} - ${record.title}: ${errorMsg}`);
+            appendToModalLog(`   ❌ Cannot post: ${errorMsg}`, 'error');
             continue;
         }
-        
+        appendToModalLog(`[${i+1}/${eligibleRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
         appendToModalLog(`   💰 Store: $${record.store_price} → Discogs: $${markupInfo.discogs_price} (+${markupInfo.markup_percent}%)`, 'info');
-        
-        // Post to Discogs
+
         let success = false;
         let lastError = null;
         const maxRetries = 3;
-        
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             if (cancelResolve) break;
-            
             if (attempt > 1) {
                 appendToModalLog(`   🔄 RETRY ${attempt}/${maxRetries}...`, 'warning');
                 await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
             }
-            
             const listingData = {
                 record: {
                     id: record.id,
@@ -1388,7 +1163,6 @@ async function bulkPostToDiscogs() {
                     location: record.location || ''
                 }
             };
-            
             try {
                 const postResponse = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
                     method: 'POST',
@@ -1398,9 +1172,7 @@ async function bulkPostToDiscogs() {
                     },
                     body: JSON.stringify(listingData)
                 });
-                
                 const result = await postResponse.json();
-                
                 if (result.success) {
                     success = true;
                     posted++;
@@ -1409,7 +1181,6 @@ async function bulkPostToDiscogs() {
                 } else {
                     lastError = result.error || 'Unknown error';
                     appendToModalLog(`   ❌ Attempt ${attempt} failed: ${lastError}`, 'error');
-                    
                     if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate'))) {
                         break;
                     }
@@ -1419,32 +1190,24 @@ async function bulkPostToDiscogs() {
                 appendToModalLog(`   ❌ Attempt ${attempt} error: ${err.message}`, 'error');
             }
         }
-        
         if (!success) {
             failed++;
             failedRecords.push(`${record.artist} - ${record.title}: ${lastError}`);
             appendToModalLog(`   ❌ PERMANENT FAILURE after ${maxRetries} attempts`, 'error');
         }
-        
-        // Wait 3 seconds between records
         if (i < eligibleRecords.length - 1 && !cancelResolve) {
             appendToModalLog(`   ⏳ Waiting 3 seconds...`, 'info');
             await new Promise(resolve => setTimeout(resolve, 3000));
         }
     }
-    
+
     appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
     appendToModalLog('📊 FINAL RESULTS:', 'info');
     appendToModalLog(`   ✅ Successfully posted: ${posted}`, 'success');
     appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
     appendToModalLog(`   ⚠️ Skipped (missing data): ${skipped}`, 'warning');
-    if (consignorCount > 0) {
-        appendToModalLog(`   👤 Consignor items skipped: ${consignorCount}`, 'warning');
-    }
-    if (lastSeenFilteredCount > 0) {
-        appendToModalLog(`   📅 Last seen filter skipped: ${lastSeenFilteredCount}`, 'warning');
-    }
-    
+    if (consignorCount > 0) appendToModalLog(`   👤 Consignor items skipped: ${consignorCount}`, 'warning');
+    if (lastSeenFilteredCount > 0) appendToModalLog(`   📅 Last seen filter skipped: ${lastSeenFilteredCount}`, 'warning');
     if (failedRecords.length > 0 && failedRecords.length <= 20) {
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
         appendToModalLog('❌ FAILED RECORDS:', 'warning');
@@ -1455,13 +1218,11 @@ async function bulkPostToDiscogs() {
         appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'warning');
         appendToModalLog(`❌ ${failedRecords.length} records failed. Check console for details.`, 'error');
     }
-    
     if (posted > 0) {
         appendToModalLog('🔄 Reloading location data...', 'info');
         await loadLocationRecords();
         appendToModalLog('✅ Data refreshed', 'success');
     }
-    
     if (posted > 0 && failed === 0 && skipped === 0) {
         showDiscogsStatus('✅ Successfully posted ALL ' + posted + ' store records from bin "' + currentLocation + '" to Discogs!', 'success');
     } else if (posted > 0) {
@@ -1472,55 +1233,31 @@ async function bulkPostToDiscogs() {
 }
 
 // ============================================================================
-// REPOST ENTIRE STORE TO DISCOGS - ONLY STORE ITEMS (NO CONSIGNORS) + LAST SEEN
+// REPOST ENTIRE STORE TO DISCOGS (USES BATCH ENDPOINT)
 // ============================================================================
 
 window.repostEntireStoreToDiscogs = async function() {
     console.log('🔄 Reposting entire store to Discogs...');
-    
     showDiscogsStatus('Loading all active store records from the entire store...', 'info');
-    
     try {
-        // Fetch ALL active records (status_id = 2) from ALL locations
         const url = window.AppConfig.baseUrl + '/records/status/2';
-        
         const response = await fetch(url, {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
-        
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-        
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
-        
-        if (data.status !== 'success') {
-            throw new Error(data.error || 'Failed to load records');
-        }
-        
+        if (data.status !== 'success') throw new Error(data.error || 'Failed to load records');
         const allActiveRecords = data.records || [];
-        
-        // Filter: Must have location AND be store-owned (no consignor) AND meet last_seen filter
         const eligibleRecords = allActiveRecords.filter(record => {
             const hasConsignorFlag = hasConsignor(record);
-            return record.location && 
-                   record.location.trim() !== '' &&
-                   record.location !== 'null' &&
-                   record.location !== 'None' &&
-                   !hasConsignorFlag &&
-                   meetsLastSeenFilter(record);
+            return record.location && record.location.trim() !== '' && record.location !== 'null' && record.location !== 'None' && !hasConsignorFlag && meetsLastSeenFilter(record);
         });
-        
         const skippedNoLocation = allActiveRecords.filter(r => (!r.location || r.location.trim() === '')).length;
         const skippedConsignor = allActiveRecords.filter(r => hasConsignor(r)).length;
         const skippedLastSeen = allActiveRecords.filter(r => {
-            return r.location && 
-                   r.location.trim() !== '' &&
-                   !hasConsignor(r) &&
-                   !meetsLastSeenFilter(r);
+            return r.location && r.location.trim() !== '' && !hasConsignor(r) && !meetsLastSeenFilter(r);
         }).length;
-        
         if (eligibleRecords.length === 0) {
             let msg = `No eligible store records found. `;
             if (skippedNoLocation > 0) msg += `${skippedNoLocation} record(s) have no location. `;
@@ -1529,7 +1266,6 @@ window.repostEntireStoreToDiscogs = async function() {
             showDiscogsStatus(msg, 'warning');
             return;
         }
-        
         const totalTimeHours = Math.ceil(eligibleRecords.length * 3 / 3600);
         let confirmMsg = `📋 REPOST ENTIRE STORE to Discogs?\n\n`;
         confirmMsg += `Store records with location AND recent last_seen: ${eligibleRecords.length}\n`;
@@ -1539,11 +1275,8 @@ window.repostEntireStoreToDiscogs = async function() {
         confirmMsg += `⚠️ Each record takes ~3 seconds\n`;
         confirmMsg += `⏱️ Estimated time: ~${totalTimeHours} hour(s)\n\n`;
         confirmMsg += `Continue?`;
-        
-        if (!confirm(confirmMsg)) {
-            return;
-        }
-        
+        if (!confirm(confirmMsg)) return;
+
         openProgressModal('Reposting ' + eligibleRecords.length + ' Store Records from Entire Store');
         appendToModalLog('🚀 Starting REPOST ENTIRE STORE for ' + eligibleRecords.length + ' store records...', 'info');
         appendToModalLog(`⚠️ Skipped ${skippedNoLocation} record(s) with missing location`, 'warning');
@@ -1551,61 +1284,69 @@ window.repostEntireStoreToDiscogs = async function() {
         appendToModalLog(`⚠️ Skipped ${skippedLastSeen} record(s) (last_seen before cutoff date)`, 'warning');
         appendToModalLog('⏱️ Validating and posting in one pass (3 seconds per record)', 'info');
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-        
+
+        const priceRequests = eligibleRecords.map(r => ({
+            id: r.id,
+            created_at: r.created_at,
+            store_price: r.store_price
+        }));
+        let pricesMap = {};
+        let errorsMap = {};
+        if (priceRequests.length > 0) {
+            const batchResults = await calculateMarkupBatch(priceRequests);
+            batchResults.forEach(item => {
+                if (item.id) {
+                    if (item.error) {
+                        errorsMap[item.id] = item.error;
+                    } else {
+                        pricesMap[item.id] = item;
+                    }
+                }
+            });
+        }
+
         let posted = 0;
         let failed = 0;
         let skipped = 0;
         const failedRecords = [];
-        
+
         for (let i = 0; i < eligibleRecords.length; i++) {
             if (cancelResolve) {
                 appendToModalLog('⏹️ Operation cancelled by user.', 'warning');
                 break;
             }
-            
             const record = eligibleRecords[i];
             updateModalProgress(i + 1, eligibleRecords.length);
-            
-            // Quick validation - skip if missing required data
             if (!record.created_at) {
                 skipped++;
                 appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing creation date, skipping`, 'warning');
                 continue;
             }
-            
             if (!record.disc_condition_name && !record.sleeve_condition_name) {
                 skipped++;
                 appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing condition, skipping`, 'warning');
                 continue;
             }
-            
-            appendToModalLog(`[${i+1}/${eligibleRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
-            
-            // Calculate markup (1 API call)
-            const markupInfo = await calculateMarkupForRecord(record.created_at, record.store_price);
-            
-            if (!markupInfo.success) {
+            const markupInfo = pricesMap[record.id];
+            if (!markupInfo) {
+                const errorMsg = errorsMap[record.id] || 'Failed to calculate markup';
                 failed++;
-                failedRecords.push(`${record.artist} - ${record.title}: ${markupInfo.error}`);
-                appendToModalLog(`   ❌ Cannot post: ${markupInfo.error}`, 'error');
+                failedRecords.push(`${record.artist} - ${record.title}: ${errorMsg}`);
+                appendToModalLog(`   ❌ Cannot post: ${errorMsg}`, 'error');
                 continue;
             }
-            
+            appendToModalLog(`[${i+1}/${eligibleRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
             appendToModalLog(`   💰 Store: $${record.store_price} → Discogs: $${markupInfo.discogs_price} (+${markupInfo.markup_percent}%)`, 'info');
-            
-            // Post to Discogs (2nd API call)
+
             let success = false;
             let lastError = null;
             const maxRetries = 3;
-            
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 if (cancelResolve) break;
-                
                 if (attempt > 1) {
                     appendToModalLog(`   🔄 RETRY ${attempt}/${maxRetries}...`, 'warning');
                     await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
                 }
-                
                 const listingData = {
                     record: {
                         id: record.id,
@@ -1619,7 +1360,6 @@ window.repostEntireStoreToDiscogs = async function() {
                         location: record.location || ''
                     }
                 };
-                
                 try {
                     const postResponse = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
                         method: 'POST',
@@ -1629,9 +1369,7 @@ window.repostEntireStoreToDiscogs = async function() {
                         },
                         body: JSON.stringify(listingData)
                     });
-                    
                     const result = await postResponse.json();
-                    
                     if (result.success) {
                         success = true;
                         posted++;
@@ -1640,7 +1378,6 @@ window.repostEntireStoreToDiscogs = async function() {
                     } else {
                         lastError = result.error || 'Unknown error';
                         appendToModalLog(`   ❌ Attempt ${attempt} failed: ${lastError}`, 'error');
-                        
                         if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate'))) {
                             break;
                         }
@@ -1650,27 +1387,23 @@ window.repostEntireStoreToDiscogs = async function() {
                     appendToModalLog(`   ❌ Attempt ${attempt} error: ${err.message}`, 'error');
                 }
             }
-            
             if (!success) {
                 failed++;
                 failedRecords.push(`${record.artist} - ${record.title}: ${lastError}`);
                 appendToModalLog(`   ❌ PERMANENT FAILURE after ${maxRetries} attempts`, 'error');
             }
-            
-            // Wait 3 seconds between records
             if (i < eligibleRecords.length - 1 && !cancelResolve) {
                 appendToModalLog(`   ⏳ Waiting 3 seconds...`, 'info');
                 await new Promise(resolve => setTimeout(resolve, 3000));
             }
         }
-        
+
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
         appendToModalLog('📊 FINAL RESULTS - ENTIRE STORE REPOST:', 'info');
         appendToModalLog(`   ✅ Successfully posted: ${posted}`, 'success');
         appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
         appendToModalLog(`   ⚠️ Skipped (missing data): ${skipped}`, 'warning');
         appendToModalLog(`   📊 Total processed: ${posted + failed + skipped} of ${eligibleRecords.length}`, 'info');
-        
         if (failedRecords.length > 0 && failedRecords.length <= 20) {
             appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
             appendToModalLog('❌ FAILED RECORDS:', 'warning');
@@ -1681,13 +1414,11 @@ window.repostEntireStoreToDiscogs = async function() {
             appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'warning');
             appendToModalLog(`❌ ${failedRecords.length} records failed. Check console for details.`, 'error');
         }
-        
         if (posted > 0) {
             showDiscogsStatus(`✅ Reposted ${posted} store records. ${failed} failed, ${skipped} skipped.`, posted === eligibleRecords.length ? 'success' : 'warning');
         } else {
             showDiscogsStatus(`❌ Failed to repost any records. Check log for details.`, 'error');
         }
-        
     } catch (error) {
         console.error('Error in repostEntireStoreToDiscogs:', error);
         showDiscogsStatus('Error: ' + error.message, 'error');
@@ -1744,7 +1475,6 @@ async function loadDiscogsConfig() {
     try {
         const markupInput = document.getElementById('discogs-markup');
         if (!markupInput) return;
-        
         const response = await fetch(window.AppConfig.baseUrl + '/config/DISCOGS_MARKUP_PERCENT', {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
@@ -1761,12 +1491,9 @@ async function loadDiscogsConfig() {
 window.saveDiscogsConfig = async function() {
     const markupInput = document.getElementById('discogs-markup');
     const configStatus = document.getElementById('config-status');
-    
     if (!markupInput) return;
-    
     configStatus.innerHTML = 'Saving...';
     configStatus.style.color = '#ffc107';
-    
     try {
         const response = await fetch(window.AppConfig.baseUrl + '/config/DISCOGS_MARKUP_PERCENT', {
             method: 'PUT',
@@ -1776,7 +1503,6 @@ window.saveDiscogsConfig = async function() {
             },
             body: JSON.stringify({ config_value: markupInput.value })
         });
-        
         if (response.ok) {
             configStatus.innerHTML = '✅ Saved!';
             configStatus.style.color = '#28a745';
@@ -1801,7 +1527,6 @@ async function loadMarkupRules() {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
-        
         if (response.ok) {
             const data = await response.json();
             if (data.status === 'success') {
@@ -1816,19 +1541,14 @@ async function loadMarkupRules() {
 function renderMarkupRules(rules) {
     const tbody = document.getElementById('markup-rules-body');
     const warning = document.getElementById('no-rules-warning');
-    
     if (!tbody) return;
-    
     if (!rules || rules.length === 0) {
         tbody.innerHTML = '<td><td colspan="4" style="padding: 30px; text-align: center; color: #999;">⚠️ No rules configured. Add your first rule above.</td></tr>';
         if (warning) warning.style.display = 'block';
         return;
     }
-    
     if (warning) warning.style.display = 'none';
-    
     rules.sort(function(a, b) { return a.days_old - b.days_old; });
-    
     let html = '';
     for (let i = 0; i < rules.length; i++) {
         const rule = rules[i];
@@ -1849,12 +1569,10 @@ window.addMarkupRule = async function() {
     const days_old = parseInt(document.getElementById('new-rule-days').value);
     const markup_percent = parseFloat(document.getElementById('new-rule-percent').value);
     const description = document.getElementById('new-rule-desc').value;
-    
     if (isNaN(days_old) || isNaN(markup_percent)) {
         showDiscogsStatus('Please enter valid days and percentage', 'error');
         return;
     }
-    
     try {
         const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules', {
             method: 'POST',
@@ -1864,7 +1582,6 @@ window.addMarkupRule = async function() {
             },
             body: JSON.stringify({ days_old: days_old, markup_percent: markup_percent, description: description })
         });
-        
         if (response.ok) {
             showDiscogsStatus('Markup rule added successfully', 'success');
             document.getElementById('new-rule-days').value = '';
@@ -1886,12 +1603,10 @@ window.addMarkupRule = async function() {
 window.updateMarkupRule = async function(ruleId) {
     const markup_percent = parseFloat(document.getElementById('rule-percent-' + ruleId).value);
     const description = document.getElementById('rule-desc-' + ruleId).value;
-    
     if (isNaN(markup_percent)) {
         showDiscogsStatus('Please enter a valid percentage', 'error');
         return;
     }
-    
     try {
         const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
             method: 'PUT',
@@ -1901,7 +1616,6 @@ window.updateMarkupRule = async function(ruleId) {
             },
             body: JSON.stringify({ markup_percent: markup_percent, description: description })
         });
-        
         if (response.ok) {
             showDiscogsStatus('Markup rule updated successfully', 'success');
             loadMarkupRules();
@@ -1919,14 +1633,12 @@ window.updateMarkupRule = async function(ruleId) {
 
 window.deleteMarkupRule = async function(ruleId) {
     if (!confirm('Are you sure you want to delete this markup rule?')) return;
-    
     try {
         const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
             method: 'DELETE',
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
         });
-        
         if (response.ok) {
             showDiscogsStatus('Markup rule deleted successfully', 'success');
             loadMarkupRules();
@@ -1966,7 +1678,6 @@ function initializeLastSeenDate() {
 
 window.initDiscogsTab = function() {
     console.log('🎵 Initializing Discogs Tab...');
-    
     tableBody = document.getElementById('combined-inventory-body');
     discogsLocationSelect = document.getElementById('discogs-location-select');
     discogsPostButton = document.getElementById('post-location-button');
@@ -1975,31 +1686,24 @@ window.initDiscogsTab = function() {
     discogsSearchButton = document.getElementById('discogs-search-button');
     lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
     applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
-    
     if (!tableBody) {
         console.error('Table body element not found!');
         return;
     }
-    
     if (!discogsLocationSelect) {
         console.error('Location select element not found!');
         return;
     }
-    
-    // Initialize last seen date picker
     initializeLastSeenDate();
-    
     if (applyLastSeenFilterBtn) {
         applyLastSeenFilterBtn.onclick = function() {
             applyLastSeenFilter();
         };
     }
-    
     discogsLocationSelect.onchange = function() {
         console.log('Location changed to:', discogsLocationSelect.value);
         loadLocationRecords();
     };
-    
     if (discogsSearchButton) {
         discogsSearchButton.onclick = function() {
             applyDiscogsSearchFilter();
@@ -2012,7 +1716,6 @@ window.initDiscogsTab = function() {
             }
         };
     }
-    
     if (discogsPostButton) {
         discogsPostButton.onclick = function() {
             bulkPostToDiscogs();
@@ -2021,18 +1724,13 @@ window.initDiscogsTab = function() {
         discogsPostButton.style.opacity = '0.5';
         discogsPostButton.innerHTML = '<i class="fab fa-discogs"></i> Post to Discogs';
     }
-    
     loadLocations();
     loadMarkupRules();
-    
-    // Check if markup charts section is already visible
     const chartsContent = document.getElementById('markup-charts-content');
     if (chartsContent && chartsContent.style.display === 'block') {
         setTimeout(loadMarkupAnalysisCharts, 500);
     }
-    
     tableBody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 40px;">Select a bin/location to view records</td></tr>';
-    
     console.log('✅ Discogs Tab initialized');
 };
 
