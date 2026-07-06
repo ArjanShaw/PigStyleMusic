@@ -2654,24 +2654,21 @@ def get_last_seen_distribution_stats():
 
 @app.route('/api/markup-analysis', methods=['GET'])
 def get_markup_analysis():
-    """Get data for markup curve and distribution charts"""
+    """Get data for markup curve and distribution charts - filtered like posting."""
     try:
+        from datetime import date, datetime, timedelta
+
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all markup rules
+        # Get markup rules
         cursor.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
         rules = cursor.fetchall()
-        
-        # Convert rules to list of tuples for interpolation
-        rules_list = []
-        max_rule_days = 0
-        for r in rules:
-            rules_list.append((r['days_old'], r['markup_percent']))
-            if r['days_old'] > max_rule_days:
-                max_rule_days = r['days_old']
-        
+        rules_list = [(r['days_old'], r['markup_percent']) for r in rules]
+        max_rule_days = max([r[0] for r in rules_list]) if rules_list else 0
+
         if not rules_list:
+            conn.close()
             return jsonify({
                 'status': 'success',
                 'curve_points': [],
@@ -2679,32 +2676,44 @@ def get_markup_analysis():
                 'age_distribution': {},
                 'active_records_count': 0,
                 'rules_count': 0,
-                'max_days': 0,
-                'max_rule_days': 0,
-                'age_stats': {'min_days': 0, 'max_days': 0, 'avg_days': 0},
                 'warning': 'No markup rules configured'
             })
-        
-        # Get active records with created_at
+
+        # --- Get cutoff date from query param (default = 30 days ago) ---
+        cutoff_param = request.args.get('cutoff')
+        if cutoff_param:
+            try:
+                cutoff_date = datetime.strptime(cutoff_param, '%Y-%m-%d').date()
+            except ValueError:
+                cutoff_date = date.today() - timedelta(days=30)
+        else:
+            cutoff_date = date.today() - timedelta(days=30)
+
+        cutoff_str = cutoff_date.strftime('%Y-%m-%d')
+
+        # --- Fetch active, store-owned records with location and recent last_seen ---
         cursor.execute('''
             SELECT created_at, store_price 
             FROM records 
-            WHERE status_id = 2 AND created_at IS NOT NULL
-        ''')
+            WHERE status_id = 2
+              AND (consignor_id IS NULL OR consignor_id = 1)
+              AND last_seen IS NOT NULL
+              AND date(last_seen) >= ?
+              AND location IS NOT NULL 
+              AND location != '' 
+              AND location != 'null' 
+              AND location != 'None'
+              AND created_at IS NOT NULL
+        ''', (cutoff_str,))
         records = cursor.fetchall()
         conn.close()
-        
-        from datetime import date, datetime
-        
+
         today = date.today()
-        max_days = 0
-        total_days = 0
-        
-        # Calculate days old for each record
         record_ages = []
-        
-        for record in records:
-            created_at = record['created_at']
+        total_days = 0
+
+        for rec in records:
+            created_at = rec['created_at']
             if isinstance(created_at, str):
                 try:
                     created_date = datetime.strptime(created_at.split('T')[0], '%Y-%m-%d').date()
@@ -2715,96 +2724,63 @@ def get_markup_analysis():
                         continue
             else:
                 created_date = created_at
-            
+
             days_old = (today - created_date).days
             if days_old < 0:
                 days_old = 0
-            
             record_ages.append(days_old)
             total_days += days_old
-            if days_old > max_days:
-                max_days = days_old
-        
-        # Calculate age statistics
+
+        # Age stats
         age_stats = {
             'min_days': min(record_ages) if record_ages else 0,
-            'max_days': max_days,
+            'max_days': max(record_ages) if record_ages else 0,
             'avg_days': round(total_days / len(record_ages), 1) if record_ages else 0,
             'total_records': len(record_ages)
         }
-        
-        # Determine the maximum days to show on the chart
-        # Use the maximum of: max record age, max rule days, or at least 365
-        chart_max_days = max(max_days, max_rule_days, 365)
-        # Add a buffer so we can see the curve level out
-        chart_max_days = chart_max_days + 30
-        
-        # Generate curve points (every day from 0 to chart_max_days)
-        curve_points = []
-        for days in range(0, chart_max_days + 1, 1):
-            # Inline interpolation (no helper)
+
+        chart_max_days = max(max(record_ages) if record_ages else 0, max_rule_days, 365) + 30
+
+        # --- Interpolation (inlined) ---
+        def get_markup(days):
             if days <= rules_list[0][0]:
-                markup = rules_list[0][1]
-            elif days >= rules_list[-1][0]:
-                markup = rules_list[-1][1]
-            else:
-                markup = 0.0
-                for j in range(len(rules_list) - 1):
-                    x1, y1 = rules_list[j]
-                    x2, y2 = rules_list[j + 1]
-                    if x1 <= days <= x2:
-                        if x2 == x1:
-                            markup = y1
-                        else:
-                            t = (days - x1) / (x2 - x1)
-                            markup = y1 + t * (y2 - y1)
-                        break
+                return rules_list[0][1]
+            if days >= rules_list[-1][0]:
+                return rules_list[-1][1]
+            for i in range(len(rules_list)-1):
+                x1, y1 = rules_list[i]
+                x2, y2 = rules_list[i+1]
+                if x1 <= days <= x2:
+                    if x2 == x1:
+                        return y1
+                    t = (days - x1) / (x2 - x1)
+                    return y1 + t * (y2 - y1)
+            return rules_list[-1][1]
+
+        # Curve points
+        curve_points = []
+        for d in range(0, chart_max_days + 1):
             curve_points.append({
-                'days': days,
-                'markup_percent': round(markup, 1)
+                'days': d,
+                'markup_percent': round(get_markup(d), 1)
             })
-        
-        # Calculate markup distribution - bucket by 5% increments
+
+        # Distribution by 5% buckets
         distribution = {}
         for age in record_ages:
-            # Inline interpolation (same as above)
-            if age <= rules_list[0][0]:
-                markup = rules_list[0][1]
-            elif age >= rules_list[-1][0]:
-                markup = rules_list[-1][1]
-            else:
-                markup = 0.0
-                for j in range(len(rules_list) - 1):
-                    x1, y1 = rules_list[j]
-                    x2, y2 = rules_list[j + 1]
-                    if x1 <= age <= x2:
-                        if x2 == x1:
-                            markup = y1
-                        else:
-                            t = (age - x1) / (x2 - x1)
-                            markup = y1 + t * (y2 - y1)
-                        break
+            markup = get_markup(age)
             bucket = round(markup / 5) * 5
-            if bucket >= 0:
-                label = f"+{bucket}%"
-            else:
-                label = f"{bucket}%"
-            
-            if label not in distribution:
-                distribution[label] = 0
-            distribution[label] += 1
-        
-        # Calculate age distribution - bucket by 30-day increments
+            label = f"+{bucket}%" if bucket >= 0 else f"{bucket}%"
+            distribution[label] = distribution.get(label, 0) + 1
+
+        # Age distribution by 30-day buckets
         age_distribution = {}
         for age in record_ages:
             bucket_start = (age // 30) * 30
             bucket_end = bucket_start + 29
-            bucket_key = f"{bucket_start}-{bucket_end}"
-            
-            if bucket_key not in age_distribution:
-                age_distribution[bucket_key] = 0
-            age_distribution[bucket_key] += 1
-        
+            key = f"{bucket_start}-{bucket_end}"
+            age_distribution[key] = age_distribution.get(key, 0) + 1
+
         return jsonify({
             'status': 'success',
             'curve_points': curve_points,
@@ -2812,21 +2788,18 @@ def get_markup_analysis():
             'age_distribution': age_distribution,
             'active_records_count': len(record_ages),
             'rules_count': len(rules_list),
-            'max_days': max_days,
+            'max_days': max(record_ages) if record_ages else 0,
             'max_rule_days': max_rule_days,
             'chart_max_days': chart_max_days,
-            'records_with_data': len(record_ages),
             'age_stats': age_stats,
-            'rules_list': rules_list  # Include for debugging
+            'cutoff_date': cutoff_str,   # include for debugging
+            'records_with_data': len(record_ages)
         })
-        
+
     except Exception as e:
         app.logger.error(f"Error in markup analysis: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-
 
 # Create upload folder for bills of sale if not exists
 BILLS_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'bills')
