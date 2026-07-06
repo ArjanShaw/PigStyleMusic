@@ -805,7 +805,100 @@ def require_discogs_auth(f):
         return f(*args, **kwargs)
     return decorated_function
 
- 
+
+# ==================== NEW: SELF-CONTAINED BATCH MARKUP ENDPOINT ====================
+# This is the ONLY endpoint that calculates Discogs prices.
+# No try/catch – it raises exceptions on invalid data.
+# No helper functions – all logic is inlined.
+# ================================================================================
+
+@app.route('/api/discogs/calculate-markup-batch', methods=['POST'])
+def calculate_markup_batch():
+    """
+    ONE endpoint for all markup calculations.
+    Accepts: {"records": [{"id": 1, "created_at": "2026-01-01", "store_price": 10.0}, ...]}
+    Returns: {"status": "success", "results": [{"id": 1, "discogs_price": 12.5, "markup_percent": 20.0, "days_old": 5}, ...]}
+    No try/catch – if data is invalid, it raises an exception and returns 500.
+    """
+    from datetime import date, datetime
+
+    data = request.json
+    records_input = data.get('records', [])
+    if not records_input:
+        raise ValueError('No records provided')
+
+    # Fetch rules once
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
+    rules_rows = cursor.fetchall()
+    conn.close()
+    if not rules_rows:
+        raise ValueError('No markup rules configured')
+
+    rules = [(r['days_old'], r['markup_percent']) for r in rules_rows]
+    today = date.today()
+    results = []
+
+    for rec in records_input:
+        rec_id = rec.get('id')
+        if rec_id is None:
+            raise ValueError('Missing record id')
+
+        created_at_str = rec.get('created_at')
+        if not created_at_str:
+            raise ValueError(f'Missing created_at for record {rec_id}')
+
+        store_price = rec.get('store_price')
+        if store_price is None:
+            raise ValueError(f'Missing store_price for record {rec_id}')
+        store_price = float(store_price)
+        if store_price <= 0:
+            raise ValueError(f'store_price must be > 0 for record {rec_id}')
+
+        # --- Strict date parsing (no fallback) ---
+        if isinstance(created_at_str, str):
+            try:
+                # Try ISO date first
+                created_date = datetime.strptime(created_at_str.split('T')[0], '%Y-%m-%d').date()
+            except ValueError:
+                # Then try full datetime
+                created_date = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S').date()
+        else:
+            created_date = created_at_str
+
+        days_old = (today - created_date).days
+
+        # --- Inline interpolation (no helper) ---
+        if days_old <= rules[0][0]:
+            markup_percent = rules[0][1]
+        elif days_old >= rules[-1][0]:
+            markup_percent = rules[-1][1]
+        else:
+            markup_percent = 0.0
+            for i in range(len(rules) - 1):
+                x1, y1 = rules[i]
+                x2, y2 = rules[i + 1]
+                if x1 <= days_old <= x2:
+                    if x2 == x1:
+                        markup_percent = y1
+                    else:
+                        t = (days_old - x1) / (x2 - x1)
+                        markup_percent = y1 + t * (y2 - y1)
+                    break
+
+        discogs_price = round(store_price * (1 + markup_percent / 100), 2)
+
+        results.append({
+            'id': rec_id,
+            'discogs_price': discogs_price,
+            'markup_percent': round(markup_percent, 1),
+            'days_old': days_old
+        })
+
+    return jsonify({'status': 'success', 'results': results})
+
+
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """Create a single listing on Discogs with dynamic markup based on record age"""
@@ -829,7 +922,6 @@ def create_discogs_listing_single():
         # Get the full record from database to access created_at and store_price
         conn = get_db()
         cursor = conn.cursor()
-        # Only select columns that exist - NO discogs_listing_id
         cursor.execute('SELECT created_at, store_price FROM records WHERE id = ?', (record['id'],))
         db_record = cursor.fetchone()
         conn.close()
@@ -837,12 +929,52 @@ def create_discogs_listing_single():
         if not db_record:
             return jsonify({'success': False, 'error': f'Record #{record["id"]} not found'}), 404
         
-        # Calculate dynamic markup based on record age
-        markup_info = calculate_markup_for_record(db_record['created_at'], db_record['store_price'])
+        # ---- Inline markup calculation ----
+        from datetime import date, datetime
         
-        discogs_price = markup_info['discogs_price']
-        markup_percent = markup_info['markup_percent']
-        days_old = markup_info['days_old']
+        # Fetch rules
+        conn2 = get_db()
+        cursor2 = conn2.cursor()
+        cursor2.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
+        rules_rows = cursor2.fetchall()
+        conn2.close()
+        if not rules_rows:
+            return jsonify({'success': False, 'error': 'No markup rules configured'}), 400
+
+        rules = [(r['days_old'], r['markup_percent']) for r in rules_rows]
+
+        # Parse created_at strictly
+        created_at_str = db_record['created_at']
+        if isinstance(created_at_str, str):
+            try:
+                created_date = datetime.strptime(created_at_str.split('T')[0], '%Y-%m-%d').date()
+            except ValueError:
+                created_date = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S').date()
+        else:
+            created_date = created_at_str
+
+        days_old = (date.today() - created_date).days
+
+        # Inline interpolation
+        if days_old <= rules[0][0]:
+            markup_percent = rules[0][1]
+        elif days_old >= rules[-1][0]:
+            markup_percent = rules[-1][1]
+        else:
+            markup_percent = 0.0
+            for i in range(len(rules) - 1):
+                x1, y1 = rules[i]
+                x2, y2 = rules[i + 1]
+                if x1 <= days_old <= x2:
+                    if x2 == x1:
+                        markup_percent = y1
+                    else:
+                        t = (days_old - x1) / (x2 - x1)
+                        markup_percent = y1 + t * (y2 - y1)
+                    break
+
+        discogs_price = round(db_record['store_price'] * (1 + markup_percent / 100), 2)
+        # ---- End of inline calculation ----
         
         headers = {
             'Authorization': f'Discogs token={TOKEN}',
@@ -946,7 +1078,6 @@ def create_discogs_listing_single():
             listing_id = listing_result.get('listing_id')
             discogs_url = f"https://www.discogs.com/sell/item/{listing_id}"
             
-            # NO DATABASE UPDATE - just return success
             return jsonify({
                 'success': True,
                 'listing_id': listing_id,
@@ -968,6 +1099,7 @@ def create_discogs_listing_single():
         app.logger.error(f"Error creating listing: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
+
  
  # ==================== ADMIN ORDERS ENDPOINTS ====================
 
@@ -2520,8 +2652,6 @@ def get_last_seen_distribution_stats():
  
 # ==================== MARKUP ANALYSIS ENDPOINT ====================
 
-# ==================== MARKUP ANALYSIS ENDPOINT ====================
-
 @app.route('/api/markup-analysis', methods=['GET'])
 def get_markup_analysis():
     """Get data for markup curve and distribution charts"""
@@ -2612,7 +2742,23 @@ def get_markup_analysis():
         # Generate curve points (every day from 0 to chart_max_days)
         curve_points = []
         for days in range(0, chart_max_days + 1, 1):
-            markup = interpolate_markup(days, rules_list)
+            # Inline interpolation (no helper)
+            if days <= rules_list[0][0]:
+                markup = rules_list[0][1]
+            elif days >= rules_list[-1][0]:
+                markup = rules_list[-1][1]
+            else:
+                markup = 0.0
+                for j in range(len(rules_list) - 1):
+                    x1, y1 = rules_list[j]
+                    x2, y2 = rules_list[j + 1]
+                    if x1 <= days <= x2:
+                        if x2 == x1:
+                            markup = y1
+                        else:
+                            t = (days - x1) / (x2 - x1)
+                            markup = y1 + t * (y2 - y1)
+                        break
             curve_points.append({
                 'days': days,
                 'markup_percent': round(markup, 1)
@@ -2621,7 +2767,23 @@ def get_markup_analysis():
         # Calculate markup distribution - bucket by 5% increments
         distribution = {}
         for age in record_ages:
-            markup = interpolate_markup(age, rules_list)
+            # Inline interpolation (same as above)
+            if age <= rules_list[0][0]:
+                markup = rules_list[0][1]
+            elif age >= rules_list[-1][0]:
+                markup = rules_list[-1][1]
+            else:
+                markup = 0.0
+                for j in range(len(rules_list) - 1):
+                    x1, y1 = rules_list[j]
+                    x2, y2 = rules_list[j + 1]
+                    if x1 <= age <= x2:
+                        if x2 == x1:
+                            markup = y1
+                        else:
+                            t = (age - x1) / (x2 - x1)
+                            markup = y1 + t * (y2 - y1)
+                        break
             bucket = round(markup / 5) * 5
             if bucket >= 0:
                 label = f"+{bucket}%"
@@ -6005,171 +6167,6 @@ def delete_markup_rule(rule_id):
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-def calculate_markup_for_record(created_at_date, store_price):
-    """Calculate the Discogs price based on record age and markup rules"""
-    from datetime import datetime, date
-    
-    # Parse created_at - handle both date and datetime strings
-    if isinstance(created_at_date, str):
-        try:
-            created_date = datetime.strptime(created_at_date.split('T')[0], '%Y-%m-%d').date()
-        except:
-            try:
-                created_date = datetime.strptime(created_at_date, '%Y-%m-%d %H:%M:%S').date()
-            except:
-                try:
-                    created_date = datetime.strptime(created_at_date, '%Y-%m-%d').date()
-                except:
-                    print(f"⚠️ Could not parse date: {created_at_date}, using today")
-                    created_date = date.today()
-    else:
-        created_date = created_at_date
-    
-    # Calculate days old
-    today = date.today()
-    days_old = (today - created_date).days
-    
-    # Get markup rules from database
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
-    rules = cursor.fetchall()
-    conn.close()
-    
-    if not rules or len(rules) == 0:
-        # No rules found - return store price with 0% markup
-        print(f"⚠️ No markup rules found! Using 0% markup for record {days_old} days old")
-        return {
-            'days_old': days_old,
-            'markup_percent': 0,
-            'store_price': store_price,
-            'discogs_price': store_price
-        }
-    
-    # Interpolate markup based on days old
-    markup_percent = interpolate_markup(days_old, rules)
-    
-    # Calculate Discogs price
-    discogs_price = store_price * (1 + markup_percent / 100)
-    discogs_price = round(discogs_price, 2)
-    
-    print(f"📅 Record age: {days_old} days, Markup: {markup_percent}%, Store: ${store_price}, Discogs: ${discogs_price}")
-    
-    return {
-        'days_old': days_old,
-        'markup_percent': round(markup_percent, 1),
-        'store_price': store_price,
-        'discogs_price': discogs_price
-    }
-
-def interpolate_markup(days_old, rules):
-    """Interpolate markup percentage between rule points"""
-    if not rules:
-        return 0
-    
-    # Convert rules to list of tuples (days, markup_percent) if they're dicts
-    rules_list = []
-    for r in rules:
-        if isinstance(r, dict):
-            rules_list.append((r['days_old'], r['markup_percent']))
-        elif isinstance(r, (list, tuple)) and len(r) >= 2:
-            rules_list.append((r[0], r[1]))
-        else:
-            continue
-    
-    if not rules_list:
-        return 0
-    
-    rules_list.sort()
-    
-    # If days_old is less than first rule, use first rule
-    if days_old <= rules_list[0][0]:
-        return rules_list[0][1]
-    
-    # If days_old is greater than last rule, use last rule
-    if days_old >= rules_list[-1][0]:
-        return rules_list[-1][1]
-    
-    # Find the two rules to interpolate between
-    for i in range(len(rules_list) - 1):
-        if rules_list[i][0] <= days_old <= rules_list[i+1][0]:
-            x1, y1 = rules_list[i]
-            x2, y2 = rules_list[i+1]
-            
-            # Linear interpolation
-            if x2 == x1:
-                return y1
-            
-            t = (days_old - x1) / (x2 - x1)
-            return y1 + t * (y2 - y1)
-    
-    return rules_list[-1][1]
-
-
-@app.route('/api/discogs/calculate-markup', methods=['POST'])
-def calculate_markup():
-    """Calculate Discogs price based on record age and markup rules (NO FALLBACK)"""
-    try:
-        data = request.json
-        created_at = data.get('created_at')
-        store_price = float(data.get('store_price', 0))
-        
-        if not created_at:
-            return jsonify({'success': False, 'error': 'created_at required'}), 400
-        
-        # Get markup rules from database
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
-        rules = cursor.fetchall()
-        conn.close()
-        
-        # NO FALLBACK - if no rules, return error
-        if not rules or len(rules) == 0:
-            return jsonify({
-                'success': False, 
-                'error': 'No markup rules configured. Please add markup rules in the Discogs tab.'
-            }), 400
-        
-        # Parse created_at date
-        from datetime import datetime, date
-        if isinstance(created_at, str):
-            try:
-                created_date = datetime.strptime(created_at.split('T')[0], '%Y-%m-%d').date()
-            except:
-                try:
-                    created_date = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S').date()
-                except:
-                    try:
-                        created_date = datetime.strptime(created_at, '%Y-%m-%d').date()
-                    except:
-                        return jsonify({'success': False, 'error': f'Could not parse date: {created_at}'}), 400
-        else:
-            created_date = created_at
-        
-        # Calculate days old
-        today = date.today()
-        days_old = (today - created_date).days
-        
-        # Calculate markup percentage
-        markup_percent = interpolate_markup(days_old, rules)
-        
-        # Calculate Discogs price
-        discogs_price = round(store_price * (1 + markup_percent / 100), 2)
-        
-        return jsonify({
-            'success': True,
-            'days_old': days_old,
-            'markup_percent': round(markup_percent, 1),
-            'store_price': store_price,
-            'discogs_price': discogs_price
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error calculating markup: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/price-estimate-v3', methods=['POST'])
