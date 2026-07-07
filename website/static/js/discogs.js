@@ -1457,24 +1457,32 @@ window.repostEntireStoreToDiscogs = async function() {
 // ============================================================================
 
 function showDiscogsStatusWithLink(message, url, type) {
-    if (!discogsStatusMessage) return;
+    const el = document.getElementById('discogs-status-message');
+    if (!el) {
+        console.log('Status (no element):', message);
+        return;
+    }
     type = type || 'success';
     const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
     const linkHtml = url ? '<br><a href="' + url + '" target="_blank" style="color: #007bff; text-decoration: underline;"><i class="fab fa-discogs"></i> View on Discogs</a>' : '';
-    discogsStatusMessage.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message) + linkHtml;
-    discogsStatusMessage.className = 'status-message status-' + type;
-    discogsStatusMessage.style.display = 'block';
-    setTimeout(function() { if (discogsStatusMessage) discogsStatusMessage.style.display = 'none'; }, 15000);
+    el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message) + linkHtml;
+    el.className = 'status-message status-' + type;
+    el.style.display = 'block';
+    setTimeout(function() { if (el) el.style.display = 'none'; }, 15000);
 }
 
 function showDiscogsStatus(message, type) {
-    if (!discogsStatusMessage) return;
+    const el = document.getElementById('discogs-status-message');
+    if (!el) {
+        console.log('Status (no element):', message);
+        return;
+    }
     type = type || 'info';
     const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-    discogsStatusMessage.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-    discogsStatusMessage.className = 'status-message status-' + type;
-    discogsStatusMessage.style.display = 'block';
-    setTimeout(function() { if (discogsStatusMessage) discogsStatusMessage.style.display = 'none'; }, 8000);
+    el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+    el.className = 'status-message status-' + type;
+    el.style.display = 'block';
+    setTimeout(function() { if (el) el.style.display = 'none'; }, 8000);
 }
 
 // ============================================================================
@@ -1542,11 +1550,12 @@ window.saveDiscogsConfig = async function() {
 };
 
 // ============================================================================
-// Markup Rules Management
+// Markup Rules Management (with debug logging)
 // ============================================================================
 
 async function loadMarkupRules() {
     try {
+        console.log('loadMarkupRules called');
         const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules', {
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
@@ -1590,9 +1599,18 @@ function renderMarkupRules(rules) {
 }
 
 window.addMarkupRule = async function() {
-    const days_old = parseInt(document.getElementById('new-rule-days').value);
-    const markup_percent = parseFloat(document.getElementById('new-rule-percent').value);
-    const description = document.getElementById('new-rule-desc').value;
+    console.log('addMarkupRule called');
+    const daysInput = document.getElementById('new-rule-days');
+    const percentInput = document.getElementById('new-rule-percent');
+    const descInput = document.getElementById('new-rule-desc');
+    if (!daysInput || !percentInput || !descInput) {
+        console.error('Markup rule input elements not found');
+        showDiscogsStatus('Error: Input fields not found. Please refresh the page.', 'error');
+        return;
+    }
+    const days_old = parseInt(daysInput.value);
+    const markup_percent = parseFloat(percentInput.value);
+    const description = descInput.value;
     if (isNaN(days_old) || isNaN(markup_percent)) {
         showDiscogsStatus('Please enter valid days and percentage', 'error');
         return;
@@ -1608,9 +1626,9 @@ window.addMarkupRule = async function() {
         });
         if (response.ok) {
             showDiscogsStatus('Markup rule added successfully', 'success');
-            document.getElementById('new-rule-days').value = '';
-            document.getElementById('new-rule-percent').value = '';
-            document.getElementById('new-rule-desc').value = '';
+            daysInput.value = '';
+            percentInput.value = '';
+            descInput.value = '';
             loadMarkupRules();
             if (currentLocation) {
                 await loadLocationRecords();
@@ -1620,13 +1638,22 @@ window.addMarkupRule = async function() {
             showDiscogsStatus('Error: ' + error.error, 'error');
         }
     } catch (error) {
+        console.error('addMarkupRule error:', error);
         showDiscogsStatus('Error: ' + error.message, 'error');
     }
 };
 
 window.updateMarkupRule = async function(ruleId) {
-    const markup_percent = parseFloat(document.getElementById('rule-percent-' + ruleId).value);
-    const description = document.getElementById('rule-desc-' + ruleId).value;
+    console.log('updateMarkupRule called for rule', ruleId);
+    const percentInput = document.getElementById('rule-percent-' + ruleId);
+    const descInput = document.getElementById('rule-desc-' + ruleId);
+    if (!percentInput || !descInput) {
+        console.error('Update input elements not found');
+        showDiscogsStatus('Error: Input fields not found. Please refresh.', 'error');
+        return;
+    }
+    const markup_percent = parseFloat(percentInput.value);
+    const description = descInput.value;
     if (isNaN(markup_percent)) {
         showDiscogsStatus('Please enter a valid percentage', 'error');
         return;
@@ -1651,11 +1678,13 @@ window.updateMarkupRule = async function(ruleId) {
             showDiscogsStatus('Error: ' + error.error, 'error');
         }
     } catch (error) {
+        console.error('updateMarkupRule error:', error);
         showDiscogsStatus('Error: ' + error.message, 'error');
     }
 };
 
 window.deleteMarkupRule = async function(ruleId) {
+    console.log('deleteMarkupRule called for rule', ruleId);
     if (!confirm('Are you sure you want to delete this markup rule?')) return;
     try {
         const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
@@ -1674,6 +1703,7 @@ window.deleteMarkupRule = async function(ruleId) {
             showDiscogsStatus('Error: ' + error.error, 'error');
         }
     } catch (error) {
+        console.error('deleteMarkupRule error:', error);
         showDiscogsStatus('Error: ' + error.message, 'error');
     }
 };
