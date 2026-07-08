@@ -31,17 +31,17 @@ const TabManager = (function() {
     
     // Register tab initializers
     function registerInitializers() {
-        // Add-Edit-Delete Tab
-        initializers['add-edit-delete'] = () => {
-            console.log('🔵 TabManager: Initializing Add/Edit/Delete tab');
-            if (typeof window.initAddEditDeleteTab === 'function') {
-                window.initAddEditDeleteTab();
+        // Inventory Ops Tab (formerly Add Records)
+        initializers['add-records'] = () => {
+            console.log('🔵 TabManager: Initializing Inventory Ops tab');
+            if (typeof window.initAddRecordsTab === 'function') {
+                window.initAddRecordsTab();
             } else {
-                console.warn('⚠️ initAddEditDeleteTab not found');
+                console.warn('⚠️ initAddRecordsTab not found');
             }
         };
         
-        // Check Out Tab
+        // Check Out Tab (removed from UI but kept for compatibility)
         initializers['check-out'] = () => {
             console.log('🔵 TabManager: Initializing Check Out tab');
             if (typeof window.initCheckout === 'function') {
@@ -75,7 +75,7 @@ const TabManager = (function() {
             }
         };
         
-        // Discogs Orders Tab - NEW
+        // Discogs Orders Tab
         initializers['discogs-orders'] = () => {
             console.log('🔵 TabManager: Initializing Discogs Orders tab');
             if (typeof window.initDiscogsOrdersTab === 'function') {
@@ -123,7 +123,7 @@ const TabManager = (function() {
             }
         };
         
-        // Price Tags Tab
+        // Price Tags Tab (kept for compatibility)
         initializers['price-tags'] = () => {
             console.log('🔵 TabManager: Initializing Price Tags tab');
             if (typeof window.initPriceTagsTab === 'function') {
@@ -218,7 +218,6 @@ const TabManager = (function() {
                 }
             },
             'discogs-orders': () => {
-                // Cleanup for discogs orders tab
                 const modal = document.getElementById('discogs-order-modal');
                 if (modal) {
                     modal.style.display = 'none';
@@ -366,39 +365,30 @@ const TabManager = (function() {
     
     // Public API
     return {
-        // Initialize the tab manager
         init: function() {
             console.log('🚀 TabManager: Initializing...');
             
-            // Register all initializers
             registerInitializers();
             registerCleanupFunctions();
             
-            // Get available tabs
             const availableTabs = getAvailableTabs();
             console.log(`📑 TabManager: Available tabs: ${availableTabs.join(', ')}`);
             
-            // Set up click handlers
             setupTabClickHandlers();
             
-            // Determine which tab to activate
             let initialTab = null;
-            
-            // Check for stored tab preference
             const storedTab = getStoredTab();
             if (storedTab && tabExists(storedTab)) {
                 initialTab = storedTab;
                 console.log(`💾 TabManager: Restoring stored tab: ${initialTab}`);
             }
             
-            // Check for hash in URL
             const hash = window.location.hash.substring(1);
             if (hash && tabExists(hash)) {
                 initialTab = hash;
                 console.log(`🔗 TabManager: Using hash from URL: ${initialTab}`);
             }
             
-            // Check for active tab in DOM
             if (!initialTab) {
                 const activeTabElement = document.querySelector('.tab.active');
                 if (activeTabElement) {
@@ -407,26 +397,21 @@ const TabManager = (function() {
                 }
             }
             
-            // Default to first tab if none found
             if (!initialTab && availableTabs.length > 0) {
                 initialTab = availableTabs[0];
                 console.log(`🎯 TabManager: Using default tab: ${initialTab}`);
             }
             
-            // Activate the initial tab
             if (initialTab) {
                 activateTab(initialTab);
             } else {
                 console.error('❌ TabManager: No tabs available to activate!');
             }
             
-            // Set up hash change listener
             window.addEventListener('hashchange', handleHashChange);
-            
             console.log('✅ TabManager: Initialization complete');
         },
         
-        // Switch to a specific tab
         switchToTab: function(tabName) {
             if (tabExists(tabName)) {
                 return activateTab(tabName);
@@ -436,23 +421,15 @@ const TabManager = (function() {
             }
         },
         
-        // Get current tab
         getCurrentTab: getCurrentTab,
-        
-        // Get all tabs
         getTabs: getAvailableTabs,
-        
-        // Check if tab exists
         tabExists: tabExists,
-        
-        // Refresh current tab
         refreshCurrentTab: function() {
             if (currentTab) {
                 initializeTab(currentTab);
             }
         },
         
-        // Register a custom initializer for a tab
         registerInitializer: function(tabName, initFunction) {
             if (typeof initFunction === 'function') {
                 initializers[tabName] = initFunction;
@@ -464,7 +441,6 @@ const TabManager = (function() {
             }
         },
         
-        // Register a cleanup function for a tab
         registerCleanup: function(tabName, cleanupFunction) {
             if (typeof cleanupFunction === 'function') {
                 cleanupFunctions[tabName] = cleanupFunction;
@@ -498,7 +474,6 @@ if (document.readyState === 'loading') {
         }
     });
 } else {
-    // DOM already loaded
     setTimeout(function() {
         if (window.TabManager && !window.TabManager._initialized) {
             window.TabManager.init();
@@ -506,7 +481,5 @@ if (document.readyState === 'loading') {
     }, 100);
 }
 
-// Make TabManager globally available
 window.TabManager = TabManager;
-
 console.log('✅ tab-manager.js loaded');
