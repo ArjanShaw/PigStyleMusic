@@ -2116,11 +2116,9 @@
         
         <!-- Tabs with data-tab attributes -->
         <div class="tab-container">
-            <!-- NEW: Add Records tab -->
             <div class="tab" data-tab="add-records">
                 <i class="fas fa-plus-circle"></i> Add Records
             </div>
-            <!-- Checkout / Update / Delete tab -->
             <div class="tab" data-tab="check-out">
                 <i class="fas fa-shopping-cart"></i> Checkout / Update / Delete
             </div>
@@ -2159,7 +2157,7 @@
             </div>
         </div>
 
-        <!-- Add Records Tab -->
+        <!-- ==================== Add Records Tab ==================== -->
         <div id="add-records-tab" class="tab-content">
             <div class="inventory-container">
                 <div class="stats-row">
@@ -2182,17 +2180,6 @@
                 </div>
 
                 <div class="search-section">
-                    <div class="radio-group">
-                        <label class="radio-option">
-                            <input type="radio" name="searchType" value="add" checked>
-                            Add Item (Search Discogs)
-                        </label>
-                        <label class="radio-option">
-                            <input type="radio" name="searchType" value="edit">
-                            Edit or Delete Item
-                        </label>
-                    </div>
-
                     <div class="search-options-row">
                         <div class="search-field-select">
                             <label for="searchField"><i class="fas fa-search"></i> Search by:</label>
@@ -2282,7 +2269,7 @@
             </div>
         </div>
 
-        <!-- Checkout / Update / Delete Tab (formerly Check Out) -->
+        <!-- ==================== Checkout / Update / Delete Tab ==================== -->
         <div id="check-out-tab" class="tab-content">
             <h2><i class="fas fa-shopping-cart"></i> Checkout / Update / Delete</h2>
             
@@ -2491,10 +2478,10 @@
             </div>
         </div>
 
-        <!-- Inventory Purchases Tab -->
+        <!-- ==================== Inventory Purchases Tab ==================== -->
         <div id="inventory-purchases-tab" class="tab-content">
             <h2><i class="fas fa-shopping-cart"></i> Inventory Purchases</h2>
-            <!-- Full content unchanged -->
+            
             <div class="stats-row" style="margin-bottom: 25px;">
                 <div class="stat-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
                     <div class="stat-value" id="total-spent" style="color: white;">$0.00</div>
@@ -2570,7 +2557,6 @@
                 </form>
             </div>
             
-            <!-- Filters and table (shortened for brevity) -->
             <div class="filters-section">
                 <div class="filters-row">
                     <div class="filter-group">
@@ -2621,10 +2607,10 @@
             </div>
         </div>
 
-        <!-- Inventory Tab -->
+        <!-- ==================== Inventory Tab ==================== -->
         <div id="inventory-tab" class="tab-content">
             <h2><i class="fas fa-boxes"></i> Inventory Management</h2>
-            <!-- Full content unchanged -->
+            
             <div style="margin-bottom: 25px;">
                 <div class="inventory-scanner-input" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 12px; padding: 20px; color: white;">
                     <h3 style="margin-top: 0; margin-bottom: 15px; color: white;"><i class="fas fa-qrcode"></i> Barcode Scanner</h3>
@@ -2768,10 +2754,10 @@
             </div>
         </div>
 
-        <!-- Discogs Tab -->
+        <!-- ==================== Discogs Tab ==================== -->
         <div id="discogs-tab" class="tab-content">
             <h2><i class="fab fa-discogs"></i> Discogs Management - Location Based</h2>
-            <!-- Full content unchanged -->
+            
             <div style="margin-bottom: 20px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
                 <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 12px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupRules()">
                     <span><i class="fas fa-chart-line"></i> Markup Rules (based on record age)</span>
@@ -2901,6 +2887,11 @@
                         <i class="fas fa-store"></i> Repost Entire Store to Discogs
                     </button>
                 </div>
+                <div class="filter-group">
+                    <button id="post-new-records-btn" class="btn btn-info" onclick="postNewRecordsToDiscogs()" style="background: #17a2b8; color: white;">
+                        <i class="fas fa-plus-circle"></i> Post New Records (status_id=1) to Discogs & Mark Active
+                    </button>
+                </div>
             </div>
             
             <div class="search-section" style="margin-bottom: 20px; background: #f0f7ff; border-left: 4px solid #28a745; padding: 15px;">
@@ -2960,6 +2951,7 @@
                     <li><strong>Discogs Price:</strong> Calculated using the markup rules based on record age</li>
                     <li><strong>Post to Discogs:</strong> Click "Post to Discogs" to list all eligible records</li>
                     <li><strong>Repost Entire Store:</strong> Click the yellow button to post ALL active store records (respects last_seen filter)</li>
+                    <li><strong>Post New Records:</strong> Click the blue button to fetch all status_id=1 records, post them to Discogs, and mark them Active</li>
                     <li><strong>Single Post:</strong> Use the "Post" button next to individual records to test a single listing</li>
                 </ul>
                 <p style="margin-top: 10px;"><strong>Formula:</strong> Discogs Price = Store Price × (1 + Markup% / 100)</p>
@@ -2967,17 +2959,19 @@
             </div>
         </div>
 
-        <!-- Discogs Orders Tab -->
+        <!-- ==================== Discogs Orders Tab ==================== -->
         <div id="discogs-orders-tab" class="tab-content">
             <h2><i class="fas fa-shopping-bag"></i> Discogs Orders</h2>
-            <!-- Full content unchanged -->
+            
             <div id="discogs-orders-status" class="status-message" style="display: none;"></div>
+            
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <button id="discogs-orders-refresh" class="btn btn-primary">
                         <i class="fas fa-sync-alt"></i> Refresh Orders
                     </button>
                 </div>
+                
                 <select id="discogs-orders-status-filter" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; min-width: 150px;">
                     <option value="">All Statuses</option>
                     <option value="Pending">⏳ Pending</option>
@@ -2988,6 +2982,7 @@
                     <option value="Cancelled (Item Unavailable)">❌ Cancelled - Unavailable</option>
                     <option value="Cancelled (Per Buyer's Request)">❌ Cancelled - Buyer</option>
                 </select>
+                
                 <div style="display: flex; gap: 10px; align-items: center; flex: 2; min-width: 250px;">
                     <input type="text" id="discogs-orders-search" class="search-input" placeholder="Search by buyer, order ID..." style="flex: 1;">
                     <button id="discogs-orders-search-btn" class="btn btn-secondary">
@@ -2995,6 +2990,7 @@
                     </button>
                 </div>
             </div>
+            
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
                 <div class="stat-card" style="padding: 15px; text-align: center; background: #f8f9fa; border-radius: 8px;">
                     <div style="font-size: 12px; color: #666;">Total Orders</div>
@@ -3005,6 +3001,7 @@
                     <div style="font-size: 28px; font-weight: bold; color: #28a745;" id="discogs-orders-revenue">$0.00</div>
                 </div>
             </div>
+            
             <div class="records-table-container">
                 <table class="records-table" id="discogs-orders-table">
                     <thead>
@@ -3028,6 +3025,7 @@
                     </tbody>
                 </table>
             </div>
+            
             <div id="discogs-orders-pagination" style="display: none; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; padding: 15px 0; border-top: 1px solid #ddd;">
                 <button id="discogs-orders-prev" class="pagination-btn" disabled>
                     <i class="fas fa-chevron-left"></i> Previous
@@ -3037,6 +3035,7 @@
                     Next <i class="fas fa-chevron-right"></i>
                 </button>
             </div>
+            
             <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
                 <h4><i class="fas fa-info-circle"></i> About Discogs Orders</h4>
                 <ul style="margin: 10px 0 0 20px;">
@@ -3049,13 +3048,15 @@
             </div>
         </div>
 
-        <!-- Accessories Tab -->
+        <!-- ==================== Accessories Tab ==================== -->
         <div id="accessories-tab" class="tab-content">
             <h2><i class="fas fa-tshirt"></i> Accessories Management</h2>
-            <!-- Full content unchanged -->
+            
             <div id="accessories-status" class="status-message" style="display: none;"></div>
+            
             <div class="user-form-section" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
                 <h3 style="margin-bottom: 20px;"><i class="fas fa-plus-circle"></i> Add New Accessory</h3>
+                
                 <div class="user-form-grid">
                     <div class="user-form-group">
                         <label for="accessory-title">Title *</label>
@@ -3082,6 +3083,7 @@
                         <div id="image-preview" style="margin-top: 10px; display: none;"></div>
                     </div>
                 </div>
+                
                 <div class="action-buttons" style="justify-content: flex-start;">
                     <button class="btn btn-success" onclick="createAccessory()">
                         <i class="fas fa-save"></i> Create Accessory
@@ -3091,6 +3093,7 @@
                     </button>
                 </div>
             </div>
+            
             <div class="stats-grid" style="margin-bottom: 20px; margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
                 <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
                     <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Accessories</h3>
@@ -3105,6 +3108,7 @@
                     <p class="stat-number" id="avg-accessory-price" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">$0.00</p>
                 </div>
             </div>
+            
             <div class="search-section" style="margin-bottom: 20px;">
                 <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 300px;">
@@ -3124,6 +3128,7 @@
                     </div>
                 </div>
             </div>
+            
             <div class="records-table-container">
                 <table class="records-table" id="accessories-table">
                     <thead>
@@ -3142,18 +3147,20 @@
                     </tbody>
                 </table>
             </div>
+            
             <div class="loading" id="accessories-loading" style="display: none;">
                 <div class="loading-spinner"></div>
                 <p>Loading...</p>
             </div>
         </div>
 
-        <!-- Users Tab -->
+        <!-- ==================== Users Tab ==================== -->
         <div id="users-tab" class="tab-content">
             <h2><i class="fas fa-users"></i> User Management</h2>
-            <!-- Full content unchanged -->
+            
             <div class="user-form-section">
                 <h3 style="margin-bottom: 20px;"><i class="fas fa-user-plus"></i> Add New User</h3>
+                
                 <div class="user-form-grid">
                     <div class="user-form-group">
                         <label for="new-username">Username *</label>
@@ -3193,6 +3200,7 @@
                         </p>
                     </div>
                 </div>
+                
                 <div class="action-buttons" style="justify-content: flex-start;">
                     <button class="btn btn-success" onclick="createUser()">
                         <i class="fas fa-save"></i> Create User
@@ -3202,6 +3210,7 @@
                     </button>
                 </div>
             </div>
+            
             <div class="stats-grid" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
                 <div class="stat-card">
                     <h3>Total Users</h3>
@@ -3216,6 +3225,7 @@
                     <p class="stat-number" id="admin-total-commission">$0.00</p>
                 </div>
             </div>
+            
             <div class="records-table-container">
                 <table class="records-table" id="users-table">
                     <thead>
@@ -3236,6 +3246,7 @@
                     </tbody>
                 </table>
             </div>
+            
             <div id="payment-modal" class="modal-overlay" style="display:none;">
                 <div class="modal-content" style="max-width:400px;">
                     <div class="modal-header">
@@ -3253,18 +3264,20 @@
                     </div>
                 </div>
             </div>
+            
             <div class="loading" id="users-loading" style="display:none;">
                 <div class="loading-spinner"></div>
                 <p>Processing...</p>
             </div>
         </div>
 
-        <!-- Admin Config Tab -->
+        <!-- ==================== Admin Config Tab ==================== -->
         <div id="admin-config-tab" class="tab-content">
             <h2><i class="fas fa-sliders-h"></i> Admin Configuration</h2>
-            <!-- Full content unchanged -->
+            
             <div class="gift-card-section">
                 <h3><i class="fas fa-gift"></i> Gift Cards</h3>
+                
                 <div style="display: flex; gap: 30px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 250px;">
                         <h4 style="margin-bottom: 15px;">Create New Gift Card</h4>
@@ -3305,9 +3318,11 @@
                     </div>
                 </div>
             </div>
+            
             <div class="admin-config-section">
                 <h3><i class="fas fa-print"></i> Print Settings</h3>
                 <p>Configuration values related to price tag printing.</p>
+                
                 <div class="records-table-container">
                     <table class="records-table" id="print-config-table">
                         <thead>
@@ -3322,9 +3337,11 @@
                     </table>
                 </div>
             </div>
+            
             <div class="admin-config-section" style="margin-top: 30px;">
                 <h3><i class="fas fa-cog"></i> General Settings</h3>
                 <p>Other system configuration values.</p>
+                
                 <div class="records-table-container">
                     <table class="records-table" id="general-config-table">
                         <thead>
@@ -3339,8 +3356,10 @@
                     </table>
                 </div>
             </div>
+            
             <div class="admin-config-section" style="margin-top: 30px;">
                 <h3><i class="fas fa-plus-circle"></i> Add New Configuration</h3>
+                
                 <div class="add-config-form">
                     <div class="filter-group">
                         <label for="new-config-key">Key:</label>
@@ -3362,6 +3381,7 @@
                     </div>
                 </div>
             </div>
+            
             <div class="action-buttons" style="margin-top: 20px;">
                 <button class="btn btn-primary" onclick="loadConfigTables()">
                     <i class="fas fa-sync-alt"></i> Refresh Config
@@ -3369,14 +3389,15 @@
             </div>
         </div>
 
-        <!-- Custom Labels Tab -->
+        <!-- ==================== Custom Labels Tab ==================== -->
         <div id="custom-labels-tab" class="tab-content">
             <h2><i class="fas fa-tag"></i> Custom Labels</h2>
-            <!-- Full content unchanged -->
+            
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px; color: white;">
                 <h3 style="margin: 0 0 10px 0;"><i class="fas fa-info-circle"></i> How to Use Custom Labels</h3>
                 <p style="margin: 0;">Enter one label per line. Each line will be printed on a separate label using the same dimensions as price tags. Supports multiple lines per label by using the format: <code>Line 1|Line 2|Line 3</code> (use pipe | to separate lines).</p>
             </div>
+            
             <div class="starting-position-section" style="background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%);">
                 <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -3397,8 +3418,10 @@
                     </div>
                 </div>
             </div>
+            
             <div class="user-form-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-top: 20px;">
                 <h3 style="margin-bottom: 20px;"><i class="fas fa-pencil-alt"></i> Enter Custom Labels</h3>
+                
                 <div class="user-form-grid">
                     <div class="user-form-group" style="grid-column: 1/-1;">
                         <label for="custom-label-text"><i class="fas fa-font"></i> Labels (one per line):</label>
@@ -3414,6 +3437,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                         </p>
                     </div>
                 </div>
+                
                 <div class="action-buttons" style="justify-content: flex-start; gap: 15px;">
                     <button class="btn btn-success" onclick="customLabelsGeneratePDF()">
                         <i class="fas fa-print"></i> Generate PDF
@@ -3426,6 +3450,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                     </button>
                 </div>
             </div>
+            
             <div class="stats-table-container" style="margin-top: 20px;">
                 <div class="table-header">
                     <h4><i class="fas fa-eye"></i> Preview</h4>
@@ -3435,6 +3460,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                     <p style="color: #666; text-align: center;">Enter labels above to see preview</p>
                 </div>
             </div>
+            
             <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
                 <h4><i class="fas fa-info-circle"></i> Label Printing Information:</h4>
                 <ul style="margin: 10px 0 0 20px;">
@@ -3448,10 +3474,10 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
             </div>
         </div>
 
-        <!-- DB Query Tab -->
+        <!-- ==================== DB Query Tab ==================== -->
         <div id="db-query-tab" class="tab-content">
             <h2><i class="fas fa-database"></i> Database Query Tool</h2>
-            <!-- Full content unchanged -->
+            
             <div class="db-query-container">
                 <div class="db-tree-panel">
                     <div class="db-tree-header">
@@ -3465,6 +3491,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                         </div>
                     </div>
                 </div>
+                
                 <div class="db-query-panel">
                     <div class="db-query-editor">
                         <div class="db-query-header">
@@ -3484,6 +3511,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                             <span><i class="fas fa-history"></i> Query history: <span id="query-history-count">0</span></span>
                         </div>
                     </div>
+                    
                     <div class="db-query-builder" id="query-builder" style="display: none;">
                         <h4><i class="fas fa-tools"></i> Quick Query Builder</h4>
                         <div class="builder-fields">
@@ -3526,6 +3554,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                         <div id="builder-preview" class="sql-preview">
                         </div>
                     </div>
+                    
                     <div class="db-results-panel">
                         <div class="db-results-header">
                             <h3><i class="fas fa-table"></i> Query Results</h3>
@@ -3544,10 +3573,10 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
             </div>
         </div>
 
-        <!-- Sticky Notes Tab -->
+        <!-- ==================== Sticky Notes Tab ==================== -->
         <div id="sticky-notes-tab" class="tab-content">
             <h2><i class="fas fa-sticky-note"></i> Sticky Notes Management</h2>
-            <!-- Full content unchanged -->
+            
             <div style="margin-bottom: 20px;">
                 <button class="btn btn-primary" onclick="showAddStickyNoteModal()">
                     <i class="fas fa-plus"></i> Add New Sticky Note
@@ -3556,6 +3585,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
             </div>
+            
             <div class="records-table-container">
                 <table class="records-table" id="sticky-notes-table">
                     <thead>
@@ -3576,24 +3606,28 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                         </tbody>
                  </table>
             </div>
+            
             <div class="loading" id="sticky-notes-loading" style="display: none;">
                 <div class="loading-spinner"></div>
                 <p>Loading...</p>
             </div>
         </div>
 
-        <!-- Stats Tab -->
+        <!-- ==================== Stats Tab ==================== -->
         <div id="stats-tab" class="tab-content">
             <h2><i class="fas fa-chart-line"></i> Sales Analytics Dashboard</h2>
-            <!-- Full content unchanged -->
+            
             <div class="stats-grid-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-top: 20px;">
+                
                 <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <h3 style="margin: 0 0 15px 0; font-size: 16px;"><i class="fas fa-table"></i> Best Selling Artists</h3>
+                    
                     <div style="margin-bottom: 10px; display: flex; gap: 8px;">
                         <input type="text" id="artistSearchInput" placeholder="Search artist..." style="flex: 1; padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px;">
                         <button id="searchArtistBtn" style="padding: 5px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Search</button>
                         <button id="clearSearchBtn" style="padding: 5px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear</button>
                     </div>
+                    
                     <div style="max-height: 250px; overflow-y: auto;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                             <thead style="position: sticky; top: 0; background: #f8f9fa;">
@@ -3607,6 +3641,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                             </tbody>
                         </table>
                     </div>
+                    
                     <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
                         <select id="artistsPerPage" style="padding: 3px; font-size: 12px;">
                             <option value="25">25 per page</option>
@@ -3620,6 +3655,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                         </div>
                     </div>
                 </div>
+
                 <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <h3 style="margin: 0 0 15px 0; font-size: 16px;">
                         <i class="fas fa-chart-line"></i> Sales Over Time
@@ -3631,14 +3667,17 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                     </h3>
                     <canvas id="salesOverTimeChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
                 </div>
+
                 <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <h3 style="margin: 0 0 15px 0; font-size: 16px;"><i class="fas fa-music"></i> Top Selling Genres</h3>
                     <canvas id="topGenresChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
                 </div>
+
                 <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <h3 style="margin: 0 0 15px 0; font-size: 16px;"><i class="fas fa-clock"></i> Last Seen Distribution (Active Inventory)</h3>
                     <canvas id="lastSeenDistributionChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
                 </div>
+
                 <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <h3 style="margin: 0 0 15px 0; font-size: 16px;">
                         <i class="fas fa-calendar-alt"></i> Records Created Over Time
@@ -3646,17 +3685,20 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                     </h3>
                     <canvas id="createdAtChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
                 </div>
+
                 <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <h3 style="margin: 0 0 15px 0; font-size: 16px;"><i class="fas fa-record-vinyl"></i> Sales by Condition</h3>
                     <canvas id="conditionSalesChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
                     <p style="text-align: center; color: #999; margin-top: 20px;">Coming Soon</p>
                 </div>
+
                 <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <h3 style="margin: 0 0 15px 0; font-size: 16px;"><i class="fas fa-chart-pie"></i> Inventory by Status</h3>
                     <canvas id="statusDistributionChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
                     <p style="text-align: center; color: #999; margin-top: 20px;">Coming Soon</p>
                 </div>
             </div>
+            
             <div id="stats-error" class="stats-error" style="display: none; color: #dc3545; text-align: center; padding: 20px; background: #f8d7da; border-radius: 8px; margin: 20px;">
                 <i class="fas fa-exclamation-triangle"></i> Error loading statistics
             </div>
@@ -3664,9 +3706,283 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
 
     </div>
 
-    <!-- All modals (unchanged) -->
+    <!-- ==================== Modals ==================== -->
+    
+    <!-- Edit Purchase Modal -->
+    <div id="edit-purchase-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-edit"></i> Edit Purchase</h3>
+                <button class="modal-close" onclick="window.closeEditModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-purchase-id">
+                <div style="margin-bottom: 15px;">
+                    <label for="edit-purchase-date">Purchase Date</label>
+                    <input type="date" id="edit-purchase-date" class="filter-select" style="width: 100%;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="edit-seller-name">Seller Name</label>
+                    <input type="text" id="edit-seller-name" class="filter-select" style="width: 100%;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="edit-seller-contact">Seller Contact</label>
+                    <input type="text" id="edit-seller-contact" class="filter-select" style="width: 100%;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="edit-amount-spent">Amount Spent ($)</label>
+                    <input type="number" id="edit-amount-spent" step="0.01" min="0.01" class="filter-select" style="width: 100%;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="edit-purchase-description">Description</label>
+                    <textarea id="edit-purchase-description" rows="3" class="filter-select" style="width: 100%;"></textarea>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="edit-bill-image">Bill of Sale (replace existing)</label>
+                    <input type="file" id="edit-bill-image" accept="image/*,application/pdf" onchange="window.uploadEditBillImage(event)">
+                    <div id="edit-bill-preview"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="window.closeEditModal()">Cancel</button>
+                <button class="btn btn-success" onclick="window.updatePurchase()">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
 
-    <!-- Scripts -->
+    <!-- Discogs Location Modal -->
+    <div id="discogs-location-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-map-marker-alt"></i> Set Location for Records</h3>
+                <button class="modal-close" onclick="closeDiscogsLocationModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px;">You are about to submit <strong id="modal-selected-count">0</strong> records to Discogs.</p>
+                
+                <div style="margin-bottom: 20px;">
+                    <label for="modal-location-input" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                        <i class="fas fa-map-pin"></i> Location:
+                    </label>
+                    <input type="text" 
+                        id="modal-location-input" 
+                        class="search-input" 
+                        placeholder="e.g., A3, Shelf 2, Box 4, Rack B, Row 5..."
+                        style="width: 100%; font-size: 16px; padding: 12px;">
+                    <p style="font-size: 12px; color: #666; margin-top: 8px;">
+                        <i class="fas fa-info-circle"></i> This location will be saved to all selected records and added to Discogs listing comments
+                    </p>
+                </div>
+                
+                <div id="modal-records-preview" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                    <strong>Selected Records:</strong>
+                    <div id="modal-records-list" style="margin-top: 8px; font-size: 13px;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeDiscogsLocationModal()">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button class="btn btn-success" onclick="confirmDiscogsSubmit()" id="modal-submit-btn">
+                    <i class="fab fa-discogs"></i> Submit to Discogs
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sticky Notes Modal -->
+    <div id="sticky-note-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="sticky-modal-title"><i class="fas fa-sticky-note"></i> Add Sticky Note</h3>
+                <button class="modal-close" onclick="closeStickyNoteModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sticky-note-id">
+                <div style="margin-bottom: 15px;">
+                    <label for="sticky-note-text" style="display: block; margin-bottom: 5px; font-weight: 600;">Note Text:</label>
+                    <textarea id="sticky-note-text" rows="4" class="search-input" placeholder="Enter note (max 200 characters)" maxlength="200" oninput="updatePreview()" style="width: 100%;"></textarea>
+                    <div style="text-align: right; font-size: 12px; color: #666;"><span id="char-count">0</span>/200</div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="sticky-note-position" style="display: block; margin-bottom: 5px; font-weight: 600;">Position (optional):</label>
+                    <input type="number" id="sticky-note-position" class="search-input" placeholder="Leave blank for auto" min="0" step="1" style="width: 100%;">
+                    <p style="font-size: 12px; color: #666; margin-top: 5px;">Higher numbers appear lower on the page. Leave blank to append at the end.</p>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="sticky-note-active" checked>
+                        <span>Active</span>
+                    </label>
+                </div>
+                <div style="margin-top: 15px; padding: 15px; background: #ffeb3b; border-radius: 4px; font-family: 'Comic Sans MS', cursive; font-size: 16px;">
+                    <strong>Preview:</strong>
+                    <div id="preview-text" style="margin-top: 5px; padding: 5px; background: rgba(255,255,255,0.5); border-radius: 4px; min-height: 30px;">Your note will appear here</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeStickyNoteModal()">Cancel</button>
+                <button class="btn btn-success" onclick="saveStickyNote()">
+                    <i class="fas fa-save"></i> Save Note
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Duplicate Record Selection Modal -->
+    <div id="duplicate-record-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <i class="fas fa-exclamation-triangle"></i> Multiple Records Found
+                </h3>
+                <button class="modal-close" type="button" onclick="closeDuplicateRecordModal(true)">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="duplicate-record-info" style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                    <strong><i class="fas fa-barcode"></i> Barcode: <span id="dup-barcode-display"></span></strong>
+                    <p style="margin: 5px 0 0 0; font-size: 13px;">
+                        <span id="dup-count-display"></span> records share this barcode. Please select the correct record:
+                    </p>
+                </div>
+                <div id="duplicate-records-list" style="max-height: 400px; overflow-y: auto;">
+                </div>
+                <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; font-size: 13px; color: #666;">
+                    <i class="fas fa-info-circle"></i> 
+                    Click on a record to select it. The scanner will continue after your selection.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" type="button" onclick="closeDuplicateRecordModal(true)">
+                    <i class="fas fa-times"></i> Cancel Scan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tender Modal -->
+    <div id="tender-modal" class="tender-modal" style="display: none;">
+        <div class="tender-content">
+            <h3 style="text-align: center; margin-bottom: 20px;"><i class="fas fa-money-bill-wave"></i> Cash Payment</h3>
+            <div style="text-align: center; margin-bottom: 10px;">Total Due:</div>
+            <div class="tender-amount" id="tender-total-due">$0.00</div>
+            <input type="number" id="tender-amount" class="tender-input" placeholder="Enter amount received" min="0" step="0.01" autofocus>
+            <div id="change-display-container" style="display: none;">
+                <div style="text-align: center; margin-bottom: 5px;">Change:</div>
+                <div class="change-display" id="change-amount">$0.00</div>
+            </div>
+            <div class="action-buttons" style="justify-content: center; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="closeTenderModal()">Cancel</button>
+                <button class="btn btn-success" onclick="processCashPayment()" id="complete-payment-btn" disabled>
+                    <i class="fas fa-check"></i> Complete Payment
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gift Card Modal -->
+    <div id="giftcard-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-gift"></i> Pay with Gift Card</h3>
+                <button class="modal-close" onclick="closeGiftCardModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 14px; color: #666;">Total Due:</div>
+                    <div class="tender-amount" id="giftcard-total-due">$0.00</div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label for="giftcard-code" style="display: block; margin-bottom: 8px; font-weight: 500;">
+                        <i class="fas fa-barcode"></i> Scan or Enter Gift Card Code:
+                    </label>
+                    <input type="text" id="giftcard-code" class="search-input" placeholder="e.g., GC_ABC123" style="width: 100%; font-size: 16px; text-align: center;" autofocus>
+                    <button class="btn btn-primary" onclick="checkGiftCardForPayment()" style="margin-top: 10px; width: 100%;">
+                        <i class="fas fa-search"></i> Check Card
+                    </button>
+                </div>
+                <div id="giftcard-info" style="display: none; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <div style="font-weight: bold; margin-bottom: 5px;">Card: <span id="giftcard-id-display"></span></div>
+                    <div>Balance: <strong id="giftcard-balance-display" style="color: #28a745;"></strong></div>
+                </div>
+                <div id="giftcard-apply-section" style="display: none;">
+                    <label for="giftcard-amount" style="display: block; margin-bottom: 8px; font-weight: 500;">Amount to apply:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="number" id="giftcard-amount" class="search-input" step="0.01" min="0" style="flex: 2;">
+                        <button class="btn btn-success" onclick="applyGiftCardToCart()"><i class="fas fa-check"></i> Apply</button>
+                    </div>
+                    <div class="preset-buttons" style="margin-top: 10px;">
+                        <button class="btn btn-small btn-secondary" onclick="setGiftCardAmount('full')">Full Amount</button>
+                        <button class="btn btn-small btn-secondary" onclick="setGiftCardAmount('half')">Half</button>
+                    </div>
+                </div>
+                <div id="giftcard-result" style="margin-top: 15px; display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeGiftCardModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Square Payment Modal -->
+    <div id="square-payment-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-square"></i> Square Payment</h3>
+                <button class="modal-close" onclick="closeSquarePaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="square-payment-status" style="text-align: center; padding: 20px 0;">
+                    <div id="square-status-icon" style="font-size: 48px; margin-bottom: 15px; color: #ffc107;">
+                        <i class="fas fa-spinner fa-pulse"></i>
+                    </div>
+                    <div id="square-status-message" style="font-size: 18px; font-weight: 600; color: #333;">
+                        Waiting for payment on terminal...
+                    </div>
+                    <div id="square-status-detail" style="font-size: 14px; color: #666; margin-top: 8px;">
+                        Please complete payment on the Square Terminal
+                    </div>
+                </div>
+                
+                <div id="square-payment-info" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <div class="info-row">
+                        <span class="label">Amount:</span>
+                        <span class="value" id="square-modal-amount">$0.00</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Terminal:</span>
+                        <span class="value" id="square-modal-terminal">--</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Status:</span>
+                        <span class="value" id="square-modal-status-text" style="color: #ffc107;">Waiting...</span>
+                    </div>
+                </div>
+                
+                <div id="square-payment-actions" style="display: flex; gap: 10px; justify-content: center; margin-top: 15px; flex-wrap: wrap;">
+                    <button id="square-force-complete-btn" class="btn btn-square-force" onclick="forceCompleteSquarePayment()">
+                        <i class="fas fa-check-double"></i> Force Complete
+                    </button>
+                    <button id="square-cancel-payment-btn" class="btn btn-square-cancel" onclick="cancelSquarePayment()">
+                        <i class="fas fa-times"></i> Cancel Payment
+                    </button>
+                </div>
+                
+                <div id="square-force-warning">
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    <strong>Warning:</strong> Force complete will mark the sale as completed without waiting for terminal confirmation. 
+                    Use this only if the customer has already paid on the terminal.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSquarePaymentModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== Scripts ==================== -->
     <script src="/static/js/app-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -3675,7 +3991,6 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="/static/js/custom-labels.js"></script>
 
-    <!-- Admin JavaScript Modules -->
     <script src="/static/js/discogs.js"></script>
     <script src="/static/js/discogs-orders.js"></script>
     <script src="/static/js/inventory-purchases.js"></script>
@@ -3683,7 +3998,6 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/config-manager.js"></script>
     <script src="/static/js/config-value-manager.js"></script>
-    <!-- NEW add-records.js (replaces add-edit-delete-manager.js and price-tags.js) -->
     <script src="/static/js/add-records.js"></script>
     <script src="/static/js/checkout.js"></script>
     <script src="/static/js/users.js"></script>
@@ -3696,11 +4010,108 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     <script src="/static/js/stats.js"></script>
 
     <script>
-    // Global configuration loading (unchanged)
     window.dbConfigValues = window.dbConfigValues || {};
 
     (async function initializePageConfig() {
-        // (same as before)
+        console.log('🔄 Initializing global configuration for admin panel...');
+        try {
+            if (typeof AppConfig === 'undefined') {
+                console.error('AppConfig not loaded yet, waiting...');
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            if (typeof getConfigValue === 'undefined' && typeof getConfigValues === 'undefined') {
+                console.error('config-value-manager.js not loaded yet, waiting...');
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            const requiredConfigKeys = [
+                'MIN_STORE_PRICE', 'STORE_CAPACITY', 'TAX_RATE', 'STORE_NAME', 'STORE_ADDRESS',
+                'STORE_PHONE', 'RECEIPT_FOOTER', 'LABEL_WIDTH_MM', 'LABEL_HEIGHT_MM', 'LEFT_MARGIN_MM',
+                'GUTTER_SPACING_MM', 'TOP_MARGIN_MM', 'PRICE_FONT_SIZE', 'TEXT_FONT_SIZE', 'BARCODE_HEIGHT',
+                'PRINT_BORDERS', 'PRICE_Y_POS', 'BARCODE_Y_POS', 'INFO_Y_POS'
+            ];
+            let configLoaded = false;
+            if (typeof getConfigValues === 'function') {
+                console.log('Loading config via getConfigValues()...');
+                try {
+                    const configs = await getConfigValues(requiredConfigKeys);
+                    if (configs && Object.keys(configs).length > 0) {
+                        Object.keys(configs).forEach(key => {
+                            window.dbConfigValues[key] = { value: configs[key], description: '' };
+                        });
+                        configLoaded = true;
+                        console.log('✅ Config loaded via getConfigValues');
+                    }
+                } catch (batchError) {
+                    console.error('Batch config load failed:', batchError);
+                }
+            } 
+            if (!configLoaded && typeof getConfigValue === 'function') {
+                console.log('Loading config via individual getConfigValue() calls...');
+                for (const key of requiredConfigKeys) {
+                    try {
+                        const value = await getConfigValue(key);
+                        window.dbConfigValues[key] = { value: value, description: '' };
+                    } catch (keyError) {
+                        console.warn(`Could not load config key "${key}":`, keyError.message);
+                    }
+                }
+                configLoaded = true;
+                console.log('✅ Config loaded via individual getConfigValue calls');
+            }
+            if (!configLoaded) {
+                console.log('Making direct API call to /config...');
+                try {
+                    const response = await fetch(`${AppConfig.baseUrl}/config`, {
+                        credentials: 'include',
+                        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {
+                            'Content-Type': 'application/json', 'Accept': 'application/json'
+                        }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'success') {
+                            if (data.configs) {
+                                Object.keys(data.configs).forEach(key => {
+                                    window.dbConfigValues[key] = data.configs[key];
+                                });
+                            } else if (data.config) {
+                                data.config.forEach(item => {
+                                    window.dbConfigValues[item.config_key] = {
+                                        value: item.config_value, description: item.description || ''
+                                    };
+                                });
+                            }
+                            configLoaded = true;
+                            console.log('✅ Config loaded via direct API call');
+                        }
+                    }
+                } catch (directError) {
+                    console.error('Direct API call failed:', directError);
+                }
+            }
+            if (configLoaded) {
+                console.log('✅ Configuration loaded successfully!');
+                window.dispatchEvent(new CustomEvent('configReady', {
+                    detail: { config: window.dbConfigValues }
+                }));
+            } else {
+                console.warn('⚠️ Could not load configuration. Some features may not work correctly.');
+                const statusEl = document.getElementById('checkout-status-message');
+                if (statusEl) {
+                    statusEl.textContent = 'Warning: Could not load configuration. Some features may be unavailable.';
+                    statusEl.className = 'status-message status-warning';
+                    statusEl.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('❌ Failed to initialize configuration:', error);
+            const statusEl = document.getElementById('checkout-status-message');
+            if (statusEl) {
+                statusEl.textContent = `Error loading configuration: ${error.message}`;
+                statusEl.className = 'status-message status-error';
+                statusEl.style.display = 'block';
+            }
+        }
     })();
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -3711,40 +4122,34 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                 window.TabManager.init();
             } else {
                 console.error('❌ TabManager not found!');
+                alert('❌ ERROR: TabManager not loaded!');
             }
         }, 500);
     });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM fully loaded, checking config...');
+        setTimeout(function() {
+            if (!window.dbConfigValues || Object.keys(window.dbConfigValues).length === 0) {
+                console.warn('Config still not loaded, attempting final reload...');
+                if (typeof getConfigValue === 'function') {
+                    const criticalKeys = ['MIN_STORE_PRICE', 'STORE_CAPACITY'];
+                    Promise.all(criticalKeys.map(key => getConfigValue(key).catch(() => null))).then(values => {
+                        criticalKeys.forEach((key, index) => {
+                            if (values[index] !== null) {
+                                window.dbConfigValues[key] = { value: values[index] };
+                            }
+                        });
+                        console.log('✅ Critical configs loaded on safety check');
+                    }).catch(err => {
+                        console.error('Safety check config load failed:', err);
+                    });
+                }
+            } else {
+                console.log('✅ Config verified, keys:', Object.keys(window.dbConfigValues));
+            }
+        }, 1000);
+    });
     </script>
-
-    <!-- Discogs Location Modal (unchanged) -->
-    <div id="discogs-location-modal" class="modal-overlay" style="display: none;">
-        <!-- ... -->
-    </div>
-
-    <!-- Sticky Notes Modal (unchanged) -->
-    <div id="sticky-note-modal" class="modal-overlay" style="display: none;">
-        <!-- ... -->
-    </div>
-
-    <!-- Duplicate Record Selection Modal (unchanged) -->
-    <div id="duplicate-record-modal" class="modal-overlay" style="display: none;">
-        <!-- ... -->
-    </div>
-
-    <!-- Tender Modal (unchanged) -->
-    <div id="tender-modal" class="tender-modal" style="display: none;">
-        <!-- ... -->
-    </div>
-
-    <!-- Gift Card Modal (unchanged) -->
-    <div id="giftcard-modal" class="modal-overlay" style="display: none;">
-        <!-- ... -->
-    </div>
-
-    <!-- Square Payment Modal (unchanged) -->
-    <div id="square-payment-modal" class="modal-overlay" style="display: none;">
-        <!-- ... -->
-    </div>
-
 </body>
 </html>

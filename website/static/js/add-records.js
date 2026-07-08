@@ -10,7 +10,6 @@
     console.log('🏷️ add-records.js loading...');
 
     // ========== DOM Elements ==========
-    let searchTypeRadios = document.querySelectorAll('input[name="searchType"]');
     let searchFieldSelect = document.getElementById('searchField');
     let searchInput = document.getElementById('searchInput');
     let searchForm = document.getElementById('searchForm');
@@ -31,12 +30,10 @@
     let batchCogsResultDiv = document.getElementById('batch-cogs-result');
 
     // ========== State ==========
-    let currentSearchType = 'add';
     let currentSearchField = 'all';
     let currentResults = [];
     let conditions = [];
     let consignors = [];
-    let statuses = [];
     let minimumPrice = null;
     let selectedConsignorId = null;
     let defaultSleeveConditionId = null;
@@ -153,11 +150,6 @@
         data.users.forEach(u => { consignorMap[u.id] = { initials: u.initials || '', name: u.full_name || u.username }; });
     }
 
-    async function loadStatuses() {
-        const data = await apiGet('/statuses');
-        statuses = data.statuses;
-    }
-
     async function loadStats() {
         const total = await apiGet('/records/count');
         document.getElementById('total-records').textContent = total.count || 0;
@@ -175,26 +167,19 @@
         if (!searchTerm) { clearResults(); return; }
         resultsContainer.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i><p>Searching...</p></div>';
 
-        if (currentSearchType === 'add') {
-            const data = await apiGet('/api/discogs/search?q=' + encodeURIComponent(searchTerm));
-            currentResults = data.results.map(r => {
-                let artist = r.artist || 'Unknown';
-                let title = r.title || 'Unknown';
-                if (artist === 'Unknown' && title.includes(' - ')) {
-                    const parts = title.split(' - ');
-                    artist = parts[0].trim();
-                    title = parts.slice(1).join(' - ').trim();
-                }
-                if (Array.isArray(artist)) artist = artist[0] || 'Unknown';
-                return { ...r, artist, title };
-            });
-        } else {
-            // Edit mode: search database
-            const params = new URLSearchParams({ q: searchTerm });
-            if (currentSearchField !== 'all') params.append('search_field', currentSearchField);
-            const data = await apiGet('/records/search?' + params.toString());
-            currentResults = data.records || [];
-        }
+        // Always search Discogs
+        const data = await apiGet('/api/discogs/search?q=' + encodeURIComponent(searchTerm));
+        currentResults = data.results.map(r => {
+            let artist = r.artist || 'Unknown';
+            let title = r.title || 'Unknown';
+            if (artist === 'Unknown' && title.includes(' - ')) {
+                const parts = title.split(' - ');
+                artist = parts[0].trim();
+                title = parts.slice(1).join(' - ').trim();
+            }
+            if (Array.isArray(artist)) artist = artist[0] || 'Unknown';
+            return { ...r, artist, title };
+        });
         displayResults();
     }
 
@@ -215,12 +200,7 @@
             resultsContainer.innerHTML = `<div class="loading"><i class="fas fa-search"></i><p>No results found</p></div>`;
             return;
         }
-
-        if (currentSearchType === 'add') {
-            resultsContainer.innerHTML = renderDiscogsResults();
-        } else {
-            resultsContainer.innerHTML = renderDatabaseResults();
-        }
+        resultsContainer.innerHTML = renderDiscogsResults();
         attachResultEventListeners();
     }
 
@@ -311,47 +291,6 @@
         return html;
     }
 
-    function renderDatabaseResults() {
-        let html = `<h3>Inventory Results (${currentResults.length})</h3>`;
-        currentResults.forEach((record, idx) => {
-            const sleeve = conditions.find(c => c.id === record.condition_sleeve_id);
-            const disc = conditions.find(c => c.id === record.condition_disc_id);
-            const sleeveDisplay = sleeve ? sleeve.display_name || sleeve.condition_name : 'Not set';
-            const discDisplay = disc ? disc.display_name || disc.condition_name : 'Not set';
-            const notes = record.notes || '';
-            const hasNoOriginalSleeve = notes.includes('[NO ORIGINAL SLEEVE]');
-            const notesWithoutTag = notes.replace('[NO ORIGINAL SLEEVE]', '').trim();
-            const consignorName = record.consignor_id && consignorMap[record.consignor_id] ? consignorMap[record.consignor_id].name : '';
-            const statusName = getStatusName(record.status_id);
-            const statusClass = getStatusClass(record.status_id);
-
-            html += `
-                <div class="record-card" data-record-id="${record.id}" data-index="${idx}">
-                    <div class="record-header">
-                        ${record.image_url ? `<img src="${record.image_url}" class="record-image" onerror="this.src='https://via.placeholder.com/100x100/333/666?text=No+Image'">` :
-                            `<div class="record-image" style="background:#333;display:flex;align-items:center;justify-content:center;"><i class="fas fa-record-vinyl" style="font-size:40px;color:#666;"></i></div>`}
-                        <div class="record-info">
-                            <div class="record-title">${record.artist} - ${record.title}</div>
-                            <div class="record-details">
-                                <span><strong>Barcode:</strong> ${record.barcode || record.id}</span>
-                                <span><strong>Price:</strong> $${(record.store_price||0).toFixed(2)}</span>
-                                <span><strong>Sleeve:</strong> ${sleeveDisplay}</span>
-                                <span><strong>Disc:</strong> ${discDisplay}</span>
-                                <span><strong>Status:</strong> <span class="status-badge ${statusClass}">${statusName}</span></span>
-                            </div>
-                            ${notes ? `<div style="margin-top:5px;font-size:12px;color:#666;background:#f8f9fa;padding:4px 8px;border-radius:4px;">${escapeHtml(notes)}</div>` : ''}
-                        </div>
-                    </div>
-                    <div style="margin:15px 0;display:flex;gap:10px;flex-wrap:wrap;">
-                        <button class="btn btn-info edit-record-btn" data-record-id="${record.id}"><i class="fas fa-edit"></i> Edit</button>
-                        <button class="btn btn-danger delete-record-btn" data-record-id="${record.id}"><i class="fas fa-trash"></i> Delete</button>
-                    </div>
-                </div>
-            `;
-        });
-        return html;
-    }
-
     // ========== Attach Event Listeners to Results ==========
     function attachResultEventListeners() {
         // Add record
@@ -379,20 +318,6 @@
                 const idx = parseInt(card.dataset.index);
                 const record = currentResults[idx];
                 manualEstimate(record, card);
-            });
-        });
-        // Edit
-        document.querySelectorAll('.edit-record-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                const recordId = parseInt(this.dataset.recordId);
-                openEditModal(recordId);
-            });
-        });
-        // Delete
-        document.querySelectorAll('.delete-record-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                const recordId = parseInt(this.dataset.recordId);
-                deleteRecord(recordId);
             });
         });
         // Condition mirroring
@@ -477,12 +402,9 @@
         showStatus(`Record #${newRecord.id} added successfully!`, 'success');
 
         if (printImmediately) {
-            // Add to print queue
             addToQueue(newRecord);
-            // Optionally auto-generate PDF? We'll just add to queue and let user print.
             showStatus(`Added to print queue (${printQueue.length} items)`, 'info');
         }
-        // Clear search? We'll keep results visible.
         await loadStats();
     }
 
@@ -498,7 +420,7 @@
         const catalogNumber = card.dataset.catalog || record.catalog_number || '';
         if (!catalogNumber) throw new Error('Catalog number required for estimation');
 
-        const data = await apiPost('/price-estimate-v3', {
+        const data = await apiPost('/api/price-estimate-v3', {
             catalog_number: catalogNumber,
             media_condition: discCond.display_name || discCond.condition_name,
             sleeve_condition: sleeveCond.display_name || sleeveCond.condition_name
@@ -710,7 +632,6 @@
         if (!printQueue.length) throw new Error('Queue is empty');
         const ids = printQueue.map(r => r.id);
         const result = await apiPost('/records/update-status', { record_ids: ids, status_id: 2 });
-        // Remove from queue after marking?
         printQueue = [];
         updateQueueDisplay();
         showStatus(`Marked ${result.updated_count} records as Active`, 'success');
@@ -737,46 +658,12 @@
         showStatus(`Deleted ${deleted} records, ${failed} failed`, deleted > 0 ? 'success' : 'error');
     }
 
-    // ========== Edit Modal (inline) ==========
-    function openEditModal(recordId) {
-        const record = currentResults.find(r => r.id === recordId);
-        if (!record) { showStatus('Record not found', 'error'); return; }
-        // Simple prompt-based edit for demo; can be expanded to a modal.
-        const newPrice = prompt('New price:', record.store_price);
-        if (newPrice === null) return;
-        const price = parseFloat(newPrice);
-        if (isNaN(price)) { showStatus('Invalid price', 'error'); return; }
-        const newNotes = prompt('New notes:', record.notes || '');
-        if (newNotes === null) return;
-        const updates = { store_price: price, notes: newNotes };
-        apiPut('/records/' + recordId, updates)
-            .then(() => {
-                showStatus('Record updated', 'success');
-                // Refresh search
-                const term = searchInput.value;
-                if (term) performSearch(term);
-                else { currentResults = []; displayResults(); }
-            })
-            .catch(err => { showStatus('Update failed: ' + err.message, 'error'); });
-    }
-
-    // ========== Delete Record ==========
-    async function deleteRecord(recordId) {
-        if (!confirm('Delete this record permanently?')) return;
-        await apiDelete('/records/' + recordId);
-        showStatus('Record deleted', 'success');
-        const term = searchInput.value;
-        if (term) performSearch(term);
-        else { currentResults = []; displayResults(); }
-        await loadStats();
-    }
-
     // ========== Range Selection (for queue) ==========
     function startRangeFrom(index) {
         fromIndex = index;
         toIndex = null;
         isRangeMode = true;
-        renderQueueTable(); // re-render with from/to highlights
+        renderQueueTable();
     }
 
     function endRangeTo(index) {
@@ -810,8 +697,8 @@
 
     function renderQueueTable() {
         // This would re-render the search results with from/to indicators – simplified for now.
-        // For brevity, we'll just re-run displayResults if in edit mode.
-        if (currentSearchType === 'edit') displayResults();
+        // For brevity, we'll just re-run displayResults.
+        displayResults();
     }
 
     // ========== Init ==========
@@ -820,19 +707,9 @@
         await loadStorePriceMultiplier();
         await loadConditions();
         await loadConsignors();
-        await loadStatuses();
         await loadStats();
 
         // Setup event listeners
-        document.querySelectorAll('input[name="searchType"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                currentSearchType = this.value;
-                const placeholder = currentSearchType === 'add' ? 'Search Discogs (artist, album, catalog #)...' : 'Enter barcode, artist, or title...';
-                searchInput.placeholder = placeholder;
-                clearResults();
-            });
-        });
-
         searchFieldSelect.addEventListener('change', function() {
             currentSearchField = this.value;
         });
