@@ -1489,24 +1489,40 @@ window.postNewRecordsToDiscogs = async function() {
             return;
         }
 
-        // 3. Confirm
+        // 3. Prompt for location (ONCE)
+        const locationString = prompt(
+            `Enter the location for these ${eligibleRecords.length} new records.\n` +
+            `Example: "home crate 1" or "Store wall A"\n\n` +
+            `The location will be appended with a rank number, e.g. "home crate 1 | rank 1"\n` +
+            `The last posted record will be rank 1, the first posted will be rank ${eligibleRecords.length}.`
+        );
+        if (locationString === null || locationString.trim() === '') {
+            showDiscogsStatus('Location prompt cancelled or empty. Aborting.', 'warning');
+            return;
+        }
+        const baseLocation = locationString.trim();
+
+        // 4. Confirm
         const confirmMsg = `📦 Post ${eligibleRecords.length} new record(s) to Discogs and mark them Active?\n\n` +
                            `Total new records: ${newRecords.length}\n` +
                            `Consignor records (skipped): ${consignorSkipped}\n` +
+                           `Location base: "${baseLocation}"\n` +
+                           `Ranks: 1 (last posted) to ${eligibleRecords.length} (first posted)\n\n` +
                            `⏱️ Estimated time: ~${Math.ceil(eligibleRecords.length * 3 / 60)} minute(s)\n\n` +
                            `Continue?`;
         if (!confirm(confirmMsg)) return;
 
-        // 4. Open progress modal
+        // 5. Open progress modal
         openProgressModal('Posting New Records to Discogs');
         appendToModalLog(`🚀 Starting to post ${eligibleRecords.length} new records to Discogs...`, 'info');
+        appendToModalLog(`📍 Location base: "${baseLocation}" (ranks will be assigned in reverse order)`, 'info');
         if (consignorSkipped > 0) {
             appendToModalLog(`⚠️ Skipping ${consignorSkipped} consignor record(s) (cannot auto-post)`, 'warning');
         }
         appendToModalLog('⏱️ 3-second delay between requests for reliability', 'warning');
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
 
-        // 5. Batch calculate markups
+        // 6. Batch calculate markups
         const priceRequests = eligibleRecords.map(r => ({
             id: r.id,
             created_at: r.created_at,
@@ -1527,10 +1543,10 @@ window.postNewRecordsToDiscogs = async function() {
             });
         }
 
-        // 6. Post each record with retries
+        // 7. Post each record with retries, collecting successful IDs in order
         let posted = 0, failed = 0, skipped = 0;
         const failedRecords = [];
-        const postedIds = [];
+        const postedIds = []; // in order of processing (first posted first)
 
         for (let i = 0; i < eligibleRecords.length; i++) {
             if (cancelResolve) {
@@ -1593,7 +1609,7 @@ window.postNewRecordsToDiscogs = async function() {
                     if (result.success) {
                         success = true;
                         posted++;
-                        postedIds.push(record.id);
+                        postedIds.push(record.id); // collect in processing order
                         appendToModalLog(`   ✅ POSTED! Listing ID: ${result.listing_id}`, 'success');
                         break;
                     } else {
@@ -1619,7 +1635,38 @@ window.postNewRecordsToDiscogs = async function() {
             }
         }
 
-        // 7. Mark posted records as Active (status_id = 2)
+        // 8. If any records were posted, assign ranks in reverse order (last posted → rank 1)
+        if (postedIds.length > 0) {
+            appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+            appendToModalLog(`📍 Assigning locations to ${postedIds.length} posted records...`, 'info');
+
+            // Reverse the array so that the last posted comes first
+            const reversedIds = [...postedIds].reverse();
+            let rank = 0;
+            for (const recordId of reversedIds) {
+                rank++;
+                const locationWithRank = `${baseLocation} | rank ${rank}`;
+                try {
+                    const updateResponse = await fetch(`${window.AppConfig.baseUrl}/records/${recordId}`, {
+                        method: 'PUT',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ location: locationWithRank })
+                    });
+                    if (!updateResponse.ok) throw new Error('HTTP ' + updateResponse.status);
+                    const updateData = await updateResponse.json();
+                    if (updateData.status !== 'success') throw new Error(updateData.error || 'Failed to update location');
+                    appendToModalLog(`   ✅ Record ${recordId} → location: "${locationWithRank}"`, 'success');
+                } catch (err) {
+                    appendToModalLog(`   ❌ Failed to update location for record ${recordId}: ${err.message}`, 'error');
+                }
+            }
+            appendToModalLog(`✅ Location assignments complete.`, 'success');
+        }
+
+        // 9. Mark posted records as Active (status_id = 2)
         if (postedIds.length > 0) {
             appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
             appendToModalLog(`🔄 Marking ${postedIds.length} posted records as Active (status_id=2)...`, 'info');
@@ -1647,13 +1694,16 @@ window.postNewRecordsToDiscogs = async function() {
             }
         }
 
-        // 8. Final summary
+        // 10. Final summary
         appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
         appendToModalLog('📊 FINAL RESULTS - NEW RECORDS POST:', 'info');
         appendToModalLog(`   ✅ Successfully posted: ${posted}`, 'success');
         appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
         appendToModalLog(`   ⚠️ Skipped (missing data): ${skipped}`, 'warning');
         if (consignorSkipped > 0) appendToModalLog(`   👤 Consignor items skipped: ${consignorSkipped}`, 'warning');
+        if (postedIds.length > 0) {
+            appendToModalLog(`   📍 Locations assigned to ${postedIds.length} records with base: "${baseLocation}"`, 'info');
+        }
         if (failedRecords.length > 0 && failedRecords.length <= 20) {
             appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
             appendToModalLog('❌ FAILED RECORDS:', 'warning');
@@ -1666,7 +1716,7 @@ window.postNewRecordsToDiscogs = async function() {
         }
 
         if (posted > 0 && failed === 0 && skipped === 0) {
-            showDiscogsStatus(`✅ Successfully posted ALL ${posted} new records to Discogs and marked them Active!`, 'success');
+            showDiscogsStatus(`✅ Successfully posted ALL ${posted} new records to Discogs, assigned locations, and marked Active!`, 'success');
         } else if (posted > 0) {
             showDiscogsStatus(`⚠️ Posted ${posted} new records, ${failed} failed, ${skipped} skipped. Check log.`, 'warning');
         } else {
@@ -2045,4 +2095,4 @@ document.addEventListener('DOMContentLoaded', function() {
 
 console.log('✅ discogs.js loaded - Location-based bulk posting with last_seen filter, consignor items SKIPPED');
 console.log('✅ Markup analysis charts loaded (3 charts: Curve, Distribution, Age Distribution)');
-console.log('✅ postNewRecordsToDiscogs() added - posts status_id=1 records and marks them Active');
+console.log('✅ postNewRecordsToDiscogs() updated - prompts for location, assigns ranks in reverse order, and marks Active');
