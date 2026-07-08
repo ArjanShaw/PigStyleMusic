@@ -2156,11 +2156,11 @@
                 <i class="fas fa-chart-line"></i> Stats
             </div>
         </div>
-
-
+        
         <!-- Add Records Tab -->
 <div id="add-records-tab" class="tab-content">
     <div class="inventory-container">
+        <!-- Stats row -->
         <div class="stats-row">
             <div class="stat-card">
                 <div class="stat-value" id="total-records">0</div>
@@ -2180,6 +2180,7 @@
             </div>
         </div>
 
+        <!-- Search section -->
         <div class="search-section">
             <div class="search-options-row">
                 <div class="search-field-select">
@@ -2201,18 +2202,39 @@
             </div>
         </div>
 
-        <div id="results-container" class="results-container">
-            <div class="loading" id="default-loading">
-                <i class="fas fa-search"></i>
-                <p>Search for records to get started</p>
+        <!-- ===== BATCH COGS SECTION (Moved here, grey background) ===== -->
+        <div class="search-section" style="margin-top: 15px; background: #f8f9fa; border: 1px solid #ddd; padding: 15px 20px; border-radius: 8px;">
+            <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500; color: #333; font-size: 14px;">
+                        <i class="fas fa-dollar-sign"></i> Batch COGS ($):
+                    </label>
+                    <input type="number" id="batch-cogs-amount" step="0.01" min="0" placeholder="e.g., 100.00" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                </div>
+                <div>
+                    <button id="apply-batch-cogs-btn" class="btn btn-warning" style="background: #ffc107; color: #333; border: none; padding: 10px 20px; border-radius: 4px; font-weight: 500;">
+                        <i class="fas fa-calculator"></i> Apply Batch COGS
+                    </button>
+                </div>
             </div>
+            <div id="batch-cogs-result" style="margin-top: 10px; font-size: 13px;"></div>
         </div>
+        <!-- ===== END BATCH COGS ===== -->
 
         <!-- Record Table Section -->
         <div class="record-table-section" style="margin-top: 30px;">
-            <div class="table-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <h3><i class="fas fa-list"></i> Records</h3>
-                <div style="display:flex; gap:10px; align-items:center;">
+            <!-- Toolbar -->
+            <div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <span><strong>Selected:</strong> <span id="selected-count">0</span></span>
+                    <button class="btn btn-success" id="print-selected-btn" disabled>
+                        <i class="fas fa-print"></i> Print Price Tags
+                    </button>
+                    <button class="btn btn-secondary" id="cancel-range-btn" style="display: none;">
+                        <i class="fas fa-times"></i> Cancel Selection
+                    </button>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
                     <label for="record-status-filter" style="font-weight:500;">Filter by status:</label>
                     <select id="record-status-filter" class="filter-select" style="padding:6px 12px; border:1px solid #ddd; border-radius:4px;">
                         <option value="1" selected>New (status=1)</option>
@@ -2224,28 +2246,14 @@
                 </div>
             </div>
 
+            <!-- Table -->
             <div class="records-table-container" style="overflow-x:auto;">
                 <table class="records-table" style="width:100%; border-collapse:collapse;">
-                    <thead>
-                        <tr>
-                            <th style="width:80px;">Range</th>
-                            <th>ID</th>
-                            <th>Created Date</th>
-                            <th>Artist</th>
-                            <th>Title</th>
-                            <th>Price</th>
-                            <th>COGS</th>
-                            <th>Profit</th>
-                            <th>Catalog #</th>
-                            <th>Genre</th>
-                            <th>Barcode</th>
-                            <th>Consignor</th>
-                            <th>Status</th>
-                            <th>Queue</th>
-                        </tr>
+                    <thead id="records-table-head">
+                        <!-- Headers will be dynamically rendered by JS -->
                     </thead>
                     <tbody id="records-table-body">
-                        <tr><td colspan="14" style="text-align:center; padding:40px;">Loading records...</td></tr>
+                        <tr><td colspan="13" style="text-align:center; padding:40px;">Loading records...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -2271,56 +2279,7 @@
             </div>
         </div>
 
-        <!-- Print Queue Section -->
-        <div class="queue-container" style="margin-top:30px;">
-            <div class="queue-header">
-                <h3><i class="fas fa-print"></i> Print Queue <span class="queue-badge" id="queue-count">0</span></h3>
-                <div class="queue-controls">
-                    <button class="btn btn-small btn-secondary" id="clear-queue-btn" disabled>
-                        <i class="fas fa-trash"></i> Clear Queue
-                    </button>
-                </div>
-            </div>
-            <div class="queue-content" id="queue-content">
-                <div class="queue-empty">
-                    <i class="fas fa-inbox" style="font-size:24px; margin-bottom:10px; opacity:0.5;"></i>
-                    <p>No records in print queue</p>
-                    <p style="font-size:12px;">Use the "from" and "to" buttons to select a range, or click the "+" button to add a single record.</p>
-                </div>
-            </div>
-            <div class="queue-actions">
-                <button class="btn btn-success" id="print-queue-btn" disabled>
-                    <i class="fas fa-print"></i> Print Queue (<span id="print-queue-count">0</span>)
-                </button>
-                <button class="btn btn-warning" id="mark-active-queue-btn" disabled>
-                    <i class="fas fa-check-circle"></i> Mark Queue as Active
-                </button>
-                <button class="btn btn-danger" id="bulk-delete-queue-btn" disabled style="background:#dc3545; color:white;">
-                    <i class="fas fa-trash-alt"></i> Delete Queue Records
-                </button>
-                <button class="btn btn-secondary" id="cancel-range-btn" style="display:none;">
-                    <i class="fas fa-times"></i> Cancel Range
-                </button>
-            </div>
-        </div>
-
-        <!-- Batch COGS -->
-        <div style="margin-top:20px; padding:15px; background:linear-gradient(135deg,#28a745 0%,#20c997 100%); border-radius:8px; color:white;">
-            <h4 style="margin:0 0 10px 0;"><i class="fas fa-dollar-sign"></i> Batch COGS Assignment</h4>
-            <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
-                <div style="flex:1; min-width:200px;">
-                    <label style="display:block; margin-bottom:5px; font-size:12px;">Total COGS ($):</label>
-                    <input type="number" id="batch-cogs-amount" step="0.01" min="0" placeholder="e.g., 100.00" style="width:100%; padding:10px; border:none; border-radius:6px;">
-                </div>
-                <div>
-                    <button id="apply-batch-cogs-btn" class="btn" style="background:#ffc107; color:#333; border:none; padding:10px 20px; border-radius:6px;">
-                        <i class="fas fa-calculator"></i> Apply Batch COGS
-                    </button>
-                </div>
-            </div>
-            <div id="batch-cogs-result" style="margin-top:10px; font-size:12px;"></div>
-        </div>
-
+        <!-- Status message (kept at bottom) -->
         <div id="status-message" class="status-message" style="display:none;"></div>
     </div>
 </div>
