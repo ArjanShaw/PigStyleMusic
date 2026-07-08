@@ -1,6 +1,6 @@
 // ============================================================================
 // inventory-ops.js - Unified Inventory Operations
-// Combines Add Record, Checkout, and Scan/Locate modes.
+// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout
 // ============================================================================
 
 (function() {
@@ -17,7 +17,6 @@
 
     const recordsTableHead = document.getElementById('records-table-head');
     const recordsTableBody = document.getElementById('records-table-body');
-    const statusFilterSelect = document.getElementById('record-status-filter');
     const pageSizeSelect = document.getElementById('record-page-size');
     const currentPageInput = document.getElementById('record-current-page');
     const totalPagesSpan = document.getElementById('record-total-pages');
@@ -30,21 +29,29 @@
     const lastPageBtn = document.getElementById('record-last-page');
 
     const selectedCountSpan = document.getElementById('selected-count');
-    const printSelectedBtn = document.getElementById('print-selected-btn');
+    const completeActionBtn = document.getElementById('complete-action-btn');
     const cogsBtn = document.getElementById('cogs-btn');
-    const deleteSelectedBtn = document.getElementById('delete-selected-btn');
-    const checkoutSelectedBtn = document.getElementById('checkout-selected-btn');
-    const completeScanBtn = document.getElementById('complete-scan-btn');
+    const printBtn = document.getElementById('print-btn');
+    const setActiveBtn = document.getElementById('set-active-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
-    // Filter elements
-    const lastSeenFilterContainer = document.getElementById('last-seen-filter-container');
-    const lastSeenFilterInput = document.getElementById('last-seen-filter');
-    const clearLastSeenFilterBtn = document.getElementById('clear-last-seen-filter');
+    // Discogs UI elements
+    const discogsUi = document.getElementById('filter-group');
+    const discogsLocationSelect = document.getElementById('discogs-location-select');
+    const discogsStatusMessage = document.getElementById('discogs-status-message');
+    const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
+    const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
+
+    // Delete mode filters
+    const deleteStatusFilter = document.getElementById('delete-status-filter');
+
+    // Checkout mode filters – we keep the element but hide the status dropdown
+    const checkoutFilters = document.getElementById('checkout-filters');
+    const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
+    const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
 
     // ========== State ==========
-    let currentSearchMode = 'checkout';   // 'add', 'checkout', 'scan'
-    let currentSearchField = 'all';
+    let currentSearchMode = 'add';
     let currentResults = [];
     let conditions = [];
     let consignors = [];
@@ -61,15 +68,37 @@
     let currentPage = 1;
     let pageSize = 50;
     let totalRecords = 0;
-    let currentFilterStatus = '1';
 
-    let currentMode = 'inventory'; // 'inventory' or 'search'
+    let currentMode = 'inventory';
     let rangeFromIndex = null;
     let rangeToIndex = null;
     let isRangeMode = false;
 
-    // Scan-specific state
+    // Scan state
     let lastSubmittedLocation = localStorage.getItem('lastSubmittedLocation') || null;
+
+    // Checkout state
+    let checkoutSelectedItems = [];
+    let checkoutViewMode = 'all';
+    let checkoutRemaining = 0;
+    let checkoutPaymentEntries = [];
+    let checkoutTotal = 0;
+
+    // Discogs state
+    let currentLocationRecords = [];
+    let discogsFilteredRecords = [];
+    let currentLocation = null;
+    let lastSeenCutoffDate = null;
+
+    // Square state
+    let squareAvailable = false;
+    let squareCheckoutId = null;
+    let squarePollInterval = null;
+
+    // Chart variables
+    let markupCurveChart = null;
+    let markupDistributionChart = null;
+    let ageDistributionChart = null;
 
     // ========== Audio ==========
     let audioContext = null;
@@ -153,6 +182,17 @@
         setTimeout(() => { el.style.display = 'none'; }, 5000);
     }
 
+    function showDiscogsStatus(message, type) {
+        const el = document.getElementById('discogs-status-message');
+        if (!el) return;
+        type = type || 'info';
+        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        el.className = 'status-message status-' + type;
+        el.style.display = 'block';
+        setTimeout(() => { if (el) el.style.display = 'none'; }, 8000);
+    }
+
     function getStatusName(statusId) {
         const map = { 1: 'New', 2: 'Active', 3: 'Sold', 4: 'Removed' };
         return map[statusId] || 'Unknown';
@@ -177,6 +217,52 @@
         const month = String(now.getMonth() + 1).padStart(2, '0');
         const day = String(now.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
+    }
+
+    function hasConsignor(record) {
+        return (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null);
+    }
+
+    function getLastSeenCutoffDate() {
+        if (lastSeenCutoffDateInput && lastSeenCutoffDateInput.value) {
+            return lastSeenCutoffDateInput.value;
+        }
+        return null;
+    }
+
+    function meetsLastSeenFilter(record) {
+        const cutoffDate = getLastSeenCutoffDate();
+        if (!cutoffDate) return true;
+        if (!record.last_seen) return false;
+        try {
+            const lastSeenDate = record.last_seen.split('T')[0];
+            return lastSeenDate >= cutoffDate;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function formatLastSeen(lastSeen) {
+        if (!lastSeen) return '<span style="color: #dc3545;">Never</span>';
+        try {
+            const lastSeenDate = new Date(lastSeen);
+            const today = new Date();
+            const daysSince = Math.floor((today - lastSeenDate) / (1000 * 60 * 60 * 24));
+            const cutoffDate = getLastSeenCutoffDate();
+            if (cutoffDate) {
+                const cutoffDateObj = new Date(cutoffDate);
+                if (lastSeenDate < cutoffDateObj) {
+                    return `<span style="color: #dc3545;" title="Before cutoff date">${daysSince} days ago (⚠️)</span>`;
+                }
+            }
+            if (daysSince === 0) return '<span style="color: #28a745;">Today</span>';
+            if (daysSince === 1) return '<span style="color: #28a745;">Yesterday</span>';
+            if (daysSince <= 7) return `<span style="color: #ffc107;">${daysSince} days ago</span>`;
+            if (daysSince <= 30) return `<span style="color: #fd7e14;">${daysSince} days ago</span>`;
+            return `<span style="color: #dc3545;">${daysSince} days ago</span>`;
+        } catch (e) {
+            return lastSeen;
+        }
     }
 
     // ========== API Wrappers ==========
@@ -247,6 +333,8 @@
         try {
             const data = await apiGet('/api/accounting/accounts');
             accounts = data.accounts || [];
+            accounts = accounts.filter(acc => acc && acc.code && acc.name);
+            console.log('✅ Loaded accounts:', accounts.length);
         } catch (e) {
             console.warn('Could not load accounts:', e);
             accounts = [];
@@ -288,107 +376,257 @@
         document.getElementById('commission-rate').textContent = commission.commission_rate_percent;
     }
 
-    async function loadRecords() {
-        const data = await apiGet('/records');
-        allRecords = data.records || [];
-        allRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        // Only apply filters if not in scan mode
-        if (currentSearchMode !== 'scan') {
-            applyFilters();
+    // ========== UNIFIED RECORD LOADER ==========
+    async function loadRecords(options = {}) {
+        console.log('🔵 loadRecords called with options:', options);
+        try {
+            const {
+                statusIds,
+                location,
+                search,
+                mode,
+                requireImage = false,
+                requireLocation = false,
+                excludeOldNoLocation = false,
+                bypassDateFilter = true,
+                createdAfter,
+                limit,
+                random = false,
+                hasYoutube = false,
+                filterBySearch = true,
+                showAllStatuses = false
+            } = options;
+
+            let url = '/records';
+            let params = new URLSearchParams();
+
+            if (location) {
+                url = '/api/records/by-location';
+                params.append('location', location);
+            } else {
+                if (showAllStatuses) {
+                    // no status filter
+                } else if (statusIds && statusIds.length > 0) {
+                    params.append('status_ids', statusIds.join(','));
+                }
+                if (requireImage) params.append('require_image', 'true');
+                if (requireLocation) params.append('require_location', 'true');
+                if (excludeOldNoLocation) params.append('exclude_old_no_location', 'true');
+                if (bypassDateFilter && !createdAfter) {
+                    params.append('bypass_date_filter', 'true');
+                }
+                if (createdAfter) {
+                    params.append('created_after', createdAfter);
+                }
+                if (limit) params.append('limit', limit);
+                if (random) params.append('random', 'true');
+                if (hasYoutube) params.append('has_youtube', 'true');
+                if (search && filterBySearch) {
+                    params.append('search', search);
+                }
+            }
+
+            const queryString = params.toString();
+            const fullUrl = window.AppConfig.baseUrl + url + (queryString ? '?' + queryString : '');
+            console.log(`🔵 loadRecords: fetching ${fullUrl}`);
+
+            const response = await fetch(fullUrl, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const data = await response.json();
+            if (data.status !== 'success') throw new Error(data.error || 'Failed to load records');
+
+            let records = data.records || [];
+            console.log(`🔵 loadRecords: API returned ${records.length} records`);
+
+            if (location && search && filterBySearch) {
+                const term = search.toLowerCase();
+                const before = records.length;
+                records = records.filter(r =>
+                    (r.artist && r.artist.toLowerCase().includes(term)) ||
+                    (r.title && r.title.toLowerCase().includes(term)) ||
+                    (r.barcode && r.barcode.toLowerCase().includes(term)) ||
+                    (r.catalog_number && r.catalog_number.toLowerCase().includes(term))
+                );
+                console.log(`🔵 loadRecords: location search filtered from ${before} to ${records.length}`);
+            }
+
+            if (!location && search && !filterBySearch) {
+                const term = search.toLowerCase();
+                const before = records.length;
+                records = records.filter(r =>
+                    (r.artist && r.artist.toLowerCase().includes(term)) ||
+                    (r.title && r.title.toLowerCase().includes(term)) ||
+                    (r.barcode && r.barcode.toLowerCase().includes(term)) ||
+                    (r.catalog_number && r.catalog_number.toLowerCase().includes(term))
+                );
+                console.log(`🔵 loadRecords: client search filtered from ${before} to ${records.length}`);
+            }
+
+            // Only apply last‑seen filter if cutoff is actually set
+            if (mode === 'discogs' && lastSeenCutoffDate) {
+                const before = records.length;
+                records = records.filter(r => meetsLastSeenFilter(r));
+                console.log(`🔵 loadRecords: last‑seen filter reduced from ${before} to ${records.length}`);
+            }
+
+            allRecords = records;
+            filteredRecords = records;
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
+            currentMode = mode || 'inventory';
+
+            if (mode === 'add' && !search) {
+                currentResults = [];
+            }
+
+            console.log(`🔵 loadRecords: about to render with ${filteredRecords.length} records`);
+            renderPagination();
+            renderTablePage();
+
+            let statusMsg = `Showing ${totalRecords} records`;
+            if (statusIds && statusIds.length === 1) statusMsg += ` with status_id=${statusIds[0]}`;
+            else if (statusIds && statusIds.length > 1) statusMsg += ` with status_ids ${statusIds.join(', ')}`;
+            if (location) statusMsg += ` in location "${location}"`;
+            if (search) statusMsg += ` matching "${search}"`;
+            showStatus(statusMsg, 'info');
+            updateSelectionCount();
+            updateFilterVisibility();
+
+            if (mode === 'discogs') {
+                if (location) {
+                    currentLocationRecords = records;
+                }
+                console.log(`🔵 loadRecords: calling populateDiscogsPrices for ${records.length} records`);
+                await populateDiscogsPrices(records);
+            }
+
+            return records;
+        } catch (error) {
+            console.error('❌ loadRecords error:', error);
+            showStatus('Error loading records: ' + error.message, 'error');
+            return [];
         }
     }
 
-    // ========== Data & Selection ==========
-    function applyFilters() {
-        // In scan mode, filteredRecords is managed separately
-        if (currentSearchMode === 'scan') {
+    // ========== Load Discogs Locations (kept separate) ==========
+    async function loadDiscogsLocations() {
+        console.log('📍 Loading discogs locations...');
+        try {
+            const url = window.AppConfig.baseUrl + '/api/locations';
+            const response = await fetch(url, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const data = await response.json();
+            if (data.status === 'success') {
+                renderDiscogsLocationSelect(data.locations);
+            } else {
+                throw new Error(data.error || 'Failed to load locations');
+            }
+        } catch (error) {
+            console.error('Error loading locations:', error);
+            renderDiscogsLocationSelect([]);
+            showDiscogsStatus('Warning: Could not load locations - ' + error.message, 'warning');
+        }
+    }
+
+    function renderDiscogsLocationSelect(locations) {
+        if (!discogsLocationSelect) return;
+        discogsLocationSelect.innerHTML = `
+            <option value="all">-- All (no filter) --</option>
+            <option value="all_with_location">-- All with Location --</option>
+        `;
+        if (!locations || locations.length === 0) {
             return;
         }
-        if (currentMode === 'search') {
-            filteredRecords = currentResults.slice();
+        locations.forEach(function(location) {
+            const option = document.createElement('option');
+            option.value = location;
+            option.textContent = location;
+            discogsLocationSelect.appendChild(option);
+        });
+    }
+
+    // ========== Refresh Discogs records based on location dropdown ==========
+    function refreshDiscogsRecords() {
+        const selectedValue = discogsLocationSelect ? discogsLocationSelect.value : null;
+        const baseOptions = { mode: 'discogs' };
+
+        console.log(`🔄 refreshDiscogsRecords: selectedValue = ${selectedValue}`);
+        if (!selectedValue || selectedValue === 'all') {
+            loadRecords({ showAllStatuses: true, ...baseOptions });
+        } else if (selectedValue === 'all_with_location') {
+            loadRecords({ showAllStatuses: true, requireLocation: true, ...baseOptions });
         } else {
-            const statusFilter = currentFilterStatus;
-            if (statusFilter === 'all') {
-                filteredRecords = allRecords.slice();
-            } else {
-                const statusId = parseInt(statusFilter);
-                filteredRecords = allRecords.filter(r => r.status_id === statusId);
+            currentLocation = selectedValue;
+            loadRecords({ showAllStatuses: true, location: selectedValue, ...baseOptions });
+        }
+    }
+
+    // ========== Populate Discogs Prices (does NOT reset filteredRecords) ==========
+    async function populateDiscogsPrices(records) {
+        console.log(`💰 populateDiscogsPrices: received ${records.length} records`);
+        if (!records || records.length === 0) {
+            console.log('💰 populateDiscogsPrices: no records, returning');
+            return;
+        }
+
+        // Filter only eligible records (status_id=2, no consignor, meets last_seen, has created_at)
+        const eligibleRecords = records.filter(r => {
+            const eligible = r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at;
+            if (eligible) {
+                console.log(`💰 Eligible record ${r.id}: ${r.artist} - ${r.title}`);
             }
+            return eligible;
+        });
+        console.log(`💰 populateDiscogsPrices: ${eligibleRecords.length} eligible out of ${records.length}`);
+
+        if (eligibleRecords.length === 0) {
+            console.log('💰 No eligible records, skipping price calculation');
+            return;
         }
-        totalRecords = filteredRecords.length;
-        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
-        if (currentPage > totalPages) currentPage = totalPages;
-        if (currentPage < 1) currentPage = 1;
-        renderPagination();
+
+        const priceRequests = eligibleRecords.map(r => ({
+            id: r.id,
+            created_at: r.created_at,
+            store_price: r.store_price
+        }));
+
+        let pricesMap = {};
+        try {
+            const batchResults = await calculateMarkupBatch(priceRequests);
+            console.log(`💰 populateDiscogsPrices: got ${batchResults.length} price results`);
+            batchResults.forEach(item => {
+                if (item.id) {
+                    pricesMap[item.id] = item;
+                }
+            });
+        } catch (error) {
+            console.error('💰 populateDiscogsPrices: error calculating prices:', error);
+            return;
+        }
+
+        // Update records with price data (do NOT change filteredRecords)
+        let updatedCount = 0;
+        records.forEach(record => {
+            if (pricesMap[record.id]) {
+                record._discogsPrice = pricesMap[record.id].discogs_price;
+                record._markupPercent = pricesMap[record.id].markup_percent;
+                updatedCount++;
+            } else {
+                record._discogsPrice = null;
+                record._markupPercent = null;
+            }
+        });
+        console.log(`💰 populateDiscogsPrices: updated ${updatedCount} records with price data`);
+
+        // Re-render the table to show the new price columns (but keep filteredRecords unchanged)
         renderTablePage();
-    }
-
-    function applyScanFilters() {
-        // Apply last_seen date filter to filteredRecords (which holds scanned list)
-        const dateValue = lastSeenFilterInput ? lastSeenFilterInput.value : '';
-        if (dateValue) {
-            const filterDate = new Date(dateValue);
-            // We need to keep the original scanned list; we'll filter on the fly.
-            // We'll store the full list in a separate variable when scanning.
-            // But we can just filter filteredRecords directly if we always keep the full list.
-            // We'll use a separate array for the full scanned list.
-        }
-        // We'll implement properly below.
-    }
-
-    function renderPagination() {
-        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
-        if (currentPage > totalPages) currentPage = totalPages;
-        if (currentPage < 1) currentPage = 1;
-        const start = (currentPage - 1) * pageSize + 1;
-        const end = Math.min(currentPage * pageSize, totalRecords);
-        showingStartSpan.textContent = start;
-        showingEndSpan.textContent = end;
-        totalFilteredSpan.textContent = totalRecords;
-        totalPagesSpan.textContent = totalPages;
-        currentPageInput.value = currentPage;
-        firstPageBtn.disabled = currentPage === 1;
-        prevPageBtn.disabled = currentPage === 1;
-        nextPageBtn.disabled = currentPage === totalPages;
-        lastPageBtn.disabled = currentPage === totalPages;
-    }
-
-    function getCurrentData() {
-        return filteredRecords;
-    }
-
-    function getSelectedRecords() {
-        // In scan mode, selection is not used; we just use the whole list.
-        if (currentSearchMode === 'scan') {
-            return filteredRecords.slice();
-        }
-        if (rangeFromIndex === null || rangeToIndex === null) return [];
-        const start = Math.min(rangeFromIndex, rangeToIndex);
-        const end = Math.max(rangeFromIndex, rangeToIndex);
-        const data = getCurrentData();
-        return data.slice(start, end + 1);
-    }
-
-    function updateSelectionCount() {
-        const selected = getSelectedRecords();
-        const count = selected.length;
-        selectedCountSpan.textContent = count;
-        const isCheckoutMode = currentSearchMode === 'checkout' && currentMode === 'inventory';
-        const isScanMode = currentSearchMode === 'scan';
-
-        printSelectedBtn.disabled = count === 0 || !isCheckoutMode;
-        cogsBtn.disabled = count === 0 || !isCheckoutMode;
-        deleteSelectedBtn.disabled = count === 0 || !isCheckoutMode;
-        checkoutSelectedBtn.disabled = count === 0 || !isCheckoutMode;
-
-        // In scan mode, enable Complete Scan if there is at least one scanned record
-        if (isScanMode) {
-            completeScanBtn.disabled = filteredRecords.length === 0;
-        } else {
-            completeScanBtn.disabled = true;
-        }
-
-        cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
+        updateSelectionCount();
     }
 
     // ========== Price Estimation (Add mode) ==========
@@ -425,38 +663,77 @@
         }
     }
 
+    // ========== Batch Markup Calculation ==========
+    async function calculateMarkupBatch(records) {
+        if (!records || records.length === 0) return [];
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/calculate-markup-batch', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ records: records })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                return result.results;
+            } else {
+                console.error('Batch markup error:', result.error);
+                return [];
+            }
+        } catch (error) {
+            console.error('Error in batch markup:', error);
+            return [];
+        }
+    }
+
     // ========== Render Table ==========
     function renderTablePage() {
-        console.log(`🔄 renderTablePage() – mode: ${currentMode}, searchMode: ${currentSearchMode}, records: ${filteredRecords.length}`);
+        console.log(`🔄 renderTablePage() – mode: ${currentSearchMode}, records: ${filteredRecords.length}`);
         const start = (currentPage - 1) * pageSize;
         const end = Math.min(start + pageSize, filteredRecords.length);
         const pageRecords = filteredRecords.slice(start, end);
 
         let theadHtml = '';
         if (currentSearchMode === 'add') {
-            const condOptions = conditions.map(c =>
-                `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
-            ).join('');
-            const consignorOptions = consignors.map(c =>
-                `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
-            ).join('');
+            const isSearchResult = currentMode === 'search' && currentResults.length > 0;
+            if (isSearchResult) {
+                const condOptions = conditions.map(c =>
+                    `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
+                ).join('');
+                const consignorOptions = consignors.map(c =>
+                    `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
+                ).join('');
 
-            theadHtml = `
-                <tr>
-                    <th style="width:60px;">Range</th>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>Catalog #</th>
-                    <th>Sleeve</th>
-                    <th>Disc</th>
-                    <th>Price</th>
-                    <th>COGS</th>
-                    <th>Consignor</th>
-                    <th>Action</th>
-                </tr>
-            `;
+                theadHtml = `
+                    <tr>
+                        <th style="width:60px;">Range</th>
+                        <th>Artist</th>
+                        <th>Title</th>
+                        <th>Catalog #</th>
+                        <th>Sleeve</th>
+                        <th>Disc</th>
+                        <th>Price</th>
+                        <th>COGS</th>
+                        <th>Consignor</th>
+                        <th>Action</th>
+                    </tr>
+                `;
+            } else {
+                theadHtml = `
+                    <tr>
+                        <th style="width:60px;">Range</th>
+                        <th>ID</th>
+                        <th>Artist</th>
+                        <th>Title</th>
+                        <th>Price</th>
+                        <th>COGS</th>
+                        <th>Catalog #</th>
+                        <th>Barcode</th>
+                        <th>Created At</th>
+                    </tr>
+                `;
+            }
         } else if (currentSearchMode === 'scan') {
-            // Scan mode: no Range column
             theadHtml = `
                 <tr>
                     <th>ID</th>
@@ -467,8 +744,25 @@
                     <th>Last Seen</th>
                 </tr>
             `;
-        } else {
-            // Checkout mode
+        } else if (currentSearchMode === 'discogs') {
+            theadHtml = `
+                <tr>
+                    <th style="width:60px;">Range</th>
+                    <th>Image</th>
+                    <th>ID</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                    <th>Catalog #</th>
+                    <th>Media Cond</th>
+                    <th>Sleeve Cond</th>
+                    <th>Store Price</th>
+                    <th>Discogs Price</th>
+                    <th>Markup %</th>
+                    <th>Location</th>
+                    <th>Post</th>
+                </tr>
+            `;
+        } else if (currentSearchMode === 'delete') {
             theadHtml = `
                 <tr>
                     <th style="width:60px;">Range</th>
@@ -476,17 +770,51 @@
                     <th>Artist</th>
                     <th>Title</th>
                     <th>Price</th>
-                    <th>Barcode</th>
+                    <th>Status</th>
                 </tr>
             `;
+        } else if (currentSearchMode === 'checkout') {
+            if (checkoutViewMode === 'selected') {
+                theadHtml = `
+                    <tr>
+                        <th>ID</th>
+                        <th>Artist</th>
+                        <th>Title</th>
+                        <th>Price</th>
+                        <th>Barcode</th>
+                        <th>Action</th>
+                    </tr>
+                `;
+            } else {
+                theadHtml = `
+                    <tr>
+                        <th>ID</th>
+                        <th>Artist</th>
+                        <th>Title</th>
+                        <th>Price</th>
+                        <th>Barcode</th>
+                        <th>Action</th>
+                    </tr>
+                `;
+            }
         }
         recordsTableHead.innerHTML = theadHtml;
 
         let tbodyHtml = '';
         if (pageRecords.length === 0) {
             let msg = 'No records found';
-            if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records to the list';
-            const colCount = currentSearchMode === 'add' ? 10 : (currentSearchMode === 'scan' ? 6 : 6);
+            if (currentSearchMode === 'add' && currentMode !== 'search') msg = 'No new records (status_id=1). Search Discogs to add records.';
+            if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records.';
+            if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
+            if (currentSearchMode === 'delete') msg = 'No records to delete.';
+            if (currentSearchMode === 'checkout') {
+                if (checkoutViewMode === 'selected') msg = 'No records added to checkout.';
+                else msg = 'No active records found.';
+            }
+            const colCount = currentSearchMode === 'add' ? (currentMode === 'search' ? 10 : 9) :
+                             (currentSearchMode === 'scan' ? 6 :
+                             (currentSearchMode === 'discogs' ? 13 :
+                             (currentSearchMode === 'delete' ? 6 : 6)));
             tbodyHtml = `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;">${msg}</td></tr>`;
         } else {
             const data = getCurrentData();
@@ -498,8 +826,10 @@
 
                 let rowClass = isSelected ? 'record-selected' : '';
                 let fromButton, toButton;
-                if (currentSearchMode === 'scan') {
-                    // No range buttons in scan mode
+                const showRange = (currentSearchMode === 'add' && currentMode === 'search') ||
+                                  currentSearchMode === 'discogs' ||
+                                  currentSearchMode === 'delete';
+                if (!showRange) {
                     fromButton = '';
                     toButton = '';
                 } else if (!isRangeMode) {
@@ -524,81 +854,158 @@
                 let rowHtml = `<tr class="${rowClass}" data-index="${globalIndex}">`;
 
                 if (currentSearchMode === 'add') {
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const catalog = record.catalog_number || '';
-                    const condOptions = conditions.map(c =>
-                        `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
-                    ).join('');
-                    const consignorOptions = consignors.map(c =>
-                        `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
-                    ).join('');
+                    if (currentMode === 'search' && currentResults.length > 0) {
+                        const artist = record.artist || 'Unknown';
+                        const title = record.title || 'Unknown';
+                        const catalog = record.catalog_number || '';
+                        const condOptions = conditions.map(c =>
+                            `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
+                        ).join('');
+                        const consignorOptions = consignors.map(c =>
+                            `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
+                        ).join('');
 
-                    rowHtml += `
-                        <td style="text-align:center;">${fromButton} ${toButton}</td>
-                        <td>${escapeHtml(artist)}</td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${escapeHtml(catalog)}</td>
-                        <td>
-                            <select class="sleeve-condition-select" style="width:100px; padding:4px;">
-                                <option value="">Select...</option>
-                                ${condOptions}
-                            </select>
-                        </td>
-                        <td>
-                            <select class="disc-condition-select" style="width:100px; padding:4px;">
-                                <option value="">Select...</option>
-                                ${condOptions}
-                            </select>
-                        </td>
-                        <td>
-                            <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
-                        </td>
-                        <td>
-                            <input type="number" class="cogs-input" step="0.01" min="0" value="" style="width:80px; padding:4px;">
-                        </td>
-                        <td>
-                            <select class="consignor-select" style="width:100px; padding:4px;">
-                                <option value="">None</option>
-                                ${consignorOptions}
-                            </select>
-                        </td>
-                        <td>
-                            <button class="btn-add-record-from-search" data-index="${globalIndex}" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">
-                                <i class="fas fa-plus"></i> Add
-                            </button>
-                        </td>
-                    `;
-                } else {
-                    // Checkout or Scan mode
-                    const id = record.id;
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                    const barcode = record.barcode || record.id;
-
-                    // For scan mode, no range column
-                    if (currentSearchMode === 'scan') {
-                        const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
                         rowHtml += `
-                            <td>${id}</td>
+                            <td style="text-align:center;">${fromButton} ${toButton}</td>
                             <td>${escapeHtml(artist)}</td>
                             <td>${escapeHtml(title)}</td>
-                            <td>${price}</td>
-                            <td><span class="barcode-value">${barcode}</span></td>
-                            <td>${lastSeen}</td>
+                            <td>${escapeHtml(catalog)}</td>
+                            <td>
+                                <select class="sleeve-condition-select" style="width:100px; padding:4px;">
+                                    <option value="">Select...</option>
+                                    ${condOptions}
+                                </select>
+                            </td>
+                            <td>
+                                <select class="disc-condition-select" style="width:100px; padding:4px;">
+                                    <option value="">Select...</option>
+                                    ${condOptions}
+                                </select>
+                            </td>
+                            <td>
+                                <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
+                            </td>
+                            <td>
+                                <input type="number" class="cogs-input" step="0.01" min="0" value="" style="width:80px; padding:4px;">
+                            </td>
+                            <td>
+                                <select class="consignor-select" style="width:100px; padding:4px;">
+                                    <option value="">None</option>
+                                    ${consignorOptions}
+                                </select>
+                            </td>
+                            <td>
+                                <button class="btn-add-record-from-search" data-index="${globalIndex}" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">
+                                    <i class="fas fa-plus"></i> Add
+                                </button>
+                            </td>
                         `;
                     } else {
-                        // Checkout mode: include Range
+                        const id = record.id;
+                        const artist = record.artist || 'Unknown';
+                        const title = record.title || 'Unknown';
+                        const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+                        const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
+                        const catalog = record.catalog_number || '—';
+                        const barcode = record.barcode || record.id;
+                        const created = record.created_at ? new Date(record.created_at).toLocaleString() : 'Unknown';
                         rowHtml += `
                             <td style="text-align:center;">${fromButton} ${toButton}</td>
                             <td>${id}</td>
                             <td>${escapeHtml(artist)}</td>
                             <td>${escapeHtml(title)}</td>
                             <td>${price}</td>
+                            <td>${cogs}</td>
+                            <td>${escapeHtml(catalog)}</td>
                             <td><span class="barcode-value">${barcode}</span></td>
+                            <td>${created}</td>
                         `;
                     }
+                } else if (currentSearchMode === 'scan') {
+                    const id = record.id;
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+                    const barcode = record.barcode || record.id;
+                    const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
+                    rowHtml += `
+                        <td>${id}</td>
+                        <td>${escapeHtml(artist)}</td>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${price}</td>
+                        <td><span class="barcode-value">${barcode}</span></td>
+                        <td>${lastSeen}</td>
+                    `;
+                } else if (currentSearchMode === 'discogs') {
+                    // Show ALL records – location may be missing
+                    const id = record.id;
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const catalog = record.catalog_number || '—';
+                    const mediaCond = record.disc_condition_name || '—';
+                    const sleeveCond = record.sleeve_condition_name || '—';
+                    const storePrice = record.store_price ? `$${parseFloat(record.store_price).toFixed(2)}` : '—';
+                    const imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
+                    const location = record.location || '—';
+                    const discogsPrice = record._discogsPrice !== undefined ? record._discogsPrice : null;
+                    const markupPercent = record._markupPercent !== undefined ? record._markupPercent : null;
+                    const displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
+                    const markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
+                    const displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
+
+                    rowHtml += `
+                        <td style="text-align:center;">${fromButton} ${toButton}</td>
+                        <td style="text-align: center;">${imageUrl ? '<img src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(artist) + '" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">' : '<div style="width: 40px; height: 40px; background: #e0e0e0; border-radius: 4px; display: inline-block;"></div>'}</td>
+                        <td>${id}</td>
+                        <td><strong>${escapeHtml(artist)}</strong></td>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${escapeHtml(catalog)}</td>
+                        <td>${escapeHtml(mediaCond)}</td>
+                        <td>${escapeHtml(sleeveCond)}</td>
+                        <td>${storePrice}</td>
+                        <td class="discogs-price-cell" style="${discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;'}">${displayDiscogsPrice}</td>
+                        <td class="markup-cell ${markupClass}">${displayMarkup}</td>
+                        <td title="${escapeHtml(location)}" style="font-size: 12px;">${escapeHtml(location.length > 30 ? location.substring(0,27)+'...' : location)}</td>
+                        <td style="text-align: center;">
+                            ${discogsPrice ? `<button class="post-single-btn" data-record-id="${record.id}" data-artist="${escapeHtml(artist)}" data-title="${escapeHtml(title)}" data-price="${record.store_price}" data-discogs-price="${discogsPrice}" data-markup-percent="${markupPercent}" data-media-condition="${mediaCond}" data-sleeve-condition="${sleeveCond}" data-catalog="${escapeHtml(catalog)}" data-location="${escapeHtml(location)}" data-notes="${escapeHtml(record.notes || '')}"><i class="fab fa-discogs"></i> Post</button>` :
+                                    '<span style="color: #999;">—</span>'}
+                        </td>
+                    `;
+                } else if (currentSearchMode === 'delete') {
+                    const id = record.id;
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+                    const statusName = getStatusName(record.status_id);
+                    const statusClass = getStatusClass(record.status_id);
+                    rowHtml += `
+                        <td style="text-align:center;">${fromButton} ${toButton}</td>
+                        <td>${id}</td>
+                        <td>${escapeHtml(artist)}</td>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${price}</td>
+                        <td><span class="status-badge ${statusClass}">${statusName}</span></td>
+                    `;
+                } else if (currentSearchMode === 'checkout') {
+                    const id = record.id;
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+                    const barcode = record.barcode || record.id;
+                    const inSelected = checkoutSelectedItems.some(r => r.id === record.id);
+                    rowHtml += `
+                        <td>${id}</td>
+                        <td>${escapeHtml(artist)}</td>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${price}</td>
+                        <td><span class="barcode-value">${barcode}</span></td>
+                        <td>
+                            ${inSelected ?
+                                `<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="${record.id}"><i class="fas fa-minus"></i> Remove</button>` :
+                                `<button class="btn btn-sm btn-success add-checkout-item" data-record-id="${record.id}"><i class="fas fa-plus"></i> Add</button>`
+                            }
+                        </td>
+                    `;
                 }
 
                 rowHtml += `</tr>`;
@@ -607,7 +1014,7 @@
         }
         recordsTableBody.innerHTML = tbodyHtml;
 
-        // Attach event listeners
+        // Attach event listeners for range buttons
         document.querySelectorAll('.btn-from').forEach(btn => {
             btn.addEventListener('click', function() {
                 const index = parseInt(this.dataset.index);
@@ -621,7 +1028,8 @@
             });
         });
 
-        if (currentSearchMode === 'add') {
+        // Add buttons (add mode search results)
+        if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
             document.querySelectorAll('.btn-add-record-from-search').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const index = parseInt(this.dataset.index);
@@ -649,30 +1057,100 @@
             });
         }
 
+        // Single post buttons (Discogs mode)
+        if (currentSearchMode === 'discogs') {
+            document.querySelectorAll('.post-single-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const recordId = parseInt(this.dataset.recordId);
+                    const artist = this.dataset.artist;
+                    const title = this.dataset.title;
+                    const price = parseFloat(this.dataset.price);
+                    const discogsPrice = parseFloat(this.dataset.discogsPrice);
+                    const markupPercent = parseFloat(this.dataset.markupPercent);
+                    const mediaCondition = this.dataset.mediaCondition;
+                    const sleeveCondition = this.dataset.sleeveCondition;
+                    const catalog = this.dataset.catalog;
+                    const location = this.dataset.location;
+                    const notes = this.dataset.notes;
+                    postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalog, location, notes);
+                });
+            });
+        }
+
+        // Checkout mode Add/Remove buttons
+        if (currentSearchMode === 'checkout') {
+            document.querySelectorAll('.add-checkout-item').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const recordId = parseInt(this.dataset.recordId);
+                    addToCheckout(recordId);
+                });
+            });
+            document.querySelectorAll('.remove-checkout-item').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const recordId = parseInt(this.dataset.recordId);
+                    removeFromCheckout(recordId);
+                });
+            });
+        }
+
         updateSelectionCount();
-        updateToolbarVisibility();
+        updateFilterVisibility();
     }
 
-    // ========== Toolbar Visibility ==========
-    function updateToolbarVisibility() {
-        const isScanMode = currentSearchMode === 'scan';
-        const isAddOrCheckout = currentSearchMode === 'add' || currentSearchMode === 'checkout';
+    // ========== Update filter visibility ==========
+    function updateFilterVisibility() {
+        const isDiscogsMode = currentSearchMode === 'discogs';
+        const isDeleteMode = currentSearchMode === 'delete';
+        const isCheckoutMode = currentSearchMode === 'checkout';
+        const isAddMode = currentSearchMode === 'add';
 
-        printSelectedBtn.style.display = isAddOrCheckout ? '' : 'none';
-        cogsBtn.style.display = isAddOrCheckout ? '' : 'none';
-        deleteSelectedBtn.style.display = isAddOrCheckout ? '' : 'none';
-        checkoutSelectedBtn.style.display = isAddOrCheckout ? '' : 'none';
-        completeScanBtn.style.display = isScanMode ? '' : 'none';
-
-        // Show/hide last seen filter container
-        if (lastSeenFilterContainer) {
-            lastSeenFilterContainer.style.display = isScanMode ? 'flex' : 'none';
+        if (discogsUi) {
+            discogsUi.style.display = (isDiscogsMode || isDeleteMode || isCheckoutMode) ? 'block' : 'none';
         }
+        const markupUi = document.getElementById('discogs-markup-ui');
+        if (markupUi) {
+            markupUi.style.display = isDiscogsMode ? 'block' : 'none';
+        }
+        const discogsFilters = document.getElementById('discogs-filters');
+        if (discogsFilters) {
+            discogsFilters.style.display = isDiscogsMode ? 'block' : 'none';
+        }
+        const deleteFilters = document.getElementById('delete-filters');
+        if (deleteFilters) {
+            deleteFilters.style.display = isDeleteMode ? 'block' : 'none';
+            if (deleteStatusFilter) {
+                deleteStatusFilter.innerHTML = `
+                    <option value="1">New</option>
+                    <option value="2">Active</option>
+                `;
+            }
+        }
+        // Checkout filters: hide the status dropdown, keep the show selected buttons
+        if (checkoutFilters) {
+            const statusFilterEl = document.getElementById('checkout-status-filter');
+            if (statusFilterEl) {
+                statusFilterEl.style.display = 'none';
+            }
+            checkoutFilters.style.display = isCheckoutMode ? 'block' : 'none';
+        }
+        if (checkoutShowSelectedBtn && checkoutShowAllBtn) {
+            checkoutShowSelectedBtn.style.display = isCheckoutMode ? 'inline-block' : 'none';
+            checkoutShowAllBtn.style.display = isCheckoutMode ? 'inline-block' : 'none';
+            if (isCheckoutMode) {
+                checkoutShowSelectedBtn.textContent = `Show Selected (${checkoutSelectedItems.length})`;
+            }
+        }
+
+        cogsBtn.style.display = isAddMode ? '' : 'none';
+        printBtn.style.display = isAddMode ? '' : 'none';
+        setActiveBtn.style.display = isAddMode ? '' : 'none';
+        completeActionBtn.style.display = isAddMode ? 'none' : '';
     }
 
     // ========== Range Selection ==========
     function startRangeFrom(index) {
-        // Set both from and to to the same index to select a single record
+        console.log(`🔵 startRangeFrom: index=${index}`);
         rangeFromIndex = index;
         rangeToIndex = index;
         isRangeMode = true;
@@ -683,6 +1161,7 @@
     }
 
     function endRangeTo(index) {
+        console.log(`🔵 endRangeTo: index=${index}`);
         if (rangeFromIndex === null) {
             showStatus('Select "from" first', 'warning');
             return;
@@ -695,6 +1174,7 @@
     }
 
     function cancelRangeSelection() {
+        console.log(`🔵 cancelRangeSelection`);
         rangeFromIndex = null;
         rangeToIndex = null;
         isRangeMode = false;
@@ -744,76 +1224,89 @@
         const result = await apiPost('/records', recordData);
         showStatus(`✅ Record #${result.record.id} added successfully!`, 'success');
         clearSearch();
-        await loadRecords();
+        await loadRecords({ statusIds: [1], mode: 'add' });
         await loadStats();
     }
 
     // ========== Search Logic ==========
-    async function performSearch(term) {
+    function performSearch(term) {
         if (!term) { clearSearch(); return; }
-        const mode = searchModeSelect.value;
+        const mode = currentSearchMode;
 
         if (mode === 'add') {
-            currentMode = 'search';
-            recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>`;
-            try {
-                const data = await apiGet('/api/discogs/search?q=' + encodeURIComponent(term));
-                console.log('📦 Discogs response:', data);
-                if (!data.results || !data.results.length) {
-                    recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;">No Discogs results found</td></tr>`;
-                    return;
-                }
-                currentResults = data.results.map(r => {
-                    let artist = r.artist || 'Unknown';
-                    let title = r.title || 'Unknown';
-                    if (artist === 'Unknown' && title.includes(' - ')) {
-                        const parts = title.split(' - ');
-                        artist = parts[0].trim();
-                        title = parts.slice(1).join(' - ').trim();
-                    }
-                    if (Array.isArray(artist)) artist = artist[0] || 'Unknown';
-                    return { ...r, artist, title };
-                });
-                filteredRecords = currentResults.slice();
-                totalRecords = filteredRecords.length;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                showStatus(`Found ${totalRecords} Discogs results`, 'success');
-            } catch (error) {
-                console.error('Discogs search error:', error);
-                recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;">Error searching Discogs: ${error.message}</td></tr>`;
-            }
-        } else if (mode === 'checkout') {
-            currentMode = 'inventory';
-            recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching inventory...</td></tr>`;
-            try {
-                const data = await apiGet('/records/search?q=' + encodeURIComponent(term));
-                if (!data.records || !data.records.length) {
-                    recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;">No records found in inventory</td></tr>`;
-                    return;
-                }
-                const recs = data.records.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                allRecords = recs;
-                applyFilters();
-                showStatus(`Found ${totalRecords} inventory records`, 'success');
-            } catch (error) {
-                console.error('Inventory search error:', error);
-                recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;">Error searching inventory: ${error.message}</td></tr>`;
-            }
-        } else if (mode === 'scan') {
-            await performScanSearch(term);
+            performDiscogsSearch(term);
+        } else if (mode === 'scan' || mode === 'checkout') {
+            performScanSearch(term);
+        } else if (mode === 'discogs') {
+            const termLower = term.toLowerCase();
+            let source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
+            const filtered = source.filter(r => {
+                return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
+            });
+            filteredRecords = filtered;
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+        } else if (mode === 'delete') {
+            const termLower = term.toLowerCase();
+            const filtered = allRecords.filter(r => {
+                return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
+            });
+            filteredRecords = filtered;
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
         }
     }
 
-    // ========== Scan Search ==========
+    async function performDiscogsSearch(term) {
+        currentMode = 'search';
+        recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>`;
+        try {
+            const data = await apiGet('/api/discogs/search?q=' + encodeURIComponent(term));
+            if (!data.results || !data.results.length) {
+                recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;">No Discogs results found</td></tr>`;
+                return;
+            }
+            currentResults = data.results.map(r => {
+                let artist = r.artist || 'Unknown';
+                let title = r.title || 'Unknown';
+                if (artist === 'Unknown' && title.includes(' - ')) {
+                    const parts = title.split(' - ');
+                    artist = parts[0].trim();
+                    title = parts.slice(1).join(' - ').trim();
+                }
+                if (Array.isArray(artist)) artist = artist[0] || 'Unknown';
+                return { ...r, artist, title };
+            });
+            filteredRecords = currentResults.slice();
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus(`Found ${totalRecords} Discogs results`, 'success');
+        } catch (error) {
+            console.error('Discogs search error:', error);
+            recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;">Error searching Discogs: ${error.message}</td></tr>`;
+        }
+    }
+
     async function performScanSearch(term) {
         try {
             const data = await apiGet('/records/search?q=' + encodeURIComponent(term));
             if (!data.records || !data.records.length) {
                 playErrorSound();
                 showStatus('No record found with that barcode or ID', 'error');
-                // Clear input in scan mode even on error
                 if (searchInput) searchInput.value = '';
                 return;
             }
@@ -829,26 +1322,21 @@
             const record = records[0];
             const existing = filteredRecords.find(r => r.id === record.id);
             if (existing) {
-                // Update last_seen in the local array
                 const today = getLocalMSTDate();
                 existing.last_seen = today;
-                // Re-sort by last_seen descending
                 filteredRecords.sort((a, b) => {
                     const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
                     const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
                     return bDate - aDate;
                 });
-                // Re-render the table
                 renderPagination();
                 renderTablePage();
                 playSuccessSound();
                 showStatus(`✅ Updated last_seen for #${record.id}: ${record.artist} - ${record.title}`, 'success');
-                // Clear input in scan mode
                 if (searchInput) searchInput.value = '';
                 return;
             }
 
-            // Add new record
             filteredRecords.push(record);
             filteredRecords.sort((a, b) => {
                 const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
@@ -862,7 +1350,6 @@
             playSuccessSound();
             showStatus(`✅ Added #${record.id}: ${record.artist} - ${record.title}`, 'success');
             updateSelectionCount();
-            // Clear input in scan mode
             if (searchInput) searchInput.value = '';
         } catch (error) {
             playErrorSound();
@@ -874,19 +1361,1909 @@
 
     function clearSearch() {
         searchInput.value = '';
-        if (currentSearchMode !== 'scan') {
+        if (currentSearchMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
-            loadRecords();
+            loadRecords({ statusIds: [1], mode: 'add' });
+        } else if (currentSearchMode === 'scan') {
+            // keep list
+        } else if (currentSearchMode === 'discogs') {
+            refreshDiscogsRecords();
+        } else if (currentSearchMode === 'delete') {
+            applyDeleteFilter();
+        } else if (currentSearchMode === 'checkout') {
+            if (checkoutViewMode === 'selected') {
+                // keep selected view
+            } else {
+                // Reload active records (status_id=2)
+                loadRecords({ statusIds: [2], mode: 'checkout' });
+            }
         }
         showStatus('Search cleared', 'info');
     }
 
-    // ========== Print Selected ==========
-    function printSelected() {
+    // ========== Discogs-specific functions ==========
+    function applyDiscogsSearchFilter() {
+        const searchTerm = searchInput.value.trim().toLowerCase();
+        let records = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
+        records = records.filter(r => {
+            return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at && r.location && r.location.trim() !== '';
+        });
+        if (searchTerm) {
+            records = records.filter(r => {
+                const matchesArtist = r.artist && r.artist.toLowerCase().indexOf(searchTerm) !== -1;
+                const matchesTitle = r.title && r.title.toLowerCase().indexOf(searchTerm) !== -1;
+                const matchesCatalog = r.catalog_number && r.catalog_number.toLowerCase().indexOf(searchTerm) !== -1;
+                const matchesBarcode = r.barcode && r.barcode.toLowerCase().indexOf(searchTerm) !== -1;
+                return matchesArtist || matchesTitle || matchesCatalog || matchesBarcode;
+            });
+        }
+        discogsFilteredRecords = records;
+        filteredRecords = discogsFilteredRecords;
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        updateSelectionCount();
+        populateDiscogsPrices(filteredRecords);
+    }
+
+    // ========== Discogs UI toggle functions ==========
+    window.toggleMarkupRules = function() {
+        const content = document.getElementById('markup-rules-content');
+        const icon = document.getElementById('markup-rules-toggle-icon');
+        if (!content || !icon) return;
+        if (content.style.display === 'none' || content.style.display === '') {
+            content.style.display = 'block';
+            icon.style.transform = 'rotate(180deg)';
+            loadMarkupRules();
+        } else {
+            content.style.display = 'none';
+            icon.style.transform = 'rotate(0deg)';
+        }
+    };
+
+    window.toggleMarkupCharts = function() {
+        const content = document.getElementById('markup-charts-content');
+        const icon = document.getElementById('markup-charts-toggle-icon');
+        if (!content || !icon) return;
+        if (content.style.display === 'none' || content.style.display === '') {
+            content.style.display = 'block';
+            icon.style.transform = 'rotate(180deg)';
+            setTimeout(loadMarkupAnalysisCharts, 300);
+        } else {
+            content.style.display = 'none';
+            icon.style.transform = 'rotate(0deg)';
+        }
+    };
+
+    // ========== Markup Rules Management ==========
+    async function loadMarkupRules() {
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules', {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'success') {
+                    renderMarkupRules(data.rules);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading markup rules:', error);
+        }
+    }
+
+    function renderMarkupRules(rules) {
+        const tbody = document.getElementById('markup-rules-body');
+        if (!tbody) return;
+        if (!rules || rules.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="padding: 30px; text-align: center; color: #999;">⚠️ No rules configured. Add your first rule above.</td></tr>';
+            return;
+        }
+        rules.sort((a, b) => a.days_old - b.days_old);
+        let html = '';
+        for (let i = 0; i < rules.length; i++) {
+            const rule = rules[i];
+            html += '<tr style="border-bottom: 1px solid #dee2e6;">';
+            html += '<td style="padding: 12px;">' + rule.days_old + '+ days</td>';
+            html += '<td style="padding: 12px;"><input type="number" id="rule-percent-' + rule.id + '" value="' + rule.markup_percent + '" step="1" style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;"><span>%</span></td>';
+            html += '<td style="padding: 12px;"><input type="text" id="rule-desc-' + rule.id + '" value="' + escapeHtml(rule.description || '') + '" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;"></td>';
+            html += '<td style="padding: 12px;">';
+            html += '<button class="btn btn-sm btn-info" onclick="updateMarkupRule(' + rule.id + ')" style="padding: 4px 8px; margin-right: 5px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-save"></i></button> ';
+            html += '<button class="btn btn-sm btn-danger" onclick="deleteMarkupRule(' + rule.id + ')" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-trash"></i></button>';
+            html += '</td>';
+            html += '</tr>';
+        }
+        tbody.innerHTML = html;
+    }
+
+    window.addMarkupRule = async function() {
+        const daysInput = document.getElementById('new-rule-days');
+        const percentInput = document.getElementById('new-rule-percent');
+        const descInput = document.getElementById('new-rule-desc');
+        if (!daysInput || !percentInput || !descInput) return;
+        const days_old = parseInt(daysInput.value);
+        const markup_percent = parseFloat(percentInput.value);
+        const description = descInput.value;
+        if (isNaN(days_old) || isNaN(markup_percent)) {
+            showDiscogsStatus('Please enter valid days and percentage', 'error');
+            return;
+        }
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days_old: days_old, markup_percent: markup_percent, description: description })
+            });
+            if (response.ok) {
+                showDiscogsStatus('Markup rule added successfully', 'success');
+                daysInput.value = '';
+                percentInput.value = '';
+                descInput.value = '';
+                loadMarkupRules();
+                refreshDiscogsRecords();
+            } else {
+                const error = await response.json();
+                showDiscogsStatus('Error: ' + error.error, 'error');
+            }
+        } catch (error) {
+            showDiscogsStatus('Error: ' + error.message, 'error');
+        }
+    };
+
+    window.updateMarkupRule = async function(ruleId) {
+        const percentInput = document.getElementById('rule-percent-' + ruleId);
+        const descInput = document.getElementById('rule-desc-' + ruleId);
+        if (!percentInput || !descInput) return;
+        const markup_percent = parseFloat(percentInput.value);
+        const description = descInput.value;
+        if (isNaN(markup_percent)) {
+            showDiscogsStatus('Please enter a valid percentage', 'error');
+            return;
+        }
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ markup_percent: markup_percent, description: description })
+            });
+            if (response.ok) {
+                showDiscogsStatus('Markup rule updated successfully', 'success');
+                loadMarkupRules();
+                refreshDiscogsRecords();
+            } else {
+                const error = await response.json();
+                showDiscogsStatus('Error: ' + error.error, 'error');
+            }
+        } catch (error) {
+            showDiscogsStatus('Error: ' + error.message, 'error');
+        }
+    };
+
+    window.deleteMarkupRule = async function(ruleId) {
+        if (!confirm('Are you sure you want to delete this markup rule?')) return;
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            if (response.ok) {
+                showDiscogsStatus('Markup rule deleted successfully', 'success');
+                loadMarkupRules();
+                refreshDiscogsRecords();
+            } else {
+                const error = await response.json();
+                showDiscogsStatus('Error: ' + error.error, 'error');
+            }
+        } catch (error) {
+            showDiscogsStatus('Error: ' + error.message, 'error');
+        }
+    };
+
+    // ========== Markup Analysis Charts ==========
+    async function loadMarkupAnalysisCharts() {
+        try {
+            const cutoffInput = document.getElementById('last-seen-cutoff-date');
+            let cutoff = '';
+            if (cutoffInput && cutoffInput.value) {
+                cutoff = cutoffInput.value;
+            } else {
+                cutoff = '';
+            }
+            const url = window.AppConfig.baseUrl + '/api/markup-analysis' + (cutoff ? '?cutoff=' + cutoff : '');
+            const response = await fetch(url, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            if (!response.ok) throw new Error('Failed to load markup analysis data');
+            const data = await response.json();
+            if (data.status === 'success') {
+                renderMarkupCurveChart(data);
+                renderMarkupDistributionChart(data);
+                renderAgeDistributionChart(data);
+                const countEl = document.getElementById('chart-record-count');
+                if (countEl) {
+                    countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed (cutoff: ${data.cutoff_date || 'N/A'}) | ${data.rules_count || 0} markup rules applied`;
+                }
+            } else {
+                console.error('Error loading markup analysis:', data.error);
+                showDiscogsStatus('Error loading markup charts: ' + (data.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error loading markup analysis:', error);
+            showDiscogsStatus('Error loading markup charts: ' + error.message, 'error');
+        }
+    }
+
+    function renderMarkupCurveChart(data) {
+        const canvas = document.getElementById('markup-curve-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (markupCurveChart) { markupCurveChart.destroy(); markupCurveChart = null; }
+        const points = data.curve_points || [];
+        if (points.length === 0) {
+            markupCurveChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: ['No Data'], datasets: [{ label: 'Markup %', data: [0], borderColor: '#ccc', backgroundColor: 'rgba(200,200,200,0.1)', borderWidth: 2, pointRadius: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+            });
+            return;
+        }
+        const days = points.map(p => p.days);
+        const markups = points.map(p => p.markup_percent);
+        const minMarkup = Math.min(...markups);
+        const maxMarkup = Math.max(...markups);
+        const yPadding = Math.max(5, Math.abs(maxMarkup - minMarkup) * 0.1);
+        const xMax = data.chart_max_days || Math.max(...days);
+        let xStepSize = 30;
+        if (xMax > 730) xStepSize = 90;
+        else if (xMax > 365) xStepSize = 60;
+        markupCurveChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: days,
+                datasets: [{
+                    label: 'Markup %',
+                    data: markups,
+                    borderColor: '#007bff',
+                    backgroundColor: 'rgba(0,123,255,0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Markup: ${context.parsed.y}% at ${context.parsed.x} days`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        min: 0,
+                        max: xMax,
+                        title: { display: true, text: 'Days Since Created' },
+                        ticks: {
+                            stepSize: xStepSize,
+                            callback: function(value) {
+                                if (value === 0) return '0';
+                                if (value === 365) return '365d';
+                                return value + 'd';
+                            }
+                        },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    },
+                    y: {
+                        min: minMarkup - yPadding,
+                        max: maxMarkup + yPadding,
+                        title: { display: true, text: 'Markup %' },
+                        ticks: { callback: function(value) { return value + '%'; }, stepSize: 5 },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderMarkupDistributionChart(data) {
+        const canvas = document.getElementById('markup-distribution-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (markupDistributionChart) { markupDistributionChart.destroy(); markupDistributionChart = null; }
+        const distribution = data.distribution || {};
+        if (Object.keys(distribution).length === 0) {
+            markupDistributionChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: ['No Data'], datasets: [{ label: 'Records', data: [0], backgroundColor: ['#ccc'], borderColor: ['#999'], borderWidth: 1 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+            });
+            return;
+        }
+        const sortedKeys = Object.keys(distribution).sort((a, b) => parseFloat(a) - parseFloat(b));
+        const labels = sortedKeys;
+        const counts = sortedKeys.map(key => distribution[key]);
+        const totalRecords = data.active_records_count || 0;
+        const colors = labels.map(label => {
+            const value = parseFloat(label);
+            if (value > 0) return 'rgba(40,167,69,0.8)';
+            if (value < 0) return 'rgba(220,53,69,0.8)';
+            return 'rgba(255,193,7,0.8)';
+        });
+        markupDistributionChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Records',
+                    data: counts,
+                    backgroundColor: colors,
+                    borderColor: colors.map(c => c.replace('0.8', '1')),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const count = context.parsed.y;
+                                const pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(1) : 0;
+                                return `${count} records (${pct}%)`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Markup %' }, ticks: { maxRotation: 45, minRotation: 45 } },
+                    y: { title: { display: true, text: 'Number of Records' }, beginAtZero: true, ticks: { stepSize: 1 } }
+                }
+            }
+        });
+    }
+
+    function renderAgeDistributionChart(data) {
+        const canvas = document.getElementById('age-distribution-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (ageDistributionChart) { ageDistributionChart.destroy(); ageDistributionChart = null; }
+        const ageData = data.age_distribution || {};
+        if (Object.keys(ageData).length === 0) {
+            ageDistributionChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: ['No Data'], datasets: [{ label: 'Records', data: [0], backgroundColor: ['#ccc'], borderColor: ['#999'], borderWidth: 1 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+            });
+            return;
+        }
+        const sortedKeys = Object.keys(ageData).sort((a, b) => parseInt(a) - parseInt(b));
+        const labels = sortedKeys.map(key => {
+            const parts = key.split('-');
+            if (parts.length === 2) return `${parts[0]}-${parts[1]}d`;
+            return key + 'd';
+        });
+        const counts = sortedKeys.map(key => ageData[key]);
+        const totalRecords = data.active_records_count || 0;
+        const colors = sortedKeys.map((_, index) => `rgba(23,162,184,${0.6 + (index / sortedKeys.length) * 0.3})`);
+        ageDistributionChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Records',
+                    data: counts,
+                    backgroundColor: colors,
+                    borderColor: 'rgba(23,162,184,1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const count = context.parsed.y;
+                                const pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(1) : 0;
+                                return `${count} records (${pct}%)`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Age Cohort (days)' }, ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 10 } },
+                    y: { title: { display: true, text: 'Number of Records' }, beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
+                }
+            }
+        });
+        const statsEl = document.getElementById('age-chart-stats');
+        if (statsEl && data.age_stats) {
+            statsEl.textContent = `| Avg: ${data.age_stats.avg_days}d | Min: ${data.age_stats.min_days} | Max: ${data.age_stats.max_days}`;
+        }
+    }
+
+    // ========== Last Seen Filter (Discogs) ==========
+    function applyLastSeenFilter() {
+        if (lastSeenCutoffDateInput) {
+            lastSeenCutoffDate = lastSeenCutoffDateInput.value;
+        } else {
+            lastSeenCutoffDate = null;
+        }
+        console.log(`📅 Last seen cutoff date set to: ${lastSeenCutoffDate || 'none'}`);
+        refreshDiscogsRecords();
+        showDiscogsStatus(`Last seen filter set to: ${lastSeenCutoffDate || 'disabled'}`, 'info');
+        loadMarkupAnalysisCharts();
+    }
+
+    // ========== Post Single Record to Discogs ==========
+    async function postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
+        if (!recordId || !mediaCondition || !sleeveCondition || !price || !discogsPrice) {
+            showDiscogsStatus('Missing required information', 'error');
+            return;
+        }
+        if (!confirm(`📋 Post "${artist} - ${title}" to Discogs?\n\nStore Price: $${price}\nDiscogs Price: $${discogsPrice} (${markupPercent > 0 ? '+' : ''}${markupPercent}%)\nMedia: ${mediaCondition}\nSleeve: ${sleeveCondition}`)) {
+            return;
+        }
+
+        const listingData = {
+            record: {
+                id: recordId,
+                artist: artist,
+                title: title,
+                catalog_number: catalogNumber || '',
+                media_condition: mediaCondition,
+                sleeve_condition: sleeveCondition,
+                price: discogsPrice,
+                notes: notes || '',
+                location: location || ''
+            }
+        };
+
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify(listingData)
+            });
+            const result = await response.json();
+            if (result.success) {
+                let discogsUrl = result.listing_url;
+                if (!discogsUrl && result.listing_id) {
+                    discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
+                }
+                showDiscogsStatus(`✅ Successfully posted "${artist} - ${title}" to Discogs! ${discogsUrl ? '<a href="' + discogsUrl + '" target="_blank">View</a>' : ''}`, 'success');
+                refreshDiscogsRecords();
+            } else {
+                showDiscogsStatus('Error: ' + result.error, 'error');
+            }
+        } catch (error) {
+            showDiscogsStatus('Error: ' + error.message, 'error');
+        }
+    }
+
+    // ========== Post Selected Records (Discogs mode) ==========
+    async function postSelectedRecords() {
+        const records = getSelectedRecords();  // use unified range selection
+        console.log(`📋 postSelectedRecords: selected ${records.length} records out of ${filteredRecords.length} total filtered`);
+        if (records.length === 0) {
+            showDiscogsStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
+            return;
+        }
+        const totalTimeMinutes = Math.ceil(records.length * 3 / 60);
+        let confirmMsg = `📋 Post ${records.length} record(s) to Discogs?\n\n`;
+        confirmMsg += `⏱️ Estimated time: ~${totalTimeMinutes} minute(s)\n\nContinue?`;
+        if (!confirm(confirmMsg)) return;
+
+        let posted = 0, failed = 0;
+        for (let i = 0; i < records.length; i++) {
+            const record = records[i];
+            console.log(`📋 Processing record ${i+1}/${records.length}: ID ${record.id} - ${record.artist} - ${record.title}`);
+            const priceRequests = [{
+                id: record.id,
+                created_at: record.created_at,
+                store_price: record.store_price
+            }];
+            const batchResults = await calculateMarkupBatch(priceRequests);
+            let discogsPrice = null;
+            let markupPercent = null;
+            if (batchResults.length > 0) {
+                const item = batchResults[0];
+                if (item.id) {
+                    discogsPrice = item.discogs_price;
+                    markupPercent = item.markup_percent;
+                }
+            }
+            if (!discogsPrice) {
+                failed++;
+                showDiscogsStatus(`Failed to calculate price for "${record.artist} - ${record.title}"`, 'error');
+                continue;
+            }
+            const listingData = {
+                record: {
+                    id: record.id,
+                    artist: record.artist,
+                    title: record.title,
+                    catalog_number: record.catalog_number || '',
+                    media_condition: record.disc_condition_name || record.sleeve_condition_name,
+                    sleeve_condition: record.sleeve_condition_name || record.disc_condition_name,
+                    price: discogsPrice,
+                    notes: record.notes || '',
+                    location: record.location || ''
+                }
+            };
+            try {
+                const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(listingData)
+                });
+                const result = await response.json();
+                if (result.success) {
+                    posted++;
+                    showDiscogsStatus(`✅ Posted #${record.id}: ${record.artist} - ${record.title}`, 'success');
+                } else {
+                    failed++;
+                    showDiscogsStatus(`❌ Failed #${record.id}: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                failed++;
+                showDiscogsStatus(`❌ Error posting #${record.id}: ${error.message}`, 'error');
+            }
+            if (i < records.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+        }
+        showDiscogsStatus(`📊 Done: ${posted} posted, ${failed} failed.`, posted > 0 ? 'success' : 'error');
+        refreshDiscogsRecords();
+    }
+
+    // ========== Delete Selected ==========
+    async function deleteSelected() {
+        const records = getSelectedRecords();
+        console.log(`🗑️ deleteSelected: selected ${records.length} records out of ${filteredRecords.length} total filtered`);
+        if (records.length === 0) {
+            showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
+            return;
+        }
+        if (!confirm(`Delete ${records.length} record(s) permanently? This cannot be undone.`)) {
+            return;
+        }
+        let deleted = 0;
+        for (const record of records) {
+            try {
+                await apiDelete('/records/' + record.id);
+                deleted++;
+            } catch (e) {
+                console.error('Delete failed for record', record.id, e);
+            }
+        }
+        showStatus(`Deleted ${deleted} of ${records.length} records`, 'success');
+        await loadRecords({ statusIds: [1,2], mode: 'delete' });
+        cancelRangeSelection();
+    }
+
+    // ========== Apply Delete Filter ==========
+    function applyDeleteFilter() {
+        const statusFilter = deleteStatusFilter ? deleteStatusFilter.value : '1,2';
+        const searchTerm = searchInput.value.trim().toLowerCase();
+        let statuses = statusFilter.split(',').map(s => parseInt(s.trim())).filter(s => !isNaN(s));
+        if (statuses.length === 0) statuses = [1,2];
+        loadRecords({ statusIds: statuses, mode: 'delete', search: searchTerm });
+    }
+
+    // ========== COGS Modal ==========
+    function showCogsModal() {
+        const records = filteredRecords;
+        if (records.length === 0) {
+            showStatus('No records to apply COGS to.', 'warning');
+            return;
+        }
+
+        let modal = document.getElementById('cogs-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'cogs-modal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; width: 95%;">
+                    <div class="modal-header" style="background: #17a2b8; color: white;">
+                        <h3 class="modal-title"><i class="fas fa-dollar-sign"></i> Apply COGS</h3>
+                        <button class="modal-close" onclick="document.getElementById('cogs-modal').style.display='none'" style="color: white;">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>${records.length}</strong> record(s) selected.</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label for="cogs-seller-name" style="display:block; font-weight:500; margin-bottom:4px;">Seller Name *</label>
+                                <input type="text" id="cogs-seller-name" class="form-control" placeholder="e.g., John's Records" style="width:100%; padding:8px;">
+                            </div>
+                            <div>
+                                <label for="cogs-seller-contact" style="display:block; font-weight:500; margin-bottom:4px;">Seller Contact</label>
+                                <input type="text" id="cogs-seller-contact" class="form-control" placeholder="Email or Phone" style="width:100%; padding:8px;">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="cogs-amount-spent" style="display:block; font-weight:500; margin-bottom:4px;">Amount Spent ($) *</label>
+                                <input type="number" id="cogs-amount-spent" step="0.01" min="0.01" class="form-control" placeholder="0.00" style="width:100%; padding:8px;">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="cogs-payment-account" style="display:block; font-weight:500; margin-bottom:4px;">Payment Account *</label>
+                                <select id="cogs-payment-account" class="form-control" style="width:100%; padding:8px;">
+                                    <option value="">-- Select how you paid --</option>
+                                </select>
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="cogs-description" style="display:block; font-weight:500; margin-bottom:4px;">Description</label>
+                                <textarea id="cogs-description" rows="2" class="form-control" placeholder="Optional notes about this purchase" style="width:100%; padding:8px;"></textarea>
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="cogs-bill-image" style="display:block; font-weight:500; margin-bottom:4px;">Bill of Sale (Image)</label>
+                                <input type="file" id="cogs-bill-image" accept="image/*,application/pdf" style="width:100%; padding:8px;">
+                                <div id="cogs-bill-preview" style="margin-top:8px;"></div>
+                            </div>
+                        </div>
+                        <div id="cogs-status" style="margin-top:10px; padding:8px; border-radius:4px; display:none;"></div>
+                    </div>
+                    <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
+                        <button class="btn btn-secondary" onclick="document.getElementById('cogs-modal').style.display='none'">Cancel</button>
+                        <button class="btn btn-success" id="cogs-apply-btn" disabled><i class="fas fa-check"></i> Apply COGS</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        const accountSelect = document.getElementById('cogs-payment-account');
+        if (accountSelect) {
+            accountSelect.innerHTML = '<option value="">-- Select how you paid --</option>';
+            accounts.forEach(acc => {
+                if (acc && acc.code && acc.name) {
+                    const opt = document.createElement('option');
+                    opt.value = acc.code;
+                    opt.textContent = `${acc.code} - ${acc.name}`;
+                    accountSelect.appendChild(opt);
+                }
+            });
+        }
+
+        document.getElementById('cogs-bill-preview').innerHTML = '';
+
+        const fileInput = document.getElementById('cogs-bill-image');
+        const previewDiv = document.getElementById('cogs-bill-preview');
+        fileInput.onchange = function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function(ev) {
+                        previewDiv.innerHTML = `
+                            <img src="${ev.target.result}" alt="Bill preview" style="max-width:200px; max-height:200px; border-radius:4px; border:1px solid #ddd;">
+                            <p style="font-size:12px; color:#666; margin-top:5px;">${file.name}</p>
+                        `;
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    previewDiv.innerHTML = `<p style="color:#666;"><i class="fas fa-file-pdf"></i> ${file.name}</p>`;
+                }
+            } else {
+                previewDiv.innerHTML = '';
+            }
+        };
+
+        const sellerNameInput = document.getElementById('cogs-seller-name');
+        const amountInput = document.getElementById('cogs-amount-spent');
+        const accountSelect2 = document.getElementById('cogs-payment-account');
+
+        function validateForm() {
+            const btn = document.getElementById('cogs-apply-btn');
+            if (!btn) return;
+            const sellerName = sellerNameInput.value.trim();
+            const amount = parseFloat(amountInput.value);
+            const account = accountSelect2.value;
+            const isValid = sellerName && !isNaN(amount) && amount > 0 && account;
+            btn.disabled = !isValid;
+        }
+
+        sellerNameInput.addEventListener('input', validateForm);
+        amountInput.addEventListener('input', validateForm);
+        accountSelect2.addEventListener('change', validateForm);
+
+        validateForm();
+
+        const applyBtn = document.getElementById('cogs-apply-btn');
+        const newApply = applyBtn.cloneNode(true);
+        applyBtn.parentNode.replaceChild(newApply, applyBtn);
+        newApply.addEventListener('click', function() {
+            handleCogsApply();
+        });
+
+        validateForm();
+
+        modal.style.display = 'flex';
+    }
+
+    // ========== COGS Apply Handler ==========
+    async function handleCogsApply() {
+        const statusDiv = document.getElementById('cogs-status');
+        const applyBtn = document.getElementById('cogs-apply-btn');
+
+        function showCogsStatusMsg(msg, type) {
+            if (statusDiv) {
+                statusDiv.textContent = msg;
+                statusDiv.className = `status-message status-${type}`;
+                statusDiv.style.display = 'block';
+            } else {
+                showStatus(msg, type);
+            }
+        }
+
+        if (applyBtn) applyBtn.disabled = true;
+
+        const records = filteredRecords;
+        if (records.length === 0) {
+            showCogsStatusMsg('No records to apply COGS to.', 'error');
+            if (applyBtn) applyBtn.disabled = false;
+            return;
+        }
+
+        const sellerNameEl = document.getElementById('cogs-seller-name');
+        const sellerContactEl = document.getElementById('cogs-seller-contact');
+        const amountEl = document.getElementById('cogs-amount-spent');
+        const accountEl = document.getElementById('cogs-payment-account');
+        const descEl = document.getElementById('cogs-description');
+        const billFileEl = document.getElementById('cogs-bill-image');
+
+        if (!sellerNameEl || !amountEl || !accountEl) {
+            showCogsStatusMsg('Form elements missing. Please refresh and try again.', 'error');
+            if (applyBtn) applyBtn.disabled = false;
+            return;
+        }
+
+        const sellerName = sellerNameEl.value.trim();
+        const sellerContact = sellerContactEl ? sellerContactEl.value.trim() : '';
+        const amountSpent = parseFloat(amountEl.value);
+        const paymentAccount = accountEl.value;
+        const description = descEl ? descEl.value.trim() : '';
+        const billFile = billFileEl ? billFileEl.files[0] : null;
+
+        if (!sellerName) {
+            showCogsStatusMsg('Seller name is required.', 'error');
+            if (applyBtn) applyBtn.disabled = false;
+            return;
+        }
+        if (isNaN(amountSpent) || amountSpent <= 0) {
+            showCogsStatusMsg('Please enter a valid amount greater than 0.', 'error');
+            if (applyBtn) applyBtn.disabled = false;
+            return;
+        }
+        if (!paymentAccount) {
+            showCogsStatusMsg('Please select a payment account.', 'error');
+            if (applyBtn) applyBtn.disabled = false;
+            return;
+        }
+
+        let billPath = null;
+        if (billFile) {
+            const formData = new FormData();
+            formData.append('bill_image', billFile);
+            try {
+                const uploadRes = await fetch(`${AppConfig.baseUrl}/api/inventory-purchases/upload-bill`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                });
+                const uploadData = await uploadRes.json();
+                if (uploadData.status === 'success') {
+                    billPath = uploadData.file_path;
+                } else {
+                    showCogsStatusMsg(`Image upload failed: ${uploadData.error}`, 'error');
+                    if (applyBtn) applyBtn.disabled = false;
+                    return;
+                }
+            } catch (err) {
+                showCogsStatusMsg(`Image upload error: ${err.message}`, 'error');
+                if (applyBtn) applyBtn.disabled = false;
+                return;
+            }
+        }
+
+        const purchaseData = {
+            purchase_date: new Date().toISOString().split('T')[0],
+            seller_name: sellerName,
+            seller_contact: sellerContact,
+            amount_spent: amountSpent,
+            description: description,
+            payment_account_id: paymentAccount,
+            bill_of_sale_path: billPath
+        };
+
+        try {
+            const createResponse = await fetch(`${AppConfig.baseUrl}/api/inventory-purchases`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify(purchaseData)
+            });
+            const createResult = await createResponse.json();
+            if (createResult.status !== 'success') {
+                throw new Error(createResult.error || 'Failed to record purchase');
+            }
+            const purchaseId = createResult.purchase.id;
+
+            const recordIds = records.map(r => r.id);
+            const cogsResponse = await fetch(`${AppConfig.baseUrl}/api/cogs/batch`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    batch_cogs: amountSpent,
+                    record_ids: recordIds
+                })
+            });
+            const cogsResult = await cogsResponse.json();
+            if (cogsResult.status !== 'success') {
+                throw new Error(cogsResult.error || 'Failed to apply COGS');
+            }
+
+            showCogsStatusMsg(`✅ Purchase #${purchaseId} recorded and COGS applied to ${cogsResult.records_updated} records.`, 'success');
+            await loadRecords({ statusIds: [1], mode: 'add' });
+            setTimeout(() => {
+                const modal = document.getElementById('cogs-modal');
+                if (modal) modal.style.display = 'none';
+            }, 1500);
+
+        } catch (error) {
+            showCogsStatusMsg(`❌ Error: ${error.message}`, 'error');
+            console.error('COGS apply error:', error);
+        } finally {
+            if (applyBtn) applyBtn.disabled = false;
+        }
+    }
+
+    // ========== Print (Add mode) ==========
+    function printPriceTags() {
+        const records = filteredRecords;
+        if (records.length === 0) {
+            showStatus('No records to print.', 'warning');
+            return;
+        }
+        generatePDF(records);
+    }
+
+    // ========== Set Active (Add mode) ==========
+    async function setActive() {
+        const records = filteredRecords;
+        if (records.length === 0) {
+            showStatus('No records to set active.', 'warning');
+            return;
+        }
+        if (!confirm(`Set ${records.length} new record(s) to Active (status_id=2)? This cannot be undone.`)) {
+            return;
+        }
+        let updated = 0;
+        for (const record of records) {
+            try {
+                await apiPut('/records/' + record.id, { status_id: 2 });
+                updated++;
+            } catch (e) {
+                console.error('Failed to update record', record.id, e);
+            }
+        }
+        showStatus(`✅ ${updated} records set to Active.`, 'success');
+        await loadRecords({ statusIds: [1], mode: 'add' });
+    }
+
+    // ========== Checkout functions ==========
+    function addToCheckout(recordId) {
+        const record = allRecords.find(r => r.id === recordId);
+        if (!record) return;
+        if (!checkoutSelectedItems.some(r => r.id === recordId)) {
+            checkoutSelectedItems.push(record);
+            showStatus(`Added "${record.artist} - ${record.title}" to checkout`, 'success');
+            if (checkoutViewMode === 'all') {
+                renderTablePage();
+            } else {
+                checkoutViewMode = 'selected';
+                filteredRecords = checkoutSelectedItems.slice();
+                totalRecords = filteredRecords.length;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                checkoutShowSelectedBtn.textContent = `Show Selected (${checkoutSelectedItems.length})`;
+                checkoutShowSelectedBtn.style.display = 'none';
+                checkoutShowAllBtn.style.display = 'inline-block';
+            }
+            updateSelectionCount();
+        } else {
+            showStatus('Record already in checkout list', 'info');
+        }
+    }
+
+    function removeFromCheckout(recordId) {
+        const index = checkoutSelectedItems.findIndex(r => r.id === recordId);
+        if (index !== -1) {
+            const removed = checkoutSelectedItems.splice(index, 1)[0];
+            showStatus(`Removed "${removed.artist} - ${removed.title}" from checkout`, 'info');
+            if (checkoutViewMode === 'selected') {
+                filteredRecords = checkoutSelectedItems.slice();
+                totalRecords = filteredRecords.length;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                if (checkoutSelectedItems.length === 0) {
+                    checkoutViewMode = 'all';
+                    checkoutShowSelectedBtn.style.display = 'none';
+                    checkoutShowAllBtn.style.display = 'none';
+                    // Reload active records
+                    loadRecords({ statusIds: [2], mode: 'checkout' });
+                }
+            } else {
+                renderTablePage();
+            }
+            updateSelectionCount();
+        }
+    }
+
+    function showCheckoutSelected() {
+        checkoutViewMode = 'selected';
+        filteredRecords = checkoutSelectedItems.slice();
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        checkoutShowSelectedBtn.style.display = 'none';
+        checkoutShowAllBtn.style.display = 'inline-block';
+        updateSelectionCount();
+    }
+
+    function showCheckoutAll() {
+        checkoutViewMode = 'all';
+        // Load active records without status filter dropdown
+        loadRecords({ statusIds: [2], mode: 'checkout' });
+        checkoutShowSelectedBtn.style.display = 'inline-block';
+        checkoutShowSelectedBtn.textContent = `Show Selected (${checkoutSelectedItems.length})`;
+        checkoutShowAllBtn.style.display = 'none';
+        updateSelectionCount();
+    }
+
+    function applyCheckoutFilter() {
+        // Always load active records (status_id=2)
+        loadRecords({ statusIds: [2], mode: 'checkout' });
+    }
+
+    // ========== Checkout Modal with Square Polling ==========
+    async function checkSquareAvailability() {
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/square/terminals', {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            if (!response.ok) throw new Error('Failed to fetch terminals');
+            const data = await response.json();
+            squareAvailable = data.terminals && data.terminals.length > 0;
+            console.log(`📟 Square terminals available: ${squareAvailable}`);
+        } catch (error) {
+            console.warn('Square not available:', error);
+            squareAvailable = false;
+        }
+        return squareAvailable;
+    }
+
+    function showCheckoutModal() {
+        const selected = checkoutSelectedItems;
+        if (selected.length === 0) { showStatus('No records in checkout list', 'warning'); return; }
+        const total = selected.reduce((sum, r) => sum + (r.store_price || 0), 0);
+        const tax = total * 0.08;
+        const grandTotal = total + tax;
+        checkoutTotal = grandTotal;
+        checkoutRemaining = grandTotal;
+        checkoutPaymentEntries = [];
+
+        let modal = document.getElementById('checkout-payment-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'checkout-payment-modal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 500px; width: 95%;">
+                    <div class="modal-header" style="background: #007bff; color: white;">
+                        <h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3>
+                        <button class="modal-close" onclick="document.getElementById('checkout-payment-modal').style.display='none'" style="color: white;">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>${selected.length}</strong> record(s) selected.</p>
+                        <div style="font-size: 20px; font-weight: bold; margin: 10px 0;">
+                            Total: $${grandTotal.toFixed(2)}
+                        </div>
+                        <div style="font-size: 16px; margin: 10px 0; color: #28a745;">
+                            Remaining: $<span id="checkout-remaining">${grandTotal.toFixed(2)}</span>
+                        </div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0;">
+                            <input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;">
+                            <select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;">
+                                <option value="Cash">Cash</option>
+                                <option value="Card (Square)" selected>Card (Square)</option>
+                                <option value="Gift Card">Gift Card</option>
+                            </select>
+                            <button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button>
+                        </div>
+                        <div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">
+                            ⚠️ Square POS is not available. Card option is disabled.
+                        </div>
+                        <div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div>
+                        <div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div>
+                        <div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div>
+                        <button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="document.getElementById('checkout-payment-modal').style.display='none'">Cancel</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // Check Square availability
+        checkSquareAvailability().then(avail => {
+            const methodSelect = document.getElementById('checkout-payment-method');
+            const cardOption = methodSelect.querySelector('option[value="Card (Square)"]');
+            const warning = document.getElementById('checkout-square-warning');
+            if (!avail) {
+                if (cardOption) cardOption.disabled = true;
+                if (warning) warning.style.display = 'block';
+                if (methodSelect.value === 'Card (Square)') methodSelect.value = 'Cash';
+            } else {
+                if (cardOption) cardOption.disabled = false;
+                if (warning) warning.style.display = 'none';
+            }
+        });
+
+        document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
+        renderCheckoutEntries();
+
+        // Add payment button
+        document.getElementById('checkout-add-payment').onclick = function() {
+            const amountInput = document.getElementById('checkout-payment-amount');
+            const methodSelect = document.getElementById('checkout-payment-method');
+            let amount = parseFloat(amountInput.value);
+            if (isNaN(amount) || amount <= 0) {
+                amount = checkoutRemaining;
+                if (amount <= 0) {
+                    showCheckoutStatus('No remaining balance to pay.', 'error');
+                    return;
+                }
+                amountInput.value = amount.toFixed(2);
+            }
+            const method = methodSelect.value;
+
+            if (method === 'Card (Square)' && !squareAvailable) {
+                showCheckoutStatus('Square POS is not available. Please use Cash or Gift Card.', 'error');
+                return;
+            }
+
+            if (method === 'Gift Card') {
+                const code = prompt('Enter gift card code:');
+                if (!code) return;
+                fetch(`${AppConfig.baseUrl}/api/gift-cards/${encodeURIComponent(code)}`, {
+                    credentials: 'include'
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.success || !data.card) {
+                        throw new Error('Gift card not found');
+                    }
+                    if (data.card.balance < amount) {
+                        throw new Error(`Insufficient balance: $${data.card.balance.toFixed(2)}`);
+                    }
+                    return fetch(`${AppConfig.baseUrl}/api/gift-cards/${data.card.id}/redeem`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ amount: amount })
+                    });
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to redeem gift card');
+                    }
+                    addPaymentEntry('Gift Card', amount);
+                })
+                .catch(err => {
+                    showCheckoutStatus(err.message, 'error');
+                });
+                return;
+            }
+
+            addPaymentEntry(method, amount);
+        };
+
+        // Complete button
+        document.getElementById('checkout-complete-payment').onclick = function() {
+            if (checkoutRemaining > 0.01) {
+                showCheckoutStatus('Remaining balance not covered', 'error');
+                return;
+            }
+            // Determine if we need Square
+            const methodSelect = document.getElementById('checkout-payment-method');
+            const method = methodSelect.value;
+            if (method === 'Card (Square)') {
+                // Process Square payment
+                processSquarePayment();
+            } else {
+                // Cash or Gift Card (already redeemed) – complete directly
+                completeCheckout();
+            }
+        };
+
+        modal.style.display = 'flex';
+        updateCheckoutCompleteButton();
+
+        // Reset square status
+        const statusDiv = document.getElementById('checkout-square-status');
+        if (statusDiv) {
+            statusDiv.style.display = 'none';
+            statusDiv.textContent = '';
+        }
+    }
+
+    // ========== Square Payment Processing ==========
+    async function processSquarePayment() {
+        const statusDiv = document.getElementById('checkout-square-status');
+        const completeBtn = document.getElementById('checkout-complete-payment');
+        if (!statusDiv) return;
+
+        // Disable button during processing
+        completeBtn.disabled = true;
+        completeBtn.textContent = 'Processing...';
+
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'status-message status-info';
+        statusDiv.textContent = '⏳ Sending payment request to Square Terminal...';
+
+        try {
+            const records = checkoutSelectedItems;
+            const totalCents = Math.round(checkoutTotal * 100);
+            const recordIds = records.map(r => r.id);
+            const titles = records.map(r => `${r.artist} - ${r.title}`);
+
+            // Create terminal checkout
+            const response = await fetch(window.AppConfig.baseUrl + '/api/square/terminal/checkout', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount_cents: totalCents,
+                    record_ids: recordIds,
+                    record_titles: titles,
+                    reference_id: generateOrderId()
+                })
+            });
+
+            const data = await response.json();
+            if (data.status !== 'success') {
+                throw new Error(data.message || 'Failed to create Square checkout');
+            }
+
+            const checkout = data.checkout;
+            squareCheckoutId = checkout.id;
+
+            statusDiv.textContent = '💳 Payment request sent to POS. Waiting for customer to complete payment...';
+            statusDiv.className = 'status-message status-info';
+
+            // Start polling
+            startPollingSquareStatus(checkout.id);
+
+        } catch (error) {
+            console.error('Square checkout error:', error);
+            statusDiv.textContent = `❌ Error: ${error.message}`;
+            statusDiv.className = 'status-message status-error';
+            completeBtn.disabled = false;
+            completeBtn.textContent = 'Complete Payment';
+        }
+    }
+
+    function startPollingSquareStatus(checkoutId) {
+        if (squarePollInterval) {
+            clearInterval(squarePollInterval);
+        }
+
+        const statusDiv = document.getElementById('checkout-square-status');
+        let attempts = 0;
+        const maxAttempts = 60; // 2 minutes at 2s intervals
+
+        squarePollInterval = setInterval(async () => {
+            attempts++;
+            try {
+                const response = await fetch(window.AppConfig.baseUrl + `/api/square/terminal/checkout/${checkoutId}/status`, {
+                    credentials: 'include',
+                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+                });
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    // Continue polling on error
+                    return;
+                }
+
+                const checkout = data.checkout;
+                const status = checkout.status;
+
+                if (status === 'COMPLETED') {
+                    // Payment successful
+                    clearInterval(squarePollInterval);
+                    squarePollInterval = null;
+                    statusDiv.textContent = '✅ Payment completed successfully!';
+                    statusDiv.className = 'status-message status-success';
+                    // Mark records as sold
+                    await completeCheckout();
+                    // Close modal after delay
+                    setTimeout(() => {
+                        const modal = document.getElementById('checkout-payment-modal');
+                        if (modal) modal.style.display = 'none';
+                    }, 1500);
+                } else if (status === 'CANCELED' || status === 'FAILED') {
+                    clearInterval(squarePollInterval);
+                    squarePollInterval = null;
+                    statusDiv.textContent = `❌ Payment ${status.toLowerCase()}. Please try again.`;
+                    statusDiv.className = 'status-message status-error';
+                    const completeBtn = document.getElementById('checkout-complete-payment');
+                    completeBtn.disabled = false;
+                    completeBtn.textContent = 'Complete Payment';
+                } else if (status === 'PENDING' || status === 'IN_PROGRESS') {
+                    statusDiv.textContent = `⏳ Waiting for payment... (${attempts}s)`;
+                    statusDiv.className = 'status-message status-info';
+                }
+
+                // Timeout
+                if (attempts >= maxAttempts) {
+                    clearInterval(squarePollInterval);
+                    squarePollInterval = null;
+                    statusDiv.textContent = '⏰ Payment timed out. Please try again.';
+                    statusDiv.className = 'status-message status-warning';
+                    const completeBtn = document.getElementById('checkout-complete-payment');
+                    completeBtn.disabled = false;
+                    completeBtn.textContent = 'Complete Payment';
+                }
+
+            } catch (error) {
+                console.warn('Polling error:', error);
+                // Continue polling
+            }
+        }, 2000);
+    }
+
+    // ========== Checkout Complete ==========
+    function completeCheckout() {
+        if (checkoutRemaining > 0.01) {
+            showCheckoutStatus('Remaining balance not covered', 'error');
+            return;
+        }
+        const selected = checkoutSelectedItems;
+        if (selected.length === 0) return;
+        const today = getLocalMSTDate();
+        let success = 0;
+        for (const record of selected) {
+            try {
+                apiPut('/records/' + record.id, {
+                    status_id: 3,
+                    date_sold: today,
+                    actual_sale_price: record.store_price
+                }).then(() => {
+                    success++;
+                }).catch(err => {
+                    console.error('Failed to update record', record.id, err);
+                });
+            } catch (e) {
+                console.error('Failed to update record', record.id, e);
+            }
+        }
+        setTimeout(() => {
+            showCheckoutStatus(`${success} of ${selected.length} records marked as sold`, 'success');
+            checkoutSelectedItems = [];
+            checkoutViewMode = 'all';
+            checkoutPaymentEntries = [];
+            checkoutRemaining = 0;
+            const modal = document.getElementById('checkout-payment-modal');
+            if (modal) modal.style.display = 'none';
+            loadRecords({ statusIds: [2], mode: 'checkout' });
+            checkoutShowSelectedBtn.style.display = 'inline-block';
+            checkoutShowSelectedBtn.textContent = `Show Selected (0)`;
+            checkoutShowAllBtn.style.display = 'none';
+            updateSelectionCount();
+        }, 500);
+    }
+
+    // ========== Add Payment Entry (for Cash/Gift Card) ==========
+    function addPaymentEntry(method, amount) {
+        if (amount > checkoutRemaining && checkoutRemaining > 0) {
+            // allow overpayment, change will be displayed
+        }
+        checkoutPaymentEntries.push({ method: method, amount: amount });
+        checkoutRemaining -= amount;
+        document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
+        renderCheckoutEntries();
+        updateCheckoutCompleteButton();
+        showCheckoutStatus(`Added $${amount.toFixed(2)} ${method}`, 'success');
+        document.getElementById('checkout-payment-amount').value = '';
+    }
+
+    function renderCheckoutEntries() {
+        const container = document.getElementById('checkout-payment-entries');
+        if (!container) return;
+        if (checkoutPaymentEntries.length === 0) {
+            container.innerHTML = '<div style="color: #999; text-align: center; padding: 10px;">No payments added yet.</div>';
+            return;
+        }
+        let html = '';
+        checkoutPaymentEntries.forEach((entry, idx) => {
+            html += `
+                <div style="display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: 1px solid #eee;">
+                    <span>${entry.method}</span>
+                    <span>$${entry.amount.toFixed(2)}</span>
+                    <button class="btn btn-sm btn-danger checkout-remove-entry" data-index="${idx}" style="padding: 2px 6px;"><i class="fas fa-times"></i></button>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+
+        container.querySelectorAll('.checkout-remove-entry').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const index = parseInt(this.dataset.index);
+                removeCheckoutEntry(index);
+            });
+        });
+    }
+
+    function removeCheckoutEntry(index) {
+        const entry = checkoutPaymentEntries[index];
+        if (entry) {
+            checkoutRemaining += entry.amount;
+            checkoutPaymentEntries.splice(index, 1);
+            document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
+            renderCheckoutEntries();
+            updateCheckoutCompleteButton();
+            showCheckoutStatus('Payment entry removed', 'info');
+        }
+    }
+
+    function updateCheckoutCompleteButton() {
+        const btn = document.getElementById('checkout-complete-payment');
+        if (btn) {
+            btn.disabled = checkoutRemaining > 0.01;
+        }
+    }
+
+    function showCheckoutStatus(message, type) {
+        const el = document.getElementById('checkout-payment-status');
+        if (el) {
+            el.textContent = message;
+            el.className = `status-message status-${type}`;
+            el.style.display = 'block';
+        }
+    }
+
+    // ========== Complete Action Handler ==========
+    function handleCompleteAction() {
+        const mode = currentSearchMode;
+        console.log(`🔵 handleCompleteAction called for mode: ${mode}`);
+        if (mode === 'add') {
+            showStatus('Use COGS, Print, or Set Active buttons.', 'info');
+        } else if (mode === 'scan') {
+            showCompleteScanModal();
+        } else if (mode === 'discogs') {
+            console.log(`🔵 handleCompleteAction: calling postSelectedRecords`);
+            postSelectedRecords();
+        } else if (mode === 'delete') {
+            deleteSelected();
+        } else if (mode === 'checkout') {
+            showCheckoutModal();
+        } else {
+            showStatus('No action available for this mode', 'warning');
+        }
+    }
+
+    // ========== Complete Scan Modal ==========
+    function showCompleteScanModal() {
+        const records = filteredRecords;
+        if (records.length === 0) {
+            showStatus('No scanned records to process', 'warning');
+            return;
+        }
+
+        const sorted = [...records].sort((a, b) => {
+            const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
+            const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
+            return aDate - bDate;
+        });
+        const counterMap = {};
+        sorted.forEach((r, idx) => {
+            counterMap[r.id] = idx + 1;
+        });
+
+        let modal = document.getElementById('complete-scan-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'complete-scan-modal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; width: 95%;">
+                    <div class="modal-header" style="background: #28a745; color: white;">
+                        <h3 class="modal-title"><i class="fas fa-check-double"></i> Complete Scan</h3>
+                        <button class="modal-close" onclick="document.getElementById('complete-scan-modal').style.display='none'" style="color: white;">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>${records.length}</strong> record(s) scanned. Set the location for all scanned records.</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div style="grid-column: 1 / -1;">
+                                <label for="scan-genre" style="display:block; font-weight:500; margin-bottom:4px;">Genre *</label>
+                                <select id="scan-genre" class="form-control" style="width:100%; padding:8px;">
+                                    <option value="">-- Select Genre --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="scan-main-location-type" style="display:block; font-weight:500; margin-bottom:4px;">Main Location Type</label>
+                                <select id="scan-main-location-type" class="form-control" style="width:100%; padding:8px;">
+                                    <option value="Bin">📦 Bin</option>
+                                    <option value="Display">🖼️ Display</option>
+                                    <option value="Wall">🧱 Wall</option>
+                                    <option value="Custom">✏️ Custom</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="scan-main-location-number" style="display:block; font-weight:500; margin-bottom:4px;">Number/Identifier</label>
+                                <input type="text" id="scan-main-location-number" class="form-control" value="1" style="width:100%; padding:8px;">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="scan-sublocation" style="display:block; font-weight:500; margin-bottom:4px;">Sublocation</label>
+                                <select id="scan-sublocation" class="form-control" style="width:100%; padding:8px;">
+                                    <option value="LT">↖️ Left Top</option>
+                                    <option value="RT">↗️ Right Top</option>
+                                    <option value="LB">↙️ Left Bottom</option>
+                                    <option value="RB">↘️ Right Bottom</option>
+                                    <option value="NA">⚪ N/A</option>
+                                    <option value="CUSTOM">✏️ Custom</option>
+                                </select>
+                            </div>
+                            <div style="grid-column: 1 / -1; display: none;" id="scan-custom-sublocation-container">
+                                <label for="scan-custom-sublocation" style="display:block; font-weight:500; margin-bottom:4px;">Custom Sublocation</label>
+                                <input type="text" id="scan-custom-sublocation" class="form-control" placeholder="e.g., Shelf 3" style="width:100%; padding:8px;">
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                            <strong>Location Preview:</strong> <span id="scan-location-preview" style="font-weight: bold; color: #007bff;">--</span>
+                        </div>
+                        <div id="scan-status" style="margin-top:10px; padding:8px; border-radius:4px; display:none;"></div>
+                    </div>
+                    <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
+                        <button class="btn btn-secondary" onclick="document.getElementById('complete-scan-modal').style.display='none'">Cancel</button>
+                        <button class="btn btn-success" id="scan-submit-btn"><i class="fas fa-check"></i> Apply Location</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        const genreSelect = document.getElementById('scan-genre');
+        if (genreSelect) {
+            if (genres.length === 0) {
+                loadGenres().then(() => {
+                    genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+                    genres.forEach(g => {
+                        const opt = document.createElement('option');
+                        opt.value = g;
+                        opt.textContent = g;
+                        genreSelect.appendChild(opt);
+                    });
+                });
+            } else {
+                genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+                genres.forEach(g => {
+                    const opt = document.createElement('option');
+                    opt.value = g;
+                    opt.textContent = g;
+                    genreSelect.appendChild(opt);
+                });
+            }
+        }
+
+        const prediction = getLocationPrediction(lastSubmittedLocation);
+        if (prediction) {
+            const mainType = document.getElementById('scan-main-location-type');
+            const mainNumber = document.getElementById('scan-main-location-number');
+            const sublocation = document.getElementById('scan-sublocation');
+            if (mainType) mainType.value = prediction.mainType || 'Bin';
+            if (mainNumber) mainNumber.value = prediction.mainNumber || '1';
+            if (sublocation) sublocation.value = prediction.sublocation || 'LT';
+            if (prediction.genre && genreSelect) genreSelect.value = prediction.genre;
+        } else {
+            const mainType = document.getElementById('scan-main-location-type');
+            const mainNumber = document.getElementById('scan-main-location-number');
+            const sublocation = document.getElementById('scan-sublocation');
+            if (mainType) mainType.value = 'Bin';
+            if (mainNumber) mainNumber.value = '1';
+            if (sublocation) sublocation.value = 'LT';
+        }
+
+        const sublocationSelect = document.getElementById('scan-sublocation');
+        const customContainer = document.getElementById('scan-custom-sublocation-container');
+        const customInput = document.getElementById('scan-custom-sublocation');
+        sublocationSelect.onchange = function() {
+            customContainer.style.display = this.value === 'CUSTOM' ? 'block' : 'none';
+            updateScanLocationPreview();
+        };
+        if (customInput) {
+            customInput.oninput = updateScanLocationPreview;
+        }
+        document.querySelectorAll('#scan-genre, #scan-main-location-type, #scan-main-location-number, #scan-sublocation').forEach(el => {
+            el.addEventListener('change', updateScanLocationPreview);
+            el.addEventListener('input', updateScanLocationPreview);
+        });
+
+        updateScanLocationPreview();
+        modal.style.display = 'flex';
+
+        const submitBtn = document.getElementById('scan-submit-btn');
+        const newSubmit = submitBtn.cloneNode(true);
+        submitBtn.parentNode.replaceChild(newSubmit, submitBtn);
+        newSubmit.addEventListener('click', async function() {
+            await handleScanSubmit(counterMap);
+        });
+    }
+
+    function updateScanLocationPreview() {
+        const genre = document.getElementById('scan-genre')?.value || '';
+        const mainType = document.getElementById('scan-main-location-type')?.value || 'Bin';
+        const mainNumber = document.getElementById('scan-main-location-number')?.value || '1';
+        const sublocation = document.getElementById('scan-sublocation')?.value || 'LT';
+
+        let mainLocation = mainType + ' ' + mainNumber;
+        let sublocStr = '';
+        if (sublocation === 'CUSTOM') {
+            sublocStr = document.getElementById('scan-custom-sublocation')?.value.trim() || 'Custom';
+        } else if (sublocation !== 'NA') {
+            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
+            sublocStr = names[sublocation] || '';
+        }
+
+        let parts = [];
+        if (genre) parts.push(genre);
+        if (mainLocation) parts.push(mainLocation);
+        if (sublocStr) parts.push(sublocStr);
+
+        const preview = document.getElementById('scan-location-preview');
+        if (preview) preview.textContent = parts.join(' | ') || '--';
+    }
+
+    function getLocationPrediction(lastLocation) {
+        if (!lastLocation) return null;
+        const parts = lastLocation.split(' | ').map(s => s.trim());
+        let genre = '', mainType = 'Bin', mainNumber = '1', sublocation = 'LT';
+
+        parts.forEach(p => {
+            if (p.match(/^(Bin|Display|Wall)\s+\S+$/i)) {
+                const match = p.match(/^(Bin|Display|Wall)\s+(\S+)$/i);
+                if (match) { mainType = match[1]; mainNumber = match[2]; }
+            } else if (p.match(/^(LT|RT|LB|RB|NA|CUSTOM)$/i)) {
+                sublocation = p;
+            } else if (!p.match(/^(Bin|Display|Wall|LT|RT|LB|RB|NA|CUSTOM|\d+)/i)) {
+                genre = p;
+            }
+        });
+
+        const sequence = ['LT', 'RT', 'LB', 'RB'];
+        let idx = sequence.indexOf(sublocation);
+        if (idx !== -1) {
+            if (idx < sequence.length - 1) {
+                sublocation = sequence[idx + 1];
+            } else {
+                sublocation = sequence[0];
+                const num = parseInt(mainNumber) || 1;
+                mainNumber = String(num + 1);
+            }
+        } else {
+            sublocation = 'LT';
+        }
+        return { genre, mainType, mainNumber, sublocation };
+    }
+
+    async function handleScanSubmit(counterMap) {
+        const records = filteredRecords;
+        if (records.length === 0) {
+            showScanStatus('No records to update.', 'error');
+            return;
+        }
+
+        const genre = document.getElementById('scan-genre')?.value || '';
+        const mainType = document.getElementById('scan-main-location-type')?.value || 'Bin';
+        const mainNumber = document.getElementById('scan-main-location-number')?.value || '1';
+        const sublocation = document.getElementById('scan-sublocation')?.value || 'LT';
+
+        if (!genre) {
+            showScanStatus('Please select a genre', 'error');
+            return;
+        }
+
+        let mainLocation = mainType + ' ' + mainNumber;
+        let sublocStr = '';
+        if (sublocation === 'CUSTOM') {
+            const custom = document.getElementById('scan-custom-sublocation')?.value.trim();
+            if (!custom) {
+                showScanStatus('Please enter custom sublocation text', 'error');
+                return;
+            }
+            sublocStr = custom;
+        } else if (sublocation !== 'NA') {
+            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
+            sublocStr = names[sublocation] || '';
+        }
+
+        const today = getLocalMSTDate();
+
+        const submitBtn = document.getElementById('scan-submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+        let updated = 0;
+        for (const record of records) {
+            const counter = counterMap[record.id] || 1;
+            let parts = [];
+            if (genre) parts.push(genre);
+            if (mainLocation) parts.push(mainLocation);
+            if (sublocStr) parts.push(sublocStr);
+            parts.push(String(counter));
+            const locationString = parts.join(' | ');
+
+            try {
+                await apiPut('/records/' + record.id, {
+                    location: locationString,
+                    last_seen: today
+                });
+                updated++;
+            } catch (e) {
+                console.error('Failed to update record', record.id, e);
+            }
+        }
+
+        if (updated > 0) {
+            const firstRecord = records[0];
+            const firstCounter = counterMap[firstRecord.id] || 1;
+            let firstParts = [];
+            if (genre) firstParts.push(genre);
+            if (mainLocation) firstParts.push(mainLocation);
+            if (sublocStr) firstParts.push(sublocStr);
+            firstParts.push(String(firstCounter));
+            lastSubmittedLocation = firstParts.join(' | ');
+            localStorage.setItem('lastSubmittedLocation', lastSubmittedLocation);
+        }
+
+        filteredRecords = [];
+        totalRecords = 0;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+
+        showScanStatus(`✅ Updated ${updated} of ${records.length} records with location.`, 'success');
+        playSuccessSound();
+
+        setTimeout(() => {
+            document.getElementById('complete-scan-modal').style.display = 'none';
+        }, 1500);
+
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-check"></i> Apply Location';
+    }
+
+    function showScanStatus(message, type = 'info') {
+        const el = document.getElementById('scan-status');
+        if (!el) return;
+        el.textContent = message;
+        el.className = `status-message status-${type}`;
+        el.style.display = 'block';
+    }
+
+    // ========== Mode Change Handler ==========
+    function onModeChange() {
+        const newMode = searchModeSelect.value;
+        currentSearchMode = newMode;
+        console.log(`🔄 onModeChange: switching to ${newMode}`);
+
+        if (newMode === 'add') {
+            currentMode = 'inventory';
+            currentResults = [];
+            loadRecords({ statusIds: [1], mode: 'add' });
+            searchInput.placeholder = 'Search Discogs...';
+        } else if (newMode === 'scan') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Scan mode: Scan barcodes to build the list.', 'info');
+            searchInput.placeholder = 'Scan barcode here...';
+        } else if (newMode === 'discogs') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showDiscogsStatus('Showing all records. Use filters to narrow down.', 'info');
+            searchInput.placeholder = 'Search within records...';
+            console.log('🔄 onModeChange: loading discogs records');
+            loadRecords({ showAllStatuses: true, mode: 'discogs' });
+            loadDiscogsLocations();
+            const rulesContent = document.getElementById('markup-rules-content');
+            if (rulesContent && rulesContent.style.display === 'block') {
+                loadMarkupRules();
+            }
+            const chartsContent = document.getElementById('markup-charts-content');
+            if (chartsContent && chartsContent.style.display === 'block') {
+                setTimeout(loadMarkupAnalysisCharts, 300);
+            }
+            initializeLastSeenDate();
+        } else if (newMode === 'delete') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Delete mode: Use filters to find records to delete.', 'info');
+            searchInput.placeholder = 'Search records...';
+            allRecords = [];
+            loadRecords({ statusIds: [1,2], mode: 'delete' });
+        } else if (newMode === 'checkout') {
+            checkoutSelectedItems = [];
+            checkoutViewMode = 'all';
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Checkout mode: Browse records and add to checkout.', 'info');
+            searchInput.placeholder = 'Search records...';
+            // Always load Active records (status_id=2)
+            loadRecords({ statusIds: [2], mode: 'checkout' });
+            checkoutShowSelectedBtn.style.display = 'inline-block';
+            checkoutShowSelectedBtn.textContent = 'Show Selected (0)';
+            checkoutShowAllBtn.style.display = 'none';
+        }
+
+        updateSelectionCount();
+        updateFilterVisibility();
+        renderTablePage();
+    }
+
+    function initializeLastSeenDate() {
+        if (lastSeenCutoffDateInput) {
+            lastSeenCutoffDateInput.value = '';
+            lastSeenCutoffDate = null;
+        }
+    }
+
+    // ========== Pagination ==========
+    function renderPagination() {
+        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+        const start = (currentPage - 1) * pageSize + 1;
+        const end = Math.min(currentPage * pageSize, totalRecords);
+        showingStartSpan.textContent = start;
+        showingEndSpan.textContent = end;
+        totalFilteredSpan.textContent = totalRecords;
+        totalPagesSpan.textContent = totalPages;
+        currentPageInput.value = currentPage;
+        firstPageBtn.disabled = currentPage === 1;
+        prevPageBtn.disabled = currentPage === 1;
+        nextPageBtn.disabled = currentPage === totalPages;
+        lastPageBtn.disabled = currentPage === totalPages;
+    }
+
+    function getCurrentData() {
+        return filteredRecords;
+    }
+
+    // ========== UNIFIED SELECTION LOGIC ==========
+    function getSelectedRecords() {
+        // Checkout mode uses its own list
+        if (currentSearchMode === 'checkout') {
+            return checkoutSelectedItems.slice();
+        }
+        // All other modes use the range selection
+        if (rangeFromIndex === null || rangeToIndex === null) {
+            console.log('🔍 getSelectedRecords: no range selected');
+            return [];
+        }
+        const start = Math.min(rangeFromIndex, rangeToIndex);
+        const end = Math.max(rangeFromIndex, rangeToIndex);
+        const data = getCurrentData();
+        const selected = data.slice(start, end + 1);
+        console.log(`🔍 getSelectedRecords: start=${start}, end=${end}, selected=${selected.length}`);
+        return selected;
+    }
+
+    function updateSelectionCount() {
         const selected = getSelectedRecords();
-        if (selected.length === 0) { showStatus('No records selected', 'warning'); return; }
-        generatePDF(selected);
+        const count = selected.length;
+        selectedCountSpan.textContent = count;
+
+        const mode = currentSearchMode;
+        const hasRecords = filteredRecords.length > 0;
+
+        if (mode === 'add') {
+            cogsBtn.disabled = !hasRecords;
+            printBtn.disabled = !hasRecords;
+            setActiveBtn.disabled = !hasRecords;
+            completeActionBtn.style.display = 'none';
+        } else {
+            cogsBtn.style.display = 'none';
+            printBtn.style.display = 'none';
+            setActiveBtn.style.display = 'none';
+            completeActionBtn.style.display = '';
+        }
+
+        let actionLabel = 'Complete';
+        if (mode === 'add') {
+            // already handled
+        } else if (mode === 'scan') {
+            completeActionBtn.disabled = !hasRecords;
+            actionLabel = 'Complete Scan';
+        } else if (mode === 'discogs') {
+            const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
+            completeActionBtn.disabled = !hasSelection;
+            actionLabel = `Post ${count} selected to Discogs`;
+            console.log(`🔄 updateSelectionCount: discogs mode, hasSelection=${hasSelection}, count=${count}, btn disabled=${completeActionBtn.disabled}`);
+        } else if (mode === 'delete') {
+            const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
+            completeActionBtn.disabled = !hasSelection;
+            actionLabel = `Delete ${count} selected`;
+            console.log(`🔄 updateSelectionCount: delete mode, hasSelection=${hasSelection}, count=${count}, btn disabled=${completeActionBtn.disabled}`);
+        } else if (mode === 'checkout') {
+            completeActionBtn.disabled = checkoutSelectedItems.length === 0;
+            actionLabel = `Checkout ${checkoutSelectedItems.length} items`;
+        }
+
+        if (mode !== 'add') {
+            completeActionBtn.textContent = actionLabel;
+        }
+
+        cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
+    }
+
+    function applyFilters() {
+        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout') {
+            return;
+        }
+        if (currentMode === 'search') {
+            filteredRecords = currentResults.slice();
+        } else {
+            filteredRecords = allRecords.slice();
+        }
+        totalRecords = filteredRecords.length;
+        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+        renderPagination();
+        renderTablePage();
     }
 
     // ========== PDF Generation ==========
@@ -975,758 +3352,6 @@
         showStatus(`PDF generated with ${records.length} labels`, 'success');
     }
 
-    // ========== Delete Selected ==========
-    async function deleteSelected() {
-        const selected = getSelectedRecords();
-        if (selected.length === 0) { showStatus('No records selected', 'warning'); return; }
-        if (!confirm(`Delete ${selected.length} record(s) permanently? This cannot be undone.`)) return;
-        showStatus(`Deleting ${selected.length} records...`, 'info');
-        let deleted = 0;
-        for (const record of selected) {
-            try {
-                await apiDelete('/records/' + record.id);
-                deleted++;
-            } catch (e) {
-                console.error('Delete failed for record', record.id, e);
-            }
-        }
-        await loadRecords();
-        await loadStats();
-        showStatus(`Deleted ${deleted} of ${selected.length} records`, deleted > 0 ? 'success' : 'error');
-        cancelRangeSelection();
-    }
-
-    // ========== COGS / Purchase Modal ==========
-    function showCogsPurchaseModal() {
-        const selected = getSelectedRecords();
-        if (selected.length === 0) {
-            showStatus('Please select records first', 'warning');
-            return;
-        }
-
-        let modal = document.getElementById('cogs-purchase-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'cogs-purchase-modal';
-            modal.className = 'modal-overlay';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 600px; width: 95%;">
-                    <div class="modal-header" style="background: #17a2b8; color: white;">
-                        <h3 class="modal-title"><i class="fas fa-dollar-sign"></i> Record Purchase & Apply COGS</h3>
-                        <button class="modal-close" onclick="document.getElementById('cogs-purchase-modal').style.display='none'" style="color: white;">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <p><strong>${selected.length}</strong> record(s) selected. Enter the purchase details below.</p>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div>
-                                <label for="cogs-purchase-date" style="display:block; font-weight:500; margin-bottom:4px;">Purchase Date *</label>
-                                <input type="date" id="cogs-purchase-date" class="form-control" style="width:100%; padding:8px;">
-                            </div>
-                            <div>
-                                <label for="cogs-seller-name" style="display:block; font-weight:500; margin-bottom:4px;">Seller Name *</label>
-                                <input type="text" id="cogs-seller-name" class="form-control" placeholder="e.g., John's Records" style="width:100%; padding:8px;">
-                            </div>
-                            <div>
-                                <label for="cogs-seller-contact" style="display:block; font-weight:500; margin-bottom:4px;">Seller Contact</label>
-                                <input type="text" id="cogs-seller-contact" class="form-control" placeholder="Email or Phone" style="width:100%; padding:8px;">
-                            </div>
-                            <div>
-                                <label for="cogs-amount-spent" style="display:block; font-weight:500; margin-bottom:4px;">Amount Spent ($) *</label>
-                                <input type="number" id="cogs-amount-spent" step="0.01" min="0.01" class="form-control" placeholder="0.00" style="width:100%; padding:8px;">
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="cogs-payment-account" style="display:block; font-weight:500; margin-bottom:4px;">Payment Account</label>
-                                <select id="cogs-payment-account" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="">-- Select how you paid --</option>
-                                </select>
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="cogs-description" style="display:block; font-weight:500; margin-bottom:4px;">Description</label>
-                                <textarea id="cogs-description" rows="3" class="form-control" placeholder="What was purchased? (e.g., 50 records from estate sale)" style="width:100%; padding:8px;"></textarea>
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="cogs-bill-image" style="display:block; font-weight:500; margin-bottom:4px;">Bill of Sale (Image)</label>
-                                <input type="file" id="cogs-bill-image" accept="image/*,application/pdf" style="width:100%; padding:8px;">
-                                <div id="cogs-bill-preview" style="margin-top:8px;"></div>
-                            </div>
-                        </div>
-                        <div id="cogs-purchase-status" style="margin-top:10px; padding:8px; border-radius:4px; display:none;"></div>
-                    </div>
-                    <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
-                        <button class="btn btn-secondary" onclick="document.getElementById('cogs-purchase-modal').style.display='none'">Cancel</button>
-                        <button class="btn btn-success" id="cogs-submit-btn"><i class="fas fa-check"></i> Apply COGS & Record Purchase</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        const dateInput = document.getElementById('cogs-purchase-date');
-        if (dateInput) {
-            const today = new Date().toISOString().split('T')[0];
-            dateInput.value = today;
-        }
-
-        const accountSelect = document.getElementById('cogs-payment-account');
-        if (accountSelect) {
-            accountSelect.innerHTML = '<option value="">-- Select how you paid --</option>';
-            accounts.forEach(acc => {
-                const opt = document.createElement('option');
-                opt.value = acc.code;
-                opt.textContent = `${acc.code} - ${acc.name}`;
-                accountSelect.appendChild(opt);
-            });
-        }
-
-        document.getElementById('cogs-bill-preview').innerHTML = '';
-
-        modal.style.display = 'flex';
-
-        const submitBtn = document.getElementById('cogs-submit-btn');
-        const newSubmit = submitBtn.cloneNode(true);
-        submitBtn.parentNode.replaceChild(newSubmit, submitBtn);
-
-        newSubmit.addEventListener('click', async function() {
-            await handleCogsPurchaseSubmit();
-        });
-
-        const fileInput = document.getElementById('cogs-bill-image');
-        const previewDiv = document.getElementById('cogs-bill-preview');
-        fileInput.onchange = function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                if (file.type.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onload = function(ev) {
-                        previewDiv.innerHTML = `
-                            <img src="${ev.target.result}" alt="Bill preview" style="max-width:200px; max-height:200px; border-radius:4px; border:1px solid #ddd;">
-                            <p style="font-size:12px; color:#666; margin-top:5px;">${file.name}</p>
-                        `;
-                    };
-                    reader.readAsDataURL(file);
-                } else {
-                    previewDiv.innerHTML = `<p style="color:#666;"><i class="fas fa-file-pdf"></i> ${file.name}</p>`;
-                }
-            } else {
-                previewDiv.innerHTML = '';
-            }
-        };
-    }
-
-    async function handleCogsPurchaseSubmit() {
-        const statusDiv = document.getElementById('cogs-purchase-status');
-        const submitBtn = document.getElementById('cogs-submit-btn');
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-
-        const purchaseDate = document.getElementById('cogs-purchase-date').value;
-        const sellerName = document.getElementById('cogs-seller-name').value.trim();
-        const sellerContact = document.getElementById('cogs-seller-contact').value.trim();
-        const amountSpent = parseFloat(document.getElementById('cogs-amount-spent').value);
-        const paymentAccount = document.getElementById('cogs-payment-account').value;
-        const description = document.getElementById('cogs-description').value.trim();
-        const billFile = document.getElementById('cogs-bill-image').files[0];
-
-        if (!purchaseDate) { showCogsStatus('Please select a purchase date', 'error'); submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase'; return; }
-        if (!sellerName) { showCogsStatus('Please enter seller name', 'error'); submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase'; return; }
-        if (isNaN(amountSpent) || amountSpent <= 0) { showCogsStatus('Please enter a valid amount greater than 0', 'error'); submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase'; return; }
-
-        const selected = getSelectedRecords();
-        if (selected.length === 0) {
-            showCogsStatus('No records selected. Please select records first.', 'error');
-            submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase';
-            return;
-        }
-
-        let billPath = null;
-        if (billFile) {
-            const formData = new FormData();
-            formData.append('bill_image', billFile);
-            try {
-                const uploadRes = await fetch(`${AppConfig.baseUrl}/api/inventory-purchases/upload-bill`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    body: formData
-                });
-                const uploadData = await uploadRes.json();
-                if (uploadData.status === 'success') {
-                    billPath = uploadData.file_path;
-                } else {
-                    showCogsStatus(`Image upload failed: ${uploadData.error}`, 'error');
-                    submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase';
-                    return;
-                }
-            } catch (err) {
-                showCogsStatus(`Image upload error: ${err.message}`, 'error');
-                submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase';
-                return;
-            }
-        }
-
-        const purchaseData = {
-            purchase_date: purchaseDate,
-            seller_name: sellerName,
-            seller_contact: sellerContact,
-            amount_spent: amountSpent,
-            description: description,
-            payment_account_id: paymentAccount || null,
-            bill_of_sale_path: billPath
-        };
-
-        try {
-            const createResponse = await fetch(`${AppConfig.baseUrl}/api/inventory-purchases`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify(purchaseData)
-            });
-            const createResult = await createResponse.json();
-            if (createResult.status !== 'success') {
-                throw new Error(createResult.error || 'Failed to record purchase');
-            }
-            const purchaseId = createResult.purchase.id;
-
-            const recordIds = selected.map(r => r.id);
-            const cogsResponse = await fetch(`${AppConfig.baseUrl}/api/cogs/batch`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    batch_cogs: amountSpent,
-                    record_ids: recordIds
-                })
-            });
-            const cogsResult = await cogsResponse.json();
-            if (cogsResult.status !== 'success') {
-                throw new Error(cogsResult.error || 'Failed to apply COGS');
-            }
-
-            showCogsStatus(`✅ Purchase #${purchaseId} recorded and COGS applied to ${cogsResult.records_updated} records.`, 'success');
-            setTimeout(() => {
-                document.getElementById('cogs-purchase-modal').style.display = 'none';
-                loadRecords();
-                cancelRangeSelection();
-            }, 1500);
-
-        } catch (error) {
-            showCogsStatus(`❌ Error: ${error.message}`, 'error');
-            console.error('COGS purchase error:', error);
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-check"></i> Apply COGS & Record Purchase';
-        }
-    }
-
-    function showCogsStatus(message, type = 'info') {
-        const el = document.getElementById('cogs-purchase-status');
-        if (!el) return;
-        el.textContent = message;
-        el.className = `status-message status-${type}`;
-        el.style.display = 'block';
-    }
-
-    // ========== Complete Scan Modal ==========
-    function showCompleteScanModal() {
-        const records = filteredRecords;
-        if (records.length === 0) {
-            showStatus('No scanned records to process', 'warning');
-            return;
-        }
-
-        let modal = document.getElementById('complete-scan-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'complete-scan-modal';
-            modal.className = 'modal-overlay';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 600px; width: 95%;">
-                    <div class="modal-header" style="background: #28a745; color: white;">
-                        <h3 class="modal-title"><i class="fas fa-check-double"></i> Complete Scan</h3>
-                        <button class="modal-close" onclick="document.getElementById('complete-scan-modal').style.display='none'" style="color: white;">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <p><strong>${records.length}</strong> record(s) scanned. Set the location for all scanned records.</p>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div style="grid-column: 1 / -1;">
-                                <label for="scan-genre" style="display:block; font-weight:500; margin-bottom:4px;">Genre *</label>
-                                <select id="scan-genre" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="">-- Select Genre --</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="scan-main-location-type" style="display:block; font-weight:500; margin-bottom:4px;">Main Location Type</label>
-                                <select id="scan-main-location-type" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="Bin">📦 Bin</option>
-                                    <option value="Display">🖼️ Display</option>
-                                    <option value="Wall">🧱 Wall</option>
-                                    <option value="Custom">✏️ Custom</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="scan-main-location-number" style="display:block; font-weight:500; margin-bottom:4px;">Number/Identifier</label>
-                                <input type="text" id="scan-main-location-number" class="form-control" value="1" style="width:100%; padding:8px;">
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="scan-sublocation" style="display:block; font-weight:500; margin-bottom:4px;">Sublocation</label>
-                                <select id="scan-sublocation" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="LT">↖️ Left Top</option>
-                                    <option value="RT">↗️ Right Top</option>
-                                    <option value="LB">↙️ Left Bottom</option>
-                                    <option value="RB">↘️ Right Bottom</option>
-                                    <option value="NA">⚪ N/A</option>
-                                    <option value="CUSTOM">✏️ Custom</option>
-                                </select>
-                            </div>
-                            <div style="grid-column: 1 / -1; display: none;" id="scan-custom-sublocation-container">
-                                <label for="scan-custom-sublocation" style="display:block; font-weight:500; margin-bottom:4px;">Custom Sublocation</label>
-                                <input type="text" id="scan-custom-sublocation" class="form-control" placeholder="e.g., Shelf 3" style="width:100%; padding:8px;">
-                            </div>
-                            <div>
-                                <label for="scan-counter" style="display:block; font-weight:500; margin-bottom:4px;">Counter</label>
-                                <input type="number" id="scan-counter" class="form-control" value="1" min="1" style="width:100%; padding:8px;">
-                            </div>
-                        </div>
-                        <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                            <strong>Location Preview:</strong> <span id="scan-location-preview" style="font-weight: bold; color: #007bff;">--</span>
-                        </div>
-                        <div id="scan-status" style="margin-top:10px; padding:8px; border-radius:4px; display:none;"></div>
-                    </div>
-                    <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
-                        <button class="btn btn-secondary" onclick="document.getElementById('complete-scan-modal').style.display='none'">Cancel</button>
-                        <button class="btn btn-success" id="scan-submit-btn"><i class="fas fa-check"></i> Apply Location</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        const genreSelect = document.getElementById('scan-genre');
-        if (genreSelect) {
-            genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-            genres.forEach(g => {
-                const opt = document.createElement('option');
-                opt.value = g;
-                opt.textContent = g;
-                genreSelect.appendChild(opt);
-            });
-        }
-
-        const prediction = getLocationPrediction(lastSubmittedLocation);
-        if (prediction) {
-            const mainType = document.getElementById('scan-main-location-type');
-            const mainNumber = document.getElementById('scan-main-location-number');
-            const sublocation = document.getElementById('scan-sublocation');
-            const counter = document.getElementById('scan-counter');
-
-            if (mainType) mainType.value = prediction.mainType || 'Bin';
-            if (mainNumber) mainNumber.value = prediction.mainNumber || '1';
-            if (sublocation) sublocation.value = prediction.sublocation || 'LT';
-            if (counter) counter.value = prediction.counter || '1';
-            if (prediction.genre && genreSelect) genreSelect.value = prediction.genre;
-        } else {
-            const mainType = document.getElementById('scan-main-location-type');
-            const mainNumber = document.getElementById('scan-main-location-number');
-            const sublocation = document.getElementById('scan-sublocation');
-            const counter = document.getElementById('scan-counter');
-            if (mainType) mainType.value = 'Bin';
-            if (mainNumber) mainNumber.value = '1';
-            if (sublocation) sublocation.value = 'LT';
-            if (counter) counter.value = '1';
-        }
-
-        const sublocationSelect = document.getElementById('scan-sublocation');
-        const customContainer = document.getElementById('scan-custom-sublocation-container');
-        const customInput = document.getElementById('scan-custom-sublocation');
-        sublocationSelect.onchange = function() {
-            customContainer.style.display = this.value === 'CUSTOM' ? 'block' : 'none';
-            updateScanLocationPreview();
-        };
-        if (customInput) {
-            customInput.oninput = updateScanLocationPreview;
-        }
-        document.querySelectorAll('#scan-genre, #scan-main-location-type, #scan-main-location-number, #scan-sublocation, #scan-counter').forEach(el => {
-            el.addEventListener('change', updateScanLocationPreview);
-            el.addEventListener('input', updateScanLocationPreview);
-        });
-
-        updateScanLocationPreview();
-
-        modal.style.display = 'flex';
-
-        const submitBtn = document.getElementById('scan-submit-btn');
-        const newSubmit = submitBtn.cloneNode(true);
-        submitBtn.parentNode.replaceChild(newSubmit, submitBtn);
-        newSubmit.addEventListener('click', async function() {
-            await handleScanSubmit();
-        });
-    }
-
-    function updateScanLocationPreview() {
-        const genre = document.getElementById('scan-genre')?.value || '';
-        const mainType = document.getElementById('scan-main-location-type')?.value || 'Bin';
-        const mainNumber = document.getElementById('scan-main-location-number')?.value || '1';
-        const sublocation = document.getElementById('scan-sublocation')?.value || 'LT';
-        const counter = document.getElementById('scan-counter')?.value || '1';
-
-        let mainLocation = mainType + ' ' + mainNumber;
-        let sublocStr = '';
-        if (sublocation === 'CUSTOM') {
-            sublocStr = document.getElementById('scan-custom-sublocation')?.value.trim() || 'Custom';
-        } else if (sublocation !== 'NA') {
-            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
-            sublocStr = names[sublocation] || '';
-        }
-
-        let parts = [];
-        if (genre) parts.push(genre);
-        if (mainLocation) parts.push(mainLocation);
-        if (sublocStr) parts.push(sublocStr);
-        if (counter) parts.push(String(counter));
-
-        const preview = document.getElementById('scan-location-preview');
-        if (preview) preview.textContent = parts.join(' | ') || '--';
-    }
-
-    function getLocationPrediction(lastLocation) {
-        if (!lastLocation) return null;
-
-        const parts = lastLocation.split(' | ').map(s => s.trim());
-        let genre = '', mainType = 'Bin', mainNumber = '1', sublocation = 'LT', counter = '1';
-
-        parts.forEach(p => {
-            if (p.match(/^(Bin|Display|Wall)\s+\S+$/i)) {
-                const match = p.match(/^(Bin|Display|Wall)\s+(\S+)$/i);
-                if (match) { mainType = match[1]; mainNumber = match[2]; }
-            } else if (p.match(/^(LT|RT|LB|RB|NA|CUSTOM)$/i)) {
-                sublocation = p;
-            } else if (p.match(/^\d+$/)) {
-                counter = p;
-            } else if (!p.match(/^(Bin|Display|Wall|LT|RT|LB|RB|NA|CUSTOM|\d+)/i)) {
-                genre = p;
-            }
-        });
-
-        const sequence = ['LT', 'RT', 'LB', 'RB'];
-        let idx = sequence.indexOf(sublocation);
-        if (idx !== -1) {
-            if (idx < sequence.length - 1) {
-                sublocation = sequence[idx + 1];
-            } else {
-                sublocation = sequence[0];
-                const num = parseInt(mainNumber) || 1;
-                mainNumber = String(num + 1);
-            }
-        } else {
-            sublocation = 'LT';
-        }
-
-        return { genre, mainType, mainNumber, sublocation, counter };
-    }
-
-    async function handleScanSubmit() {
-        const records = filteredRecords;
-        if (records.length === 0) {
-            showScanStatus('No records to update.', 'error');
-            return;
-        }
-
-        const genre = document.getElementById('scan-genre')?.value || '';
-        const mainType = document.getElementById('scan-main-location-type')?.value || 'Bin';
-        const mainNumber = document.getElementById('scan-main-location-number')?.value || '1';
-        const sublocation = document.getElementById('scan-sublocation')?.value || 'LT';
-        const counter = document.getElementById('scan-counter')?.value || '1';
-
-        if (!genre) {
-            showScanStatus('Please select a genre', 'error');
-            return;
-        }
-
-        let mainLocation = mainType + ' ' + mainNumber;
-        let sublocStr = '';
-        if (sublocation === 'CUSTOM') {
-            const custom = document.getElementById('scan-custom-sublocation')?.value.trim();
-            if (!custom) {
-                showScanStatus('Please enter custom sublocation text', 'error');
-                return;
-            }
-            sublocStr = custom;
-        } else if (sublocation !== 'NA') {
-            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
-            sublocStr = names[sublocation] || '';
-        }
-
-        let parts = [];
-        if (genre) parts.push(genre);
-        if (mainLocation) parts.push(mainLocation);
-        if (sublocStr) parts.push(sublocStr);
-        if (counter) parts.push(String(counter));
-        const locationString = parts.join(' | ');
-
-        const today = getLocalMSTDate();
-
-        const submitBtn = document.getElementById('scan-submit-btn');
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
-
-        let updated = 0;
-        for (const record of records) {
-            try {
-                await apiPut('/records/' + record.id, {
-                    location: locationString,
-                    last_seen: today
-                });
-                updated++;
-            } catch (e) {
-                console.error('Failed to update record', record.id, e);
-            }
-        }
-
-        lastSubmittedLocation = locationString;
-        localStorage.setItem('lastSubmittedLocation', locationString);
-
-        filteredRecords = [];
-        totalRecords = 0;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-
-        showScanStatus(`✅ Updated ${updated} of ${records.length} records with location: ${locationString}`, 'success');
-        playSuccessSound();
-
-        setTimeout(() => {
-            document.getElementById('complete-scan-modal').style.display = 'none';
-        }, 1500);
-
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-check"></i> Apply Location';
-    }
-
-    function showScanStatus(message, type = 'info') {
-        const el = document.getElementById('scan-status');
-        if (!el) return;
-        el.textContent = message;
-        el.className = `status-message status-${type}`;
-        el.style.display = 'block';
-    }
-
-    // ========== Checkout Modal ==========
-    function showCheckoutModal() {
-        const selected = getSelectedRecords();
-        if (selected.length === 0) { showStatus('No records selected', 'warning'); return; }
-
-        const subtotal = selected.reduce((sum, r) => sum + (r.store_price || 0), 0);
-        const taxRate = parseFloat(window.dbConfigValues?.TAX_RATE?.value || 0) / 100;
-        const tax = subtotal * taxRate;
-        const total = subtotal + tax;
-
-        let modal = document.getElementById('checkout-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'checkout-modal';
-            modal.className = 'modal-overlay';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 600px; width: 90%;">
-                    <div class="modal-header" style="background: #007bff; color: white;">
-                        <h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3>
-                        <button class="modal-close" onclick="document.getElementById('checkout-modal').style.display='none'" style="color: white;">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <div id="checkout-items-list" style="max-height: 200px; overflow-y: auto; margin-bottom: 15px;"></div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-weight: bold;">
-                            <div>Subtotal:</div><div id="checkout-subtotal" style="text-align: right;">$0.00</div>
-                            <div>Tax (${(taxRate*100).toFixed(1)}%):</div><div id="checkout-tax" style="text-align: right;">$0.00</div>
-                            <div style="font-size: 1.2em;">Total:</div><div id="checkout-total" style="text-align: right; font-size: 1.2em;">$0.00</div>
-                        </div>
-                        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                            <button class="btn btn-cash" id="checkout-cash-btn" style="background: #28a745; color: white;"><i class="fas fa-money-bill-wave"></i> Cash</button>
-                            <button class="btn btn-square" id="checkout-square-btn" style="background: #6f42c1; color: white;"><i class="fas fa-square"></i> Square</button>
-                            <button class="btn btn-giftcard" id="checkout-giftcard-btn" style="background: #ff6b6b; color: white;"><i class="fas fa-gift"></i> Gift Card</button>
-                        </div>
-                        <div id="checkout-status" style="margin-top: 10px; text-align: center; color: #666;"></div>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="document.getElementById('checkout-modal').style.display='none'">Cancel</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        const list = document.getElementById('checkout-items-list');
-        let html = '<ul style="list-style:none; padding:0;">';
-        selected.forEach(r => {
-            html += `<li style="padding:4px 0; border-bottom:1px solid #eee;">${escapeHtml(r.artist)} - ${escapeHtml(r.title)} - $${(r.store_price||0).toFixed(2)}</li>`;
-        });
-        html += '</ul>';
-        list.innerHTML = html;
-        document.getElementById('checkout-subtotal').textContent = `$${subtotal.toFixed(2)}`;
-        document.getElementById('checkout-tax').textContent = `$${tax.toFixed(2)}`;
-        document.getElementById('checkout-total').textContent = `$${total.toFixed(2)}`;
-
-        document.getElementById('checkout-cash-btn').onclick = () => processCashCheckout(selected, total, subtotal, tax);
-        document.getElementById('checkout-square-btn').onclick = () => processSquareCheckout(selected, total);
-        document.getElementById('checkout-giftcard-btn').onclick = () => processGiftCardCheckout(selected, total);
-
-        modal.style.display = 'flex';
-    }
-
-    // ========== Payment Handlers ==========
-    async function processCashCheckout(records, total, subtotal, tax) {
-        const tenderStr = prompt('Enter amount tendered:', total.toFixed(2));
-        if (tenderStr === null) return;
-        const tendered = parseFloat(tenderStr);
-        if (isNaN(tendered) || tendered < total) {
-            showStatus('Insufficient payment', 'error');
-            return;
-        }
-        const change = tendered - total;
-        await completeSale(records, 'cash', { tendered, change });
-        document.getElementById('checkout-modal').style.display = 'none';
-        showStatus(`Cash sale completed. Change: $${change.toFixed(2)}`, 'success');
-    }
-
-    async function processSquareCheckout(records, total) {
-        await completeSale(records, 'square', { external_transaction_id: 'SQUARE-' + Date.now() });
-        document.getElementById('checkout-modal').style.display = 'none';
-        showStatus('Square sale completed (simulated)', 'success');
-    }
-
-    async function processGiftCardCheckout(records, total) {
-        const code = prompt('Enter gift card code:');
-        if (!code) return;
-        await completeSale(records, 'giftcard', { external_transaction_id: 'GIFT-' + code });
-        document.getElementById('checkout-modal').style.display = 'none';
-        showStatus('Gift card sale completed (simulated)', 'success');
-    }
-
-    async function completeSale(records, paymentSource, extra = {}) {
-        const dateStr = new Date().toISOString();
-        const orderId = generateOrderId();
-        const orderNumber = `SALE-${Date.now()}`;
-        const subtotal = records.reduce((s, r) => s + (r.store_price || 0), 0);
-        const taxRate = parseFloat(window.dbConfigValues?.TAX_RATE?.value || 0) / 100;
-        const tax = subtotal * taxRate;
-        const total = subtotal + tax;
-
-        const orderData = {
-            id: orderId,
-            order_number: orderNumber,
-            customer_name: 'Walk-in Customer',
-            customer_email: '',
-            shipping_method: 'pickup',
-            shipping_cost: 0,
-            subtotal: subtotal,
-            tax: tax,
-            total: total,
-            payment_status: 'paid',
-            order_status: 'completed',
-            created_at: dateStr,
-            updated_at: dateStr,
-            channel: paymentSource === 'square' ? 'square_pos' : paymentSource === 'discogs' ? 'discogs' : 'manual',
-            is_accounted: 0,
-            external_order_id: extra.external_transaction_id || null
-        };
-
-        const items = records.map(r => ({
-            record_id: r.id,
-            record_title: r.title || 'Unknown Title',
-            record_artist: r.artist || 'Unknown Artist',
-            record_condition: r.condition || null,
-            price_at_time: r.store_price || 0
-        }));
-
-        const payment = {
-            source: paymentSource,
-            gross_amount: total,
-            transaction_date: dateStr,
-            external_transaction_id: extra.external_transaction_id || null
-        };
-
-        const payload = { order: orderData, items, payment };
-
-        try {
-            const response = await fetch(`${window.AppConfig.baseUrl}/api/checkout/create-order`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify(payload)
-            });
-            if (!response.ok) throw new Error(`Order creation failed: ${response.status}`);
-            const result = await response.json();
-            if (result.status !== 'success') throw new Error(result.error || 'Order creation failed');
-        } catch (error) {
-            console.error('Order creation error:', error);
-            showStatus('Order creation failed: ' + error.message, 'error');
-            return;
-        }
-
-        const todayMST = getLocalMSTDate();
-        let success = 0;
-        for (const record of records) {
-            try {
-                await apiPut('/records/' + record.id, {
-                    status_id: 3,
-                    date_sold: todayMST,
-                    actual_sale_price: record.store_price
-                });
-                success++;
-            } catch (e) {
-                console.error('Failed to update record', record.id, e);
-            }
-        }
-        showStatus(`${success} of ${records.length} records marked as sold`, 'success');
-        await loadRecords();
-        cancelRangeSelection();
-    }
-
-    // ========== Last Seen Filter ==========
-    function applyLastSeenFilter() {
-        if (currentSearchMode === 'scan') {
-            // Filter the filteredRecords (scanned list) by the date
-            const dateValue = lastSeenFilterInput ? lastSeenFilterInput.value : '';
-            if (dateValue) {
-                const filterDate = new Date(dateValue);
-                // We need to filter the full scanned list, but we don't store a separate full list.
-                // We'll filter filteredRecords directly.
-                // But we need to keep the original order; we'll just filter the array.
-                // We'll store a separate array for the full list.
-                // Let's store a separate array.
-            }
-        }
-    }
-
-    // ========== Mode Change Handler ==========
-    function onModeChange() {
-        const newMode = searchModeSelect.value;
-        currentSearchMode = newMode;
-
-        if (newMode === 'scan') {
-            // Clear scanned list
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            // Clear search input
-            if (searchInput) searchInput.value = '';
-            renderPagination();
-            renderTablePage();
-            showStatus('Scan mode: Scan barcodes to build a batch.', 'info');
-            searchInput.placeholder = 'Scan barcode here...';
-        } else if (newMode === 'add') {
-            if (currentMode === 'inventory' || filteredRecords.length === 0) {
-                loadRecords();
-            }
-            searchInput.placeholder = 'Search Discogs...';
-        } else if (newMode === 'checkout') {
-            if (currentMode === 'inventory' || filteredRecords.length === 0) {
-                loadRecords();
-            }
-            searchInput.placeholder = 'Search inventory...';
-        }
-
-        updateToolbarVisibility();
-        renderTablePage();
-    }
-
     // ========== Init ==========
     async function init() {
         console.log('🔄 inventory-ops: Initializing...');
@@ -1737,8 +3362,6 @@
             await loadConditions();
             await loadConsignors();
             await loadAccounts();
-            await loadGenres();
-            await loadRecords();
             await loadStats();
             return;
         }
@@ -1748,26 +3371,29 @@
         await loadConditions();
         await loadConsignors();
         await loadAccounts();
-        await loadGenres();
-        await loadRecords();
         await loadStats();
 
         searchModeSelect.addEventListener('change', onModeChange);
 
-        searchForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            const term = searchInput.value.trim();
-            if (term) performSearch(term);
+        searchInput.addEventListener('input', function() {
+            const term = this.value.trim();
+            if (currentSearchMode === 'add' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout') {
+                performSearch(term);
+            } else if (currentSearchMode === 'scan') {
+                if (term.length > 2) {
+                    performScanSearch(term);
+                } else if (term.length === 0) {
+                    filteredRecords = [];
+                    totalRecords = 0;
+                    currentPage = 1;
+                    renderPagination();
+                    renderTablePage();
+                    updateSelectionCount();
+                }
+            }
         });
         clearSearchBtn.addEventListener('click', clearSearch);
 
-        statusFilterSelect.addEventListener('change', function() {
-            currentFilterStatus = this.value;
-            currentPage = 1;
-            if (currentMode === 'inventory') applyFilters();
-            else { currentMode = 'inventory'; applyFilters(); }
-        });
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
             currentPage = 1;
@@ -1787,34 +3413,41 @@
         nextPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; if (currentPage < totalPages) { currentPage++; renderPagination(); renderTablePage(); } });
         lastPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; currentPage = totalPages; renderPagination(); renderTablePage(); });
 
-        printSelectedBtn.addEventListener('click', printSelected);
-        cogsBtn.addEventListener('click', showCogsPurchaseModal);
-        deleteSelectedBtn.addEventListener('click', deleteSelected);
-        checkoutSelectedBtn.addEventListener('click', showCheckoutModal);
-        completeScanBtn.addEventListener('click', showCompleteScanModal);
+        cogsBtn.addEventListener('click', showCogsModal);
+        printBtn.addEventListener('click', printPriceTags);
+        setActiveBtn.addEventListener('click', setActive);
+        completeActionBtn.addEventListener('click', handleCompleteAction);
         cancelRangeBtn.addEventListener('click', cancelRangeSelection);
 
-        // Last seen filter
-        if (lastSeenFilterInput) {
-            lastSeenFilterInput.addEventListener('change', function() {
-                // Re-filter scanned list
-                if (currentSearchMode === 'scan') {
-                    // We need to re-filter the full scanned list.
-                    // We'll store the full list separately.
-                    // For simplicity, we'll just re-apply the filter by re-scanning the data? No.
-                    // We'll use a separate array.
-                    // Let's add a scannedFullList array.
-                }
+        if (discogsLocationSelect) {
+            discogsLocationSelect.addEventListener('change', function() {
+                refreshDiscogsRecords();
             });
         }
-        if (clearLastSeenFilterBtn) {
-            clearLastSeenFilterBtn.addEventListener('click', function() {
-                if (lastSeenFilterInput) lastSeenFilterInput.value = '';
-                if (currentSearchMode === 'scan') {
-                    // Show all scanned records
-                }
-                renderTablePage();
+
+        if (applyLastSeenFilterBtn) {
+            applyLastSeenFilterBtn.addEventListener('click', function() {
+                applyLastSeenFilter();
             });
+        }
+
+        if (deleteStatusFilter) {
+            deleteStatusFilter.addEventListener('change', function() {
+                applyDeleteFilter();
+            });
+        }
+
+        const checkoutStatusFilter = document.getElementById('checkout-status-filter');
+        if (checkoutStatusFilter) {
+            checkoutStatusFilter.addEventListener('change', function() {
+                loadRecords({ statusIds: [2], mode: 'checkout' });
+            });
+        }
+        if (checkoutShowSelectedBtn) {
+            checkoutShowSelectedBtn.addEventListener('click', showCheckoutSelected);
+        }
+        if (checkoutShowAllBtn) {
+            checkoutShowAllBtn.addEventListener('click', showCheckoutAll);
         }
 
         currentSearchMode = searchModeSelect.value;
@@ -1824,5 +3457,7 @@
         console.log('✅ inventory-ops.js initialized');
     }
 
+    window.refreshDiscogsLocations = loadDiscogsLocations;
     window.initAddRecordsTab = init;
+
 })();
