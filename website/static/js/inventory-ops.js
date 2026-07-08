@@ -1,8 +1,7 @@
 // ============================================================================
 // inventory-ops.js - Unified Inventory Operations
 // Combines Discogs search/add, inventory search, selection, print, delete,
-// and checkout (Cash, Square, Gift Card) into one table-driven interface.
-// NO SHOPPING CART – selection IS the cart.
+// checkout, and COGS/purchase recording.
 // ============================================================================
 
 (function() {
@@ -33,6 +32,7 @@
 
     const selectedCountSpan = document.getElementById('selected-count');
     const printSelectedBtn = document.getElementById('print-selected-btn');
+    const cogsBtn = document.getElementById('cogs-btn');
     const deleteSelectedBtn = document.getElementById('delete-selected-btn');
     const checkoutSelectedBtn = document.getElementById('checkout-selected-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
@@ -47,6 +47,7 @@
     let selectedConsignorId = null;
     let storePriceMultiplier = null;
     let consignorMap = {};
+    let accounts = []; // for payment account dropdown
     let _initialized = false;
 
     let allRecords = [];
@@ -168,6 +169,16 @@
         data.users.forEach(u => { consignorMap[u.id] = { initials: u.initials || '', name: u.full_name || u.username }; });
     }
 
+    async function loadAccounts() {
+        try {
+            const data = await apiGet('/api/accounting/accounts');
+            accounts = data.accounts || [];
+        } catch (e) {
+            console.warn('Could not load accounts:', e);
+            accounts = [];
+        }
+    }
+
     async function loadStats() {
         const total = await apiGet('/records/count');
         document.getElementById('total-records').textContent = total.count;
@@ -256,6 +267,7 @@
         selectedCountSpan.textContent = count;
         const isCheckoutMode = currentSearchMode === 'checkout' && currentMode === 'inventory';
         printSelectedBtn.disabled = count === 0 || !isCheckoutMode;
+        cogsBtn.disabled = count === 0 || !isCheckoutMode;
         deleteSelectedBtn.disabled = count === 0 || !isCheckoutMode;
         checkoutSelectedBtn.disabled = count === 0 || !isCheckoutMode;
         cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
@@ -608,7 +620,6 @@
                     recordsTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;">No records found in inventory</td></tr>`;
                     return;
                 }
-                // Sort by newest first
                 const recs = data.records.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
                 allRecords = recs;
                 applyFilters();
@@ -628,110 +639,11 @@
         showStatus('Search cleared', 'info');
     }
 
-    // ========== Print Selected (with COGS modal) ==========
-    async function printSelected() {
+    // ========== Print Selected (no COGS modal) ==========
+    function printSelected() {
         const selected = getSelectedRecords();
         if (selected.length === 0) { showStatus('No records selected', 'warning'); return; }
-
-        // Show modal asking for COGS amount
-        const cogsAmount = await showCogsModal(selected);
-        // If user cancelled (null), abort.
-        if (cogsAmount === null) return;
-
-        // If user entered a value > 0, apply batch COGS
-        if (cogsAmount > 0) {
-            try {
-                const recordIds = selected.map(r => r.id);
-                const result = await apiPost('/api/cogs/batch', {
-                    batch_cogs: cogsAmount,
-                    record_ids: recordIds
-                });
-                showStatus(`Batch COGS applied: $${cogsAmount.toFixed(2)} across ${result.records_updated} records`, 'success');
-                // Reload records to reflect updated COGS
-                await loadRecords();
-                // Re-fetch selected records after reload (they are still in allRecords)
-                const updatedSelected = getSelectedRecords();
-                if (updatedSelected.length > 0) {
-                    generatePDF(updatedSelected);
-                } else {
-                    showStatus('No records selected after refresh', 'warning');
-                }
-            } catch (error) {
-                showStatus('Error applying COGS: ' + error.message, 'error');
-                // Still generate PDF without COGS update? We'll allow it.
-                generatePDF(selected);
-            }
-        } else {
-            // No COGS entered, just print
-            generatePDF(selected);
-        }
-    }
-
-    // ========== COGS Modal ==========
-    function showCogsModal(records) {
-        return new Promise((resolve) => {
-            // Build modal
-            let modal = document.getElementById('cogs-modal');
-            if (!modal) {
-                modal = document.createElement('div');
-                modal.id = 'cogs-modal';
-                modal.className = 'modal-overlay';
-                modal.innerHTML = `
-                    <div class="modal-content" style="max-width: 500px; width: 90%;">
-                        <div class="modal-header" style="background: #17a2b8; color: white;">
-                            <h3 class="modal-title"><i class="fas fa-dollar-sign"></i> Set COGS for Printing</h3>
-                            <button class="modal-close" onclick="document.getElementById('cogs-modal').style.display='none'" style="color: white;">&times;</button>
-                        </div>
-                        <div class="modal-body">
-                            <p><strong>${records.length}</strong> record(s) selected.</p>
-                            <p>Enter a total COGS amount to distribute proportionally among these records.</p>
-                            <div style="margin: 15px 0;">
-                                <label for="cogs-amount-input" style="display: block; font-weight: 500; margin-bottom: 5px;">Total COGS ($):</label>
-                                <input type="number" id="cogs-amount-input" step="0.01" min="0" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px;">
-                                <p style="font-size: 12px; color: #666; margin-top: 5px;">Leave 0 or blank to skip COGS assignment.</p>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button class="btn btn-secondary" id="cogs-skip-btn">Skip COGS</button>
-                            <button class="btn btn-primary" id="cogs-apply-btn"><i class="fas fa-check"></i> Apply & Print</button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(modal);
-            }
-
-            // Reset input
-            const input = document.getElementById('cogs-amount-input');
-            if (input) input.value = '';
-
-            modal.style.display = 'flex';
-            const applyBtn = document.getElementById('cogs-apply-btn');
-            const skipBtn = document.getElementById('cogs-skip-btn');
-            const closeBtn = modal.querySelector('.modal-close');
-
-            const cleanup = () => {
-                modal.style.display = 'none';
-                applyBtn.removeEventListener('click', handleApply);
-                skipBtn.removeEventListener('click', handleSkip);
-                closeBtn.removeEventListener('click', handleSkip);
-            };
-
-            const handleApply = () => {
-                const val = parseFloat(input.value);
-                const amount = (isNaN(val) || val < 0) ? 0 : val;
-                cleanup();
-                resolve(amount);
-            };
-
-            const handleSkip = () => {
-                cleanup();
-                resolve(0);
-            };
-
-            applyBtn.addEventListener('click', handleApply);
-            skipBtn.addEventListener('click', handleSkip);
-            closeBtn.addEventListener('click', handleSkip);
-        });
+        generatePDF(selected);
     }
 
     // ========== PDF Generation ==========
@@ -841,12 +753,255 @@
         cancelRangeSelection();
     }
 
+    // ========== COGS / Purchase Modal ==========
+    function showCogsPurchaseModal() {
+        const selected = getSelectedRecords();
+        if (selected.length === 0) {
+            showStatus('Please select records first', 'warning');
+            return;
+        }
+
+        let modal = document.getElementById('cogs-purchase-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'cogs-purchase-modal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; width: 95%;">
+                    <div class="modal-header" style="background: #17a2b8; color: white;">
+                        <h3 class="modal-title"><i class="fas fa-dollar-sign"></i> Record Purchase & Apply COGS</h3>
+                        <button class="modal-close" onclick="document.getElementById('cogs-purchase-modal').style.display='none'" style="color: white;">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>${selected.length}</strong> record(s) selected. Enter the purchase details below.</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label for="cogs-purchase-date" style="display:block; font-weight:500; margin-bottom:4px;">Purchase Date *</label>
+                                <input type="date" id="cogs-purchase-date" class="form-control" style="width:100%; padding:8px;">
+                            </div>
+                            <div>
+                                <label for="cogs-seller-name" style="display:block; font-weight:500; margin-bottom:4px;">Seller Name *</label>
+                                <input type="text" id="cogs-seller-name" class="form-control" placeholder="e.g., John's Records" style="width:100%; padding:8px;">
+                            </div>
+                            <div>
+                                <label for="cogs-seller-contact" style="display:block; font-weight:500; margin-bottom:4px;">Seller Contact</label>
+                                <input type="text" id="cogs-seller-contact" class="form-control" placeholder="Email or Phone" style="width:100%; padding:8px;">
+                            </div>
+                            <div>
+                                <label for="cogs-amount-spent" style="display:block; font-weight:500; margin-bottom:4px;">Amount Spent ($) *</label>
+                                <input type="number" id="cogs-amount-spent" step="0.01" min="0.01" class="form-control" placeholder="0.00" style="width:100%; padding:8px;">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="cogs-payment-account" style="display:block; font-weight:500; margin-bottom:4px;">Payment Account</label>
+                                <select id="cogs-payment-account" class="form-control" style="width:100%; padding:8px;">
+                                    <option value="">-- Select how you paid --</option>
+                                </select>
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="cogs-description" style="display:block; font-weight:500; margin-bottom:4px;">Description</label>
+                                <textarea id="cogs-description" rows="3" class="form-control" placeholder="What was purchased? (e.g., 50 records from estate sale)" style="width:100%; padding:8px;"></textarea>
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="cogs-bill-image" style="display:block; font-weight:500; margin-bottom:4px;">Bill of Sale (Image)</label>
+                                <input type="file" id="cogs-bill-image" accept="image/*,application/pdf" style="width:100%; padding:8px;">
+                                <div id="cogs-bill-preview" style="margin-top:8px;"></div>
+                            </div>
+                        </div>
+                        <div id="cogs-purchase-status" style="margin-top:10px; padding:8px; border-radius:4px; display:none;"></div>
+                    </div>
+                    <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
+                        <button class="btn btn-secondary" onclick="document.getElementById('cogs-purchase-modal').style.display='none'">Cancel</button>
+                        <button class="btn btn-success" id="cogs-submit-btn"><i class="fas fa-check"></i> Apply COGS & Record Purchase</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // Set default date
+        const dateInput = document.getElementById('cogs-purchase-date');
+        if (dateInput) {
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.value = today;
+        }
+
+        // Populate payment account dropdown
+        const accountSelect = document.getElementById('cogs-payment-account');
+        if (accountSelect) {
+            accountSelect.innerHTML = '<option value="">-- Select how you paid --</option>';
+            accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.code;  // use code as identifier, will be sent as payment_account_id
+                opt.textContent = `${acc.code} - ${acc.name}`;
+                accountSelect.appendChild(opt);
+            });
+        }
+
+        // Reset preview
+        document.getElementById('cogs-bill-preview').innerHTML = '';
+
+        // Show modal
+        modal.style.display = 'flex';
+
+        // Remove old listeners to avoid duplicates
+        const submitBtn = document.getElementById('cogs-submit-btn');
+        const newSubmit = submitBtn.cloneNode(true);
+        submitBtn.parentNode.replaceChild(newSubmit, submitBtn);
+
+        newSubmit.addEventListener('click', async function() {
+            await handleCogsPurchaseSubmit();
+        });
+
+        // File preview
+        const fileInput = document.getElementById('cogs-bill-image');
+        const previewDiv = document.getElementById('cogs-bill-preview');
+        fileInput.onchange = function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function(ev) {
+                        previewDiv.innerHTML = `
+                            <img src="${ev.target.result}" alt="Bill preview" style="max-width:200px; max-height:200px; border-radius:4px; border:1px solid #ddd;">
+                            <p style="font-size:12px; color:#666; margin-top:5px;">${file.name}</p>
+                        `;
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    previewDiv.innerHTML = `<p style="color:#666;"><i class="fas fa-file-pdf"></i> ${file.name}</p>`;
+                }
+            } else {
+                previewDiv.innerHTML = '';
+            }
+        };
+    }
+
+    async function handleCogsPurchaseSubmit() {
+        const statusDiv = document.getElementById('cogs-purchase-status');
+        const submitBtn = document.getElementById('cogs-submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+
+        // Gather data
+        const purchaseDate = document.getElementById('cogs-purchase-date').value;
+        const sellerName = document.getElementById('cogs-seller-name').value.trim();
+        const sellerContact = document.getElementById('cogs-seller-contact').value.trim();
+        const amountSpent = parseFloat(document.getElementById('cogs-amount-spent').value);
+        const paymentAccount = document.getElementById('cogs-payment-account').value;
+        const description = document.getElementById('cogs-description').value.trim();
+        const billFile = document.getElementById('cogs-bill-image').files[0];
+
+        // Validate
+        if (!purchaseDate) { showCogsStatus('Please select a purchase date', 'error'); submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase'; return; }
+        if (!sellerName) { showCogsStatus('Please enter seller name', 'error'); submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase'; return; }
+        if (isNaN(amountSpent) || amountSpent <= 0) { showCogsStatus('Please enter a valid amount greater than 0', 'error'); submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase'; return; }
+
+        // Get selected records again (they might have changed)
+        const selected = getSelectedRecords();
+        if (selected.length === 0) {
+            showCogsStatus('No records selected. Please select records first.', 'error');
+            submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase';
+            return;
+        }
+
+        let billPath = null;
+        if (billFile) {
+            const formData = new FormData();
+            formData.append('bill_image', billFile);
+            try {
+                const uploadRes = await fetch(`${AppConfig.baseUrl}/api/inventory-purchases/upload-bill`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                });
+                const uploadData = await uploadRes.json();
+                if (uploadData.status === 'success') {
+                    billPath = uploadData.file_path;
+                } else {
+                    showCogsStatus(`Image upload failed: ${uploadData.error}`, 'error');
+                    submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase';
+                    return;
+                }
+            } catch (err) {
+                showCogsStatus(`Image upload error: ${err.message}`, 'error');
+                submitBtn.disabled=false; submitBtn.innerHTML='<i class="fas fa-check"></i> Apply COGS & Record Purchase';
+                return;
+            }
+        }
+
+        // Build purchase data
+        const purchaseData = {
+            purchase_date: purchaseDate,
+            seller_name: sellerName,
+            seller_contact: sellerContact,
+            amount_spent: amountSpent,
+            description: description,
+            payment_account_id: paymentAccount || null,
+            bill_of_sale_path: billPath
+        };
+
+        try {
+            // 1. Create purchase record
+            const createResponse = await fetch(`${AppConfig.baseUrl}/api/inventory-purchases`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify(purchaseData)
+            });
+            const createResult = await createResponse.json();
+            if (createResult.status !== 'success') {
+                throw new Error(createResult.error || 'Failed to record purchase');
+            }
+            const purchaseId = createResult.purchase.id;
+
+            // 2. Apply batch COGS
+            const recordIds = selected.map(r => r.id);
+            const cogsResponse = await fetch(`${AppConfig.baseUrl}/api/cogs/batch`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    batch_cogs: amountSpent,
+                    record_ids: recordIds
+                })
+            });
+            const cogsResult = await cogsResponse.json();
+            if (cogsResult.status !== 'success') {
+                throw new Error(cogsResult.error || 'Failed to apply COGS');
+            }
+
+            // Success
+            showCogsStatus(`✅ Purchase #${purchaseId} recorded and COGS applied to ${cogsResult.records_updated} records.`, 'success');
+            setTimeout(() => {
+                document.getElementById('cogs-purchase-modal').style.display = 'none';
+                // Refresh table
+                loadRecords();
+                // Reset selection?
+                cancelRangeSelection();
+            }, 1500);
+
+        } catch (error) {
+            showCogsStatus(`❌ Error: ${error.message}`, 'error');
+            console.error('COGS purchase error:', error);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-check"></i> Apply COGS & Record Purchase';
+        }
+    }
+
+    function showCogsStatus(message, type = 'info') {
+        const el = document.getElementById('cogs-purchase-status');
+        if (!el) return;
+        el.textContent = message;
+        el.className = `status-message status-${type}`;
+        el.style.display = 'block';
+    }
+
     // ========== Checkout Modal ==========
     function showCheckoutModal() {
         const selected = getSelectedRecords();
         if (selected.length === 0) { showStatus('No records selected', 'warning'); return; }
 
-        // Calculate totals
         const subtotal = selected.reduce((sum, r) => sum + (r.store_price || 0), 0);
         const taxRate = parseFloat(window.dbConfigValues?.TAX_RATE?.value || 0) / 100;
         const tax = subtotal * taxRate;
@@ -885,7 +1040,6 @@
             document.body.appendChild(modal);
         }
 
-        // Populate items
         const list = document.getElementById('checkout-items-list');
         let html = '<ul style="list-style:none; padding:0;">';
         selected.forEach(r => {
@@ -897,7 +1051,6 @@
         document.getElementById('checkout-tax').textContent = `$${tax.toFixed(2)}`;
         document.getElementById('checkout-total').textContent = `$${total.toFixed(2)}`;
 
-        // Bind buttons
         document.getElementById('checkout-cash-btn').onclick = () => processCashCheckout(selected, total, subtotal, tax);
         document.getElementById('checkout-square-btn').onclick = () => processSquareCheckout(selected, total);
         document.getElementById('checkout-giftcard-btn').onclick = () => processGiftCardCheckout(selected, total);
@@ -921,7 +1074,6 @@
     }
 
     async function processSquareCheckout(records, total) {
-        // Placeholder – replace with actual Square integration.
         await completeSale(records, 'square', { external_transaction_id: 'SQUARE-' + Date.now() });
         document.getElementById('checkout-modal').style.display = 'none';
         showStatus('Square sale completed (simulated)', 'success');
@@ -1024,6 +1176,7 @@
             await loadStorePriceMultiplier();
             await loadConditions();
             await loadConsignors();
+            await loadAccounts();
             await loadRecords();
             await loadStats();
             return;
@@ -1033,6 +1186,7 @@
         await loadStorePriceMultiplier();
         await loadConditions();
         await loadConsignors();
+        await loadAccounts();
         await loadRecords();
         await loadStats();
 
@@ -1070,7 +1224,9 @@
         nextPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; if (currentPage < totalPages) { currentPage++; renderPagination(); renderTablePage(); } });
         lastPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; currentPage = totalPages; renderPagination(); renderTablePage(); });
 
+        // Toolbar buttons
         printSelectedBtn.addEventListener('click', printSelected);
+        cogsBtn.addEventListener('click', showCogsPurchaseModal);
         deleteSelectedBtn.addEventListener('click', deleteSelected);
         checkoutSelectedBtn.addEventListener('click', showCheckoutModal);
         cancelRangeBtn.addEventListener('click', cancelRangeSelection);
@@ -1081,10 +1237,5 @@
         console.log('✅ inventory-ops.js initialized');
     }
 
-    // Expose the init function for TabManager
     window.initAddRecordsTab = init;
-
-    // No dynamic registration – TabManager already has it built in.
-    // This ensures the initializer is not overwritten.
-
 })();
