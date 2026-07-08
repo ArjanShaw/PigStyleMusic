@@ -1,9 +1,7 @@
 // ============================================================================
-// add-records.js - Add Records tab with paginated record table and print queue
+// add-records.js - Add Records tab with unified table for Discogs search and inventory
 // Combines Discogs search, record creation, record table with pagination,
-// range selection (from/to), print queue management, PDF generation,
-// batch COGS, and status updates.
-// NO ERROR HANDLING / NO FALLBACKS
+// range selection, PDF generation, batch COGS, and status updates.
 // ============================================================================
 
 (function() {
@@ -16,11 +14,10 @@
     let searchInput = document.getElementById('searchInput');
     let searchForm = document.getElementById('searchForm');
     let clearSearchBtn = document.getElementById('clearSearch');
-    let resultsContainer = document.getElementById('results-container');
 
     // Record table elements
+    let recordsTableHead = document.getElementById('records-table-head');
     let recordsTableBody = document.getElementById('records-table-body');
-    let recordTableContainer = document.getElementById('record-table-container');
     let totalRecordsSpan = document.getElementById('record-total-count');
     let statusFilterSelect = document.getElementById('record-status-filter');
     let pageSizeSelect = document.getElementById('record-page-size');
@@ -34,17 +31,15 @@
     let nextPageBtn = document.getElementById('record-next-page');
     let lastPageBtn = document.getElementById('record-last-page');
 
-    // Print queue elements
-    let queueCountSpan = document.getElementById('queue-count');
-    let printQueueCountSpan = document.getElementById('print-queue-count');
-    let printQueueBtn = document.getElementById('print-queue-btn');
-    let clearQueueBtn = document.getElementById('clear-queue-btn');
-    let markActiveQueueBtn = document.getElementById('mark-active-queue-btn');
-    let bulkDeleteQueueBtn = document.getElementById('bulk-delete-queue-btn');
+    // Selection & print
+    let selectedCountSpan = document.getElementById('selected-count');
+    let printSelectedBtn = document.getElementById('print-selected-btn');
+    let cancelRangeBtn = document.getElementById('cancel-range-btn');
+
+    // Batch COGS
     let batchCogsAmount = document.getElementById('batch-cogs-amount');
     let applyBatchCogsBtn = document.getElementById('apply-batch-cogs-btn');
     let batchCogsResultDiv = document.getElementById('batch-cogs-result');
-    let queueContentDiv = document.getElementById('queue-content');
 
     // ========== State ==========
     let currentSearchField = 'all';
@@ -59,7 +54,6 @@
     let defaultCogs = null;
     let autoEstimatePrice = true;
     let storePriceMultiplier = null;
-    let printQueue = [];
     let consignorMap = {};
     let _initialized = false;
 
@@ -70,6 +64,9 @@
     let pageSize = 50;
     let totalRecords = 0;
     let currentFilterStatus = '1'; // default: new records
+
+    // Mode: 'inventory' or 'search'
+    let currentMode = 'inventory';
 
     // Range selection state
     let rangeFromIndex = null;
@@ -173,14 +170,12 @@
         const newCount = await apiGet('/records/count?status_id=1');
         document.getElementById('new-records-count').textContent = newCount.count;
 
-        // Fetch last added record with compact display
         const lastRecordData = await apiGet('/records?limit=1&order_by=created_at&order=desc');
         const lastRecord = lastRecordData.records && lastRecordData.records.length > 0 ? lastRecordData.records[0] : null;
         if (lastRecord) {
             const artist = lastRecord.artist || 'Unknown';
             const title = lastRecord.title || 'Unknown';
             const price = lastRecord.store_price ? `$${lastRecord.store_price.toFixed(2)}` : '';
-            // Truncate artist and title to 20 chars each for compact display
             const shortArtist = artist.length > 20 ? artist.substring(0, 20) + '…' : artist;
             const shortTitle = title.length > 20 ? title.substring(0, 20) + '…' : title;
             let display = `${shortArtist} - ${shortTitle}`;
@@ -190,9 +185,6 @@
             document.getElementById('last-added-record').textContent = 'None';
         }
 
-        const capacity = await apiGet('/config/STORE_CAPACITY');
-        const fill = (total.count / parseInt(capacity.config_value) * 100).toFixed(1);
-        document.getElementById('store-fill').textContent = fill + '%';
         const commission = await apiGet('/api/commission-rate');
         document.getElementById('commission-rate').textContent = commission.commission_rate_percent;
     }
@@ -206,14 +198,21 @@
     }
 
     function applyFilters() {
-        const statusFilter = currentFilterStatus;
-        if (statusFilter === 'all') {
-            filteredRecords = allRecords.slice();
+        if (currentMode === 'search') {
+            filteredRecords = currentResults.slice();
         } else {
-            const statusId = parseInt(statusFilter);
-            filteredRecords = allRecords.filter(r => r.status_id === statusId);
+            const statusFilter = currentFilterStatus;
+            if (statusFilter === 'all') {
+                filteredRecords = allRecords.slice();
+            } else {
+                const statusId = parseInt(statusFilter);
+                filteredRecords = allRecords.filter(r => r.status_id === statusId);
+            }
         }
         totalRecords = filteredRecords.length;
+        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
         renderPagination();
         renderTablePage();
     }
@@ -235,27 +234,130 @@
         lastPageBtn.disabled = currentPage === totalPages;
     }
 
+    function getCurrentData() {
+        return filteredRecords;
+    }
+
+    function getSelectedRecords() {
+        if (rangeFromIndex === null || rangeToIndex === null) return [];
+        const start = Math.min(rangeFromIndex, rangeToIndex);
+        const end = Math.max(rangeFromIndex, rangeToIndex);
+        const data = getCurrentData();
+        return data.slice(start, end + 1);
+    }
+
+    function updateSelectionCount() {
+        const selected = getSelectedRecords();
+        const count = selected.length;
+        selectedCountSpan.textContent = count;
+        printSelectedBtn.disabled = count === 0 || currentMode !== 'inventory';
+        cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
+    }
+
+    // ========== Price Estimation ==========
+    async function estimatePriceForRow(row, catalogNumber) {
+        const sleeveSelect = row.querySelector('.sleeve-condition-select');
+        const discSelect = row.querySelector('.disc-condition-select');
+        const priceInput = row.querySelector('.price-input');
+
+        const sleeveId = parseInt(sleeveSelect.value);
+        const discId = parseInt(discSelect.value);
+        if (!sleeveId || !discId) return;
+
+        // Get condition names
+        const sleeve = conditions.find(c => c.id === sleeveId);
+        const disc = conditions.find(c => c.id === discId);
+        if (!sleeve || !disc) return;
+
+        // Call price estimate endpoint
+        try {
+            const data = await apiPost('/api/price-estimate-v3', {
+                catalog_number: catalogNumber || '',
+                media_condition: disc.display_name || disc.condition_name,
+                sleeve_condition: sleeve.display_name || sleeve.condition_name
+            });
+            if (data.status === 'success' && data.estimated_price) {
+                let price = data.estimated_price;
+                // Apply multiplier and rounding logic (match existing pattern)
+                if (storePriceMultiplier) {
+                    price = price * storePriceMultiplier;
+                }
+                // Round to nearest dollar minus 0.01 (e.g., 9.99)
+                const dollars = Math.floor(price);
+                price = dollars < 1 ? 0.99 : (dollars - 1) + 0.99;
+                if (minimumPrice !== null && price < minimumPrice) price = minimumPrice;
+                priceInput.value = price.toFixed(2);
+                priceInput.classList.add('price-estimated');
+            }
+        } catch (e) {
+            console.warn('Price estimation failed:', e);
+        }
+    }
+
+    // ========== Render Table ==========
     function renderTablePage() {
+        console.log(`🔄 renderTablePage() called – mode: ${currentMode}, records: ${filteredRecords.length}`);
         const start = (currentPage - 1) * pageSize;
         const end = Math.min(start + pageSize, filteredRecords.length);
         const pageRecords = filteredRecords.slice(start, end);
-        let html = '';
-        if (pageRecords.length === 0) {
-            html = `<tr><td colspan="13" style="text-align:center;padding:40px;">No records found</td></tr>`;
+        console.log(`📄 Rendering page ${currentPage}, rows ${start+1}–${end} (${pageRecords.length} items)`);
+
+        let theadHtml = '';
+        if (currentMode === 'search') {
+            const condOptions = conditions.map(c =>
+                `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
+            ).join('');
+            const consignorOptions = consignors.map(c =>
+                `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
+            ).join('');
+
+            theadHtml = `
+                <tr>
+                    <th style="width:60px;">Range</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                    <th>Catalog #</th>
+                    <th>Sleeve</th>
+                    <th>Disc</th>
+                    <th>Price</th>
+                    <th>COGS</th>
+                    <th>Consignor</th>
+                    <th>Action</th>
+                </tr>
+            `;
         } else {
+            theadHtml = `
+                <tr>
+                    <th style="width:60px;">Range</th>
+                    <th>ID</th>
+                    <th>Created</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                    <th>Price</th>
+                    <th>COGS</th>
+                    <th>Catalog #</th>
+                    <th>Sleeve</th>
+                    <th>Disc</th>
+                    <th>Barcode</th>
+                    <th>Consignor</th>
+                    <th>Status</th>
+                </tr>
+            `;
+        }
+        recordsTableHead.innerHTML = theadHtml;
+
+        let tbodyHtml = '';
+        if (pageRecords.length === 0) {
+            tbodyHtml = `<tr><td colspan="13" style="text-align:center;padding:40px;">No records found</td></tr>`;
+        } else {
+            const data = getCurrentData();
             pageRecords.forEach((record, idx) => {
                 const globalIndex = start + idx;
-                const inQueue = printQueue.some(r => r.id === record.id);
-                const queuePos = printQueue.findIndex(r => r.id === record.id);
-                const statusClass = getStatusClass(record.status_id);
-                const statusName = getStatusName(record.status_id);
-                const genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
-                const consignor = record.consignor_id && consignorMap[record.consignor_id] ? consignorMap[record.consignor_id].initials : '';
-                const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
-                const profit = (record.store_price && record.cogs) ? `$${(record.store_price - record.cogs).toFixed(2)}` : '—';
-                const dateCreated = record.created_at ? new Date(record.created_at).toLocaleDateString() : 'Unknown';
+                const isSelected = (rangeFromIndex !== null && rangeToIndex !== null &&
+                                    globalIndex >= Math.min(rangeFromIndex, rangeToIndex) &&
+                                    globalIndex <= Math.max(rangeFromIndex, rangeToIndex));
 
+                let rowClass = isSelected ? 'record-selected' : '';
                 let fromButton, toButton;
                 if (!isRangeMode) {
                     fromButton = `<button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>`;
@@ -273,36 +375,94 @@
                     }
                 }
 
-                html += `
-                    <tr>
-                        <td style="width:80px; text-align:center;">
-                            ${fromButton}
-                            ${toButton}
+                let rowHtml = `<tr class="${rowClass}" data-index="${globalIndex}">`;
+
+                if (currentMode === 'search') {
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const catalog = record.catalog_number || '';
+                    const condOptions = conditions.map(c =>
+                        `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
+                    ).join('');
+                    const consignorOptions = consignors.map(c =>
+                        `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
+                    ).join('');
+
+                    rowHtml += `
+                        <td style="text-align:center;">${fromButton} ${toButton}</td>
+                        <td>${escapeHtml(artist)}</td>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${escapeHtml(catalog)}</td>
+                        <td>
+                            <select class="sleeve-condition-select" style="width:100px; padding:4px;">
+                                <option value="">Select...</option>
+                                ${condOptions}
+                            </select>
                         </td>
-                        <td>${record.id}</td>
-                        <td>${dateCreated}</td>
-                        <td>${escapeHtml(record.artist || 'Unknown')}</td>
-                        <td>${escapeHtml(record.title || 'Unknown')}</td>
+                        <td>
+                            <select class="disc-condition-select" style="width:100px; padding:4px;">
+                                <option value="">Select...</option>
+                                ${condOptions}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
+                        </td>
+                        <td>
+                            <input type="number" class="cogs-input" step="0.01" min="0" value="" style="width:80px; padding:4px;">
+                        </td>
+                        <td>
+                            <select class="consignor-select" style="width:100px; padding:4px;">
+                                <option value="">None</option>
+                                ${consignorOptions}
+                            </select>
+                        </td>
+                        <td>
+                            <button class="btn-add-record-from-search" data-index="${globalIndex}" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </td>
+                    `;
+                } else {
+                    const id = record.id;
+                    const created = record.created_at ? new Date(record.created_at).toLocaleDateString() : 'Unknown';
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+                    const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
+                    const catalog = record.catalog_number || '—';
+                    const sleeve = record.sleeve_condition_name || '—';
+                    const disc = record.disc_condition_name || '—';
+                    const barcode = record.barcode || record.id;
+                    const consignor = record.consignor_id && consignorMap[record.consignor_id] ? consignorMap[record.consignor_id].initials : '—';
+                    const statusClass = getStatusClass(record.status_id);
+                    const statusName = getStatusName(record.status_id);
+
+                    rowHtml += `
+                        <td style="text-align:center;">${fromButton} ${toButton}</td>
+                        <td>${id}</td>
+                        <td>${created}</td>
+                        <td>${escapeHtml(artist)}</td>
+                        <td>${escapeHtml(title)}</td>
                         <td>${price}</td>
                         <td>${cogs}</td>
-                        <td>${profit}</td>
-                        <td>${escapeHtml(record.catalog_number || '—')}</td>
-                        <td>${escapeHtml(genre)}</td>
-                        <td><span class="barcode-value">${record.barcode || record.id}</span></td>
-                        <td>${escapeHtml(consignor) || '—'}</td>
+                        <td>${escapeHtml(catalog)}</td>
+                        <td>${escapeHtml(sleeve)}</td>
+                        <td>${escapeHtml(disc)}</td>
+                        <td><span class="barcode-value">${barcode}</span></td>
+                        <td>${escapeHtml(consignor)}</td>
                         <td><span class="status-badge ${statusClass}">${statusName}</span></td>
-                        <td>
-                            ${inQueue ?
-                                `<span class="queue-badge" style="background:#28a745;color:white;padding:2px 6px;border-radius:10px;font-size:10px;">#${queuePos+1}</span>` :
-                                `<button class="btn-add-queue" data-id="${record.id}" style="background:none;border:none;color:#28a745;cursor:pointer;font-size:16px;" title="Add to queue"><i class="fas fa-plus-circle"></i></button>`
-                            }
-                        </td>
-                    </tr>
-                `;
+                    `;
+                }
+
+                rowHtml += `</tr>`;
+                tbodyHtml += rowHtml;
             });
         }
-        recordsTableBody.innerHTML = html;
+        recordsTableBody.innerHTML = tbodyHtml;
+        console.log(`✅ Table rendered with ${pageRecords.length} rows`);
 
+        // Attach event listeners for range buttons
         document.querySelectorAll('.btn-from').forEach(btn => {
             btn.addEventListener('click', function() {
                 const index = parseInt(this.dataset.index);
@@ -315,25 +475,52 @@
                 endRangeTo(index);
             });
         });
-        document.querySelectorAll('.btn-add-queue').forEach(btn => {
+
+        // Attach "Add" buttons in search mode
+        document.querySelectorAll('.btn-add-record-from-search').forEach(btn => {
             btn.addEventListener('click', function() {
-                const id = parseInt(this.dataset.id);
-                const record = allRecords.find(r => r.id === id);
-                if (record && !printQueue.some(r => r.id === id)) {
-                    printQueue.push(record);
-                    updateQueueDisplay();
-                    renderTablePage();
-                }
+                const index = parseInt(this.dataset.index);
+                const row = this.closest('tr');
+                const record = currentResults[index];
+                if (record) addRecordFromDiscogs(row, record);
             });
         });
+
+        // ----- Search mode: condition sync and price estimation -----
+        if (currentMode === 'search') {
+            document.querySelectorAll('.sleeve-condition-select').forEach(sel => {
+                sel.addEventListener('change', function() {
+                    const row = this.closest('tr');
+                    const discSelect = row.querySelector('.disc-condition-select');
+                    // Set disc to same value
+                    if (this.value) {
+                        discSelect.value = this.value;
+                    }
+                    // Trigger price estimation
+                    const catalogInput = row.querySelector('td:nth-child(4)'); // Catalog # is 4th column (0-index)
+                    const catalog = catalogInput ? catalogInput.textContent.trim() : '';
+                    estimatePriceForRow(row, catalog);
+                });
+            });
+
+            document.querySelectorAll('.disc-condition-select').forEach(sel => {
+                sel.addEventListener('change', function() {
+                    const row = this.closest('tr');
+                    const catalogInput = row.querySelector('td:nth-child(4)');
+                    const catalog = catalogInput ? catalogInput.textContent.trim() : '';
+                    estimatePriceForRow(row, catalog);
+                });
+            });
+        }
+
+        updateSelectionCount();
     }
 
-    // ========== Range Selection Functions ==========
+    // ========== Range Selection ==========
     function startRangeFrom(index) {
         rangeFromIndex = index;
         rangeToIndex = null;
         isRangeMode = true;
-        document.getElementById('cancel-range-btn').style.display = 'inline-block';
         renderTablePage();
         showStatus(`From record selected. Click "to" on another record to select range.`, 'info');
     }
@@ -344,40 +531,37 @@
             return;
         }
         rangeToIndex = index;
-        const start = Math.min(rangeFromIndex, rangeToIndex);
-        const end = Math.max(rangeFromIndex, rangeToIndex);
-        let added = 0;
-        for (let i = start; i <= end; i++) {
-            const record = filteredRecords[i];
-            if (record && !printQueue.some(r => r.id === record.id)) {
-                printQueue.push(record);
-                added++;
-            }
-        }
-        rangeFromIndex = null;
-        rangeToIndex = null;
-        isRangeMode = false;
-        document.getElementById('cancel-range-btn').style.display = 'none';
-        updateQueueDisplay();
         renderTablePage();
-        showStatus(`Added ${added} records to queue`, 'success');
+        const selected = getSelectedRecords();
+        showStatus(`Selected ${selected.length} records`, 'success');
+        updateSelectionCount();
     }
 
     function cancelRangeSelection() {
         rangeFromIndex = null;
         rangeToIndex = null;
         isRangeMode = false;
-        document.getElementById('cancel-range-btn').style.display = 'none';
         renderTablePage();
-        showStatus('Range selection cancelled', 'info');
+        updateSelectionCount();
+        showStatus('Selection cleared', 'info');
     }
 
     // ========== Search ==========
     async function performSearch(searchTerm) {
-        if (!searchTerm) { clearResults(); return; }
-        resultsContainer.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i><p>Searching...</p></div>';
+        if (!searchTerm) { clearSearch(); return; }
+        console.log('🔍 performSearch called with term:', searchTerm);
+        currentMode = 'search';
+        recordsTableBody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching...</td></tr>`;
 
         const data = await apiGet('/api/discogs/search?q=' + encodeURIComponent(searchTerm));
+        console.log('📦 Discogs API response:', data);
+
+        if (!data.results || !data.results.length) {
+            console.warn('⚠️ No results found in response');
+            recordsTableBody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:40px;">No results found</td></tr>`;
+            return;
+        }
+
         currentResults = data.results.map(r => {
             let artist = r.artist || 'Unknown';
             let title = r.title || 'Unknown';
@@ -389,196 +573,47 @@
             if (Array.isArray(artist)) artist = artist[0] || 'Unknown';
             return { ...r, artist, title };
         });
-        displayResults();
+
+        console.log(`✅ Mapped ${currentResults.length} results`);
+        filteredRecords = currentResults.slice();
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        console.log(`📋 Table updated with ${totalRecords} rows`);
+        showStatus(`Found ${totalRecords} results`, 'success');
     }
 
-    function clearResults() {
+    function clearSearch() {
+        currentMode = 'inventory';
         currentResults = [];
-        resultsContainer.innerHTML = `
-            <div class="loading">
-                <i class="fas fa-search"></i>
-                <p>Search for records to get started</p>
-                <p><small>Enter a search term above</small></p>
-            </div>
-        `;
-    }
-
-    // ========== Display Results ==========
-    function displayResults() {
-        if (!currentResults.length) {
-            resultsContainer.innerHTML = `<div class="loading"><i class="fas fa-search"></i><p>No results found</p></div>`;
-            return;
-        }
-        resultsContainer.innerHTML = renderDiscogsResults();
-        attachResultEventListeners();
-    }
-
-    function renderDiscogsResults() {
-        const condOptions = conditions.map(c =>
-            `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
-        ).join('');
-        const consignorOptions = consignors.map(c =>
-            `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}${c.flag_color ? ' ('+c.flag_color+')' : ''}</option>`
-        ).join('');
-
-        let html = `<h3>Discogs Results (${currentResults.length})</h3>`;
-        currentResults.forEach((record, idx) => {
-            const discogsGenreRaw = record.genre_raw || '';
-            const catalogNumber = record.catalog_number || '';
-            const defaultSleeve = defaultSleeveConditionId || '';
-            const defaultDisc = defaultDiscConditionId || '';
-            const defaultNotesVal = defaultNotes || '';
-            const defaultCogsVal = defaultCogs !== null ? defaultCogs.toFixed(2) : '';
-            html += `
-                <div class="record-card" data-record-id="${record.discogs_id || record.id}" data-index="${idx}" data-artist="${record.artist}" data-catalog="${catalogNumber}" data-title="${record.title}">
-                    <div class="record-header">
-                        ${record.image_url ? `<img src="${record.image_url}" alt="${record.artist} - ${record.title}" class="record-image" onerror="this.src='https://via.placeholder.com/100x100/333/666?text=No+Image'">` :
-                            `<div class="record-image" style="background:#333;display:flex;align-items:center;justify-content:center;"><i class="fas fa-record-vinyl" style="font-size:40px;color:#666;"></i></div>`}
-                        <div class="record-info">
-                            <div class="record-title">${record.artist} - ${record.title}</div>
-                            <div class="record-details">
-                                ${record.year ? `<span><strong>Year:</strong> ${record.year}</span>` : ''}
-                                ${discogsGenreRaw ? `<span><strong>Discogs Genre:</strong> ${discogsGenreRaw}</span>` : ''}
-                                ${record.format ? `<span><strong>Format:</strong> ${record.format}</span>` : ''}
-                                ${catalogNumber ? `<span><strong>Catalog #:</strong> ${catalogNumber}</span>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                    <div style="margin:15px 0;padding:15px;background:#f8f9fa;border-radius:8px;border:1px solid #dee2e6;">
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;">
-                            <div>
-                                <label class="form-label">Sleeve Condition *</label>
-                                <select class="form-control sleeve-condition-select" data-default="${defaultSleeve}">
-                                    <option value="">Select...</option>
-                                    ${condOptions}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label">Disc Condition *</label>
-                                <select class="form-control disc-condition-select" data-default="${defaultDisc}">
-                                    <option value="">Select...</option>
-                                    ${condOptions}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label">Price ($) *</label>
-                                <input type="number" class="form-control price-input" step="1" ${minimumPrice !== null ? `min="${minimumPrice}"` : ''} placeholder="Price">
-                                <button class="btn btn-sm btn-info estimate-now-btn" style="margin-top:5px;font-size:12px;display:${autoEstimatePrice?'none':'inline-block'};">
-                                    <i class="fas fa-calculator"></i> Estimate
-                                </button>
-                            </div>
-                            <div>
-                                <label class="form-label">COGS ($)</label>
-                                <input type="number" class="form-control cogs-input" step="0.01" min="0" value="${defaultCogsVal}" placeholder="Optional">
-                            </div>
-                            <div>
-                                <label class="form-label">Consignor</label>
-                                <select class="form-control consignor-select">
-                                    <option value="">None</option>
-                                    ${consignorOptions}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label">Notes</label>
-                                <textarea class="form-control notes-input" rows="2">${escapeHtml(defaultNotesVal)}</textarea>
-                            </div>
-                            <div>
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                                    <input type="checkbox" class="no-original-sleeve-checkbox">
-                                    <span>No original sleeve</span>
-                                </label>
-                            </div>
-                        </div>
-                        <div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;">
-                            <button class="btn btn-primary add-record-btn"><i class="fas fa-plus"></i> Add to Inventory</button>
-                            <button class="btn btn-success add-and-print-btn"><i class="fas fa-print"></i> Add & Print</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-        return html;
-    }
-
-    // ========== Attach Event Listeners to Results ==========
-    function attachResultEventListeners() {
-        document.querySelectorAll('.add-record-btn').forEach(btn => {
-            btn.addEventListener('click', async function(e) {
-                const card = this.closest('.record-card');
-                const idx = parseInt(card.dataset.index);
-                const record = currentResults[idx];
-                await addRecordFromDiscogs(card, record, false);
-            });
-        });
-        document.querySelectorAll('.add-and-print-btn').forEach(btn => {
-            btn.addEventListener('click', async function(e) {
-                const card = this.closest('.record-card');
-                const idx = parseInt(card.dataset.index);
-                const record = currentResults[idx];
-                await addRecordFromDiscogs(card, record, true);
-            });
-        });
-        document.querySelectorAll('.estimate-now-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                const card = this.closest('.record-card');
-                const idx = parseInt(card.dataset.index);
-                const record = currentResults[idx];
-                manualEstimate(record, card);
-            });
-        });
-        document.querySelectorAll('.sleeve-condition-select').forEach(sel => {
-            sel.addEventListener('change', function(e) {
-                const card = this.closest('.record-card');
-                const discSelect = card.querySelector('.disc-condition-select');
-                if (this.value) discSelect.value = this.value;
-                const discEvent = new Event('change', { bubbles: true });
-                discSelect.dispatchEvent(discEvent);
-            });
-        });
-        document.querySelectorAll('.disc-condition-select').forEach(sel => {
-            sel.addEventListener('change', function(e) {
-                const card = this.closest('.record-card');
-                const sleeve = card.querySelector('.sleeve-condition-select');
-                const disc = this;
-                if (sleeve.value && disc.value && autoEstimatePrice && storePriceMultiplier !== null) {
-                    const idx = parseInt(card.dataset.index);
-                    const record = currentResults[idx];
-                    if (record) estimatePrice(record, sleeve.value, disc.value, card);
-                }
-            });
-        });
-        document.querySelectorAll('.no-original-sleeve-checkbox').forEach(cb => {
-            cb.addEventListener('change', function(e) {
-                const card = this.closest('.record-card');
-                const notes = card.querySelector('.notes-input');
-                const tag = '[NO ORIGINAL SLEEVE]';
-                if (this.checked) {
-                    if (!notes.value.includes(tag)) notes.value = notes.value ? tag + '\n' + notes.value : tag;
-                } else {
-                    notes.value = notes.value.replace(tag, '').replace(/^\n+/, '').replace(/\n+$/, '');
-                }
-            });
-        });
+        searchInput.value = '';
+        applyFilters();
+        showStatus('Search cleared, showing inventory', 'info');
     }
 
     // ========== Add Record from Discogs ==========
-    async function addRecordFromDiscogs(card, discogsRecord, printImmediately) {
-        const sleeveSelect = card.querySelector('.sleeve-condition-select');
-        const discSelect = card.querySelector('.disc-condition-select');
-        const priceInput = card.querySelector('.price-input');
-        const cogsInput = card.querySelector('.cogs-input');
-        const consignorSelect = card.querySelector('.consignor-select');
-        const notesInput = card.querySelector('.notes-input');
-        const noSleeveCheck = card.querySelector('.no-original-sleeve-checkbox');
+    async function addRecordFromDiscogs(row, discogsRecord) {
+        const priceInput = row.querySelector('.price-input');
+        const cogsInput = row.querySelector('.cogs-input');
+        const consignorSelect = row.querySelector('.consignor-select');
+        const sleeveSelect = row.querySelector('.sleeve-condition-select');
+        const discSelect = row.querySelector('.disc-condition-select');
 
-        const sleeveId = parseInt(sleeveSelect.value);
-        const discId = parseInt(discSelect.value);
         const price = parseFloat(priceInput.value);
         const cogs = cogsInput.value ? parseFloat(cogsInput.value) : null;
         const consignorId = consignorSelect.value ? parseInt(consignorSelect.value) : null;
-        let notes = notesInput.value.trim();
-        if (noSleeveCheck.checked && !notes.includes('[NO ORIGINAL SLEEVE]')) {
-            notes = notes ? '[NO ORIGINAL SLEEVE]\n' + notes : '[NO ORIGINAL SLEEVE]';
+        const sleeveId = parseInt(sleeveSelect.value);
+        const discId = parseInt(discSelect.value);
+
+        if (!sleeveId || !discId) {
+            showStatus('Please select sleeve and disc conditions', 'warning');
+            return;
+        }
+
+        if (!price || price <= 0) {
+            showStatus('Please enter a valid price', 'warning');
+            return;
         }
 
         const recordData = {
@@ -593,122 +628,34 @@
             cogs: cogs,
             consignor_id: consignorId,
             status_id: 1,
-            notes: notes || null
+            notes: null
         };
 
         const result = await apiPost('/records', recordData);
         const newRecord = result.record;
         showStatus(`✅ Record #${newRecord.id} added successfully!`, 'success');
+        clearSearch();
         await loadRecords();
         await loadStats();
-        if (printImmediately) {
-            if (!printQueue.some(r => r.id === newRecord.id)) {
-                printQueue.push(newRecord);
-                updateQueueDisplay();
-                renderTablePage();
-            }
-            showStatus(`Added to print queue (${printQueue.length} items)`, 'info');
-        }
     }
 
-    // ========== Price Estimation ==========
-    async function estimatePrice(record, sleeveId, discId, card) {
-        const sleeveInt = parseInt(sleeveId);
-        const discInt = parseInt(discId);
-        const catalogNumber = card.dataset.catalog || record.catalog_number || '';
-        const data = await apiPost('/api/price-estimate-v3', {
-            catalog_number: catalogNumber,
-            media_condition: conditions.find(c => c.id === discInt).display_name || conditions.find(c => c.id === discInt).condition_name,
-            sleeve_condition: conditions.find(c => c.id === sleeveInt).display_name || conditions.find(c => c.id === sleeveInt).condition_name
-        });
-        const estimated = data.estimated_price;
-        let finalPrice = estimated * storePriceMultiplier;
-        const dollars = Math.floor(finalPrice);
-        finalPrice = dollars < 1 ? 0.99 : (dollars - 1) + 0.99;
-        finalPrice = Math.max(finalPrice, minimumPrice);
-        const priceInput = card.querySelector('.price-input');
-        priceInput.value = finalPrice.toFixed(2);
-        priceInput.classList.add('price-estimated');
-    }
-
-    async function manualEstimate(record, card) {
-        const sleeve = card.querySelector('.sleeve-condition-select');
-        const disc = card.querySelector('.disc-condition-select');
-        estimatePrice(record, sleeve.value, disc.value, card);
-    }
-
-    // ========== Print Queue Management ==========
-    function addToQueue(record) {
-        if (!printQueue.some(r => r.id === record.id)) {
-            printQueue.push(record);
-            updateQueueDisplay();
-            renderTablePage();
-        }
-    }
-
-    function removeFromQueue(index) {
-        printQueue.splice(index, 1);
-        updateQueueDisplay();
-        renderTablePage();
-    }
-
-    function clearQueue() {
-        if (confirm(`Clear ${printQueue.length} records from queue?`)) {
-            printQueue = [];
-            updateQueueDisplay();
-            renderTablePage();
-        }
-    }
-
-    function moveInQueue(index, direction) {
-        const newIdx = index + direction;
-        if (newIdx < 0 || newIdx >= printQueue.length) return;
-        [printQueue[index], printQueue[newIdx]] = [printQueue[newIdx], printQueue[index]];
-        updateQueueDisplay();
-    }
-
-    function updateQueueDisplay() {
-        const count = printQueue.length;
-        queueCountSpan.textContent = count;
-        printQueueCountSpan.textContent = count;
-        clearQueueBtn.disabled = count === 0;
-        printQueueBtn.disabled = count === 0;
-        bulkDeleteQueueBtn.disabled = count === 0;
-
-        if (count === 0) {
-            queueContentDiv.innerHTML = `<div class="queue-empty"><i class="fas fa-inbox" style="font-size:24px;margin-bottom:10px;opacity:0.5;"></i><p>No records in print queue</p></div>`;
+    // ========== Print Selected ==========
+    function printSelected() {
+        const selected = getSelectedRecords();
+        if (selected.length === 0) {
+            showStatus('No records selected', 'warning');
             return;
         }
-        let html = '';
-        printQueue.forEach((r, i) => {
-            html += `
-                <div class="queue-item">
-                    <div class="queue-item-number">${i+1}</div>
-                    <div class="queue-item-info">
-                        <div class="queue-item-title">${escapeHtml(r.artist)} - ${escapeHtml(r.title)}</div>
-                        <div class="queue-item-details">
-                            <span>Price: $${(r.store_price||0).toFixed(2)}</span>
-                            <span>COGS: ${r.cogs ? '$'+r.cogs.toFixed(2) : '—'}</span>
-                        </div>
-                    </div>
-                    <div>
-                        <button class="queue-item-move" onclick="window.addRecordsMoveInQueue(${i},-1)" ${i===0?'disabled':''}><i class="fas fa-arrow-up"></i></button>
-                        <button class="queue-item-move" onclick="window.addRecordsMoveInQueue(${i},1)" ${i===printQueue.length-1?'disabled':''}><i class="fas fa-arrow-down"></i></button>
-                        <button class="queue-item-remove" onclick="window.addRecordsRemoveFromQueue(${i})"><i class="fas fa-trash"></i> Remove</button>
-                    </div>
-                </div>
-            `;
-        });
-        queueContentDiv.innerHTML = html;
+        if (currentMode !== 'inventory') {
+            showStatus('Printing is only available for inventory records', 'warning');
+            return;
+        }
+        generatePDF(selected);
     }
-
-    window.addRecordsMoveInQueue = moveInQueue;
-    window.addRecordsRemoveFromQueue = removeFromQueue;
-    window.addRecordsClearQueue = clearQueue;
 
     // ========== PDF Generation ==========
     async function generatePDF(records) {
-        if (!records.length) { showStatus('Queue is empty', 'warning'); return; }
+        if (!records.length) { showStatus('No records to print', 'warning'); return; }
         const { jsPDF } = window.jspdf;
 
         const labelWidthMM = parseFloat((await apiGet('/config/LABEL_WIDTH_MM')).config_value);
@@ -795,16 +742,21 @@
     // ========== Batch COGS ==========
     async function applyBatchCOGS() {
         const amount = parseFloat(batchCogsAmount.value);
+        if (!amount || amount <= 0) {
+            showStatus('Please enter a valid COGS amount', 'warning');
+            return;
+        }
+        const selected = getSelectedRecords();
+        if (selected.length === 0) {
+            showStatus('No records selected. Use "from" and "to" to select records.', 'warning');
+            return;
+        }
+        const recordIds = selected.map(r => r.id);
         const result = await apiPost('/api/cogs/batch', {
             batch_cogs: amount,
-            record_ids: printQueue.map(r => r.id)
+            record_ids: recordIds
         });
-        result.updated_records.forEach(upd => {
-            const q = printQueue.find(r => r.id === upd.id);
-            if (q) q.cogs = upd.cogs;
-        });
-        updateQueueDisplay();
-        renderTablePage();
+        await loadRecords();
         batchCogsResultDiv.innerHTML = `
             <div style="background:#d4edda;border:1px solid #c3e6cb;border-radius:5px;padding:10px;margin-top:10px;">
                 <strong>✅ Batch COGS Applied</strong><br>
@@ -815,38 +767,6 @@
         setTimeout(() => { batchCogsResultDiv.innerHTML = ''; }, 5000);
         batchCogsAmount.value = '';
         showStatus(`Batch COGS applied to ${result.records_updated} records`, 'success');
-    }
-
-    // ========== Mark Queue as Active ==========
-    async function markQueueAsActive() {
-        const ids = printQueue.map(r => r.id);
-        const result = await apiPost('/records/update-status', { record_ids: ids, status_id: 2 });
-        printQueue = [];
-        updateQueueDisplay();
-        await loadRecords();
-        await loadStats();
-        showStatus(`Marked ${result.updated_count} records as Active`, 'success');
-    }
-
-    // ========== Bulk Delete from Queue ==========
-    async function deleteSelectedFromQueue() {
-        if (!printQueue.length) return;
-        if (!confirm(`Delete ${printQueue.length} records permanently?`)) return;
-        let deleted = 0, failed = 0;
-        for (const record of printQueue) {
-            try {
-                await apiDelete('/records/' + record.id);
-                deleted++;
-            } catch (e) {
-                failed++;
-                console.error('Delete failed for record', record.id, e);
-            }
-        }
-        printQueue = [];
-        updateQueueDisplay();
-        await loadRecords();
-        await loadStats();
-        showStatus(`Deleted ${deleted} records, ${failed} failed`, deleted > 0 ? 'success' : 'error');
     }
 
     // ========== Init ==========
@@ -881,15 +801,19 @@
             if (term) performSearch(term);
         });
         clearSearchBtn.addEventListener('click', function() {
-            searchInput.value = '';
-            clearResults();
+            clearSearch();
         });
 
         // Record table filter & pagination
         statusFilterSelect.addEventListener('change', function() {
             currentFilterStatus = this.value;
             currentPage = 1;
-            applyFilters();
+            if (currentMode === 'inventory') {
+                applyFilters();
+            } else {
+                currentMode = 'inventory';
+                applyFilters();
+            }
         });
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
@@ -910,23 +834,15 @@
         nextPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; if (currentPage < totalPages) { currentPage++; renderPagination(); renderTablePage(); } });
         lastPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; currentPage = totalPages; renderPagination(); renderTablePage(); });
 
-        // Queue buttons
-        clearQueueBtn.addEventListener('click', clearQueue);
-        printQueueBtn.addEventListener('click', () => generatePDF(printQueue));
-        markActiveQueueBtn.addEventListener('click', markQueueAsActive);
-        bulkDeleteQueueBtn.addEventListener('click', deleteSelectedFromQueue);
+        // Selection & Print
+        printSelectedBtn.addEventListener('click', printSelected);
+        cancelRangeBtn.addEventListener('click', cancelRangeSelection);
+
+        // Batch COGS
         applyBatchCogsBtn.addEventListener('click', applyBatchCOGS);
 
-        // Expose queue functions globally
-        window.addRecordsMoveInQueue = moveInQueue;
-        window.addRecordsRemoveFromQueue = removeFromQueue;
-        window.addRecordsClearQueue = clearQueue;
-
-        // Cancel range button (already in HTML, we need to wire it)
-        document.getElementById('cancel-range-btn').addEventListener('click', cancelRangeSelection);
-
-        clearResults();
-        updateQueueDisplay();
+        // Initial render
+        clearSearch();
 
         _initialized = true;
         console.log('✅ add-records.js initialized (first time)');
