@@ -2157,117 +2157,173 @@
             </div>
         </div>
 
-        <!-- ==================== Add Records Tab ==================== -->
-        <div id="add-records-tab" class="tab-content">
-            <div class="inventory-container">
-                <div class="stats-row">
-                    <div class="stat-card">
-                        <div class="stat-value" id="total-records">0</div>
-                        <div class="stat-label">Total Records</div>
-                    </div>
-                    <div class="stat-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
-                        <div class="stat-value" id="new-records-count" style="color: #856404;">0</div>
-                        <div class="stat-label">📋 New Records (status_id=1)</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="commission-rate">N/A</div>
-                        <div class="stat-label">Commission Rate</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="store-fill">0%</div>
-                        <div class="stat-label">Store Fill</div>
-                    </div>
-                </div>
 
-                <div class="search-section">
-                    <div class="search-options-row">
-                        <div class="search-field-select">
-                            <label for="searchField"><i class="fas fa-search"></i> Search by:</label>
-                            <select id="searchField" class="search-field-select">
-                                <option value="all">Barcode, Artist, or Title</option>
-                                <option value="barcode">Barcode</option>
-                                <option value="artist">Artist</option>
-                                <option value="title">Title</option>
-                            </select>
-                        </div>
-                        
-                        <form class="search-form" id="searchForm">
-                            <input type="text" 
-                                   class="search-input" 
-                                   id="searchInput" 
-                                   placeholder="Search Discogs (artist, album, catalog #)...">
-                            <div class="action-buttons">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-search"></i> Search
-                                </button>
-                                <button type="button" class="btn btn-secondary" id="clearSearch">
-                                    <i class="fas fa-times"></i> Clear
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <div id="results-container" class="results-container">
-                    <div class="loading" id="default-loading">
-                        <i class="fas fa-search"></i>
-                        <p>Search for records to get started</p>
-                    </div>
-                </div>
-
-                <!-- Print Queue Section -->
-                <div class="queue-container">
-                    <div class="queue-header">
-                        <h3><i class="fas fa-print"></i> Print Queue <span class="queue-badge" id="queue-count">0</span></h3>
-                        <div class="queue-controls">
-                            <button class="btn btn-small btn-secondary" id="clear-queue-btn" disabled>
-                                <i class="fas fa-trash"></i> Clear Queue
-                            </button>
-                        </div>
-                    </div>
-                    <div class="queue-content" id="queue-content">
-                        <div class="queue-empty">
-                            <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 10px; opacity: 0.5;"></i>
-                            <p>No records in print queue</p>
-                            <p style="font-size: 12px;">Add records using "Add & Print" or select from results</p>
-                        </div>
-                    </div>
-                    <div class="queue-actions">
-                        <button class="btn btn-success" id="print-queue-btn" disabled>
-                            <i class="fas fa-print"></i> Print Queue (<span id="print-queue-count">0</span>)
-                        </button>
-                        <button class="btn btn-warning" id="mark-active-queue-btn" disabled>
-                            <i class="fas fa-check-circle"></i> Mark Queue as Active
-                        </button>
-                        <button class="btn btn-danger" id="bulk-delete-queue-btn" disabled style="background: #dc3545; color: white;">
-                            <i class="fas fa-trash-alt"></i> Delete Queue Records
-                        </button>
-                        <button class="btn btn-secondary" id="cancel-range-btn" style="display: none;">
-                            <i class="fas fa-times"></i> Cancel Range
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Batch COGS -->
-                <div style="margin-top:20px;padding:15px;background:linear-gradient(135deg,#28a745 0%,#20c997 100%);border-radius:8px;color:white;">
-                    <h4 style="margin:0 0 10px 0;"><i class="fas fa-dollar-sign"></i> Batch COGS Assignment</h4>
-                    <div style="display:flex;gap:15px;align-items:flex-end;flex-wrap:wrap;">
-                        <div style="flex:1;min-width:200px;">
-                            <label style="display:block;margin-bottom:5px;font-size:12px;">Total COGS ($):</label>
-                            <input type="number" id="batch-cogs-amount" step="0.01" min="0" placeholder="e.g., 100.00" style="width:100%;padding:10px;border:none;border-radius:6px;">
-                        </div>
-                        <div>
-                            <button id="apply-batch-cogs-btn" class="btn" style="background:#ffc107;color:#333;border:none;padding:10px 20px;border-radius:6px;">
-                                <i class="fas fa-calculator"></i> Apply Batch COGS
-                            </button>
-                        </div>
-                    </div>
-                    <div id="batch-cogs-result" style="margin-top:10px;font-size:12px;"></div>
-                </div>
-
-                <div id="status-message" class="status-message" style="display:none;"></div>
+        <!-- Add Records Tab -->
+<div id="add-records-tab" class="tab-content">
+    <div class="inventory-container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="total-records">0</div>
+                <div class="stat-label">Total Records</div>
+            </div>
+            <div class="stat-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+                <div class="stat-value" id="new-records-count" style="color: #856404;">0</div>
+                <div class="stat-label">📋 New Records (status_id=1)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="last-added-record" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">None</div>
+                <div class="stat-label">📥 Last Added</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="commission-rate">N/A</div>
+                <div class="stat-label">Commission Rate</div>
             </div>
         </div>
+
+        <div class="search-section">
+            <div class="search-options-row">
+                <div class="search-field-select">
+                    <label for="searchField"><i class="fas fa-search"></i> Search by:</label>
+                    <select id="searchField" class="search-field-select">
+                        <option value="all">Barcode, Artist, or Title</option>
+                        <option value="barcode">Barcode</option>
+                        <option value="artist">Artist</option>
+                        <option value="title">Title</option>
+                    </select>
+                </div>
+                <form class="search-form" id="searchForm">
+                    <input type="text" class="search-input" id="searchInput" placeholder="Search Discogs (artist, album, catalog #)...">
+                    <div class="action-buttons">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
+                        <button type="button" class="btn btn-secondary" id="clearSearch"><i class="fas fa-times"></i> Clear</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="results-container" class="results-container">
+            <div class="loading" id="default-loading">
+                <i class="fas fa-search"></i>
+                <p>Search for records to get started</p>
+            </div>
+        </div>
+
+        <!-- Record Table Section -->
+        <div class="record-table-section" style="margin-top: 30px;">
+            <div class="table-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3><i class="fas fa-list"></i> Records</h3>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <label for="record-status-filter" style="font-weight:500;">Filter by status:</label>
+                    <select id="record-status-filter" class="filter-select" style="padding:6px 12px; border:1px solid #ddd; border-radius:4px;">
+                        <option value="1" selected>New (status=1)</option>
+                        <option value="2">Active (status=2)</option>
+                        <option value="3">Sold (status=3)</option>
+                        <option value="4">Removed (status=4)</option>
+                        <option value="all">All</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="records-table-container" style="overflow-x:auto;">
+                <table class="records-table" style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th style="width:80px;">Range</th>
+                            <th>ID</th>
+                            <th>Created Date</th>
+                            <th>Artist</th>
+                            <th>Title</th>
+                            <th>Price</th>
+                            <th>COGS</th>
+                            <th>Profit</th>
+                            <th>Catalog #</th>
+                            <th>Genre</th>
+                            <th>Barcode</th>
+                            <th>Consignor</th>
+                            <th>Status</th>
+                            <th>Queue</th>
+                        </tr>
+                    </thead>
+                    <tbody id="records-table-body">
+                        <tr><td colspan="14" style="text-align:center; padding:40px;">Loading records...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:15px; flex-wrap:wrap; gap:10px;">
+                <div class="pagination-info">
+                    Showing <span id="record-showing-start">0</span>-<span id="record-showing-end">0</span> of <span id="record-total-filtered">0</span> records
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button id="record-first-page" class="pagination-btn" disabled>&lt;&lt;</button>
+                    <button id="record-prev-page" class="pagination-btn" disabled>&lt;</button>
+                    <span>Page <input type="number" id="record-current-page" value="1" min="1" style="width:50px; padding:4px; text-align:center;"> of <span id="record-total-pages">1</span></span>
+                    <button id="record-next-page" class="pagination-btn" disabled>&gt;</button>
+                    <button id="record-last-page" class="pagination-btn" disabled>&gt;&gt;</button>
+                    <select id="record-page-size" style="padding:4px; border:1px solid #ddd; border-radius:4px;">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Print Queue Section -->
+        <div class="queue-container" style="margin-top:30px;">
+            <div class="queue-header">
+                <h3><i class="fas fa-print"></i> Print Queue <span class="queue-badge" id="queue-count">0</span></h3>
+                <div class="queue-controls">
+                    <button class="btn btn-small btn-secondary" id="clear-queue-btn" disabled>
+                        <i class="fas fa-trash"></i> Clear Queue
+                    </button>
+                </div>
+            </div>
+            <div class="queue-content" id="queue-content">
+                <div class="queue-empty">
+                    <i class="fas fa-inbox" style="font-size:24px; margin-bottom:10px; opacity:0.5;"></i>
+                    <p>No records in print queue</p>
+                    <p style="font-size:12px;">Use the "from" and "to" buttons to select a range, or click the "+" button to add a single record.</p>
+                </div>
+            </div>
+            <div class="queue-actions">
+                <button class="btn btn-success" id="print-queue-btn" disabled>
+                    <i class="fas fa-print"></i> Print Queue (<span id="print-queue-count">0</span>)
+                </button>
+                <button class="btn btn-warning" id="mark-active-queue-btn" disabled>
+                    <i class="fas fa-check-circle"></i> Mark Queue as Active
+                </button>
+                <button class="btn btn-danger" id="bulk-delete-queue-btn" disabled style="background:#dc3545; color:white;">
+                    <i class="fas fa-trash-alt"></i> Delete Queue Records
+                </button>
+                <button class="btn btn-secondary" id="cancel-range-btn" style="display:none;">
+                    <i class="fas fa-times"></i> Cancel Range
+                </button>
+            </div>
+        </div>
+
+        <!-- Batch COGS -->
+        <div style="margin-top:20px; padding:15px; background:linear-gradient(135deg,#28a745 0%,#20c997 100%); border-radius:8px; color:white;">
+            <h4 style="margin:0 0 10px 0;"><i class="fas fa-dollar-sign"></i> Batch COGS Assignment</h4>
+            <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
+                    <label style="display:block; margin-bottom:5px; font-size:12px;">Total COGS ($):</label>
+                    <input type="number" id="batch-cogs-amount" step="0.01" min="0" placeholder="e.g., 100.00" style="width:100%; padding:10px; border:none; border-radius:6px;">
+                </div>
+                <div>
+                    <button id="apply-batch-cogs-btn" class="btn" style="background:#ffc107; color:#333; border:none; padding:10px 20px; border-radius:6px;">
+                        <i class="fas fa-calculator"></i> Apply Batch COGS
+                    </button>
+                </div>
+            </div>
+            <div id="batch-cogs-result" style="margin-top:10px; font-size:12px;"></div>
+        </div>
+
+        <div id="status-message" class="status-message" style="display:none;"></div>
+    </div>
+</div>
 
         <!-- ==================== Checkout / Update / Delete Tab ==================== -->
         <div id="check-out-tab" class="tab-content">
