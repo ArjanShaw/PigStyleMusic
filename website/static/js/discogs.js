@@ -1453,6 +1453,243 @@ window.repostEntireStoreToDiscogs = async function() {
 };
 
 // ============================================================================
+// POST NEW RECORDS (status_id = 1) TO DISCOGS AND MARK ACTIVE
+// ============================================================================
+
+window.postNewRecordsToDiscogs = async function() {
+    console.log('📦 Posting all new records (status_id=1) to Discogs...');
+    showDiscogsStatus('Loading all new records (status_id=1)...', 'info');
+
+    try {
+        // 1. Fetch all records with status_id = 1
+        const url = window.AppConfig.baseUrl + '/records/status/1';
+        const response = await fetch(url, {
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Failed to load new records');
+
+        const newRecords = data.records || [];
+        if (newRecords.length === 0) {
+            showDiscogsStatus('No new records (status_id=1) found.', 'warning');
+            return;
+        }
+
+        // 2. Filter out consignor records (can't auto-post)
+        const eligibleRecords = newRecords.filter(record => {
+            const hasConsignor = record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null;
+            return !hasConsignor;
+        });
+
+        const consignorSkipped = newRecords.length - eligibleRecords.length;
+        if (eligibleRecords.length === 0) {
+            showDiscogsStatus(`All ${newRecords.length} new records belong to consignors. Cannot auto-post.`, 'warning');
+            return;
+        }
+
+        // 3. Confirm
+        const confirmMsg = `📦 Post ${eligibleRecords.length} new record(s) to Discogs and mark them Active?\n\n` +
+                           `Total new records: ${newRecords.length}\n` +
+                           `Consignor records (skipped): ${consignorSkipped}\n` +
+                           `⏱️ Estimated time: ~${Math.ceil(eligibleRecords.length * 3 / 60)} minute(s)\n\n` +
+                           `Continue?`;
+        if (!confirm(confirmMsg)) return;
+
+        // 4. Open progress modal
+        openProgressModal('Posting New Records to Discogs');
+        appendToModalLog(`🚀 Starting to post ${eligibleRecords.length} new records to Discogs...`, 'info');
+        if (consignorSkipped > 0) {
+            appendToModalLog(`⚠️ Skipping ${consignorSkipped} consignor record(s) (cannot auto-post)`, 'warning');
+        }
+        appendToModalLog('⏱️ 3-second delay between requests for reliability', 'warning');
+        appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+
+        // 5. Batch calculate markups
+        const priceRequests = eligibleRecords.map(r => ({
+            id: r.id,
+            created_at: r.created_at,
+            store_price: r.store_price
+        }));
+        let pricesMap = {};
+        let errorsMap = {};
+        if (priceRequests.length > 0) {
+            const batchResults = await calculateMarkupBatch(priceRequests);
+            batchResults.forEach(item => {
+                if (item.id) {
+                    if (item.error) {
+                        errorsMap[item.id] = item.error;
+                    } else {
+                        pricesMap[item.id] = item;
+                    }
+                }
+            });
+        }
+
+        // 6. Post each record with retries
+        let posted = 0, failed = 0, skipped = 0;
+        const failedRecords = [];
+        const postedIds = [];
+
+        for (let i = 0; i < eligibleRecords.length; i++) {
+            if (cancelResolve) {
+                appendToModalLog('⏹️ Operation cancelled by user.', 'warning');
+                break;
+            }
+            const record = eligibleRecords[i];
+            updateModalProgress(i + 1, eligibleRecords.length);
+
+            if (!record.created_at || !record.disc_condition_name || !record.sleeve_condition_name) {
+                skipped++;
+                appendToModalLog(`[${i+1}/${eligibleRecords.length}] ⚠️ "${record.artist} - ${record.title}" - Missing data, skipping`, 'warning');
+                continue;
+            }
+
+            const markupInfo = pricesMap[record.id];
+            if (!markupInfo) {
+                const errorMsg = errorsMap[record.id] || 'Failed to calculate markup';
+                failed++;
+                failedRecords.push(`${record.artist} - ${record.title}: ${errorMsg}`);
+                appendToModalLog(`   ❌ Cannot post: ${errorMsg}`, 'error');
+                continue;
+            }
+
+            appendToModalLog(`[${i+1}/${eligibleRecords.length}] 📀 "${record.artist} - ${record.title}"`, 'info');
+            appendToModalLog(`   💰 Store: $${record.store_price} → Discogs: $${markupInfo.discogs_price} (+${markupInfo.markup_percent}%)`, 'info');
+
+            let success = false;
+            let lastError = null;
+            const maxRetries = 3;
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                if (cancelResolve) break;
+                if (attempt > 1) {
+                    appendToModalLog(`   🔄 RETRY ${attempt}/${maxRetries}...`, 'warning');
+                    await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+                }
+                const listingData = {
+                    record: {
+                        id: record.id,
+                        artist: record.artist,
+                        title: record.title,
+                        catalog_number: record.catalog_number || '',
+                        media_condition: record.disc_condition_name || record.sleeve_condition_name,
+                        sleeve_condition: record.sleeve_condition_name || record.disc_condition_name,
+                        price: markupInfo.discogs_price,
+                        notes: record.notes || '',
+                        location: record.location || ''
+                    }
+                };
+                try {
+                    const postResponse = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(listingData)
+                    });
+                    const result = await postResponse.json();
+                    if (result.success) {
+                        success = true;
+                        posted++;
+                        postedIds.push(record.id);
+                        appendToModalLog(`   ✅ POSTED! Listing ID: ${result.listing_id}`, 'success');
+                        break;
+                    } else {
+                        lastError = result.error || 'Unknown error';
+                        appendToModalLog(`   ❌ Attempt ${attempt} failed: ${lastError}`, 'error');
+                        if (!result.error || (!result.error.includes('too quickly') && !result.error.includes('rate'))) {
+                            break;
+                        }
+                    }
+                } catch (err) {
+                    lastError = err.message;
+                    appendToModalLog(`   ❌ Attempt ${attempt} error: ${err.message}`, 'error');
+                }
+            }
+            if (!success) {
+                failed++;
+                failedRecords.push(`${record.artist} - ${record.title}: ${lastError}`);
+                appendToModalLog(`   ❌ PERMANENT FAILURE after ${maxRetries} attempts`, 'error');
+            }
+            if (i < eligibleRecords.length - 1 && !cancelResolve) {
+                appendToModalLog(`   ⏳ Waiting 3 seconds...`, 'info');
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+        }
+
+        // 7. Mark posted records as Active (status_id = 2)
+        if (postedIds.length > 0) {
+            appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+            appendToModalLog(`🔄 Marking ${postedIds.length} posted records as Active (status_id=2)...`, 'info');
+            try {
+                const updateResponse = await fetch(window.AppConfig.baseUrl + '/records/update-status', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        record_ids: postedIds,
+                        status_id: 2
+                    })
+                });
+                if (!updateResponse.ok) throw new Error('HTTP ' + updateResponse.status);
+                const updateData = await updateResponse.json();
+                if (updateData.status === 'success') {
+                    appendToModalLog(`✅ Successfully marked ${updateData.updated_count} records as Active`, 'success');
+                } else {
+                    throw new Error(updateData.error || 'Failed to update status');
+                }
+            } catch (err) {
+                appendToModalLog(`❌ Failed to mark records as Active: ${err.message}`, 'error');
+            }
+        }
+
+        // 8. Final summary
+        appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        appendToModalLog('📊 FINAL RESULTS - NEW RECORDS POST:', 'info');
+        appendToModalLog(`   ✅ Successfully posted: ${posted}`, 'success');
+        appendToModalLog(`   ❌ Failed: ${failed}`, failed > 0 ? 'error' : 'info');
+        appendToModalLog(`   ⚠️ Skipped (missing data): ${skipped}`, 'warning');
+        if (consignorSkipped > 0) appendToModalLog(`   👤 Consignor items skipped: ${consignorSkipped}`, 'warning');
+        if (failedRecords.length > 0 && failedRecords.length <= 20) {
+            appendToModalLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            appendToModalLog('❌ FAILED RECORDS:', 'warning');
+            for (const failedRecord of failedRecords) {
+                appendToModalLog(`   • ${failedRecord}`, 'error');
+            }
+        } else if (failedRecords.length > 20) {
+            appendToModalLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'warning');
+            appendToModalLog(`❌ ${failedRecords.length} records failed. Check console for details.`, 'error');
+        }
+
+        if (posted > 0 && failed === 0 && skipped === 0) {
+            showDiscogsStatus(`✅ Successfully posted ALL ${posted} new records to Discogs and marked them Active!`, 'success');
+        } else if (posted > 0) {
+            showDiscogsStatus(`⚠️ Posted ${posted} new records, ${failed} failed, ${skipped} skipped. Check log.`, 'warning');
+        } else {
+            showDiscogsStatus('❌ Failed to post any new records. Check log.', 'error');
+        }
+
+        // Refresh location data if a location is selected
+        if (currentLocation) {
+            await loadLocationRecords();
+        }
+
+    } catch (error) {
+        console.error('Error in postNewRecordsToDiscogs:', error);
+        showDiscogsStatus('Error: ' + error.message, 'error');
+        if (progressModal && progressModal.style.display === 'flex') {
+            appendToModalLog('❌ FATAL ERROR: ' + error.message, 'error');
+        }
+    } finally {
+        setTimeout(closeProgressModal, 2000);
+    }
+};
+
+// ============================================================================
 // Show status messages
 // ============================================================================
 
@@ -1808,3 +2045,4 @@ document.addEventListener('DOMContentLoaded', function() {
 
 console.log('✅ discogs.js loaded - Location-based bulk posting with last_seen filter, consignor items SKIPPED');
 console.log('✅ Markup analysis charts loaded (3 charts: Curve, Distribution, Age Distribution)');
+console.log('✅ postNewRecordsToDiscogs() added - posts status_id=1 records and marks them Active');
