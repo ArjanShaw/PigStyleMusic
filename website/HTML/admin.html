@@ -2120,11 +2120,7 @@
                 <i class="fas fa-plus-circle"></i> Inventory operations
             </div>
             
-            
-           
-            <div class="tab" data-tab="discogs-orders">
-                <i class="fas fa-shopping-bag"></i> Discogs Orders
-            </div>
+             
             <div class="tab" data-tab="accessories">
                 <i class="fas fa-tshirt"></i> Accessories
             </div>
@@ -2149,7 +2145,8 @@
             </div>
         </div>
          
-<!-- ==================== INVENTORY OPS TAB ==================== -->
+ 
+            <!-- ==================== INVENTORY OPS TAB ==================== -->
 <div id="add-records-tab" class="tab-content">
     <div class="inventory-container">
         <!-- Stats row -->
@@ -2183,6 +2180,7 @@
                         <option value="discogs">Post to Discogs</option>
                         <option value="delete">Delete</option>
                         <option value="checkout">Checkout</option>
+                        <option value="discogs_orders">Discogs Orders</option>
                     </select>
                 </div>
                 <div class="search-field-select">
@@ -2271,7 +2269,38 @@
                 </div>
             </div>
 
-            <!-- Markup Rules & Charts collapsible sections (visible only in Post to Discogs mode) -->
+            <!-- Discogs Orders filters -->
+            <div id="discogs-orders-filters" style="display: none;">
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <div>
+                        <label for="discogs-orders-status-filter"><i class="fas fa-filter"></i> Status:</label>
+                        <select id="discogs-orders-status-filter" class="filter-select" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="">All Statuses</option>
+                            <option value="Pending">⏳ Pending</option>
+                            <option value="Payment Received">✅ Payment Received</option>
+                            <option value="In Progress">🔄 In Progress</option>
+                            <option value="Shipped">📦 Shipped</option>
+                            <option value="Completed">✔️ Completed</option>
+                            <option value="Cancelled (Item Unavailable)">❌ Cancelled - Unavailable</option>
+                            <option value="Cancelled (Per Buyer's Request)">❌ Cancelled - Buyer</option>
+                        </select>
+                    </div>
+                    <div style="flex: 2; min-width: 250px;">
+                        <label for="discogs-order-select"><i class="fas fa-list-ul"></i> Select Order:</label>
+                        <select id="discogs-order-select" class="filter-select" style="width: 100%; padding: 8px 12px; font-size: 14px; border-radius: 4px; border: 1px solid #ddd;">
+                            <option value="">-- Select an order --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button class="btn btn-secondary" id="discogs-orders-refresh-btn">
+                            <i class="fas fa-sync-alt"></i> Refresh Orders
+                        </button>
+                    </div>
+                </div>
+                <div id="discogs-orders-status" class="status-message" style="margin-top: 10px; display: none;"></div>
+            </div>
+
+            <!-- Markup Rules & Charts (visible only in Post to Discogs mode) -->
             <div id="discogs-markup-ui" style="display: none; margin-top: 15px;">
                 <!-- Markup Rules -->
                 <div style="margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
@@ -2411,7 +2440,6 @@
         <div id="status-message" class="status-message" style="display:none;"></div>
     </div>
 </div>
-
 
 
         <!-- ==================== Inventory Tab ==================== -->
@@ -2562,97 +2590,7 @@
         </div>
 
 
-
-
-        <!-- ==================== Discogs Orders Tab ==================== -->
-        <div id="discogs-orders-tab" class="tab-content">
-            <h2><i class="fas fa-shopping-bag"></i> Discogs Orders</h2>
-            
-            <div id="discogs-orders-status" class="status-message" style="display: none;"></div>
-            
-            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <button id="discogs-orders-refresh" class="btn btn-primary">
-                        <i class="fas fa-sync-alt"></i> Refresh Orders
-                    </button>
-                </div>
-                
-                <select id="discogs-orders-status-filter" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; min-width: 150px;">
-                    <option value="">All Statuses</option>
-                    <option value="Pending">⏳ Pending</option>
-                    <option value="Payment Received">✅ Payment Received</option>
-                    <option value="In Progress">🔄 In Progress</option>
-                    <option value="Shipped">📦 Shipped</option>
-                    <option value="Completed">✔️ Completed</option>
-                    <option value="Cancelled (Item Unavailable)">❌ Cancelled - Unavailable</option>
-                    <option value="Cancelled (Per Buyer's Request)">❌ Cancelled - Buyer</option>
-                </select>
-                
-                <div style="display: flex; gap: 10px; align-items: center; flex: 2; min-width: 250px;">
-                    <input type="text" id="discogs-orders-search" class="search-input" placeholder="Search by buyer, order ID..." style="flex: 1;">
-                    <button id="discogs-orders-search-btn" class="btn btn-secondary">
-                        <i class="fas fa-search"></i>
-                    </button>
-                </div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                <div class="stat-card" style="padding: 15px; text-align: center; background: #f8f9fa; border-radius: 8px;">
-                    <div style="font-size: 12px; color: #666;">Total Orders</div>
-                    <div style="font-size: 28px; font-weight: bold; color: #007bff;" id="discogs-orders-total">0</div>
-                </div>
-                <div class="stat-card" style="padding: 15px; text-align: center; background: #f8f9fa; border-radius: 8px;">
-                    <div style="font-size: 12px; color: #666;">Total Revenue</div>
-                    <div style="font-size: 28px; font-weight: bold; color: #28a745;" id="discogs-orders-revenue">$0.00</div>
-                </div>
-            </div>
-            
-            <div class="records-table-container">
-                <table class="records-table" id="discogs-orders-table">
-                    <thead>
-                        <tr>
-                            <th style="min-width: 150px;">Order ID / Buyer</th>
-                            <th style="min-width: 200px;">Item</th>
-                            <th style="min-width: 100px;">Amount</th>
-                            <th style="min-width: 120px;">Status</th>
-                            <th style="min-width: 120px;">Order Date</th>
-                            <th style="min-width: 120px;">Paid Date</th>
-                            <th style="min-width: 80px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="discogs-orders-body">
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 40px; color: #666;">
-                                <i class="fas fa-spinner fa-pulse" style="font-size: 24px;"></i>
-                                <p style="margin-top: 10px;">Loading orders from Discogs...</p>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div id="discogs-orders-pagination" style="display: none; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; padding: 15px 0; border-top: 1px solid #ddd;">
-                <button id="discogs-orders-prev" class="pagination-btn" disabled>
-                    <i class="fas fa-chevron-left"></i> Previous
-                </button>
-                <span id="discogs-orders-page-info" style="font-size: 14px; color: #333;">Page 1 of 1</span>
-                <button id="discogs-orders-next" class="pagination-btn" disabled>
-                    Next <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
-            
-            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
-                <h4><i class="fas fa-info-circle"></i> About Discogs Orders</h4>
-                <ul style="margin: 10px 0 0 20px;">
-                    <li>Shows orders from your Discogs account</li>
-                    <li>Filter by status to see specific order states</li>
-                    <li>Click the <strong>View</strong> button (👁️) to see full order details</li>
-                    <li>Orders are fetched directly from Discogs API</li>
-                    <li><strong>Statuses:</strong> New → Paid → Shipped → Completed</li>
-                </ul>
-            </div>
-        </div>
-
+ 
         <!-- ==================== Accessories Tab ==================== -->
         <div id="accessories-tab" class="tab-content">
             <h2><i class="fas fa-tshirt"></i> Accessories Management</h2>
