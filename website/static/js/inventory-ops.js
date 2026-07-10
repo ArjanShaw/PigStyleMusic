@@ -1278,8 +1278,11 @@
                             actionHtml = `<button class="btn btn-sm btn-success add-checkout-item" data-record-id="${record.id}"><i class="fas fa-plus"></i> Add</button>`;
                         }
                     }
+                    // Show custom badge for custom items
+                    const isCustom = record.isCustom === true;
+                    const customBadge = isCustom ? '<span class="status-badge" style="background:#17a2b8; color:white; margin-left:5px;">Custom</span>' : '';
                     rowHtml += `
-                        <td>${id}</td>
+                        <td>${id}${customBadge}</td>
                         <td>${escapeHtml(artist)}</td>
                         <td>${escapeHtml(title)}</td>
                         <td>${price}</td>
@@ -1626,6 +1629,152 @@
         printBtn.style.display = isAddMode ? '' : 'none';
         setActiveBtn.style.display = isAddMode ? '' : 'none';
         completeActionBtn.style.display = isAddMode ? 'none' : '';
+
+        // Show/Hide custom item button (only in checkout mode)
+        let customBtn = document.getElementById('custom-item-btn');
+        if (isCheckoutMode) {
+            if (!customBtn) {
+                customBtn = document.createElement('button');
+                customBtn.id = 'custom-item-btn';
+                customBtn.className = 'btn btn-info';
+                customBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Custom Item';
+                customBtn.addEventListener('click', showCustomItemModal);
+                // Insert after completeActionBtn
+                completeActionBtn.parentNode.insertBefore(customBtn, completeActionBtn.nextSibling);
+            }
+            customBtn.style.display = 'inline-block';
+        } else {
+            if (customBtn) customBtn.style.display = 'none';
+        }
+    }
+
+    // ========== Custom Item Modal ==========
+    let customItemModal = null;
+
+    function showCustomItemModal() {
+        // Remove existing modal if any
+        if (customItemModal) {
+            customItemModal.remove();
+            customItemModal = null;
+        }
+
+        // Build modal
+        customItemModal = document.createElement('div');
+        customItemModal.className = 'modal-overlay';
+        customItemModal.style.display = 'flex';
+        customItemModal.innerHTML = `
+            <div class="modal-content" style="max-width: 400px; width: 95%;">
+                <div class="modal-header" style="background: #17a2b8; color: white;">
+                    <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
+                    <button class="modal-close" onclick="document.getElementById('custom-item-modal').style.display='none'" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 15px;">
+                        <label for="custom-item-desc" style="display:block; font-weight:500; margin-bottom:4px;">Description *</label>
+                        <input type="text" id="custom-item-desc" class="form-control" placeholder="e.g., Merchandise, Gift Card, etc." style="width:100%; padding:8px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="custom-item-price" style="display:block; font-weight:500; margin-bottom:4px;">Price ($) *</label>
+                        <input type="number" id="custom-item-price" class="form-control" step="0.01" min="0.01" placeholder="0.00" style="width:100%; padding:8px;">
+                    </div>
+                    <div id="custom-item-status" style="margin-top:10px; display:none;"></div>
+                </div>
+                <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
+                    <button class="btn btn-secondary" onclick="closeCustomItemModal()">Cancel</button>
+                    <button class="btn btn-success" id="custom-item-add-btn"><i class="fas fa-check"></i> Add to Checkout</button>
+                </div>
+            </div>
+        `;
+        customItemModal.id = 'custom-item-modal';
+        document.body.appendChild(customItemModal);
+
+        // Focus on description field
+        setTimeout(() => {
+            const descInput = document.getElementById('custom-item-desc');
+            if (descInput) descInput.focus();
+        }, 100);
+
+        // Add button click
+        document.getElementById('custom-item-add-btn').addEventListener('click', function() {
+            addCustomItemFromModal();
+        });
+
+        // Enter key on fields
+        document.getElementById('custom-item-desc').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('custom-item-price').focus();
+            }
+        });
+        document.getElementById('custom-item-price').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addCustomItemFromModal();
+            }
+        });
+    }
+
+    function closeCustomItemModal() {
+        if (customItemModal) {
+            customItemModal.style.display = 'none';
+            customItemModal.remove();
+            customItemModal = null;
+        }
+    }
+
+    function addCustomItemFromModal() {
+        const descInput = document.getElementById('custom-item-desc');
+        const priceInput = document.getElementById('custom-item-price');
+        const statusDiv = document.getElementById('custom-item-status');
+
+        function showStatus(msg, type) {
+            if (statusDiv) {
+                statusDiv.textContent = msg;
+                statusDiv.className = `status-message status-${type}`;
+                statusDiv.style.display = 'block';
+            } else {
+                showStatus(msg, type);
+            }
+        }
+
+        const desc = descInput.value.trim();
+        const price = parseFloat(priceInput.value);
+
+        if (!desc) {
+            showStatus('Please enter a description.', 'warning');
+            return;
+        }
+        if (isNaN(price) || price <= 0) {
+            showStatus('Please enter a valid price greater than 0.', 'warning');
+            return;
+        }
+
+        // Create custom item
+        const customItem = {
+            id: -Date.now(), // negative to avoid collisions
+            artist: 'Custom',
+            title: desc,
+            store_price: price,
+            barcode: 'CUSTOM',
+            isCustom: true
+        };
+
+        // Add to checkout
+        checkoutSelectedItems.push(customItem);
+        showStatus(`Added custom item: "${desc}" for $${price.toFixed(2)}`, 'success');
+        closeCustomItemModal();
+
+        // Switch to list view and render
+        checkoutViewMode = 'list';
+        filteredRecords = checkoutSelectedItems.slice();
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        updateSelectionCount();
+        if (checkoutShowSelectedBtn) {
+            checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+        }
     }
 
     // ========== Range Selection ==========
@@ -1708,7 +1857,7 @@
         await loadStats();
     }
 
-
+    // ========== Search Logic ==========
     function performSearch(term) {
         if (!term) { clearSearch(); return; }
         const mode = currentSearchMode;
@@ -1718,26 +1867,38 @@
         } else if (mode === 'scan') {
             performScanSearch(term);
         } else if (mode === 'checkout') {
-            // Client-side filter on allRecords with exact ID/barcode, partial others
             const termStr = term.trim();
             const termLower = termStr.toLowerCase();
             const isNumeric = /^\d+$/.test(termStr);
 
-            const filtered = allRecords.filter(r => {
-                // Exact match on ID (numeric only)
-                if (isNumeric && r.id && r.id.toString() === termStr) {
-                    return true;
+            let filtered;
+            if (isNumeric) {
+                // Numeric search: exact matches only on ID and barcode
+                filtered = allRecords.filter(r => {
+                    const idMatch = r.id && r.id.toString() === termStr;
+                    const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
+                    return idMatch || barcodeMatch;
+                });
+                // If no exact match found, fall back to partial matches on other fields
+                if (filtered.length === 0) {
+                    filtered = allRecords.filter(r => {
+                        const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
+                        const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
+                        const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
+                        return artistMatch || titleMatch || catalogMatch;
+                    });
                 }
-                // Exact match on barcode (case-insensitive)
-                if (r.barcode && r.barcode.trim().toLowerCase() === termLower) {
-                    return true;
-                }
-                // Partial matches on other fields
-                const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
-                const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
-                const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
-                return artistMatch || titleMatch || catalogMatch;
-            });
+            } else {
+                // Non-numeric: partial matches on artist, title, catalog_number (barcode and ID are less likely for text)
+                filtered = allRecords.filter(r => {
+                    const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
+                    const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
+                    const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
+                    const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
+                    const idMatch = r.id && r.id.toString() === termStr;
+                    return artistMatch || titleMatch || catalogMatch || barcodeMatch || idMatch;
+                });
+            }
 
             checkoutViewMode = 'search';
             filteredRecords = filtered;
@@ -1752,9 +1913,9 @@
             let source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
             const filtered = source.filter(r => {
                 return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
-                    (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
-                    (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
-                    (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
+                       (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
             });
             filteredRecords = filtered;
             totalRecords = filteredRecords.length;
@@ -1766,9 +1927,9 @@
             const termLower = term.toLowerCase();
             const filtered = allRecords.filter(r => {
                 return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
-                    (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
-                    (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
-                    (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
+                       (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
+                       (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
             });
             filteredRecords = filtered;
             totalRecords = filteredRecords.length;
@@ -3144,6 +3305,10 @@
         const today = getLocalMSTDate();
         let success = 0;
         for (const record of selected) {
+            // Skip custom items – they are not real records
+            if (record.isCustom === true) {
+                continue;
+            }
             try {
                 apiPut('/records/' + record.id, {
                     status_id: 3,
@@ -3159,7 +3324,7 @@
             }
         }
         setTimeout(() => {
-            showCheckoutStatus(`${success} of ${selected.length} records marked as sold`, 'success');
+            showCheckoutStatus(`${success} of ${selected.filter(r => !r.isCustom).length} records marked as sold`, 'success');
             checkoutSelectedItems = [];
             checkoutViewMode = 'list';
             checkoutPaymentEntries = [];
@@ -3207,7 +3372,7 @@
                     <button class="modal-close" onclick="document.getElementById('checkout-payment-modal').style.display='none'" style="color: white;">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p><strong>${selected.length}</strong> record(s) selected.</p>
+                    <p><strong>${selected.length}</strong> item(s) selected.</p>
                     <div style="font-size: 20px; font-weight: bold; margin: 10px 0;">
                         Total: $${grandTotal.toFixed(2)}
                     </div>
@@ -3845,7 +4010,7 @@
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            showStatus('Checkout mode: Search to add records, then Checkout.', 'info');
+            showStatus('Checkout mode: Search to add records, or use "Custom Item".', 'info');
             searchInput.placeholder = 'Search records...';
             // Load active records for searching
             loadRecords({ statusIds: [2], mode: 'checkout' }).then(() => {
