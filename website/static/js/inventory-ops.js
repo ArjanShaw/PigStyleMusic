@@ -1708,7 +1708,7 @@
         await loadStats();
     }
 
-    // ========== Search Logic ==========
+
     function performSearch(term) {
         if (!term) { clearSearch(); return; }
         const mode = currentSearchMode;
@@ -1718,14 +1718,27 @@
         } else if (mode === 'scan') {
             performScanSearch(term);
         } else if (mode === 'checkout') {
-            // Client-side filter on allRecords (which should be loaded with active records)
-            const termLower = term.toLowerCase();
+            // Client-side filter on allRecords with exact ID/barcode, partial others
+            const termStr = term.trim();
+            const termLower = termStr.toLowerCase();
+            const isNumeric = /^\d+$/.test(termStr);
+
             const filtered = allRecords.filter(r => {
-                return (r.artist && r.artist.toLowerCase().includes(termLower)) ||
-                       (r.title && r.title.toLowerCase().includes(termLower)) ||
-                       (r.barcode && r.barcode.toLowerCase().includes(termLower)) ||
-                       (r.catalog_number && r.catalog_number.toLowerCase().includes(termLower));
+                // Exact match on ID (numeric only)
+                if (isNumeric && r.id && r.id.toString() === termStr) {
+                    return true;
+                }
+                // Exact match on barcode (case-insensitive)
+                if (r.barcode && r.barcode.trim().toLowerCase() === termLower) {
+                    return true;
+                }
+                // Partial matches on other fields
+                const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
+                const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
+                const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
+                return artistMatch || titleMatch || catalogMatch;
             });
+
             checkoutViewMode = 'search';
             filteredRecords = filtered;
             totalRecords = filtered.length;
@@ -1739,9 +1752,9 @@
             let source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
             const filtered = source.filter(r => {
                 return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
+                    (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
+                    (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
+                    (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
             });
             filteredRecords = filtered;
             totalRecords = filteredRecords.length;
@@ -1753,9 +1766,9 @@
             const termLower = term.toLowerCase();
             const filtered = allRecords.filter(r => {
                 return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
+                    (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
+                    (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
+                    (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
             });
             filteredRecords = filtered;
             totalRecords = filteredRecords.length;
