@@ -958,7 +958,6 @@
                     `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
                 ).join('');
 
-                // ===== ADDED IMAGE COLUMN =====
                 theadHtml = `
                     <tr>
                         <th style="width:60px;">Range</th>
@@ -1141,11 +1140,10 @@
                             `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
                         ).join('');
 
-                        // ===== ADDED IMAGE COLUMN =====
                         const imageUrl = record.image_url || record.thumb || '';
                         const imageHtml = imageUrl ?
-                            `<img src="${escapeHtml(imageUrl)}" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">` :
-                            `<div style="width:40px; height:40px; background:#eee; border-radius:4px;"></div>`;
+                            `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px;">` :
+                            `<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>`;
 
                         rowHtml += `
                             <td style="text-align:center;">${fromButton} ${toButton}</td>
@@ -1236,7 +1234,7 @@
                     const markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
                     const displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
 
-                    const imgHtml = imageUrl ? `<img src="${escapeHtml(imageUrl)}" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">` : '<div style="width:40px; height:40px; background:#e0e0e0; border-radius:4px;"></div>';
+                    const imgHtml = imageUrl ? `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px;">` : '<div style="width:80px; height:80px; background:#e0e0e0; border-radius:4px;"></div>';
 
                     rowHtml += `
                         <td style="text-align:center;">${fromButton} ${toButton}</td>
