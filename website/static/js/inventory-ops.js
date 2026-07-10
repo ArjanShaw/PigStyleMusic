@@ -1026,7 +1026,7 @@
                 </tr>
             `;
         } else if (currentSearchMode === 'checkout') {
-            // Checkout: we always show ID, Artist, Title, Price, Barcode, Action
+            // Checkout: always show ID, Artist, Title, Price, Barcode, Action
             theadHtml = `
                 <tr>
                     <th>ID</th>
@@ -3162,6 +3162,222 @@
             }
             updateSelectionCount();
         }, 500);
+    }
+
+    // ========== Show Checkout Modal ==========
+    function showCheckoutModal() {
+        // Remove any existing modal to avoid stale listeners
+        const oldModal = document.getElementById('checkout-payment-modal');
+        if (oldModal) {
+            oldModal.parentNode.removeChild(oldModal);
+        }
+
+        const selected = checkoutSelectedItems;
+        if (selected.length === 0) { showStatus('No records in checkout list', 'warning'); return; }
+        const total = selected.reduce((sum, r) => sum + (r.store_price || 0), 0);
+        const tax = total * 0.08;
+        const grandTotal = total + tax;
+        checkoutTotal = grandTotal;
+        checkoutRemaining = grandTotal;
+        checkoutPaymentEntries = [];
+
+        // Generate temporary order ID for store credit redemption
+        const orderId = generateOrderId();
+
+        let modal = document.createElement('div');
+        modal.id = 'checkout-payment-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px; width: 95%;">
+                <div class="modal-header" style="background: #007bff; color: white;">
+                    <h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3>
+                    <button class="modal-close" onclick="document.getElementById('checkout-payment-modal').style.display='none'" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>${selected.length}</strong> record(s) selected.</p>
+                    <div style="font-size: 20px; font-weight: bold; margin: 10px 0;">
+                        Total: $${grandTotal.toFixed(2)}
+                    </div>
+                    <div style="font-size: 16px; margin: 10px 0; color: #28a745;">
+                        Remaining: $<span id="checkout-remaining">${grandTotal.toFixed(2)}</span>
+                    </div>
+                    <div id="store-credit-info" style="display:none; background: #e3f2fd; padding:10px; border-radius:4px; margin-bottom:10px;">
+                        Available store credit: <strong id="store-credit-balance-display">$0.00</strong>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0;">
+                        <input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;">
+                        <select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;">
+                            <option value="Cash">Cash</option>
+                            <option value="Card (Square)" selected>Card (Square)</option>
+                            <option value="Gift Card">Gift Card</option>
+                            <option value="Store Credit">Store Credit</option>
+                        </select>
+                        <button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button>
+                    </div>
+                    <div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">
+                        ⚠️ Square POS is not available. Card option is disabled.
+                    </div>
+                    <div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div>
+                    <div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div>
+                    <div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div>
+                    <button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="document.getElementById('checkout-payment-modal').style.display='none'">Cancel</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Check Square availability
+        checkSquareAvailability().then(avail => {
+            const methodSelect = document.getElementById('checkout-payment-method');
+            const cardOption = methodSelect.querySelector('option[value="Card (Square)"]');
+            const warning = document.getElementById('checkout-square-warning');
+            if (!avail) {
+                if (cardOption) cardOption.disabled = true;
+                if (warning) warning.style.display = 'block';
+                if (methodSelect.value === 'Card (Square)') methodSelect.value = 'Cash';
+            } else {
+                if (cardOption) cardOption.disabled = false;
+                if (warning) warning.style.display = 'none';
+            }
+        });
+
+        document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
+        renderCheckoutEntries();
+
+        // Store credit handling
+        const methodSelect = document.getElementById('checkout-payment-method');
+        const storeCreditInfo = document.getElementById('store-credit-info');
+        const balanceDisplay = document.getElementById('store-credit-balance-display');
+
+        methodSelect.addEventListener('change', function() {
+            if (this.value === 'Store Credit') {
+                storeCreditInfo.style.display = 'block';
+                fetch('/api/store-credit/balance', { credentials: 'include' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.balance !== undefined) {
+                            balanceDisplay.textContent = '$' + parseFloat(data.balance).toFixed(2);
+                        }
+                    })
+                    .catch(() => {
+                        balanceDisplay.textContent = 'Error loading balance';
+                    });
+            } else {
+                storeCreditInfo.style.display = 'none';
+            }
+        });
+
+        // Add payment button
+        document.getElementById('checkout-add-payment').onclick = function() {
+            const amountInput = document.getElementById('checkout-payment-amount');
+            const methodSelect2 = document.getElementById('checkout-payment-method');
+            let amount = parseFloat(amountInput.value);
+            if (isNaN(amount) || amount <= 0) {
+                amount = checkoutRemaining;
+                if (amount <= 0) {
+                    showCheckoutStatus('No remaining balance to pay.', 'error');
+                    return;
+                }
+                amountInput.value = amount.toFixed(2);
+            }
+            const method = methodSelect2.value;
+
+            if (method === 'Card (Square)' && !squareAvailable) {
+                showCheckoutStatus('Square POS is not available. Please use Cash or Gift Card.', 'error');
+                return;
+            }
+
+            if (method === 'Store Credit') {
+                // Redeem store credit
+                fetch('/api/store-credit/redeem', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amount, order_id: orderId })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        addPaymentEntry('Store Credit', amount);
+                        balanceDisplay.textContent = '$' + parseFloat(data.new_balance).toFixed(2);
+                    } else {
+                        showCheckoutStatus(data.error || 'Redemption failed', 'error');
+                    }
+                })
+                .catch(err => {
+                    showCheckoutStatus('Error: ' + err.message, 'error');
+                });
+                return;
+            }
+
+            if (method === 'Gift Card') {
+                const code = prompt('Enter gift card code:');
+                if (!code) return;
+                fetch(`${AppConfig.baseUrl}/api/gift-cards/${encodeURIComponent(code)}`, {
+                    credentials: 'include'
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.success || !data.card) {
+                        throw new Error('Gift card not found');
+                    }
+                    if (data.card.balance < amount) {
+                        throw new Error(`Insufficient balance: $${data.card.balance.toFixed(2)}`);
+                    }
+                    return fetch(`${AppConfig.baseUrl}/api/gift-cards/${data.card.id}/redeem`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ amount: amount })
+                    });
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to redeem gift card');
+                    }
+                    addPaymentEntry('Gift Card', amount);
+                })
+                .catch(err => {
+                    showCheckoutStatus(err.message, 'error');
+                });
+                return;
+            }
+
+            // Cash or Card (Square) – we just add the entry; Square will be processed later
+            addPaymentEntry(method, amount);
+        };
+
+        // Complete button
+        document.getElementById('checkout-complete-payment').onclick = function() {
+            if (checkoutRemaining > 0.01) {
+                showCheckoutStatus('Remaining balance not covered', 'error');
+                return;
+            }
+            // Determine if we need Square
+            const methodSelect3 = document.getElementById('checkout-payment-method');
+            const method = methodSelect3.value;
+            if (method === 'Card (Square)') {
+                // Process Square payment
+                processSquarePayment();
+            } else {
+                // Cash or Gift Card (already redeemed) – complete directly
+                completeCheckout();
+            }
+        };
+
+        modal.style.display = 'flex';
+        updateCheckoutCompleteButton();
+
+        // Reset square status
+        const statusDiv = document.getElementById('checkout-square-status');
+        if (statusDiv) {
+            statusDiv.style.display = 'none';
+            statusDiv.textContent = '';
+        }
     }
 
     // ========== Add Payment Entry (for Cash/Gift Card/Store Credit) ==========
