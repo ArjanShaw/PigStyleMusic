@@ -489,73 +489,119 @@ def get_terminal_devices():
     app.logger.info(f"Found {len(enhanced_devices)} terminal devices")
     return enhanced_devices, None
 
-def create_square_terminal_checkout(amount_cents, record_ids, record_titles, reference_id=None, device_id=None):
-    """Create a Square Terminal checkout using direct API call"""
-    
-    print(f"\n🔍 DEBUG - Received device_id: '{device_id}'")
-    
-    access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
-    environment = os.environ.get('SQUARE_ENVIRONMENT', 'production')
-    
+def create_square_terminal_checkout(
+    amount_cents,
+    record_ids,
+    record_titles,
+    reference_id=None,
+    device_id=None
+):
+    """Create a Square Terminal checkout using a direct API call."""
+
+    print(f"\n🔍 DEBUG - Received device_id: {device_id!r}")
+
+    access_token = os.environ.get("SQUARE_ACCESS_TOKEN")
+    environment = os.environ.get("SQUARE_ENVIRONMENT", "production")
+
     if not access_token:
         return None, "SQUARE_ACCESS_TOKEN not set"
-    
-    base_url = 'https://connect.squareup.com' if environment == 'production' else 'https://connect.squareupsandbox.com'
-    
+
+    if not device_id:
+        return None, "No Square Terminal device_id provided"
+
+    # The Devices API returns IDs such as:
+    # device:549CS149C4001476
+    # Terminal checkout requires:
+    # 549CS149C4001476
+    device_id = str(device_id).strip()
+
+    if device_id.startswith("device:"):
+        device_id = device_id[len("device:"):]
+
+    print(f"🔍 DEBUG - Normalized device_id: {device_id!r}")
+
+    if not device_id:
+        return None, "Invalid Square Terminal device_id"
+
+    base_url = (
+        "https://connect.squareup.com"
+        if environment == "production"
+        else "https://connect.squareupsandbox.com"
+    )
+
     headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json',
-        'Square-Version': '2026-01-22'
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "Square-Version": "2026-05-20"
     }
-    
-    if not device_id:
-        devices_response = requests.get(f'{base_url}/v2/devices', headers=headers)
-        if devices_response.status_code == 200:
-            devices = devices_response.json().get('devices', [])
-            if devices:
-                full_device_id = devices[0].get('id')
-                if full_device_id and full_device_id.startswith('device:'):
-                    device_id = full_device_id.replace('device:', '')
-                else:
-                    device_id = full_device_id
-                print(f"🔍 DEBUG - Got device from API: '{full_device_id}' → '{device_id}'")
-    
-    print(f"🔍 DEBUG - Final device_id being used: '{device_id}'")
-    
-    if not device_id:
-        return None, "No Square Terminal devices found"
-    
+
     idempotency_key = str(uuid.uuid4())
-    
+
     checkout_data = {
         "idempotency_key": idempotency_key,
         "checkout": {
             "amount_money": {
-                "amount": amount_cents,
+                "amount": int(amount_cents),
                 "currency": "USD"
             },
             "device_options": {
                 "device_id": device_id
             },
-            "reference_id": reference_id or f"pigstyle_{idempotency_key[:8]}",
-            "note": f"PigStyle Music: {', '.join(record_titles[:3])}{'...' if len(record_titles) > 3 else ''}"
+            "reference_id": (
+                reference_id or f"pigstyle_{idempotency_key[:8]}"
+            ),
+            "note": (
+                f"PigStyle Music: {', '.join(record_titles[:3])}"
+                f"{'...' if len(record_titles) > 3 else ''}"
+            )
         }
     }
-    
-    print(f"🔍 DEBUG - Sending device_id in payload: '{checkout_data['checkout']['device_options']['device_id']}'")
-    
-    response = requests.post(
-        f'{base_url}/v2/terminals/checkouts',
-        headers=headers,
-        json=checkout_data
+
+    print(
+        "🔍 DEBUG - Sending device_id in payload: "
+        f"{checkout_data['checkout']['device_options']['device_id']!r}"
     )
-    
-    if response.status_code != 200:
-        error_text = response.text
-        return None, f"Square API error ({response.status_code}): {error_text}"
-    
-    result = response.json()
-    return result, None
+
+    # Do not print the access token.
+    safe_headers = {
+        **headers,
+        "Authorization": "Bearer [REDACTED]"
+    }
+
+    print("\n========== SQUARE REQUEST ==========")
+    print(f"URL: {base_url}/v2/terminals/checkouts")
+    print("Headers:")
+    print(json.dumps(safe_headers, indent=2))
+    print("Payload:")
+    print(json.dumps(checkout_data, indent=2))
+    print("====================================\n")
+
+    try:
+        response = requests.post(
+            f"{base_url}/v2/terminals/checkouts",
+            headers=headers,
+            json=checkout_data,
+            timeout=30
+        )
+    except requests.RequestException as exc:
+        return None, f"Unable to contact Square: {exc}"
+
+    print("\n========== SQUARE RESPONSE ==========")
+    print(f"Status Code: {response.status_code}")
+    print(f"Reason: {response.reason}")
+    print("Headers:")
+    print(response.headers)
+    print("Body:")
+    print(response.text)
+    print("=====================================\n")
+
+    if response.status_code not in (200, 201):
+        return None, (
+            f"Square API error ({response.status_code}): {response.text}"
+        )
+
+    return response.json(), None
+
 
 def get_terminal_checkout_status(checkout_id):
     """Get the status of a terminal checkout"""
