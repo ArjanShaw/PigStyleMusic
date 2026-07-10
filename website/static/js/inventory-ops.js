@@ -85,7 +85,7 @@
 
     // Checkout state
     let checkoutSelectedItems = [];
-    let checkoutViewMode = 'all';
+    let checkoutViewMode = 'list'; // 'list' = show checkout items, 'search' = show search results
     let checkoutRemaining = 0;
     let checkoutPaymentEntries = [];
     let checkoutTotal = 0;
@@ -112,9 +112,6 @@
     let markupCurveChart = null;
     let markupDistributionChart = null;
     let ageDistributionChart = null;
-
-    // ========== Debounce timer ==========
-    let searchTimeout = null;
 
     // ========== Audio ==========
     let audioContext = null;
@@ -1029,29 +1026,17 @@
                 </tr>
             `;
         } else if (currentSearchMode === 'checkout') {
-            if (checkoutViewMode === 'selected') {
-                theadHtml = `
-                    <tr>
-                        <th>ID</th>
-                        <th>Artist</th>
-                        <th>Title</th>
-                        <th>Price</th>
-                        <th>Barcode</th>
-                        <th>Action</th>
-                    </tr>
-                `;
-            } else {
-                theadHtml = `
-                    <tr>
-                        <th>ID</th>
-                        <th>Artist</th>
-                        <th>Title</th>
-                        <th>Price</th>
-                        <th>Barcode</th>
-                        <th>Action</th>
-                    </tr>
-                `;
-            }
+            // Checkout: we always show ID, Artist, Title, Price, Barcode, Action
+            theadHtml = `
+                <tr>
+                    <th>ID</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                    <th>Price</th>
+                    <th>Barcode</th>
+                    <th>Action</th>
+                </tr>
+            `;
         } else if (currentSearchMode === 'discogs_orders') {
             theadHtml = `
                 <tr>
@@ -1077,8 +1062,11 @@
             if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
             if (currentSearchMode === 'delete') msg = 'No records to delete.';
             if (currentSearchMode === 'checkout') {
-                if (checkoutViewMode === 'selected') msg = 'No records added to checkout.';
-                else msg = 'No active records found.';
+                if (checkoutViewMode === 'list') {
+                    msg = checkoutSelectedItems.length === 0 ? 'No records in checkout. Search to add records.' : 'No records in checkout.';
+                } else {
+                    msg = 'No records match your search. Try a different term.';
+                }
             }
             if (currentSearchMode === 'discogs_orders') {
                 if (ordersList.length === 0) msg = 'No Discogs orders found. Click Refresh Orders.';
@@ -1276,18 +1264,27 @@
                     const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
                     const barcode = record.barcode || record.id;
                     const inSelected = checkoutSelectedItems.some(r => r.id === record.id);
+                    // In checkout, we always show Add/Remove, but if we're in 'list' view, we show Remove for items in list,
+                    // and if we're in 'search' view, we show Add for items not in list.
+                    let actionHtml;
+                    if (checkoutViewMode === 'list') {
+                        // List view: only show Remove for items in the list (all records in filteredRecords are in checkout)
+                        actionHtml = `<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="${record.id}"><i class="fas fa-minus"></i> Remove</button>`;
+                    } else {
+                        // Search view: show Add if not already in checkout, else Remove
+                        if (inSelected) {
+                            actionHtml = `<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="${record.id}"><i class="fas fa-minus"></i> Remove</button>`;
+                        } else {
+                            actionHtml = `<button class="btn btn-sm btn-success add-checkout-item" data-record-id="${record.id}"><i class="fas fa-plus"></i> Add</button>`;
+                        }
+                    }
                     rowHtml += `
                         <td>${id}</td>
                         <td>${escapeHtml(artist)}</td>
                         <td>${escapeHtml(title)}</td>
                         <td>${price}</td>
                         <td><span class="barcode-value">${barcode}</span></td>
-                        <td>
-                            ${inSelected ?
-                                `<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="${record.id}"><i class="fas fa-minus"></i> Remove</button>` :
-                                `<button class="btn btn-sm btn-success add-checkout-item" data-record-id="${record.id}"><i class="fas fa-plus"></i> Add</button>`
-                            }
-                        </td>
+                        <td>${actionHtml}</td>
                     `;
                 } else if (currentSearchMode === 'discogs_orders') {
                     // Render order item row with editable PigStyle ID
@@ -1587,10 +1584,35 @@
             checkoutFilters.style.display = isCheckoutMode ? 'block' : 'none';
         }
         if (checkoutShowSelectedBtn && checkoutShowAllBtn) {
+            // We'll repurpose them: Show Selected = show checkout list, Show All = show all active records (but we use search)
             checkoutShowSelectedBtn.style.display = isCheckoutMode ? 'inline-block' : 'none';
             checkoutShowAllBtn.style.display = isCheckoutMode ? 'inline-block' : 'none';
             if (isCheckoutMode) {
-                checkoutShowSelectedBtn.textContent = `Show Selected (${checkoutSelectedItems.length})`;
+                checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+                checkoutShowAllBtn.textContent = 'Search Results';
+                // We'll add click handlers to switch views
+                checkoutShowSelectedBtn.onclick = function() {
+                    checkoutViewMode = 'list';
+                    filteredRecords = checkoutSelectedItems.slice();
+                    totalRecords = filteredRecords.length;
+                    currentPage = 1;
+                    renderPagination();
+                    renderTablePage();
+                    updateSelectionCount();
+                };
+                checkoutShowAllBtn.onclick = function() {
+                    // Show all active records (but we don't have a dedicated "all" list, we'll trigger search with empty term? Better to reload active records)
+                    // Actually we want to show the full inventory, but we can load active records again.
+                    loadRecords({ statusIds: [2], mode: 'checkout' });
+                    checkoutViewMode = 'search'; // but we are showing all records, not search results; we can treat as search view.
+                    // We'll set filteredRecords = allRecords, but allRecords is already loaded.
+                    filteredRecords = allRecords.slice();
+                    totalRecords = filteredRecords.length;
+                    currentPage = 1;
+                    renderPagination();
+                    renderTablePage();
+                    updateSelectionCount();
+                };
             }
         }
 
@@ -1693,8 +1715,25 @@
 
         if (mode === 'add') {
             performDiscogsSearch(term);
-        } else if (mode === 'scan' || mode === 'checkout') {
+        } else if (mode === 'scan') {
             performScanSearch(term);
+        } else if (mode === 'checkout') {
+            // Client-side filter on allRecords (which should be loaded with active records)
+            const termLower = term.toLowerCase();
+            const filtered = allRecords.filter(r => {
+                return (r.artist && r.artist.toLowerCase().includes(termLower)) ||
+                       (r.title && r.title.toLowerCase().includes(termLower)) ||
+                       (r.barcode && r.barcode.toLowerCase().includes(termLower)) ||
+                       (r.catalog_number && r.catalog_number.toLowerCase().includes(termLower));
+            });
+            checkoutViewMode = 'search';
+            filteredRecords = filtered;
+            totalRecords = filtered.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+            updateSelectionCount();
         } else if (mode === 'discogs') {
             const termLower = term.toLowerCase();
             let source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
@@ -1830,12 +1869,15 @@
         } else if (currentSearchMode === 'delete') {
             applyDeleteFilter();
         } else if (currentSearchMode === 'checkout') {
-            if (checkoutViewMode === 'selected') {
-                // keep selected view
-            } else {
-                // Reload active records (status_id=2)
-                loadRecords({ statusIds: [2], mode: 'checkout' });
-            }
+            // Go back to checkout list view
+            checkoutViewMode = 'list';
+            filteredRecords = checkoutSelectedItems.slice();
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Showing checkout list', 'info');
+            updateSelectionCount();
         } else if (currentSearchMode === 'discogs_orders') {
             // Clear the order selection
             if (discogsOrderSelect) discogsOrderSelect.value = '';
@@ -2847,20 +2889,18 @@
         if (!checkoutSelectedItems.some(r => r.id === recordId)) {
             checkoutSelectedItems.push(record);
             showStatus(`Added "${record.artist} - ${record.title}" to checkout`, 'success');
-            if (checkoutViewMode === 'all') {
-                renderTablePage();
-            } else {
-                checkoutViewMode = 'selected';
-                filteredRecords = checkoutSelectedItems.slice();
-                totalRecords = filteredRecords.length;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                checkoutShowSelectedBtn.textContent = `Show Selected (${checkoutSelectedItems.length})`;
-                checkoutShowSelectedBtn.style.display = 'none';
-                checkoutShowAllBtn.style.display = 'inline-block';
-            }
+            // Switch to list view
+            checkoutViewMode = 'list';
+            filteredRecords = checkoutSelectedItems.slice();
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
             updateSelectionCount();
+            // Update button text
+            if (checkoutShowSelectedBtn) {
+                checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+            }
         } else {
             showStatus('Record already in checkout list', 'info');
         }
@@ -2871,51 +2911,59 @@
         if (index !== -1) {
             const removed = checkoutSelectedItems.splice(index, 1)[0];
             showStatus(`Removed "${removed.artist} - ${removed.title}" from checkout`, 'info');
-            if (checkoutViewMode === 'selected') {
-                filteredRecords = checkoutSelectedItems.slice();
-                totalRecords = filteredRecords.length;
-                currentPage = 1;
+            // Stay in list view
+            filteredRecords = checkoutSelectedItems.slice();
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            updateSelectionCount();
+            if (checkoutShowSelectedBtn) {
+                checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+            }
+            if (checkoutSelectedItems.length === 0) {
+                // If list is empty, show empty message
+                filteredRecords = [];
+                totalRecords = 0;
                 renderPagination();
                 renderTablePage();
-                if (checkoutSelectedItems.length === 0) {
-                    checkoutViewMode = 'all';
-                    checkoutShowSelectedBtn.style.display = 'none';
-                    checkoutShowAllBtn.style.display = 'none';
-                    // Reload active records
-                    loadRecords({ statusIds: [2], mode: 'checkout' });
-                }
-            } else {
-                renderTablePage();
             }
-            updateSelectionCount();
         }
     }
 
     function showCheckoutSelected() {
-        checkoutViewMode = 'selected';
+        checkoutViewMode = 'list';
         filteredRecords = checkoutSelectedItems.slice();
         totalRecords = filteredRecords.length;
         currentPage = 1;
         renderPagination();
         renderTablePage();
+        if (checkoutShowSelectedBtn) {
+            checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+        }
         checkoutShowSelectedBtn.style.display = 'none';
         checkoutShowAllBtn.style.display = 'inline-block';
         updateSelectionCount();
     }
 
     function showCheckoutAll() {
-        checkoutViewMode = 'all';
-        // Load active records without status filter dropdown
-        loadRecords({ statusIds: [2], mode: 'checkout' });
+        // Show all active records (search view)
+        checkoutViewMode = 'search';
+        filteredRecords = allRecords.slice();
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        if (checkoutShowSelectedBtn) {
+            checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+        }
         checkoutShowSelectedBtn.style.display = 'inline-block';
-        checkoutShowSelectedBtn.textContent = `Show Selected (${checkoutSelectedItems.length})`;
         checkoutShowAllBtn.style.display = 'none';
         updateSelectionCount();
     }
 
     function applyCheckoutFilter() {
-        // Always load active records (status_id=2)
-        loadRecords({ statusIds: [2], mode: 'checkout' });
+        // Not used anymore; we use search
     }
 
     // ========== Checkout Modal with Square Polling ==========
@@ -3100,15 +3148,18 @@
         setTimeout(() => {
             showCheckoutStatus(`${success} of ${selected.length} records marked as sold`, 'success');
             checkoutSelectedItems = [];
-            checkoutViewMode = 'all';
+            checkoutViewMode = 'list';
             checkoutPaymentEntries = [];
             checkoutRemaining = 0;
             const modal = document.getElementById('checkout-payment-modal');
             if (modal) modal.style.display = 'none';
-            loadRecords({ statusIds: [2], mode: 'checkout' });
-            checkoutShowSelectedBtn.style.display = 'inline-block';
-            checkoutShowSelectedBtn.textContent = `Show Selected (0)`;
-            checkoutShowAllBtn.style.display = 'none';
+            filteredRecords = [];
+            totalRecords = 0;
+            renderPagination();
+            renderTablePage();
+            if (checkoutShowSelectedBtn) {
+                checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
+            }
             updateSelectionCount();
         }, 500);
     }
@@ -3196,6 +3247,10 @@
         } else if (mode === 'delete') {
             deleteSelected();
         } else if (mode === 'checkout') {
+            if (checkoutSelectedItems.length === 0) {
+                showStatus('No items in checkout.', 'warning');
+                return;
+            }
             showCheckoutModal();
         } else if (mode === 'discogs_orders') {
             processDiscogsOrder();
@@ -3553,20 +3608,55 @@
             allRecords = [];
             loadRecords({ statusIds: [1,2], mode: 'delete' });
         } else if (newMode === 'checkout') {
+            // Load active records into allRecords, but show empty checkout list
             checkoutSelectedItems = [];
-            checkoutViewMode = 'all';
-            filteredRecords = [];
+            checkoutViewMode = 'list';
+            filteredRecords = []; // start empty
             totalRecords = 0;
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            showStatus('Checkout mode: Browse records and add to checkout.', 'info');
+            showStatus('Checkout mode: Search to add records, then Checkout.', 'info');
             searchInput.placeholder = 'Search records...';
-            // Always load Active records (status_id=2)
-            loadRecords({ statusIds: [2], mode: 'checkout' });
-            checkoutShowSelectedBtn.style.display = 'inline-block';
-            checkoutShowSelectedBtn.textContent = 'Show Selected (0)';
-            checkoutShowAllBtn.style.display = 'none';
+            // Load active records for searching
+            loadRecords({ statusIds: [2], mode: 'checkout' }).then(() => {
+                // After loading, we keep filteredRecords empty (list view)
+                checkoutViewMode = 'list';
+                filteredRecords = checkoutSelectedItems.slice();
+                totalRecords = filteredRecords.length;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                updateSelectionCount();
+            });
+            // Update button visibility
+            if (checkoutShowSelectedBtn) {
+                checkoutShowSelectedBtn.style.display = 'inline-block';
+                checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
+                checkoutShowSelectedBtn.onclick = function() {
+                    checkoutViewMode = 'list';
+                    filteredRecords = checkoutSelectedItems.slice();
+                    totalRecords = filteredRecords.length;
+                    currentPage = 1;
+                    renderPagination();
+                    renderTablePage();
+                    updateSelectionCount();
+                };
+            }
+            if (checkoutShowAllBtn) {
+                checkoutShowAllBtn.style.display = 'inline-block';
+                checkoutShowAllBtn.textContent = 'Search Results';
+                checkoutShowAllBtn.onclick = function() {
+                    // Show all active records (search view)
+                    checkoutViewMode = 'search';
+                    filteredRecords = allRecords.slice();
+                    totalRecords = filteredRecords.length;
+                    currentPage = 1;
+                    renderPagination();
+                    renderTablePage();
+                    updateSelectionCount();
+                };
+            }
         } else if (newMode === 'discogs_orders') {
             filteredRecords = [];
             totalRecords = 0;
@@ -3816,24 +3906,38 @@
 
         searchModeSelect.addEventListener('change', onModeChange);
 
-        // ---- Debounced search input ----
-        searchInput.addEventListener('input', function() {
-            const term = this.value.trim();
+        // ========== SEARCH BUTTON ==========
+        let searchButton = document.getElementById('searchButton');
+        if (!searchButton) {
+            searchButton = document.createElement('button');
+            searchButton.id = 'searchButton';
+            searchButton.type = 'button';
+            searchButton.className = 'btn btn-primary';
+            searchButton.innerHTML = '<i class="fas fa-search"></i> Search';
+            searchButton.style.marginLeft = '8px';
+            const parent = searchInput.parentNode;
+            parent.insertBefore(searchButton, clearSearchBtn);
+        }
 
-            // Modes that use client-side filtering
-            if (['add', 'discogs', 'delete', 'checkout'].includes(currentSearchMode)) {
-                if (term === '') {
-                    clearTimeout(searchTimeout);
-                    performSearch('');
-                } else {
-                    clearTimeout(searchTimeout);
-                    searchTimeout = setTimeout(() => {
-                        performSearch(term);
-                    }, 300);
-                }
+        searchButton.addEventListener('click', function() {
+            const term = searchInput.value.trim();
+            performSearch(term);
+        });
+
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const term = this.value.trim();
+                performSearch(term);
             }
-            // Scan mode – immediate, but only for longer barcodes
-            else if (currentSearchMode === 'scan') {
+        });
+
+        clearSearchBtn.addEventListener('click', clearSearch);
+
+        // Scan mode only: immediate input handling
+        searchInput.addEventListener('input', function() {
+            if (currentSearchMode === 'scan') {
+                const term = this.value.trim();
                 if (term.length > 2) {
                     performScanSearch(term);
                 } else if (term.length === 0) {
@@ -3846,18 +3950,6 @@
                 }
             }
         });
-
-        // ---- Enter key triggers immediate search ----
-        searchInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                clearTimeout(searchTimeout);
-                const term = this.value.trim();
-                performSearch(term);
-            }
-        });
-
-        clearSearchBtn.addEventListener('click', clearSearch);
 
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
@@ -3908,12 +4000,7 @@
                 loadRecords({ statusIds: [2], mode: 'checkout' });
             });
         }
-        if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.addEventListener('click', showCheckoutSelected);
-        }
-        if (checkoutShowAllBtn) {
-            checkoutShowAllBtn.addEventListener('click', showCheckoutAll);
-        }
+        // We handle checkout buttons in onModeChange
 
         // Discogs Orders: refresh button, order select, and status filter
         if (discogsOrdersRefreshBtn) {
@@ -3942,9 +4029,7 @@
             discogsOrdersStatusFilter.addEventListener('change', function() {
                 ordersStatusFilter = this.value || '';
                 console.log(`📦 Status filter changed to: ${ordersStatusFilter || 'all'}`);
-                // Reload orders with the new filter
                 loadDiscogsOrdersList(ordersStatusFilter);
-                // Clear the selected order
                 if (discogsOrderSelect) discogsOrderSelect.value = '';
                 selectedOrderId = null;
                 currentOrderItems = [];
