@@ -121,6 +121,14 @@ background_jobs = {}
 square_payment_sessions = {}  # Store active payment sessions
 
 
+def get_account_id(code):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM accounts WHERE code = ?', (code,))
+    row = cursor.fetchone()
+    conn.close()
+    return row['id'] if row else None
+
 # ==================== HELPER: GET CASH ACCOUNT BY SOURCE TYPE ====================
 
 def get_cash_account_id(source_type):
@@ -2904,7 +2912,7 @@ def create_inventory_purchase():
         if not data:
             return jsonify({'status': 'error', 'error': 'No data provided'}), 400
 
-        # --- Required fields ---
+        # Required fields
         if 'amount_spent' not in data:
             return jsonify({'status': 'error', 'error': 'amount_spent is required'}), 400
 
@@ -2912,11 +2920,10 @@ def create_inventory_purchase():
         if not seller_name or not str(seller_name).strip():
             return jsonify({'status': 'error', 'error': 'Seller name is required'}), 400
 
-        payment_account_code = data.get('payment_account_id')
-        if not payment_account_code:
-            return jsonify({'status': 'error', 'error': 'payment_account_id is required'}), 400
+        payment_type = data.get('payment_type', 'cash')
+        consignor_id = data.get('consignor_id')
 
-        # --- Validate amount ---
+        # Validate amount
         try:
             amount_spent = float(data['amount_spent'])
         except:
@@ -2925,34 +2932,35 @@ def create_inventory_purchase():
         if amount_spent <= 0:
             return jsonify({'status': 'error', 'error': 'amount_spent must be greater than 0'}), 400
 
-        # --- Validate account code ---
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', (payment_account_code,))
-        account_row = cursor.fetchone()
-        if not account_row:
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'Invalid payment account: {payment_account_code}'}), 400
-        payment_account_id = account_row['id']
 
-        # --- Safely extract other fields (empty string if missing) ---
+        # Validate consignor if store credit
+        if payment_type == 'store_credit':
+            if not consignor_id:
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Consignor required for store credit'}), 400
+            cursor.execute('SELECT id FROM users WHERE id = ? AND role = "consignor"', (consignor_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Invalid consignor'}), 400
+
+        # Insert purchase
+        purchase_date = data.get('purchase_date') or datetime.now().strftime('%Y-%m-%d')
         seller_contact = (data.get('seller_contact') or '').strip()
         description = (data.get('description') or '').strip()
         bill_of_sale_path = (data.get('bill_of_sale_path') or '').strip()
-        purchase_date = data.get('purchase_date') or datetime.now().strftime('%Y-%m-%d')
 
-        # --- Insert purchase ---
         cursor.execute('''
             INSERT INTO inventory_purchases (
                 purchase_date, seller_name, seller_contact, amount_spent, 
                 description, bill_of_sale_path
             ) VALUES (?, ?, ?, ?, ?, ?)
         ''', (purchase_date, seller_name, seller_contact, amount_spent, description, bill_of_sale_path))
-
         purchase_id = cursor.lastrowid
         conn.commit()
 
-        # --- Journal entry ---
+        # --- Journal Entry ---
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
@@ -2960,42 +2968,142 @@ def create_inventory_purchase():
         entry_id = cursor.lastrowid
 
         amount_cents = int(round(amount_spent * 100))
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, 1050, amount_cents, 0))
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, payment_account_id, 0, amount_cents))
+        inventory_id = get_account_id('1050')   # Inventory asset
+
+        if payment_type == 'cash':
+            # Need payment account code from request
+            payment_account_code = data.get('payment_account_id')
+            if not payment_account_code:
+                conn.rollback()
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'payment_account_id required for cash'}), 400
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', (payment_account_code,))
+            account_row = cursor.fetchone()
+            if not account_row:
+                conn.rollback()
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'Invalid payment account: {payment_account_code}'}), 400
+            cash_id = account_row['id']
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, inventory_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, cash_id, 0, amount_cents))
+        else:  # store_credit
+            liability_id = get_account_id('2015')
+            if not liability_id:
+                conn.rollback()
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Store Credit Liability account not found'}), 500
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, inventory_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, liability_id, 0, amount_cents))
+
+            # Issue store credit to consignor
+            cursor.execute('SELECT config_value FROM app_config WHERE config_key = "STORE_CREDIT_MULTIPLIER"')
+            config_row = cursor.fetchone()
+            multiplier = float(config_row['config_value']) if config_row else 1.5
+            credit_amount = amount_spent * multiplier
+
+            # Update user balance
+            cursor.execute('UPDATE users SET store_credit_balance = store_credit_balance + ? WHERE id = ?', 
+                           (credit_amount, consignor_id))
+            # Record credit transaction in journal? Already done above.
+            # Optionally log in a separate table if needed, but we use the journal.
+
+            # We can also store a reference in the purchase record (optional)
+            cursor.execute('UPDATE inventory_purchases SET consignor_id = ? WHERE id = ?', 
+                           (consignor_id, purchase_id))
 
         conn.commit()
         conn.close()
 
-        # --- Return created purchase ---
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, purchase_date, seller_name, seller_contact, amount_spent, 
-                   description, bill_of_sale_path, created_at, updated_at
-            FROM inventory_purchases WHERE id = ?
-        ''', (purchase_id,))
-        new_purchase = cursor.fetchone()
-        conn.close()
-
-        purchase_dict = dict(new_purchase)
-        purchase_dict['amount_spent'] = float(purchase_dict['amount_spent'])
-
         return jsonify({
             'status': 'success',
-            'message': 'Inventory purchase recorded successfully',
-            'purchase': purchase_dict
-        }), 201
+            'message': 'Inventory purchase recorded',
+            'purchase_id': purchase_id,
+            'payment_type': payment_type
+        })
 
     except Exception as e:
         app.logger.error(f"Error creating inventory purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/store-credit/balance', methods=['GET'])
+@login_required
+def store_credit_balance():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT store_credit_balance FROM users WHERE id = ?', (session['user_id'],))
+    row = cursor.fetchone()
+    conn.close()
+    balance = row['store_credit_balance'] if row else 0.0
+    return jsonify({'balance': float(balance)})
+
+@app.route('/api/store-credit/redeem', methods=['POST'])
+@login_required
+def redeem_store_credit():
+    data = request.get_json()
+    amount = data.get('amount')
+    order_id = data.get('order_id')
+    if not amount or amount <= 0:
+        return jsonify({'error': 'Amount required'}), 400
+    if not order_id:
+        return jsonify({'error': 'order_id required'}), 400
+
+    user_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Check balance
+    cursor.execute('SELECT store_credit_balance FROM users WHERE id = ?', (user_id,))
+    row = cursor.fetchone()
+    if not row or row['store_credit_balance'] < amount:
+        conn.close()
+        return jsonify({'error': 'Insufficient store credit'}), 400
+
+    # Create journal entry for redemption
+    cursor.execute('''
+        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+        VALUES (?, ?, ?, ?)
+    ''', (datetime.now().strftime('%Y-%m-%d'), f'Store credit redeemed for order {order_id}', 'store_credit_redeem', str(user_id)))
+    entry_id = cursor.lastrowid
+    amount_cents = int(round(amount * 100))
+    liability_id = get_account_id('2015')
+    revenue_id = get_account_id('4000')   # Sales Revenue (or appropriate)
+    if not liability_id or not revenue_id:
+        conn.close()
+        return jsonify({'error': 'Required accounts not found'}), 500
+
+    cursor.execute('''
+        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    ''', (entry_id, liability_id, amount_cents, 0))
+    cursor.execute('''
+        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    ''', (entry_id, revenue_id, 0, amount_cents))
+
+    # Update user balance
+    cursor.execute('UPDATE users SET store_credit_balance = store_credit_balance - ? WHERE id = ?', (amount, user_id))
+
+    # Optionally record the redemption in the order's payment list (we'll handle at order creation)
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'success': True,
+        'entry_id': entry_id,
+        'new_balance': get_store_credit_balance(user_id)   # we can reuse the existing helper
+    })
 
 @app.route('/api/inventory-purchases/upload-bill', methods=['POST'])
 @login_required

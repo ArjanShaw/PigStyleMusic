@@ -112,6 +112,9 @@
     let markupDistributionChart = null;
     let ageDistributionChart = null;
 
+    // ========== Debounce timer ==========
+    let searchTimeout = null;
+
     // ========== Audio ==========
     let audioContext = null;
 
@@ -2470,6 +2473,25 @@
                                     <option value="">-- Select how you paid --</option>
                                 </select>
                             </div>
+                            <!-- NEW: Payment Type selection -->
+                            <div style="grid-column: 1 / -1;">
+                                <label style="display:block; font-weight:500; margin-bottom:4px;">Payment Type:</label>
+                                <div style="display:flex; gap:20px;">
+                                    <label><input type="radio" name="cogs_payment_type" value="cash" checked> Cash</label>
+                                    <label><input type="radio" name="cogs_payment_type" value="store_credit"> Store Credit</label>
+                                </div>
+                            </div>
+                            <!-- Store credit consignor selection (hidden by default) -->
+                            <div id="cogs-consignor-section" style="grid-column:1/-1; display:none;">
+                                <label for="cogs-consignor" style="display:block; font-weight:500; margin-bottom:4px;">Consignor (to receive store credit) *</label>
+                                <select id="cogs-consignor" class="form-control" style="width:100%; padding:8px;">
+                                    <option value="">-- Select consignor --</option>
+                                </select>
+                                <p style="margin-top:8px; font-size:13px; color:#666;">
+                                    Store credit amount: <strong><span id="cogs-store-credit-amount">$0.00</span></strong> 
+                                    (x<span id="cogs-multiplier-display">1.5</span> multiplier)
+                                </p>
+                            </div>
                             <div style="grid-column: 1 / -1;">
                                 <label for="cogs-description" style="display:block; font-weight:500; margin-bottom:4px;">Description</label>
                                 <textarea id="cogs-description" rows="2" class="form-control" placeholder="Optional notes about this purchase" style="width:100%; padding:8px;"></textarea>
@@ -2491,6 +2513,7 @@
             document.body.appendChild(modal);
         }
 
+        // Populate account dropdown
         const accountSelect = document.getElementById('cogs-payment-account');
         if (accountSelect) {
             accountSelect.innerHTML = '<option value="">-- Select how you paid --</option>';
@@ -2504,8 +2527,59 @@
             });
         }
 
-        document.getElementById('cogs-bill-preview').innerHTML = '';
+        // Populate consignor dropdown
+        const consignorSelect = document.getElementById('cogs-consignor');
+        if (consignorSelect) {
+            consignorSelect.innerHTML = '<option value="">-- Select consignor --</option>';
+            consignors.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.username + (c.full_name ? ` (${c.full_name})` : '');
+                consignorSelect.appendChild(opt);
+            });
+        }
 
+        // Toggle consignor section based on payment type
+        const radios = document.querySelectorAll('input[name="cogs_payment_type"]');
+        radios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                const isStoreCredit = this.value === 'store_credit';
+                document.getElementById('cogs-consignor-section').style.display = isStoreCredit ? 'block' : 'none';
+                if (isStoreCredit) {
+                    // Fetch multiplier from config or use default
+                    fetch('/api/config/STORE_CREDIT_MULTIPLIER', { credentials: 'include' })
+                        .then(res => res.json())
+                        .then(data => {
+                            const multiplier = parseFloat(data.config_value) || 1.5;
+                            document.getElementById('cogs-multiplier-display').textContent = multiplier;
+                            updateCreditAmount(multiplier);
+                        })
+                        .catch(() => {
+                            const multiplier = 1.5;
+                            document.getElementById('cogs-multiplier-display').textContent = multiplier;
+                            updateCreditAmount(multiplier);
+                        });
+                }
+            });
+        });
+
+        // Update credit amount when amount changes
+        const amountInput = document.getElementById('cogs-amount-spent');
+        amountInput.addEventListener('input', function() {
+            const paymentType = document.querySelector('input[name="cogs_payment_type"]:checked');
+            if (paymentType && paymentType.value === 'store_credit') {
+                const amount = parseFloat(this.value) || 0;
+                const multiplier = parseFloat(document.getElementById('cogs-multiplier-display').textContent) || 1.5;
+                document.getElementById('cogs-store-credit-amount').textContent = '$' + (amount * multiplier).toFixed(2);
+            }
+        });
+
+        function updateCreditAmount(multiplier) {
+            const amount = parseFloat(amountInput.value) || 0;
+            document.getElementById('cogs-store-credit-amount').textContent = '$' + (amount * multiplier).toFixed(2);
+        }
+
+        // File preview logic (unchanged)
         const fileInput = document.getElementById('cogs-bill-image');
         const previewDiv = document.getElementById('cogs-bill-preview');
         fileInput.onchange = function(e) {
@@ -2528,34 +2602,39 @@
             }
         };
 
-        const sellerNameInput = document.getElementById('cogs-seller-name');
-        const amountInput = document.getElementById('cogs-amount-spent');
-        const accountSelect2 = document.getElementById('cogs-payment-account');
-
+        // Validation for apply button
         function validateForm() {
             const btn = document.getElementById('cogs-apply-btn');
             if (!btn) return;
-            const sellerName = sellerNameInput.value.trim();
+            const sellerName = document.getElementById('cogs-seller-name').value.trim();
             const amount = parseFloat(amountInput.value);
-            const account = accountSelect2.value;
-            const isValid = sellerName && !isNaN(amount) && amount > 0 && account;
-            btn.disabled = !isValid;
+            const paymentType = document.querySelector('input[name="cogs_payment_type"]:checked');
+            let valid = sellerName && !isNaN(amount) && amount > 0;
+            if (paymentType && paymentType.value === 'store_credit') {
+                const consignor = document.getElementById('cogs-consignor').value;
+                valid = valid && consignor;
+            } else {
+                const account = document.getElementById('cogs-payment-account').value;
+                valid = valid && account;
+            }
+            btn.disabled = !valid;
         }
 
-        sellerNameInput.addEventListener('input', validateForm);
+        document.getElementById('cogs-seller-name').addEventListener('input', validateForm);
         amountInput.addEventListener('input', validateForm);
-        accountSelect2.addEventListener('change', validateForm);
+        document.getElementById('cogs-payment-account').addEventListener('change', validateForm);
+        document.getElementById('cogs-consignor').addEventListener('change', validateForm);
+        document.querySelectorAll('input[name="cogs_payment_type"]').forEach(r => r.addEventListener('change', validateForm));
 
         validateForm();
 
+        // Replace apply button to avoid duplicate listeners
         const applyBtn = document.getElementById('cogs-apply-btn');
         const newApply = applyBtn.cloneNode(true);
         applyBtn.parentNode.replaceChild(newApply, applyBtn);
         newApply.addEventListener('click', function() {
             handleCogsApply();
         });
-
-        validateForm();
 
         modal.style.display = 'flex';
     }
@@ -2590,9 +2669,11 @@
         const accountEl = document.getElementById('cogs-payment-account');
         const descEl = document.getElementById('cogs-description');
         const billFileEl = document.getElementById('cogs-bill-image');
+        const paymentTypeRadio = document.querySelector('input[name="cogs_payment_type"]:checked');
+        const consignorSelect = document.getElementById('cogs-consignor');
 
-        if (!sellerNameEl || !amountEl || !accountEl) {
-            showCogsStatusMsg('Form elements missing. Please refresh and try again.', 'error');
+        if (!sellerNameEl || !amountEl) {
+            showCogsStatusMsg('Form elements missing.', 'error');
             if (applyBtn) applyBtn.disabled = false;
             return;
         }
@@ -2600,9 +2681,10 @@
         const sellerName = sellerNameEl.value.trim();
         const sellerContact = sellerContactEl ? sellerContactEl.value.trim() : '';
         const amountSpent = parseFloat(amountEl.value);
-        const paymentAccount = accountEl.value;
         const description = descEl ? descEl.value.trim() : '';
         const billFile = billFileEl ? billFileEl.files[0] : null;
+        const paymentType = paymentTypeRadio ? paymentTypeRadio.value : 'cash';
+        const consignorId = consignorSelect ? consignorSelect.value : null;
 
         if (!sellerName) {
             showCogsStatusMsg('Seller name is required.', 'error');
@@ -2614,12 +2696,22 @@
             if (applyBtn) applyBtn.disabled = false;
             return;
         }
-        if (!paymentAccount) {
-            showCogsStatusMsg('Please select a payment account.', 'error');
-            if (applyBtn) applyBtn.disabled = false;
-            return;
+        if (paymentType === 'cash') {
+            const paymentAccount = accountEl ? accountEl.value : '';
+            if (!paymentAccount) {
+                showCogsStatusMsg('Please select a payment account for cash.', 'error');
+                if (applyBtn) applyBtn.disabled = false;
+                return;
+            }
+        } else if (paymentType === 'store_credit') {
+            if (!consignorId) {
+                showCogsStatusMsg('Please select a consignor for store credit.', 'error');
+                if (applyBtn) applyBtn.disabled = false;
+                return;
+            }
         }
 
+        // Upload bill image if present
         let billPath = null;
         if (billFile) {
             const formData = new FormData();
@@ -2651,7 +2743,9 @@
             seller_contact: sellerContact,
             amount_spent: amountSpent,
             description: description,
-            payment_account_id: paymentAccount,
+            payment_account_id: paymentType === 'cash' ? accountEl.value : null,
+            payment_type: paymentType,
+            consignor_id: paymentType === 'store_credit' ? consignorId : null,
             bill_of_sale_path: billPath
         };
 
@@ -2666,8 +2760,9 @@
             if (createResult.status !== 'success') {
                 throw new Error(createResult.error || 'Failed to record purchase');
             }
-            const purchaseId = createResult.purchase.id;
+            const purchaseId = createResult.purchase_id;
 
+            // Apply COGS to records
             const recordIds = records.map(r => r.id);
             const cogsResponse = await fetch(`${AppConfig.baseUrl}/api/cogs/batch`, {
                 method: 'POST',
@@ -2683,7 +2778,11 @@
                 throw new Error(cogsResult.error || 'Failed to apply COGS');
             }
 
-            showCogsStatusMsg(`✅ Purchase #${purchaseId} recorded and COGS applied to ${cogsResult.records_updated} records.`, 'success');
+            let msg = `✅ Purchase #${purchaseId} recorded and COGS applied to ${cogsResult.records_updated} records.`;
+            if (paymentType === 'store_credit') {
+                msg += ` Store credit issued to consignor.`;
+            }
+            showCogsStatusMsg(msg, 'success');
             await loadRecords({ statusIds: [1], mode: 'add' });
             setTimeout(() => {
                 const modal = document.getElementById('cogs-modal');
@@ -2837,6 +2936,9 @@
         checkoutRemaining = grandTotal;
         checkoutPaymentEntries = [];
 
+        // Generate temporary order ID for store credit redemption
+        const orderId = generateOrderId();
+
         let modal = document.getElementById('checkout-payment-modal');
         if (!modal) {
             modal = document.createElement('div');
@@ -2856,12 +2958,16 @@
                         <div style="font-size: 16px; margin: 10px 0; color: #28a745;">
                             Remaining: $<span id="checkout-remaining">${grandTotal.toFixed(2)}</span>
                         </div>
+                        <div id="store-credit-info" style="display:none; background: #e3f2fd; padding:10px; border-radius:4px; margin-bottom:10px;">
+                            Available store credit: <strong id="store-credit-balance-display">$0.00</strong>
+                        </div>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0;">
                             <input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;">
                             <select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;">
                                 <option value="Cash">Cash</option>
                                 <option value="Card (Square)" selected>Card (Square)</option>
                                 <option value="Gift Card">Gift Card</option>
+                                <option value="Store Credit">Store Credit</option>
                             </select>
                             <button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button>
                         </div>
@@ -2899,10 +3005,33 @@
         document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
         renderCheckoutEntries();
 
+        // Store credit handling
+        const methodSelect = document.getElementById('checkout-payment-method');
+        const storeCreditInfo = document.getElementById('store-credit-info');
+        const balanceDisplay = document.getElementById('store-credit-balance-display');
+
+        methodSelect.addEventListener('change', function() {
+            if (this.value === 'Store Credit') {
+                storeCreditInfo.style.display = 'block';
+                fetch('/api/store-credit/balance', { credentials: 'include' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.balance !== undefined) {
+                            balanceDisplay.textContent = '$' + parseFloat(data.balance).toFixed(2);
+                        }
+                    })
+                    .catch(() => {
+                        balanceDisplay.textContent = 'Error loading balance';
+                    });
+            } else {
+                storeCreditInfo.style.display = 'none';
+            }
+        });
+
         // Add payment button
         document.getElementById('checkout-add-payment').onclick = function() {
             const amountInput = document.getElementById('checkout-payment-amount');
-            const methodSelect = document.getElementById('checkout-payment-method');
+            const methodSelect2 = document.getElementById('checkout-payment-method');
             let amount = parseFloat(amountInput.value);
             if (isNaN(amount) || amount <= 0) {
                 amount = checkoutRemaining;
@@ -2912,10 +3041,33 @@
                 }
                 amountInput.value = amount.toFixed(2);
             }
-            const method = methodSelect.value;
+            const method = methodSelect2.value;
 
             if (method === 'Card (Square)' && !squareAvailable) {
                 showCheckoutStatus('Square POS is not available. Please use Cash or Gift Card.', 'error');
+                return;
+            }
+
+            if (method === 'Store Credit') {
+                // Redeem store credit
+                fetch('/api/store-credit/redeem', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amount, order_id: orderId })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        addPaymentEntry('Store Credit', amount);
+                        balanceDisplay.textContent = '$' + parseFloat(data.new_balance).toFixed(2);
+                    } else {
+                        showCheckoutStatus(data.error || 'Redemption failed', 'error');
+                    }
+                })
+                .catch(err => {
+                    showCheckoutStatus('Error: ' + err.message, 'error');
+                });
                 return;
             }
 
@@ -2953,6 +3105,7 @@
                 return;
             }
 
+            // Cash or Card (Square) – we just add the entry; Square will be processed later
             addPaymentEntry(method, amount);
         };
 
@@ -2963,8 +3116,8 @@
                 return;
             }
             // Determine if we need Square
-            const methodSelect = document.getElementById('checkout-payment-method');
-            const method = methodSelect.value;
+            const methodSelect3 = document.getElementById('checkout-payment-method');
+            const method = methodSelect3.value;
             if (method === 'Card (Square)') {
                 // Process Square payment
                 processSquarePayment();
@@ -3151,7 +3304,7 @@
         }, 500);
     }
 
-    // ========== Add Payment Entry (for Cash/Gift Card) ==========
+    // ========== Add Payment Entry (for Cash/Gift Card/Store Credit) ==========
     function addPaymentEntry(method, amount) {
         if (amount > checkoutRemaining && checkoutRemaining > 0) {
             // allow overpayment, change will be displayed
@@ -3854,11 +4007,24 @@
 
         searchModeSelect.addEventListener('change', onModeChange);
 
+        // ---- Debounced search input ----
         searchInput.addEventListener('input', function() {
             const term = this.value.trim();
-            if (currentSearchMode === 'add' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout') {
-                performSearch(term);
-            } else if (currentSearchMode === 'scan') {
+
+            // Modes that use client-side filtering
+            if (['add', 'discogs', 'delete', 'checkout'].includes(currentSearchMode)) {
+                if (term === '') {
+                    clearTimeout(searchTimeout);
+                    performSearch('');
+                } else {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        performSearch(term);
+                    }, 300);
+                }
+            }
+            // Scan mode – immediate, but only for longer barcodes
+            else if (currentSearchMode === 'scan') {
                 if (term.length > 2) {
                     performScanSearch(term);
                 } else if (term.length === 0) {
@@ -3871,6 +4037,17 @@
                 }
             }
         });
+
+        // ---- Enter key triggers immediate search ----
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(searchTimeout);
+                const term = this.value.trim();
+                performSearch(term);
+            }
+        });
+
         clearSearchBtn.addEventListener('click', clearSearch);
 
         pageSizeSelect.addEventListener('change', function() {
