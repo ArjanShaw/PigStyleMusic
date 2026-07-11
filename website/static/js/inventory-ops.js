@@ -117,6 +117,11 @@
     let markupDistributionChart = null;
     let ageDistributionChart = null;
 
+    // Discogs Post Modal state
+    let isPosting = false;
+    let postProgress = 0;
+    let postResults = [];
+
     // ========== Audio ==========
     let audioContext = null;
 
@@ -1092,6 +1097,8 @@
                         <th>Price</th>
                         <th>COGS</th>
                         <th>Catalog #</th>
+                        <th>Sleeve</th>
+                        <th>Disc</th>
                         <th>Barcode</th>
                         <th>Created At</th>
                     </tr>
@@ -1198,7 +1205,7 @@
                 else msg = 'This order has no items.';
             }
             const colCount = currentSearchMode === 'discogs_orders' ? 10 :
-                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 9) :
+                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 11) :
                              (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
                              (currentSearchMode === 'delete' ? 6 : 7))));
@@ -1311,6 +1318,8 @@
                     const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
                     const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
                     const catalog = record.catalog_number || '—';
+                    const sleeveCondition = record.sleeve_condition_name || '—';
+                    const discCondition = record.disc_condition_name || '—';
                     const barcode = record.barcode || record.id;
                     const created = record.created_at ? new Date(record.created_at).toLocaleString() : 'Unknown';
                     
@@ -1322,6 +1331,8 @@
                         <td>${price}</td>
                         <td>${cogs}</td>
                         <td>${escapeHtml(catalog)}</td>
+                        <td>${escapeHtml(sleeveCondition)}</td>
+                        <td>${escapeHtml(discCondition)}</td>
                         <td><span class="barcode-value">${barcode}</span></td>
                         <td>${created}</td>
                     `;
@@ -2697,57 +2708,247 @@
         }
     }
 
-    // ========== Post Selected Records ==========
-    async function postSelectedRecords() {
+    // ========== Discogs Post Modal ==========
+    function showDiscogsPostModal() {
         const records = getSelectedRecords();
-        console.log(`📋 postSelectedRecords: selected ${records.length} records out of ${filteredRecords.length} total filtered`);
         if (records.length === 0) {
             showDiscogsStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
             return;
         }
-        const totalTimeMinutes = Math.ceil(records.length * 3 / 60);
-        let confirmMsg = `📋 Post ${records.length} record(s) to Discogs?\n\n`;
-        confirmMsg += `⏱️ Estimated time: ~${totalTimeMinutes} minute(s)\n\nContinue?`;
-        if (!confirm(confirmMsg)) return;
 
-        let posted = 0, failed = 0;
+        // Remove existing modal if any
+        const existingModal = document.getElementById('discogs-post-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'discogs-post-modal';
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px; width: 95%;">
+                <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h3 class="modal-title"><i class="fab fa-discogs"></i> Post Records to Discogs</h3>
+                    <button class="modal-close" onclick="closeDiscogsPostModal()" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 15px;">
+                        <p><strong>${records.length}</strong> record(s) selected for posting.</p>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label for="discogs-post-location" style="display:block; font-weight:600; margin-bottom:4px;">
+                            <i class="fas fa-map-marker-alt"></i> Location <span style="color:#dc3545;">*</span>
+                        </label>
+                        <input type="text" id="discogs-post-location" class="form-control" 
+                               placeholder="e.g., Bin 24 | Left Top" 
+                               style="width:100%; padding:10px; font-size:16px; border:1px solid #ddd; border-radius:4px;">
+                        <p style="font-size:12px; color:#666; margin-top:5px;">
+                            <i class="fas fa-info-circle"></i> This location will be saved to all selected records before posting.
+                        </p>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="font-weight:600;">Progress</span>
+                            <span id="discogs-post-progress-text">0%</span>
+                        </div>
+                        <div style="width:100%; height:24px; background:#e9ecef; border-radius:12px; overflow:hidden;">
+                            <div id="discogs-post-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #28a745, #20c997); transition:width 0.3s ease; border-radius:12px;"></div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:15px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-weight:600;"><i class="fas fa-list"></i> Status Log</span>
+                            <span id="discogs-post-log-count" style="font-size:12px; color:#666;">0 / ${records.length}</span>
+                        </div>
+                        <div id="discogs-post-log" style="max-height:200px; overflow-y:auto; background:#f8f9fa; border:1px solid #ddd; border-radius:4px; padding:10px; font-family:monospace; font-size:13px; margin-top:5px;">
+                            <div style="color:#999; text-align:center; padding:20px;">Ready to start posting...</div>
+                        </div>
+                    </div>
+
+                    <div id="discogs-post-status" style="margin-top:10px; display:none;"></div>
+                </div>
+                <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
+                    <button class="btn btn-secondary" id="discogs-post-cancel-btn" onclick="closeDiscogsPostModal()">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button class="btn btn-success" id="discogs-post-start-btn">
+                        <i class="fab fa-discogs"></i> Start Posting
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Focus the location input
+        setTimeout(() => {
+            const locationInput = document.getElementById('discogs-post-location');
+            if (locationInput) locationInput.focus();
+        }, 200);
+
+        // Add event listener for Start button
+        document.getElementById('discogs-post-start-btn').addEventListener('click', function() {
+            startDiscogsPosting(records);
+        });
+
+        // Enter key on location input triggers start
+        document.getElementById('discogs-post-location').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('discogs-post-start-btn').click();
+            }
+        });
+
+        updateDiscogsPostLog('info', '📋 Ready to post ' + records.length + ' records. Enter location and click Start.');
+    }
+
+    function closeDiscogsPostModal() {
+        const modal = document.getElementById('discogs-post-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            modal.remove();
+        }
+        isPosting = false;
+        postProgress = 0;
+        postResults = [];
+    }
+
+    function updateDiscogsPostProgress(current, total) {
+        const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+        postProgress = percent;
+        const bar = document.getElementById('discogs-post-progress-bar');
+        const text = document.getElementById('discogs-post-progress-text');
+        if (bar) bar.style.width = percent + '%';
+        if (text) text.textContent = percent + '%';
+    }
+
+    function updateDiscogsPostLog(type, message) {
+        const logContainer = document.getElementById('discogs-post-log');
+        const logCount = document.getElementById('discogs-post-log-count');
+        if (!logContainer) return;
+
+        // Remove empty placeholder
+        const placeholder = logContainer.querySelector('div[style*="color:#999"]');
+        if (placeholder) {
+            placeholder.remove();
+        }
+
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        entry.style.padding = '4px 0';
+        entry.style.borderBottom = '1px solid #f0f0f0';
+        entry.style.fontSize = '12px';
+
+        let color = '#333';
+        let icon = 'ℹ️';
+        if (type === 'success') { color = '#28a745'; icon = '✅'; }
+        else if (type === 'error') { color = '#dc3545'; icon = '❌'; }
+        else if (type === 'warning') { color = '#ffc107'; icon = '⚠️'; }
+        else { color = '#007bff'; icon = 'ℹ️'; }
+
+        entry.innerHTML = `<span style="color:#999;">[${timestamp}]</span> <span style="color:${color};">${icon} ${escapeHtml(message)}</span>`;
+        logContainer.appendChild(entry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+
+        // Update count
+        const entries = logContainer.querySelectorAll('div:not([style*="color:#999"])');
+        if (logCount) {
+            const total = document.querySelector('#discogs-post-progress-text')?.textContent?.replace('%', '') || '0';
+            logCount.textContent = `${entries.length} / ${Math.round((postProgress / 100) * (entries.length || 1))}`;
+        }
+    }
+
+    function showDiscogsPostStatus(message, type) {
+        const el = document.getElementById('discogs-post-status');
+        if (el) {
+            el.textContent = message;
+            el.className = `status-message status-${type}`;
+            el.style.display = 'block';
+        }
+    }
+
+    async function startDiscogsPosting(records) {
+        if (isPosting) return;
+        if (records.length === 0) {
+            showDiscogsPostStatus('No records selected.', 'error');
+            return;
+        }
+
+        const locationInput = document.getElementById('discogs-post-location');
+        const location = locationInput ? locationInput.value.trim() : '';
+
+        if (!location) {
+            showDiscogsPostStatus('Please enter a location before posting.', 'error');
+            locationInput.focus();
+            return;
+        }
+
+        // Disable buttons
+        const startBtn = document.getElementById('discogs-post-start-btn');
+        const cancelBtn = document.getElementById('discogs-post-cancel-btn');
+        if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Posting...'; }
+        if (cancelBtn) { cancelBtn.disabled = true; }
+
+        isPosting = true;
+        postResults = [];
+        let successCount = 0;
+        let failCount = 0;
+
+        updateDiscogsPostLog('info', '📍 Location set to: ' + location);
+        updateDiscogsPostLog('info', '🚀 Starting to post ' + records.length + ' records...');
+
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
-            console.log(`📋 Processing record ${i+1}/${records.length}: ID ${record.id} - ${record.artist} - ${record.title}`);
-            const priceRequests = [{
-                id: record.id,
-                created_at: record.created_at,
-                store_price: record.store_price
-            }];
-            const batchResults = await calculateMarkupBatch(priceRequests);
-            let discogsPrice = null;
-            let markupPercent = null;
-            if (batchResults.length > 0) {
-                const item = batchResults[0];
-                if (item.id) {
-                    discogsPrice = item.discogs_price;
-                    markupPercent = item.markup_percent;
-                }
-            }
-            if (!discogsPrice) {
-                failed++;
-                showDiscogsStatus(`Failed to calculate price for "${record.artist} - ${record.title}"`, 'error');
-                continue;
-            }
-            const listingData = {
-                record: {
-                    id: record.id,
-                    artist: record.artist,
-                    title: record.title,
-                    catalog_number: record.catalog_number || '',
-                    media_condition: record.disc_condition_name || record.sleeve_condition_name,
-                    sleeve_condition: record.sleeve_condition_name || record.disc_condition_name,
-                    price: discogsPrice,
-                    notes: record.notes || '',
-                    location: record.location || ''
-                }
-            };
+            const current = i + 1;
+
+            // Update progress
+            updateDiscogsPostProgress(current, records.length);
+
             try {
+                // Step 1: Update location
+                updateDiscogsPostLog('info', `📝 Updating location for #${record.id}: ${record.artist} - ${record.title}`);
+                await apiPut('/records/' + record.id, { location: location });
+
+                // Step 2: Calculate markup price
+                updateDiscogsPostLog('info', `💰 Calculating price for #${record.id}...`);
+                const priceRequests = [{
+                    id: record.id,
+                    created_at: record.created_at,
+                    store_price: record.store_price
+                }];
+                const batchResults = await calculateMarkupBatch(priceRequests);
+                
+                let discogsPrice = null;
+                let markupPercent = null;
+                if (batchResults.length > 0 && batchResults[0].id) {
+                    discogsPrice = batchResults[0].discogs_price;
+                    markupPercent = batchResults[0].markup_percent;
+                }
+
+                if (!discogsPrice) {
+                    throw new Error('Could not calculate Discogs price');
+                }
+
+                // Step 3: Post to Discogs
+                updateDiscogsPostLog('info', `📤 Posting #${record.id}: ${record.artist} - ${record.title} at $${discogsPrice}...`);
+                
+                const listingData = {
+                    record: {
+                        id: record.id,
+                        artist: record.artist,
+                        title: record.title,
+                        catalog_number: record.catalog_number || '',
+                        media_condition: record.disc_condition_name || record.sleeve_condition_name || 'Very Good Plus (VG+)',
+                        sleeve_condition: record.sleeve_condition_name || record.disc_condition_name || 'Very Good Plus (VG+)',
+                        price: discogsPrice,
+                        notes: record.notes || '',
+                        location: location
+                    }
+                };
+
                 const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
                     method: 'POST',
                     credentials: 'include',
@@ -2755,23 +2956,56 @@
                     body: JSON.stringify(listingData)
                 });
                 const result = await response.json();
+
                 if (result.success) {
-                    posted++;
-                    showDiscogsStatus(`✅ Posted #${record.id}: ${record.artist} - ${record.title}`, 'success');
+                    successCount++;
+                    updateDiscogsPostLog('success', `✅ #${record.id}: ${record.artist} - ${record.title} posted successfully!`);
                 } else {
-                    failed++;
-                    showDiscogsStatus(`❌ Failed #${record.id}: ${result.error}`, 'error');
+                    throw new Error(result.error || 'Discogs API returned error');
                 }
+
             } catch (error) {
-                failed++;
-                showDiscogsStatus(`❌ Error posting #${record.id}: ${error.message}`, 'error');
+                failCount++;
+                updateDiscogsPostLog('error', `❌ #${record.id}: ${record.artist} - ${record.title} failed - ${error.message}`);
+                console.error('Error posting record #' + record.id, error);
             }
+
+            // Small delay between posts to avoid rate limiting
             if (i < records.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
-        showDiscogsStatus(`📊 Done: ${posted} posted, ${failed} failed.`, posted > 0 ? 'success' : 'error');
+
+        // Complete
+        isPosting = false;
+        updateDiscogsPostProgress(records.length, records.length);
+
+        const summary = `✅ ${successCount} posted successfully, ❌ ${failCount} failed.`;
+        updateDiscogsPostLog('info', '📊 ' + summary);
+
+        if (failCount === 0) {
+            showDiscogsPostStatus(`🎉 All ${records.length} records posted successfully!`, 'success');
+            playSuccessSound();
+        } else if (successCount > 0) {
+            showDiscogsPostStatus(`⚠️ ${successCount} posted, ${failCount} failed. Check log for details.`, 'warning');
+            playErrorSound();
+        } else {
+            showDiscogsPostStatus(`❌ All ${records.length} records failed to post.`, 'error');
+            playErrorSound();
+        }
+
+        // Re-enable buttons
+        if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Start Posting'; }
+        if (cancelBtn) { cancelBtn.disabled = false; }
+
+        // Refresh records
         refreshDiscogsRecords();
+    }
+
+    // ========== Post Selected Records (Legacy - replaced by modal) ==========
+    async function postSelectedRecords() {
+        // This is now handled by the modal flow
+        showDiscogsPostModal();
     }
 
     // ========== Delete Selected ==========
@@ -3780,8 +4014,8 @@
         } else if (mode === 'scan') {
             showCompleteScanModal();
         } else if (mode === 'discogs') {
-            console.log(`🔵 handleCompleteAction: calling postSelectedRecords`);
-            postSelectedRecords();
+            console.log(`🔵 handleCompleteAction: calling showDiscogsPostModal`);
+            showDiscogsPostModal();
         } else if (mode === 'delete') {
             deleteSelected();
         } else if (mode === 'checkout') {
@@ -4320,20 +4554,20 @@
             actionLabel = 'Complete Scan';
         } else if (mode === 'discogs') {
             completeActionBtn.disabled = !hasSelection;
-            actionLabel = `Post ${count} selected to Discogs`;
+            actionLabel = `📤 Post ${count} selected to Discogs`;
             console.log(`🔄 updateSelectionCount: discogs mode, hasSelection=${hasSelection}, count=${count}, btn disabled=${completeActionBtn.disabled}`);
         } else if (mode === 'delete') {
             completeActionBtn.disabled = !hasSelection;
-            actionLabel = `Delete ${count} selected`;
+            actionLabel = `🗑️ Delete ${count} selected`;
             console.log(`🔄 updateSelectionCount: delete mode, hasSelection=${hasSelection}, count=${count}, btn disabled=${completeActionBtn.disabled}`);
         } else if (mode === 'checkout') {
             completeActionBtn.disabled = checkoutSelectedItems.length === 0;
-            actionLabel = `Checkout ${checkoutSelectedItems.length} items`;
+            actionLabel = `🛒 Checkout ${checkoutSelectedItems.length} items`;
         } else if (mode === 'discogs_orders') {
             const hasOrder = selectedOrderId !== null;
             const hasItems = filteredRecords.length > 0;
             completeActionBtn.disabled = !(hasOrder && hasItems);
-            actionLabel = `Mark ${filteredRecords.length} items sold`;
+            actionLabel = `📦 Mark ${filteredRecords.length} items sold`;
         }
 
         if (mode !== 'add') {
@@ -4639,5 +4873,9 @@
 
     window.refreshDiscogsLocations = loadDiscogsLocations;
     window.initAddRecordsTab = init;
+
+    // Expose modal functions globally for onclick handlers
+    window.closeDiscogsPostModal = closeDiscogsPostModal;
+    window.showDiscogsPostModal = showDiscogsPostModal;
 
 })();
