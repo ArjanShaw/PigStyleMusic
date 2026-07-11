@@ -45,7 +45,7 @@
     // Delete mode filters
     const deleteStatusFilter = document.getElementById('delete-status-filter');
 
-    // Checkout filters – we keep the element but hide the status dropdown
+    // Checkout filters
     const checkoutFilters = document.getElementById('checkout-filters');
     const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
     const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
@@ -85,7 +85,7 @@
 
     // Checkout state
     let checkoutSelectedItems = [];
-    let checkoutViewMode = 'list'; // 'list' = show checkout items, 'search' = show search results
+    let checkoutViewMode = 'list';
     let checkoutRemaining = 0;
     let checkoutPaymentEntries = [];
     let checkoutTotal = 0;
@@ -478,11 +478,10 @@
                 console.log(`🔵 loadRecords: client search filtered from ${before} to ${records.length}`);
             }
 
-            // Only apply last‑seen filter if cutoff is actually set
             if (mode === 'discogs' && lastSeenCutoffDate) {
                 const before = records.length;
                 records = records.filter(r => meetsLastSeenFilter(r));
-                console.log(`🔵 loadRecords: last‑seen filter reduced from ${before} to ${records.length}`);
+                console.log(`🔵 loadRecords: last-seen filter reduced from ${before} to ${records.length}`);
             }
 
             allRecords = records;
@@ -524,7 +523,7 @@
         }
     }
 
-    // ========== Load Discogs Locations (kept separate) ==========
+    // ========== Load Discogs Locations ==========
     async function loadDiscogsLocations() {
         console.log('📍 Loading discogs locations...');
         try {
@@ -564,7 +563,7 @@
         });
     }
 
-    // ========== Refresh Discogs records based on location dropdown ==========
+    // ========== Refresh Discogs records ==========
     function refreshDiscogsRecords() {
         const selectedValue = discogsLocationSelect ? discogsLocationSelect.value : null;
         const baseOptions = { mode: 'discogs' };
@@ -580,7 +579,7 @@
         }
     }
 
-    // ========== Populate Discogs Prices (does NOT reset filteredRecords) ==========
+    // ========== Populate Discogs Prices ==========
     async function populateDiscogsPrices(records) {
         console.log(`💰 populateDiscogsPrices: received ${records.length} records`);
         if (!records || records.length === 0) {
@@ -588,7 +587,6 @@
             return;
         }
 
-        // Filter only eligible records (status_id=2, no consignor, meets last_seen, has created_at)
         const eligibleRecords = records.filter(r => {
             const eligible = r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at;
             if (eligible) {
@@ -623,7 +621,6 @@
             return;
         }
 
-        // Update records with price data (do NOT change filteredRecords)
         let updatedCount = 0;
         records.forEach(record => {
             if (pricesMap[record.id]) {
@@ -637,12 +634,11 @@
         });
         console.log(`💰 populateDiscogsPrices: updated ${updatedCount} records with price data`);
 
-        // Re-render the table to show the new price columns (but keep filteredRecords unchanged)
         renderTablePage();
         updateSelectionCount();
     }
 
-    // ========== Price Estimation (Add mode) ==========
+    // ========== Price Estimation ==========
     async function estimatePriceForRow(row, catalogNumber) {
         const sleeveSelect = row.querySelector('.sleeve-condition-select');
         const discSelect = row.querySelector('.disc-condition-select');
@@ -699,11 +695,11 @@
         }
     }
 
-    // ========== Load Discogs Orders List (with status filter) ==========
+    // ========== Load Discogs Orders List ==========
     async function loadDiscogsOrdersList(status) {
         console.log(`📦 loadDiscogsOrdersList() called with status: ${status || 'all'}`);
         try {
-            let url = `${AppConfig.baseUrl}/api/discogs/orders?per_page=200`;
+            let url = window.AppConfig.baseUrl + '/api/discogs/orders?per_page=200';
             if (status) {
                 url += `&status=${encodeURIComponent(status)}`;
             }
@@ -711,7 +707,7 @@
 
             const response = await fetch(url, {
                 credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
 
             if (!response.ok) {
@@ -731,7 +727,6 @@
             ordersList = data.orders || [];
             console.log(`📦 Loaded ${ordersList.length} orders`);
 
-            // Populate dropdown
             if (discogsOrderSelect) {
                 discogsOrderSelect.innerHTML = '<option value="">-- Select an order --</option>';
                 for (const order of ordersList) {
@@ -767,10 +762,10 @@
         }
 
         try {
-            const url = `${AppConfig.baseUrl}/api/discogs/orders/${orderId}`;
+            const url = window.AppConfig.baseUrl + '/api/discogs/orders/' + orderId;
             const response = await fetch(url, {
                 credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
 
             if (!response.ok) {
@@ -790,10 +785,8 @@
             const order = data.order;
             const items = order.items || [];
 
-            // Enrich items with PigStyle ID and record lookup
             const enrichedItems = [];
             for (const item of items) {
-                // Extract PigStyle ID from condition_comments or private_comments
                 let pigstyleId = null;
                 if (item.condition_comments) {
                     const match = item.condition_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
@@ -809,11 +802,10 @@
                 let barcode = null;
                 let catalog = null;
                 if (pigstyleId) {
-                    // Look up the record in the local database
                     try {
-                        const recRes = await fetch(`${AppConfig.baseUrl}/records/${pigstyleId}`, {
+                        const recRes = await fetch(window.AppConfig.baseUrl + '/records/' + pigstyleId, {
                             credentials: 'include',
-                            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+                            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
                         });
                         if (recRes.ok) {
                             const recData = await recRes.json();
@@ -822,7 +814,7 @@
                             barcode = recData.barcode || null;
                             catalog = recData.catalog_number || null;
                         } else {
-                            recordStatus = null; // not found
+                            recordStatus = null;
                         }
                     } catch (e) {
                         console.warn(`Could not fetch record ${pigstyleId}:`, e);
@@ -866,7 +858,7 @@
         }
     }
 
-    // ========== Process Discogs Order (Mark Sold) ==========
+    // ========== Process Discogs Order ==========
     async function processDiscogsOrder() {
         const items = filteredRecords;
         if (items.length === 0) {
@@ -874,7 +866,6 @@
             return;
         }
 
-        // Collect items with valid PigStyle ID
         const validItems = items.filter(item => item.pigstyle_id && !isNaN(item.pigstyle_id));
         if (validItems.length === 0) {
             showStatus('No items have a valid PigStyle ID. Please assign IDs first.', 'warning');
@@ -892,10 +883,10 @@
             const orderId = selectedOrderId;
 
             try {
-                const response = await fetch(`${AppConfig.baseUrl}/api/records/mark-sold-on-discogs`, {
+                const response = await fetch(window.AppConfig.baseUrl + '/api/records/mark-sold-on-discogs', {
                     method: 'POST',
                     credentials: 'include',
-                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         record_id: recordId,
                         sale_price: salePrice,
@@ -905,7 +896,6 @@
                 const data = await response.json();
                 if (data.status === 'success') {
                     posted++;
-                    // Update the item's status
                     item.record_status_id = 4;
                 } else {
                     failed++;
@@ -918,7 +908,6 @@
         }
 
         showStatus(`✅ ${posted} marked sold, ${failed} failed.`, posted > 0 ? 'success' : 'error');
-        // Refresh order items to reflect new statuses
         if (selectedOrderId) {
             await loadOrderItems(selectedOrderId);
         }
@@ -937,7 +926,7 @@
         }, 8000);
     }
 
-    // ========== Render Table ==========
+    // ========== RENDER TABLE PAGE ==========
     function renderTablePage() {
         console.log(`🔄 renderTablePage() – mode: ${currentSearchMode}, records: ${filteredRecords.length}`);
         const start = (currentPage - 1) * pageSize;
@@ -945,6 +934,8 @@
         const pageRecords = filteredRecords.slice(start, end);
 
         let theadHtml = '';
+        
+        // ===== ADD MODE =====
         if (currentSearchMode === 'add') {
             const isSearchResult = currentMode === 'search' && currentResults.length > 0;
             if (isSearchResult) {
@@ -971,9 +962,10 @@
                     </tr>
                 `;
             } else {
+                // INVENTORY VIEW - with Range column for selection
                 theadHtml = `
                     <tr>
-                        <th style="width:60px;">Range</th>
+                        <th style="width:100px;">Range</th>
                         <th>ID</th>
                         <th>Artist</th>
                         <th>Title</th>
@@ -985,9 +977,12 @@
                     </tr>
                 `;
             }
+        
+        // ===== SCAN MODE =====
         } else if (currentSearchMode === 'scan') {
             theadHtml = `
                 <tr>
+                    <th style="width:100px;">Range</th>
                     <th>ID</th>
                     <th>Artist</th>
                     <th>Title</th>
@@ -996,6 +991,8 @@
                     <th>Last Seen</th>
                 </tr>
             `;
+            
+        // ===== DISCOGS MODE =====
         } else if (currentSearchMode === 'discogs') {
             theadHtml = `
                 <tr>
@@ -1014,10 +1011,12 @@
                     <th>Post</th>
                 </tr>
             `;
+            
+        // ===== DELETE MODE =====
         } else if (currentSearchMode === 'delete') {
             theadHtml = `
                 <tr>
-                    <th style="width:60px;">Range</th>
+                    <th style="width:100px;">Range</th>
                     <th>ID</th>
                     <th>Artist</th>
                     <th>Title</th>
@@ -1025,10 +1024,12 @@
                     <th>Status</th>
                 </tr>
             `;
+            
+        // ===== CHECKOUT MODE =====
         } else if (currentSearchMode === 'checkout') {
-            // Checkout: always show ID, Artist, Title, Price, Barcode, Action
             theadHtml = `
                 <tr>
+                    <th style="width:100px;">Range</th>
                     <th>ID</th>
                     <th>Artist</th>
                     <th>Title</th>
@@ -1037,6 +1038,8 @@
                     <th>Action</th>
                 </tr>
             `;
+            
+        // ===== DISCOGS ORDERS MODE =====
         } else if (currentSearchMode === 'discogs_orders') {
             theadHtml = `
                 <tr>
@@ -1075,9 +1078,9 @@
             }
             const colCount = currentSearchMode === 'discogs_orders' ? 9 :
                              (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 9) :
-                             (currentSearchMode === 'scan' ? 6 :
+                             (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
-                             (currentSearchMode === 'delete' ? 6 : 6))));
+                             (currentSearchMode === 'delete' ? 6 : 7))));
             tbodyHtml = `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;">${msg}</td></tr>`;
         } else {
             const data = getCurrentData();
@@ -1088,108 +1091,122 @@
                                     globalIndex <= Math.max(rangeFromIndex, rangeToIndex));
 
                 let rowClass = isSelected ? 'record-selected' : '';
-                let fromButton, toButton;
-                const showRange = (currentSearchMode === 'add' && currentMode === 'search') ||
-                                  currentSearchMode === 'discogs' ||
-                                  currentSearchMode === 'delete';
-                if (!showRange) {
-                    fromButton = '';
-                    toButton = '';
-                } else if (!isRangeMode) {
-                    fromButton = `<button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>`;
-                    toButton = `<span style="color:#999;">to</span>`;
-                } else {
-                    if (rangeFromIndex === globalIndex && rangeToIndex === globalIndex) {
-                        fromButton = `<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span>`;
-                        toButton = `<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>`;
-                    } else if (rangeFromIndex === globalIndex) {
-                        fromButton = `<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span>`;
-                        toButton = `<button class="btn-to" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>`;
-                    } else if (rangeToIndex === globalIndex) {
-                        fromButton = `<button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>`;
-                        toButton = `<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>`;
+                
+                // Generate range buttons for all modes except discogs_orders
+                let rangeButtons = '';
+                const showRange = currentSearchMode !== 'discogs_orders';
+                
+                if (showRange) {
+                    if (!isRangeMode) {
+                        rangeButtons = `
+                            <button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>
+                            <span style="color:#999; margin:0 4px;">to</span>
+                        `;
                     } else {
-                        fromButton = `<button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>`;
-                        toButton = `<button class="btn-to" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>`;
+                        if (rangeFromIndex === globalIndex && rangeToIndex === globalIndex) {
+                            rangeButtons = `
+                                <span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span>
+                                <span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>
+                            `;
+                        } else if (rangeFromIndex === globalIndex) {
+                            rangeButtons = `
+                                <span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span>
+                                <button class="btn-to" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>
+                            `;
+                        } else if (rangeToIndex === globalIndex) {
+                            rangeButtons = `
+                                <button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>
+                                <span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>
+                            `;
+                        } else {
+                            rangeButtons = `
+                                <button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>
+                                <button class="btn-to" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>
+                            `;
+                        }
                     }
                 }
 
                 let rowHtml = `<tr class="${rowClass}" data-index="${globalIndex}">`;
 
-                if (currentSearchMode === 'add') {
-                    if (currentMode === 'search' && currentResults.length > 0) {
-                        const artist = record.artist || 'Unknown';
-                        const title = record.title || 'Unknown';
-                        const catalog = record.catalog_number || '';
-                        const condOptions = conditions.map(c =>
-                            `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
-                        ).join('');
-                        const consignorOptions = consignors.map(c =>
-                            `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
-                        ).join('');
+                // ===== ADD MODE - SEARCH RESULTS =====
+                if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const catalog = record.catalog_number || '';
+                    const condOptions = conditions.map(c =>
+                        `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
+                    ).join('');
+                    const consignorOptions = consignors.map(c =>
+                        `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
+                    ).join('');
 
-                        const imageUrl = record.image_url || record.thumb || '';
-                        const imageHtml = imageUrl ?
-                            `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px;">` :
-                            `<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>`;
+                    const imageUrl = record.image_url || record.thumb || '';
+                    const imageHtml = imageUrl ?
+                        `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px;">` :
+                        `<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>`;
 
-                        rowHtml += `
-                            <td style="text-align:center;">${fromButton} ${toButton}</td>
-                            <td style="text-align:center;">${imageHtml}</td>
-                            <td>${escapeHtml(artist)}</td>
-                            <td>${escapeHtml(title)}</td>
-                            <td>${escapeHtml(catalog)}</td>
-                            <td>
-                                <select class="sleeve-condition-select" style="width:100px; padding:4px;">
-                                    <option value="">Select...</option>
-                                    ${condOptions}
-                                </select>
-                            </td>
-                            <td>
-                                <select class="disc-condition-select" style="width:100px; padding:4px;">
-                                    <option value="">Select...</option>
-                                    ${condOptions}
-                                </select>
-                            </td>
-                            <td>
-                                <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
-                            </td>
-                            <td>
-                                <input type="number" class="cogs-input" step="0.01" min="0" value="" style="width:80px; padding:4px;">
-                            </td>
-                            <td>
-                                <select class="consignor-select" style="width:100px; padding:4px;">
-                                    <option value="">None</option>
-                                    ${consignorOptions}
-                                </select>
-                            </td>
-                            <td>
-                                <button class="btn-add-record-from-search" data-index="${globalIndex}" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">
-                                    <i class="fas fa-plus"></i> Add
-                                </button>
-                            </td>
-                        `;
-                    } else {
-                        const id = record.id;
-                        const artist = record.artist || 'Unknown';
-                        const title = record.title || 'Unknown';
-                        const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                        const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
-                        const catalog = record.catalog_number || '—';
-                        const barcode = record.barcode || record.id;
-                        const created = record.created_at ? new Date(record.created_at).toLocaleString() : 'Unknown';
-                        rowHtml += `
-                            <td style="text-align:center;">${fromButton} ${toButton}</td>
-                            <td>${id}</td>
-                            <td>${escapeHtml(artist)}</td>
-                            <td>${escapeHtml(title)}</td>
-                            <td>${price}</td>
-                            <td>${cogs}</td>
-                            <td>${escapeHtml(catalog)}</td>
-                            <td><span class="barcode-value">${barcode}</span></td>
-                            <td>${created}</td>
-                        `;
-                    }
+                    rowHtml += `
+                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
+                        <td style="text-align:center;">${imageHtml}</td>
+                        <td>${escapeHtml(artist)}</td>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${escapeHtml(catalog)}</td>
+                        <td>
+                            <select class="sleeve-condition-select" style="width:100px; padding:4px;">
+                                <option value="">Select...</option>
+                                ${condOptions}
+                            </select>
+                        </td>
+                        <td>
+                            <select class="disc-condition-select" style="width:100px; padding:4px;">
+                                <option value="">Select...</option>
+                                ${condOptions}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
+                        </td>
+                        <td>
+                            <input type="number" class="cogs-input" step="0.01" min="0" value="" style="width:80px; padding:4px;">
+                        </td>
+                        <td>
+                            <select class="consignor-select" style="width:100px; padding:4px;">
+                                <option value="">None</option>
+                                ${consignorOptions}
+                            </select>
+                        </td>
+                        <td>
+                            <button class="btn-add-record-from-search" data-index="${globalIndex}" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </td>
+                    `;
+                    
+                // ===== ADD MODE - INVENTORY VIEW =====
+                } else if (currentSearchMode === 'add' && currentMode !== 'search') {
+                    const id = record.id;
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+                    const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
+                    const catalog = record.catalog_number || '—';
+                    const barcode = record.barcode || record.id;
+                    const created = record.created_at ? new Date(record.created_at).toLocaleString() : 'Unknown';
+                    
+                    rowHtml += `
+                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
+                        <td>${id}</td>
+                        <td>${escapeHtml(artist)}</td>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${price}</td>
+                        <td>${cogs}</td>
+                        <td>${escapeHtml(catalog)}</td>
+                        <td><span class="barcode-value">${barcode}</span></td>
+                        <td>${created}</td>
+                    `;
+                    
+                // ===== SCAN MODE =====
                 } else if (currentSearchMode === 'scan') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1198,6 +1215,7 @@
                     const barcode = record.barcode || record.id;
                     const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
                     rowHtml += `
+                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
                         <td>${id}</td>
                         <td>${escapeHtml(artist)}</td>
                         <td>${escapeHtml(title)}</td>
@@ -1205,8 +1223,9 @@
                         <td><span class="barcode-value">${barcode}</span></td>
                         <td>${lastSeen}</td>
                     `;
+                    
+                // ===== DISCOGS MODE =====
                 } else if (currentSearchMode === 'discogs') {
-                    // Show ALL records – location may be missing
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
                     const title = record.title || 'Unknown';
@@ -1225,7 +1244,7 @@
                     const imgHtml = imageUrl ? `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px;">` : '<div style="width:80px; height:80px; background:#e0e0e0; border-radius:4px;"></div>';
 
                     rowHtml += `
-                        <td style="text-align:center;">${fromButton} ${toButton}</td>
+                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
                         <td style="text-align:center;">${imgHtml}</td>
                         <td>${id}</td>
                         <td><strong>${escapeHtml(artist)}</strong></td>
@@ -1242,6 +1261,8 @@
                                     '<span style="color: #999;">—</span>'}
                         </td>
                     `;
+                    
+                // ===== DELETE MODE =====
                 } else if (currentSearchMode === 'delete') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1250,13 +1271,15 @@
                     const statusName = getStatusName(record.status_id);
                     const statusClass = getStatusClass(record.status_id);
                     rowHtml += `
-                        <td style="text-align:center;">${fromButton} ${toButton}</td>
+                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
                         <td>${id}</td>
                         <td>${escapeHtml(artist)}</td>
                         <td>${escapeHtml(title)}</td>
                         <td>${price}</td>
                         <td><span class="status-badge ${statusClass}">${statusName}</span></td>
                     `;
+                    
+                // ===== CHECKOUT MODE =====
                 } else if (currentSearchMode === 'checkout') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1264,24 +1287,23 @@
                     const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
                     const barcode = record.barcode || record.id;
                     const inSelected = checkoutSelectedItems.some(r => r.id === record.id);
-                    // In checkout, we always show Add/Remove, but if we're in 'list' view, we show Remove for items in list,
-                    // and if we're in 'search' view, we show Add for items not in list.
+                    
                     let actionHtml;
                     if (checkoutViewMode === 'list') {
-                        // List view: only show Remove for items in the list (all records in filteredRecords are in checkout)
                         actionHtml = `<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="${record.id}"><i class="fas fa-minus"></i> Remove</button>`;
                     } else {
-                        // Search view: show Add if not already in checkout, else Remove
                         if (inSelected) {
                             actionHtml = `<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="${record.id}"><i class="fas fa-minus"></i> Remove</button>`;
                         } else {
                             actionHtml = `<button class="btn btn-sm btn-success add-checkout-item" data-record-id="${record.id}"><i class="fas fa-plus"></i> Add</button>`;
                         }
                     }
-                    // Show custom badge for custom items
+                    
                     const isCustom = record.isCustom === true;
                     const customBadge = isCustom ? '<span class="status-badge" style="background:#17a2b8; color:white; margin-left:5px;">Custom</span>' : '';
+                    
                     rowHtml += `
+                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
                         <td>${id}${customBadge}</td>
                         <td>${escapeHtml(artist)}</td>
                         <td>${escapeHtml(title)}</td>
@@ -1289,8 +1311,9 @@
                         <td><span class="barcode-value">${barcode}</span></td>
                         <td>${actionHtml}</td>
                     `;
+                    
+                // ===== DISCOGS ORDERS MODE =====
                 } else if (currentSearchMode === 'discogs_orders') {
-                    // Render order item row with editable PigStyle ID
                     const orderItem = record;
                     const idxNum = globalIndex + 1;
                     const artist = orderItem.artist || 'Unknown';
@@ -1333,7 +1356,7 @@
         }
         recordsTableBody.innerHTML = tbodyHtml;
 
-        // Attach event listeners for range buttons (if any)
+        // Attach event listeners for range buttons
         document.querySelectorAll('.btn-from').forEach(btn => {
             btn.addEventListener('click', function() {
                 const index = parseInt(this.dataset.index);
@@ -1347,7 +1370,7 @@
             });
         });
 
-        // Attach event listeners for add buttons (add mode)
+        // Attach event listeners for add buttons (add mode search results)
         if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
             document.querySelectorAll('.btn-add-record-from-search').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -1413,28 +1436,24 @@
             });
         }
 
-        // Discogs Orders mode: attach event listeners for PigStyle ID inputs and scan buttons
+        // Discogs Orders mode: PigStyle ID inputs
         if (currentSearchMode === 'discogs_orders') {
             document.querySelectorAll('.pigstyle-id-input').forEach(input => {
-                // On blur, update the pigstyle_id in the data
                 input.addEventListener('change', function() {
                     const row = this.closest('tr');
                     const index = parseInt(row.dataset.index);
                     const item = filteredRecords[index];
                     if (item) {
                         const val = this.value.trim();
-                        // Try to parse as integer
                         const newId = parseInt(val);
                         if (!isNaN(newId)) {
                             item.pigstyle_id = newId;
-                            // Also try to fetch record details (barcode, catalog, status)
                             fetchRecordForOrderItem(item, row);
                         } else {
                             item.pigstyle_id = null;
                         }
                     }
                 });
-                // On enter, trigger lookup for barcode
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
@@ -1450,14 +1469,11 @@
                 btn.addEventListener('click', function() {
                     const input = this.closest('td').querySelector('.pigstyle-id-input');
                     if (input) {
-                        // Simulate barcode scan: focus the input and prompt for barcode
                         const barcode = prompt('Enter or scan barcode:');
                         if (barcode && barcode.trim().length > 0) {
                             input.value = barcode.trim();
-                            // Trigger change event
                             const event = new Event('change');
                             input.dispatchEvent(event);
-                            // Also trigger lookup
                             lookupBarcodeForOrderItem(input, barcode.trim());
                         }
                     }
@@ -1469,12 +1485,12 @@
         updateFilterVisibility();
     }
 
-    // ========== Helper to lookup barcode for order item ==========
+    // ========== Helper: lookup barcode for order item ==========
     async function lookupBarcodeForOrderItem(input, barcode) {
         try {
-            const response = await fetch(`${AppConfig.baseUrl}/records/search?q=${encodeURIComponent(barcode)}`, {
+            const response = await fetch(window.AppConfig.baseUrl + '/records/search?q=' + encodeURIComponent(barcode), {
                 credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             if (!response.ok) {
                 showStatus('Error searching barcode.', 'error');
@@ -1483,12 +1499,9 @@
             const data = await response.json();
             if (data.status === 'success' && data.records && data.records.length === 1) {
                 const record = data.records[0];
-                // Update the input with the record ID
                 input.value = record.id;
-                // Trigger change event to update the item
                 const event = new Event('change');
                 input.dispatchEvent(event);
-                // Also update the row display (barcode, catalog, status) via fetchRecordForOrderItem
                 const row = input.closest('tr');
                 const index = parseInt(row.dataset.index);
                 const item = filteredRecords[index];
@@ -1497,8 +1510,6 @@
                     item.barcode = record.barcode;
                     item.catalog_number = record.catalog_number;
                     item.record_status_id = record.status_id;
-                    // Re-render the row (or just the barcode, catalog, status cells)
-                    // For simplicity, re-render the table
                     renderTablePage();
                 }
                 playSuccessSound();
@@ -1515,25 +1526,23 @@
         }
     }
 
-    // ========== Helper to fetch record details for an order item ==========
+    // ========== Helper: fetch record details for order item ==========
     async function fetchRecordForOrderItem(item, row) {
         if (!item.pigstyle_id) return;
         try {
-            const response = await fetch(`${AppConfig.baseUrl}/records/${item.pigstyle_id}`, {
+            const response = await fetch(window.AppConfig.baseUrl + '/records/' + item.pigstyle_id, {
                 credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             if (response.ok) {
                 const record = await response.json();
                 item.barcode = record.barcode || null;
                 item.catalog_number = record.catalog_number || null;
                 item.record_status_id = record.status_id;
-                // Update the row cells
                 const cells = row.querySelectorAll('td');
                 if (cells.length >= 5) {
-                    cells[4].textContent = item.barcode || '—'; // barcode column
-                    cells[3].textContent = item.catalog_number || '—'; // catalog column
-                    // status column
+                    cells[4].textContent = item.barcode || '—';
+                    cells[3].textContent = item.catalog_number || '—';
                     const statusCell = cells[8];
                     let statusText = '—';
                     let statusClass = '';
@@ -1556,6 +1565,7 @@
         const isCheckoutMode = currentSearchMode === 'checkout';
         const isAddMode = currentSearchMode === 'add';
         const isDiscogsOrdersMode = currentSearchMode === 'discogs_orders';
+        const isScanMode = currentSearchMode === 'scan';
 
         if (discogsUi) {
             discogsUi.style.display = (isDiscogsMode || isDeleteMode || isCheckoutMode || isDiscogsOrdersMode) ? 'block' : 'none';
@@ -1578,7 +1588,6 @@
                 `;
             }
         }
-        // Checkout filters: hide the status dropdown, keep the show selected buttons
         if (checkoutFilters) {
             const statusFilterEl = document.getElementById('checkout-status-filter');
             if (statusFilterEl) {
@@ -1587,13 +1596,11 @@
             checkoutFilters.style.display = isCheckoutMode ? 'block' : 'none';
         }
         if (checkoutShowSelectedBtn && checkoutShowAllBtn) {
-            // We'll repurpose them: Show Selected = show checkout list, Show All = show all active records (but we use search)
             checkoutShowSelectedBtn.style.display = isCheckoutMode ? 'inline-block' : 'none';
             checkoutShowAllBtn.style.display = isCheckoutMode ? 'inline-block' : 'none';
             if (isCheckoutMode) {
                 checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
                 checkoutShowAllBtn.textContent = 'Search Results';
-                // We'll add click handlers to switch views
                 checkoutShowSelectedBtn.onclick = function() {
                     checkoutViewMode = 'list';
                     filteredRecords = checkoutSelectedItems.slice();
@@ -1604,11 +1611,7 @@
                     updateSelectionCount();
                 };
                 checkoutShowAllBtn.onclick = function() {
-                    // Show all active records (but we don't have a dedicated "all" list, we'll trigger search with empty term? Better to reload active records)
-                    // Actually we want to show the full inventory, but we can load active records again.
-                    loadRecords({ statusIds: [2], mode: 'checkout' });
-                    checkoutViewMode = 'search'; // but we are showing all records, not search results; we can treat as search view.
-                    // We'll set filteredRecords = allRecords, but allRecords is already loaded.
+                    checkoutViewMode = 'search';
                     filteredRecords = allRecords.slice();
                     totalRecords = filteredRecords.length;
                     currentPage = 1;
@@ -1619,18 +1622,47 @@
             }
         }
 
-        // Discogs Orders filters
         const ordersFilters = document.getElementById('discogs-orders-filters');
         if (ordersFilters) {
             ordersFilters.style.display = isDiscogsOrdersMode ? 'block' : 'none';
         }
 
-        cogsBtn.style.display = isAddMode ? '' : 'none';
-        printBtn.style.display = isAddMode ? '' : 'none';
-        setActiveBtn.style.display = isAddMode ? '' : 'none';
+        // Show/hide action buttons
+        // In Add mode: show COGS, Print, and Set Active buttons
+        // In other modes: hide them, we use a single global Set Active button
+        if (isAddMode) {
+            cogsBtn.style.display = '';
+            printBtn.style.display = '';
+            setActiveBtn.style.display = '';
+            // Hide global set active button in Add mode
+            const globalBtn = document.getElementById('global-set-active-btn');
+            if (globalBtn) globalBtn.style.display = 'none';
+        } else {
+            cogsBtn.style.display = 'none';
+            printBtn.style.display = 'none';
+            setActiveBtn.style.display = 'none';
+            // Show global set active button in other modes
+            let globalBtn = document.getElementById('global-set-active-btn');
+            if (!globalBtn) {
+                globalBtn = document.createElement('button');
+                globalBtn.id = 'global-set-active-btn';
+                globalBtn.className = 'btn btn-warning';
+                globalBtn.innerHTML = '<i class="fas fa-check-double"></i> Set Active';
+                globalBtn.style.marginLeft = '8px';
+                globalBtn.title = 'Set selected records to Active (status_id=2)';
+                if (completeActionBtn && completeActionBtn.parentNode) {
+                    completeActionBtn.parentNode.insertBefore(globalBtn, completeActionBtn.nextSibling);
+                }
+                globalBtn.addEventListener('click', setActiveRecords);
+            }
+            // Show in scan, discogs, delete, checkout modes; hide in discogs_orders
+            const shouldShow = (isScanMode || isDiscogsMode || isDeleteMode || isCheckoutMode) && !isDiscogsOrdersMode;
+            globalBtn.style.display = shouldShow ? 'inline-block' : 'none';
+        }
+        
         completeActionBtn.style.display = isAddMode ? 'none' : '';
 
-        // Show/Hide custom item button (only in checkout mode)
+        // Show/hide custom item button (only in checkout mode)
         let customBtn = document.getElementById('custom-item-btn');
         if (isCheckoutMode) {
             if (!customBtn) {
@@ -1639,7 +1671,6 @@
                 customBtn.className = 'btn btn-info';
                 customBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Custom Item';
                 customBtn.addEventListener('click', showCustomItemModal);
-                // Insert after completeActionBtn
                 completeActionBtn.parentNode.insertBefore(customBtn, completeActionBtn.nextSibling);
             }
             customBtn.style.display = 'inline-block';
@@ -1652,13 +1683,11 @@
     let customItemModal = null;
 
     function showCustomItemModal() {
-        // Remove existing modal if any
         if (customItemModal) {
             customItemModal.remove();
             customItemModal = null;
         }
 
-        // Build modal
         customItemModal = document.createElement('div');
         customItemModal.className = 'modal-overlay';
         customItemModal.style.display = 'flex';
@@ -1688,18 +1717,15 @@
         customItemModal.id = 'custom-item-modal';
         document.body.appendChild(customItemModal);
 
-        // Focus on description field
         setTimeout(() => {
             const descInput = document.getElementById('custom-item-desc');
             if (descInput) descInput.focus();
         }, 100);
 
-        // Add button click
         document.getElementById('custom-item-add-btn').addEventListener('click', function() {
             addCustomItemFromModal();
         });
 
-        // Enter key on fields
         document.getElementById('custom-item-desc').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -1749,9 +1775,8 @@
             return;
         }
 
-        // Create custom item
         const customItem = {
-            id: -Date.now(), // negative to avoid collisions
+            id: -Date.now(),
             artist: 'Custom',
             title: desc,
             store_price: price,
@@ -1759,12 +1784,10 @@
             isCustom: true
         };
 
-        // Add to checkout
         checkoutSelectedItems.push(customItem);
         showStatus(`Added custom item: "${desc}" for $${price.toFixed(2)}`, 'success');
         closeCustomItemModal();
 
-        // Switch to list view and render
         checkoutViewMode = 'list';
         filteredRecords = checkoutSelectedItems.slice();
         totalRecords = filteredRecords.length;
@@ -1873,13 +1896,11 @@
 
             let filtered;
             if (isNumeric) {
-                // Numeric search: exact matches only on ID and barcode
                 filtered = allRecords.filter(r => {
                     const idMatch = r.id && r.id.toString() === termStr;
                     const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
                     return idMatch || barcodeMatch;
                 });
-                // If no exact match found, fall back to partial matches on other fields
                 if (filtered.length === 0) {
                     filtered = allRecords.filter(r => {
                         const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
@@ -1889,7 +1910,6 @@
                     });
                 }
             } else {
-                // Non-numeric: partial matches on artist, title, catalog_number (barcode and ID are less likely for text)
                 filtered = allRecords.filter(r => {
                     const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
                     const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
@@ -2043,7 +2063,6 @@
         } else if (currentSearchMode === 'delete') {
             applyDeleteFilter();
         } else if (currentSearchMode === 'checkout') {
-            // Go back to checkout list view
             checkoutViewMode = 'list';
             filteredRecords = checkoutSelectedItems.slice();
             totalRecords = filteredRecords.length;
@@ -2053,7 +2072,6 @@
             showStatus('Showing checkout list', 'info');
             updateSelectionCount();
         } else if (currentSearchMode === 'discogs_orders') {
-            // Clear the order selection
             if (discogsOrderSelect) discogsOrderSelect.value = '';
             selectedOrderId = null;
             currentOrderItems = [];
@@ -2062,7 +2080,6 @@
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            // Reload orders list with current status filter
             loadDiscogsOrdersList(ordersStatusFilter);
         }
         showStatus('Search cleared', 'info');
@@ -2488,7 +2505,7 @@
         }
     }
 
-    // ========== Last Seen Filter (Discogs) ==========
+    // ========== Last Seen Filter ==========
     function applyLastSeenFilter() {
         if (lastSeenCutoffDateInput) {
             lastSeenCutoffDate = lastSeenCutoffDateInput.value;
@@ -2548,9 +2565,9 @@
         }
     }
 
-    // ========== Post Selected Records (Discogs mode) ==========
+    // ========== Post Selected Records ==========
     async function postSelectedRecords() {
-        const records = getSelectedRecords();  // use unified range selection
+        const records = getSelectedRecords();
         console.log(`📋 postSelectedRecords: selected ${records.length} records out of ${filteredRecords.length} total filtered`);
         if (records.length === 0) {
             showDiscogsStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
@@ -2658,10 +2675,111 @@
         if (statuses.length === 0) statuses = [1,2];
         loadRecords({ statusIds: statuses, mode: 'delete', search: searchTerm });
     }
+    
+    // ========== SET ACTIVE - UNIFIED ==========
+    async function setActiveRecords() {
+        const mode = currentSearchMode;
+        let records = [];
+        
+        // FIRST: Check if there's a range selection in ANY mode (except checkout)
+        if (mode !== 'checkout' && rangeFromIndex !== null && rangeToIndex !== null) {
+            // Use the selected range
+            records = getSelectedRecords();
+            console.log(`🔵 setActiveRecords: using range selection, found ${records.length} records`);
+        } else if (mode === 'add') {
+            // In Add mode with no range selection, use all filtered records
+            records = filteredRecords;
+            console.log(`🔵 setActiveRecords: Add mode, no range, using all ${records.length} records`);
+        } else if (mode === 'scan') {
+            // In Scan mode, use all scanned records
+            records = filteredRecords;
+            console.log(`🔵 setActiveRecords: Scan mode, using all ${records.length} scanned records`);
+        } else if (mode === 'checkout') {
+            // In checkout mode, use checkoutSelectedItems
+            records = checkoutSelectedItems;
+            console.log(`🔵 setActiveRecords: Checkout mode, using ${records.length} checkout items`);
+        } else {
+            // For other modes (discogs, delete) that require range selection
+            if (rangeFromIndex === null || rangeToIndex === null) {
+                showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
+                return;
+            }
+            records = getSelectedRecords();
+            console.log(`🔵 setActiveRecords: ${mode} mode, using range selection, found ${records.length} records`);
+        }
+        
+        if (records.length === 0) {
+            showStatus('No records to set active.', 'warning');
+            return;
+        }
+        
+        // Filter out already active records (status_id = 2)
+        const inactiveRecords = records.filter(r => r.status_id !== 2);
+        if (inactiveRecords.length === 0) {
+            showStatus('All selected records are already active.', 'info');
+            return;
+        }
+        
+        // Show confirmation with correct count
+        if (!confirm(`Set ${inactiveRecords.length} record(s) to Active (status_id=2)? This cannot be undone.`)) {
+            return;
+        }
+        
+        let updated = 0;
+        let failed = 0;
+        
+        for (const record of inactiveRecords) {
+            // Skip custom items (checkout mode)
+            if (record.isCustom === true) continue;
+            
+            try {
+                await apiPut('/records/' + record.id, { status_id: 2 });
+                updated++;
+                record.status_id = 2;
+            } catch (e) {
+                console.error('Failed to update record', record.id, e);
+                failed++;
+            }
+        }
+        
+        showStatus(`✅ ${updated} records set to Active. ${failed > 0 ? failed + ' failed.' : ''}`, updated > 0 ? 'success' : 'error');
+        
+        // Refresh the current view based on mode
+        if (mode === 'add') {
+            await loadRecords({ statusIds: [1], mode: 'add' });
+        } else if (mode === 'discogs') {
+            refreshDiscogsRecords();
+        } else if (mode === 'delete') {
+            applyDeleteFilter();
+        } else if (mode === 'scan') {
+            // Re-render the current list
+            renderTablePage();
+            updateSelectionCount();
+        } else if (mode === 'checkout') {
+            // Update the checkout list
+            renderTablePage();
+            updateSelectionCount();
+        }
+        
+        // Clear range selection after operation
+        cancelRangeSelection();
+    }
 
     // ========== COGS Modal ==========
     function showCogsModal() {
-        const records = filteredRecords;
+        // In Add mode, COGS should apply to selected records or all records if no selection
+        let records = [];
+        
+        // Check if there's a range selection
+        if (rangeFromIndex !== null && rangeToIndex !== null) {
+            records = getSelectedRecords();
+        }
+        
+        // If no range selection, use all filtered records
+        if (records.length === 0) {
+            records = filteredRecords;
+        }
+        
         if (records.length === 0) {
             showStatus('No records to apply COGS to.', 'warning');
             return;
@@ -2699,7 +2817,6 @@
                                     <option value="">-- Select how you paid --</option>
                                 </select>
                             </div>
-                            <!-- NEW: Payment Type selection -->
                             <div style="grid-column: 1 / -1;">
                                 <label style="display:block; font-weight:500; margin-bottom:4px;">Payment Type:</label>
                                 <div style="display:flex; gap:20px;">
@@ -2707,7 +2824,6 @@
                                     <label><input type="radio" name="cogs_payment_type" value="store_credit"> Store Credit</label>
                                 </div>
                             </div>
-                            <!-- Store credit consignor selection (hidden by default) -->
                             <div id="cogs-consignor-section" style="grid-column:1/-1; display:none;">
                                 <label for="cogs-consignor" style="display:block; font-weight:500; margin-bottom:4px;">Consignor (to receive store credit) *</label>
                                 <select id="cogs-consignor" class="form-control" style="width:100%; padding:8px;">
@@ -2739,7 +2855,6 @@
             document.body.appendChild(modal);
         }
 
-        // Populate account dropdown
         const accountSelect = document.getElementById('cogs-payment-account');
         if (accountSelect) {
             accountSelect.innerHTML = '<option value="">-- Select how you paid --</option>';
@@ -2753,7 +2868,6 @@
             });
         }
 
-        // Populate consignor dropdown
         const consignorSelect = document.getElementById('cogs-consignor');
         if (consignorSelect) {
             consignorSelect.innerHTML = '<option value="">-- Select consignor --</option>';
@@ -2765,14 +2879,12 @@
             });
         }
 
-        // Toggle consignor section based on payment type
         const radios = document.querySelectorAll('input[name="cogs_payment_type"]');
         radios.forEach(radio => {
             radio.addEventListener('change', function() {
                 const isStoreCredit = this.value === 'store_credit';
                 document.getElementById('cogs-consignor-section').style.display = isStoreCredit ? 'block' : 'none';
                 if (isStoreCredit) {
-                    // Fetch multiplier from config or use default
                     fetch('/api/config/STORE_CREDIT_MULTIPLIER', { credentials: 'include' })
                         .then(res => res.json())
                         .then(data => {
@@ -2789,7 +2901,6 @@
             });
         });
 
-        // Update credit amount when amount changes
         const amountInput = document.getElementById('cogs-amount-spent');
         amountInput.addEventListener('input', function() {
             const paymentType = document.querySelector('input[name="cogs_payment_type"]:checked');
@@ -2805,7 +2916,6 @@
             document.getElementById('cogs-store-credit-amount').textContent = '$' + (amount * multiplier).toFixed(2);
         }
 
-        // File preview logic (unchanged)
         const fileInput = document.getElementById('cogs-bill-image');
         const previewDiv = document.getElementById('cogs-bill-preview');
         fileInput.onchange = function(e) {
@@ -2828,7 +2938,6 @@
             }
         };
 
-        // Validation for apply button
         function validateForm() {
             const btn = document.getElementById('cogs-apply-btn');
             if (!btn) return;
@@ -2854,19 +2963,18 @@
 
         validateForm();
 
-        // Replace apply button to avoid duplicate listeners
         const applyBtn = document.getElementById('cogs-apply-btn');
         const newApply = applyBtn.cloneNode(true);
         applyBtn.parentNode.replaceChild(newApply, applyBtn);
         newApply.addEventListener('click', function() {
-            handleCogsApply();
+            handleCogsApply(records);
         });
 
         modal.style.display = 'flex';
     }
 
     // ========== COGS Apply Handler ==========
-    async function handleCogsApply() {
+    async function handleCogsApply(records) {
         const statusDiv = document.getElementById('cogs-status');
         const applyBtn = document.getElementById('cogs-apply-btn');
 
@@ -2882,8 +2990,7 @@
 
         if (applyBtn) applyBtn.disabled = true;
 
-        const records = filteredRecords;
-        if (records.length === 0) {
+        if (!records || records.length === 0) {
             showCogsStatusMsg('No records to apply COGS to.', 'error');
             if (applyBtn) applyBtn.disabled = false;
             return;
@@ -2937,13 +3044,12 @@
             }
         }
 
-        // Upload bill image if present
         let billPath = null;
         if (billFile) {
             const formData = new FormData();
             formData.append('bill_image', billFile);
             try {
-                const uploadRes = await fetch(`${AppConfig.baseUrl}/api/inventory-purchases/upload-bill`, {
+                const uploadRes = await fetch(window.AppConfig.baseUrl + '/api/inventory-purchases/upload-bill', {
                     method: 'POST',
                     credentials: 'include',
                     body: formData
@@ -2976,10 +3082,10 @@
         };
 
         try {
-            const createResponse = await fetch(`${AppConfig.baseUrl}/api/inventory-purchases`, {
+            const createResponse = await fetch(window.AppConfig.baseUrl + '/api/inventory-purchases', {
                 method: 'POST',
                 credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
                 body: JSON.stringify(purchaseData)
             });
             const createResult = await createResponse.json();
@@ -2988,12 +3094,11 @@
             }
             const purchaseId = createResult.purchase_id;
 
-            // Apply COGS to records
             const recordIds = records.map(r => r.id);
-            const cogsResponse = await fetch(`${AppConfig.baseUrl}/api/cogs/batch`, {
+            const cogsResponse = await fetch(window.AppConfig.baseUrl + '/api/cogs/batch', {
                 method: 'POST',
                 credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     batch_cogs: amountSpent,
                     record_ids: recordIds
@@ -3023,37 +3128,26 @@
         }
     }
 
-    // ========== Print (Add mode) ==========
+    // ========== Print Price Tags ==========
     function printPriceTags() {
-        const records = filteredRecords;
+        // In Add mode, print should apply to selected records or all records if no selection
+        let records = [];
+        
+        // Check if there's a range selection
+        if (rangeFromIndex !== null && rangeToIndex !== null) {
+            records = getSelectedRecords();
+        }
+        
+        // If no range selection, use all filtered records
+        if (records.length === 0) {
+            records = filteredRecords;
+        }
+        
         if (records.length === 0) {
             showStatus('No records to print.', 'warning');
             return;
         }
         generatePDF(records);
-    }
-
-    // ========== Set Active (Add mode) ==========
-    async function setActive() {
-        const records = filteredRecords;
-        if (records.length === 0) {
-            showStatus('No records to set active.', 'warning');
-            return;
-        }
-        if (!confirm(`Set ${records.length} new record(s) to Active (status_id=2)? This cannot be undone.`)) {
-            return;
-        }
-        let updated = 0;
-        for (const record of records) {
-            try {
-                await apiPut('/records/' + record.id, { status_id: 2 });
-                updated++;
-            } catch (e) {
-                console.error('Failed to update record', record.id, e);
-            }
-        }
-        showStatus(`✅ ${updated} records set to Active.`, 'success');
-        await loadRecords({ statusIds: [1], mode: 'add' });
     }
 
     // ========== Checkout functions ==========
@@ -3063,7 +3157,6 @@
         if (!checkoutSelectedItems.some(r => r.id === recordId)) {
             checkoutSelectedItems.push(record);
             showStatus(`Added "${record.artist} - ${record.title}" to checkout`, 'success');
-            // Switch to list view
             checkoutViewMode = 'list';
             filteredRecords = checkoutSelectedItems.slice();
             totalRecords = filteredRecords.length;
@@ -3071,7 +3164,6 @@
             renderPagination();
             renderTablePage();
             updateSelectionCount();
-            // Update button text
             if (checkoutShowSelectedBtn) {
                 checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
             }
@@ -3085,7 +3177,6 @@
         if (index !== -1) {
             const removed = checkoutSelectedItems.splice(index, 1)[0];
             showStatus(`Removed "${removed.artist} - ${removed.title}" from checkout`, 'info');
-            // Stay in list view
             filteredRecords = checkoutSelectedItems.slice();
             totalRecords = filteredRecords.length;
             currentPage = 1;
@@ -3096,7 +3187,6 @@
                 checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
             }
             if (checkoutSelectedItems.length === 0) {
-                // If list is empty, show empty message
                 filteredRecords = [];
                 totalRecords = 0;
                 renderPagination();
@@ -3121,7 +3211,6 @@
     }
 
     function showCheckoutAll() {
-        // Show all active records (search view)
         checkoutViewMode = 'search';
         filteredRecords = allRecords.slice();
         totalRecords = filteredRecords.length;
@@ -3136,11 +3225,7 @@
         updateSelectionCount();
     }
 
-    function applyCheckoutFilter() {
-        // Not used anymore; we use search
-    }
-
-    // ========== Checkout Modal with Square Polling ==========
+    // ========== Square Payment Processing ==========
     async function checkSquareAvailability() {
         try {
             const response = await fetch(window.AppConfig.baseUrl + '/api/square/terminals', {
@@ -3160,7 +3245,6 @@
         return squareAvailable;
     }
 
-    // ========== Square Payment Processing (updated to use first available terminal) ==========
     async function processSquarePayment() {
         const statusDiv = document.getElementById('checkout-square-status');
         const completeBtn = document.getElementById('checkout-complete-payment');
@@ -3174,7 +3258,6 @@
         statusDiv.textContent = '⏳ Sending payment request to Square Terminal...';
 
         try {
-            // Get the first available terminal ID
             if (!squareAvailable || availableTerminals.length === 0) {
                 await checkSquareAvailability();
                 if (!squareAvailable || availableTerminals.length === 0) {
@@ -3199,7 +3282,7 @@
                     record_ids: recordIds,
                     record_titles: titles,
                     reference_id: generateOrderId(),
-                    device_id: deviceId  // explicitly pass the device ID
+                    device_id: deviceId
                 })
             });
 
@@ -3232,7 +3315,7 @@
 
         const statusDiv = document.getElementById('checkout-square-status');
         let attempts = 0;
-        const maxAttempts = 60; // 2 minutes at 2s intervals
+        const maxAttempts = 60;
 
         squarePollInterval = setInterval(async () => {
             attempts++;
@@ -3243,7 +3326,6 @@
                 });
                 const data = await response.json();
                 if (data.status !== 'success') {
-                    // Continue polling on error
                     return;
                 }
 
@@ -3251,14 +3333,11 @@
                 const status = checkout.status;
 
                 if (status === 'COMPLETED') {
-                    // Payment successful
                     clearInterval(squarePollInterval);
                     squarePollInterval = null;
                     statusDiv.textContent = '✅ Payment completed successfully!';
                     statusDiv.className = 'status-message status-success';
-                    // Mark records as sold
                     await completeCheckout();
-                    // Close modal after delay
                     setTimeout(() => {
                         const modal = document.getElementById('checkout-payment-modal');
                         if (modal) modal.style.display = 'none';
@@ -3276,7 +3355,6 @@
                     statusDiv.className = 'status-message status-info';
                 }
 
-                // Timeout
                 if (attempts >= maxAttempts) {
                     clearInterval(squarePollInterval);
                     squarePollInterval = null;
@@ -3289,13 +3367,12 @@
 
             } catch (error) {
                 console.warn('Polling error:', error);
-                // Continue polling
             }
         }, 2000);
     }
 
     // ========== Checkout Complete ==========
-    function completeCheckout() {
+    async function completeCheckout() {
         if (checkoutRemaining > 0.01) {
             showCheckoutStatus('Remaining balance not covered', 'error');
             return;
@@ -3305,22 +3382,18 @@
         const today = getLocalMSTDate();
         let success = 0;
         for (const record of selected) {
-            // Skip custom items – they are not real records
             if (record.isCustom === true) {
                 continue;
             }
             try {
-                apiPut('/records/' + record.id, {
+                await apiPut('/records/' + record.id, {
                     status_id: 3,
                     date_sold: today,
                     actual_sale_price: record.store_price
-                }).then(() => {
-                    success++;
-                }).catch(err => {
-                    console.error('Failed to update record', record.id, err);
                 });
-            } catch (e) {
-                console.error('Failed to update record', record.id, e);
+                success++;
+            } catch (err) {
+                console.error('Failed to update record', record.id, err);
             }
         }
         setTimeout(() => {
@@ -3344,7 +3417,6 @@
 
     // ========== Show Checkout Modal ==========
     function showCheckoutModal() {
-        // Remove any existing modal to avoid stale listeners
         const oldModal = document.getElementById('checkout-payment-modal');
         if (oldModal) {
             oldModal.parentNode.removeChild(oldModal);
@@ -3359,7 +3431,6 @@
         checkoutRemaining = grandTotal;
         checkoutPaymentEntries = [];
 
-        // Generate temporary order ID for store credit redemption
         const orderId = generateOrderId();
 
         let modal = document.createElement('div');
@@ -3407,7 +3478,6 @@
         `;
         document.body.appendChild(modal);
 
-        // Check Square availability
         checkSquareAvailability().then(avail => {
             const methodSelect = document.getElementById('checkout-payment-method');
             const cardOption = methodSelect.querySelector('option[value="Card (Square)"]');
@@ -3425,7 +3495,6 @@
         document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
         renderCheckoutEntries();
 
-        // Store credit handling
         const methodSelect = document.getElementById('checkout-payment-method');
         const storeCreditInfo = document.getElementById('store-credit-info');
         const balanceDisplay = document.getElementById('store-credit-balance-display');
@@ -3448,7 +3517,6 @@
             }
         });
 
-        // Add payment button
         document.getElementById('checkout-add-payment').onclick = function() {
             const amountInput = document.getElementById('checkout-payment-amount');
             const methodSelect2 = document.getElementById('checkout-payment-method');
@@ -3469,7 +3537,6 @@
             }
 
             if (method === 'Store Credit') {
-                // Redeem store credit
                 fetch('/api/store-credit/redeem', {
                     method: 'POST',
                     credentials: 'include',
@@ -3494,7 +3561,7 @@
             if (method === 'Gift Card') {
                 const code = prompt('Enter gift card code:');
                 if (!code) return;
-                fetch(`${AppConfig.baseUrl}/api/gift-cards/${encodeURIComponent(code)}`, {
+                fetch(window.AppConfig.baseUrl + '/api/gift-cards/' + encodeURIComponent(code), {
                     credentials: 'include'
                 })
                 .then(res => res.json())
@@ -3505,7 +3572,7 @@
                     if (data.card.balance < amount) {
                         throw new Error(`Insufficient balance: $${data.card.balance.toFixed(2)}`);
                     }
-                    return fetch(`${AppConfig.baseUrl}/api/gift-cards/${data.card.id}/redeem`, {
+                    return fetch(window.AppConfig.baseUrl + '/api/gift-cards/' + data.card.id + '/redeem', {
                         method: 'POST',
                         credentials: 'include',
                         headers: { 'Content-Type': 'application/json' },
@@ -3525,24 +3592,19 @@
                 return;
             }
 
-            // Cash or Card (Square) – we just add the entry; Square will be processed later
             addPaymentEntry(method, amount);
         };
 
-        // Complete button
         document.getElementById('checkout-complete-payment').onclick = function() {
             if (checkoutRemaining > 0.01) {
                 showCheckoutStatus('Remaining balance not covered', 'error');
                 return;
             }
-            // Determine if we need Square
             const methodSelect3 = document.getElementById('checkout-payment-method');
             const method = methodSelect3.value;
             if (method === 'Card (Square)') {
-                // Process Square payment
                 processSquarePayment();
             } else {
-                // Cash or Gift Card (already redeemed) – complete directly
                 completeCheckout();
             }
         };
@@ -3550,7 +3612,6 @@
         modal.style.display = 'flex';
         updateCheckoutCompleteButton();
 
-        // Reset square status
         const statusDiv = document.getElementById('checkout-square-status');
         if (statusDiv) {
             statusDiv.style.display = 'none';
@@ -3558,10 +3619,10 @@
         }
     }
 
-    // ========== Add Payment Entry (for Cash/Gift Card/Store Credit) ==========
+    // ========== Add Payment Entry ==========
     function addPaymentEntry(method, amount) {
         if (amount > checkoutRemaining && checkoutRemaining > 0) {
-            // allow overpayment, change will be displayed
+            // allow overpayment
         }
         checkoutPaymentEntries.push({ method: method, amount: amount });
         checkoutRemaining -= amount;
@@ -3958,6 +4019,9 @@
         currentSearchMode = newMode;
         console.log(`🔄 onModeChange: switching to ${newMode}`);
 
+        // Reset range selection when changing modes
+        cancelRangeSelection();
+
         if (newMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
@@ -4002,19 +4066,16 @@
             allRecords = [];
             loadRecords({ statusIds: [1,2], mode: 'delete' });
         } else if (newMode === 'checkout') {
-            // Load active records into allRecords, but show empty checkout list
             checkoutSelectedItems = [];
             checkoutViewMode = 'list';
-            filteredRecords = []; // start empty
+            filteredRecords = [];
             totalRecords = 0;
             currentPage = 1;
             renderPagination();
             renderTablePage();
             showStatus('Checkout mode: Search to add records, or use "Custom Item".', 'info');
             searchInput.placeholder = 'Search records...';
-            // Load active records for searching
             loadRecords({ statusIds: [2], mode: 'checkout' }).then(() => {
-                // After loading, we keep filteredRecords empty (list view)
                 checkoutViewMode = 'list';
                 filteredRecords = checkoutSelectedItems.slice();
                 totalRecords = filteredRecords.length;
@@ -4023,7 +4084,6 @@
                 renderTablePage();
                 updateSelectionCount();
             });
-            // Update button visibility
             if (checkoutShowSelectedBtn) {
                 checkoutShowSelectedBtn.style.display = 'inline-block';
                 checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
@@ -4041,7 +4101,6 @@
                 checkoutShowAllBtn.style.display = 'inline-block';
                 checkoutShowAllBtn.textContent = 'Search Results';
                 checkoutShowAllBtn.onclick = function() {
-                    // Show all active records (search view)
                     checkoutViewMode = 'search';
                     filteredRecords = allRecords.slice();
                     totalRecords = filteredRecords.length;
@@ -4059,9 +4118,7 @@
             renderTablePage();
             showStatus('Discogs Orders mode: Select an order to fulfill.', 'info');
             searchInput.placeholder = 'Search orders... (coming soon)';
-            // Load orders list with current status filter
             loadDiscogsOrdersList(ordersStatusFilter);
-            // Clear any previous selection
             if (discogsOrderSelect) discogsOrderSelect.value = '';
             selectedOrderId = null;
             currentOrderItems = [];
@@ -4103,11 +4160,9 @@
 
     // ========== UNIFIED SELECTION LOGIC ==========
     function getSelectedRecords() {
-        // Checkout mode uses its own list
         if (currentSearchMode === 'checkout') {
             return checkoutSelectedItems.slice();
         }
-        // All other modes use the range selection
         if (rangeFromIndex === null || rangeToIndex === null) {
             console.log('🔍 getSelectedRecords: no range selected');
             return [];
@@ -4127,12 +4182,25 @@
 
         const mode = currentSearchMode;
         const hasRecords = filteredRecords.length > 0;
+        const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
 
         if (mode === 'add') {
-            cogsBtn.disabled = !hasRecords;
-            printBtn.disabled = !hasRecords;
+            // In Add mode: COGS and Print use selection if available, otherwise all records
+            const hasTargets = hasSelection || hasRecords;
+            cogsBtn.disabled = !hasTargets;
+            printBtn.disabled = !hasTargets;
+            // Set Active uses all records in Add mode (or selected if we want)
             setActiveBtn.disabled = !hasRecords;
             completeActionBtn.style.display = 'none';
+            
+            // Update button text to show selection count if applicable
+            if (hasSelection) {
+                cogsBtn.textContent = `📊 COGS (${count} selected)`;
+                printBtn.textContent = `🖨️ Print (${count} selected)`;
+            } else {
+                cogsBtn.textContent = '📊 COGS (all)';
+                printBtn.textContent = '🖨️ Print (all)';
+            }
         } else {
             cogsBtn.style.display = 'none';
             printBtn.style.display = 'none';
@@ -4147,12 +4215,10 @@
             completeActionBtn.disabled = !hasRecords;
             actionLabel = 'Complete Scan';
         } else if (mode === 'discogs') {
-            const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
             completeActionBtn.disabled = !hasSelection;
             actionLabel = `Post ${count} selected to Discogs`;
             console.log(`🔄 updateSelectionCount: discogs mode, hasSelection=${hasSelection}, count=${count}, btn disabled=${completeActionBtn.disabled}`);
         } else if (mode === 'delete') {
-            const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
             completeActionBtn.disabled = !hasSelection;
             actionLabel = `Delete ${count} selected`;
             console.log(`🔄 updateSelectionCount: delete mode, hasSelection=${hasSelection}, count=${count}, btn disabled=${completeActionBtn.disabled}`);
@@ -4160,7 +4226,6 @@
             completeActionBtn.disabled = checkoutSelectedItems.length === 0;
             actionLabel = `Checkout ${checkoutSelectedItems.length} items`;
         } else if (mode === 'discogs_orders') {
-            // Enable only if an order is selected and there are items
             const hasOrder = selectedOrderId !== null;
             const hasItems = filteredRecords.length > 0;
             completeActionBtn.disabled = !(hasOrder && hasItems);
@@ -4171,7 +4236,14 @@
             completeActionBtn.textContent = actionLabel;
         }
 
+        // Show/hide cancel range button
         cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
+        
+        // Show selection count in status
+        if (hasSelection && mode !== 'add') {
+            const selectedText = `Selected ${count} record${count > 1 ? 's' : ''}`;
+            // Don't override the status message, just update the counter
+        }
     }
 
     function applyFilters() {
@@ -4300,7 +4372,6 @@
 
         searchModeSelect.addEventListener('change', onModeChange);
 
-        // ========== SEARCH BUTTON ==========
         let searchButton = document.getElementById('searchButton');
         if (!searchButton) {
             searchButton = document.createElement('button');
@@ -4328,7 +4399,6 @@
 
         clearSearchBtn.addEventListener('click', clearSearch);
 
-        // Scan mode only: immediate input handling
         searchInput.addEventListener('input', function() {
             if (currentSearchMode === 'scan') {
                 const term = this.value.trim();
@@ -4366,7 +4436,25 @@
 
         cogsBtn.addEventListener('click', showCogsModal);
         printBtn.addEventListener('click', printPriceTags);
-        setActiveBtn.addEventListener('click', setActive);
+        
+        // Set Active button (used in Add mode)
+        setActiveBtn.addEventListener('click', setActiveRecords);
+
+        // Global Set Active button (used in other modes)
+        let globalSetActiveBtn = document.getElementById('global-set-active-btn');
+        if (!globalSetActiveBtn) {
+            globalSetActiveBtn = document.createElement('button');
+            globalSetActiveBtn.id = 'global-set-active-btn';
+            globalSetActiveBtn.className = 'btn btn-warning';
+            globalSetActiveBtn.innerHTML = '<i class="fas fa-check-double"></i> Set Active';
+            globalSetActiveBtn.style.marginLeft = '8px';
+            globalSetActiveBtn.title = 'Set selected records to Active (status_id=2)';
+            if (completeActionBtn && completeActionBtn.parentNode) {
+                completeActionBtn.parentNode.insertBefore(globalSetActiveBtn, completeActionBtn.nextSibling);
+            }
+            globalSetActiveBtn.addEventListener('click', setActiveRecords);
+        }
+
         completeActionBtn.addEventListener('click', handleCompleteAction);
         cancelRangeBtn.addEventListener('click', cancelRangeSelection);
 
@@ -4394,9 +4482,7 @@
                 loadRecords({ statusIds: [2], mode: 'checkout' });
             });
         }
-        // We handle checkout buttons in onModeChange
 
-        // Discogs Orders: refresh button, order select, and status filter
         if (discogsOrdersRefreshBtn) {
             discogsOrdersRefreshBtn.addEventListener('click', function() {
                 loadDiscogsOrdersList(ordersStatusFilter);
