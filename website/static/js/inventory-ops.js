@@ -55,6 +55,10 @@
     const discogsOrdersRefreshBtn = document.getElementById('discogs-orders-refresh-btn');
     const discogsOrdersStatus = document.getElementById('discogs-orders-status');
     const discogsOrdersStatusFilter = document.getElementById('discogs-orders-status-filter');
+    const discogsOrdersApplyFiltersBtn = document.getElementById('discogs-orders-apply-filters-btn');
+    const discogsOrdersDateFrom = document.getElementById('discogs-orders-date-from');
+    const discogsOrdersDateTo = document.getElementById('discogs-orders-date-to');
+    const discogsOrdersSearch = document.getElementById('discogs-orders-search');
 
     // ========== State ==========
     let currentSearchMode = 'add';
@@ -695,14 +699,27 @@
         }
     }
 
-    // ========== Load Discogs Orders List ==========
-    async function loadDiscogsOrdersList(status) {
-        console.log(`📦 loadDiscogsOrdersList() called with status: ${status || 'all'}`);
+    // ========== Load Discogs Orders List (with filters) ==========
+    async function loadDiscogsOrdersList(status, dateFrom, dateTo, search) {
+        console.log(`📦 loadDiscogsOrdersList() called with: status=${status || 'all'}, dateFrom=${dateFrom}, dateTo=${dateTo}, search=${search}`);
         try {
             let url = window.AppConfig.baseUrl + '/api/discogs/orders?per_page=200';
-            if (status) {
+            
+            if (status && status !== '') {
                 url += `&status=${encodeURIComponent(status)}`;
             }
+            if (dateFrom) {
+                url += `&date_from=${encodeURIComponent(dateFrom)}`;
+            }
+            if (dateTo) {
+                url += `&date_to=${encodeURIComponent(dateTo)}`;
+            }
+            if (search && search.trim() !== '') {
+                url += `&search=${encodeURIComponent(search.trim())}`;
+            }
+            
+            url += `&all=true`;
+
             console.log(`📦 Fetching orders from: ${url}`);
 
             const response = await fetch(url, {
@@ -735,7 +752,8 @@
                     const buyer = order.buyer_username || order.buyer_name || 'Unknown buyer';
                     const date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '';
                     const total = order.total_amount ? `$${order.total_amount.toFixed(2)}` : '';
-                    option.textContent = `${order.order_id} - ${buyer} ${date} ${total}`;
+                    const itemCount = order.items ? order.items.length : 0;
+                    option.textContent = `${order.order_id} - ${buyer} ${date} ${total} (${itemCount} items)`;
                     discogsOrderSelect.appendChild(option);
                 }
             }
@@ -746,6 +764,57 @@
             console.error('❌ Error loading orders:', error);
             updateDiscogsOrdersStatus(`❌ Error: ${error.message}`, 'error');
         }
+    }
+
+    // ========== Apply Discogs Orders Filters ==========
+    async function applyDiscogsOrdersFilters() {
+        const status = document.getElementById('discogs-orders-status-filter')?.value || '';
+        const dateFrom = document.getElementById('discogs-orders-date-from')?.value || '';
+        const dateTo = document.getElementById('discogs-orders-date-to')?.value || '';
+        const search = document.getElementById('discogs-orders-search')?.value || '';
+        
+        ordersStatusFilter = status;
+        
+        await loadDiscogsOrdersList(status, dateFrom, dateTo, search);
+        
+        if (discogsOrderSelect) {
+            discogsOrderSelect.value = '';
+        }
+        selectedOrderId = null;
+        currentOrderItems = [];
+        filteredRecords = [];
+        totalRecords = 0;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        updateSelectionCount();
+    }
+
+    // ========== Refresh Discogs Orders ==========
+    function refreshDiscogsOrders() {
+        const dateFrom = document.getElementById('discogs-orders-date-from');
+        const dateTo = document.getElementById('discogs-orders-date-to');
+        const search = document.getElementById('discogs-orders-search');
+        const statusFilter = document.getElementById('discogs-orders-status-filter');
+        
+        if (!dateFrom.value) {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            dateFrom.value = thirtyDaysAgo.toISOString().split('T')[0];
+        }
+        if (!dateTo.value) {
+            dateTo.value = new Date().toISOString().split('T')[0];
+        }
+        
+        if (search) {
+            search.value = '';
+        }
+        
+        if (statusFilter) {
+            statusFilter.value = '';
+        }
+        
+        applyDiscogsOrdersFilters();
     }
 
     // ========== Load Order Items ==========
@@ -788,12 +857,18 @@
             const enrichedItems = [];
             for (const item of items) {
                 let pigstyleId = null;
+                
+                // Check condition_comments for PIGSTYLE ID
                 if (item.condition_comments) {
                     const match = item.condition_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
                     if (match) pigstyleId = parseInt(match[1], 10);
                 }
                 if (!pigstyleId && item.private_comments) {
                     const match = item.private_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
+                    if (match) pigstyleId = parseInt(match[1], 10);
+                }
+                if (!pigstyleId && item.release_description) {
+                    const match = item.release_description.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
                     if (match) pigstyleId = parseInt(match[1], 10);
                 }
 
@@ -833,7 +908,9 @@
                     title: item.title || 'Unknown',
                     price: item.price || 0,
                     media_condition: item.media_condition || '—',
-                    quantity: item.quantity || 1
+                    quantity: item.quantity || 1,
+                    condition_comments: item.condition_comments || '',
+                    private_comments: item.private_comments || ''
                 });
             }
 
@@ -855,6 +932,50 @@
             renderPagination();
             renderTablePage();
             updateDiscogsOrdersStatus(`❌ Error: ${error.message}`, 'error');
+        }
+    }
+
+    // ========== Mark Record Sold on Discogs ==========
+    async function markRecordSoldOnDiscogs(recordId) {
+        if (!recordId) {
+            showStatus('No record ID provided.', 'error');
+            return;
+        }
+        
+        if (!confirm(`Mark record #${recordId} as sold on Discogs?\n\nThis will:\n- Search Discogs orders for this record\n- Auto-fetch the sale price\n- Mark the record as sold (status_id=4)\n- Set the sale date to today`)) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/records/' + recordId + '/mark-discogs-sold', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                const price = data.record ? data.record.store_price : 'unknown';
+                showStatus(`✅ Record #${recordId} marked as sold on Discogs for $${price}`, 'success');
+                playSuccessSound();
+                
+                if (currentSearchMode === 'discogs_orders' && selectedOrderId) {
+                    await loadOrderItems(selectedOrderId);
+                } else {
+                    renderTablePage();
+                    updateSelectionCount();
+                }
+            } else {
+                showStatus(`❌ Error: ${data.error || 'Failed to mark record as sold'}`, 'error');
+                playErrorSound();
+            }
+        } catch (error) {
+            console.error('Error marking record sold on Discogs:', error);
+            showStatus('❌ Error: ' + error.message, 'error');
+            playErrorSound();
         }
     }
 
@@ -962,7 +1083,6 @@
                     </tr>
                 `;
             } else {
-                // INVENTORY VIEW - with Range column for selection
                 theadHtml = `
                     <tr>
                         <th style="width:100px;">Range</th>
@@ -1052,6 +1172,7 @@
                     <th>Condition</th>
                     <th>PigStyle ID</th>
                     <th>Status</th>
+                    <th>Action</th>
                 </tr>
             `;
         }
@@ -1076,7 +1197,7 @@
                 else if (!selectedOrderId) msg = 'Select an order from the dropdown.';
                 else msg = 'This order has no items.';
             }
-            const colCount = currentSearchMode === 'discogs_orders' ? 9 :
+            const colCount = currentSearchMode === 'discogs_orders' ? 10 :
                              (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 9) :
                              (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
@@ -1092,7 +1213,6 @@
 
                 let rowClass = isSelected ? 'record-selected' : '';
                 
-                // Generate range buttons for all modes except discogs_orders
                 let rangeButtons = '';
                 const showRange = currentSearchMode !== 'discogs_orders';
                 
@@ -1331,6 +1451,17 @@
                     else if (recordStatus === 1) { statusText = 'New'; statusClass = 'new'; }
                     else { statusText = 'Not found'; statusClass = ''; }
 
+                    let actionButton = '';
+                    if (pigstyleId && recordStatus !== 3 && recordStatus !== 4) {
+                        actionButton = `
+                            <button class="btn btn-sm btn-success mark-discogs-sold-btn" 
+                                    data-record-id="${pigstyleId}"
+                                    style="padding:2px 6px; font-size:11px; margin-top:4px;">
+                                <i class="fab fa-discogs"></i> Mark Sold
+                            </button>
+                        `;
+                    }
+
                     rowHtml += `
                         <td>${idxNum}</td>
                         <td>${escapeHtml(artist)}</td>
@@ -1347,6 +1478,7 @@
                             </button>
                         </td>
                         <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>${actionButton}</td>
                     `;
                 }
 
@@ -1436,7 +1568,7 @@
             });
         }
 
-        // Discogs Orders mode: PigStyle ID inputs
+        // Discogs Orders mode: PigStyle ID inputs and Mark Sold buttons
         if (currentSearchMode === 'discogs_orders') {
             document.querySelectorAll('.pigstyle-id-input').forEach(input => {
                 input.addEventListener('change', function() {
@@ -1477,6 +1609,13 @@
                             lookupBarcodeForOrderItem(input, barcode.trim());
                         }
                     }
+                });
+            });
+
+            document.querySelectorAll('.mark-discogs-sold-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const recordId = parseInt(this.dataset.recordId);
+                    markRecordSoldOnDiscogs(recordId);
                 });
             });
         }
@@ -1627,21 +1766,16 @@
             ordersFilters.style.display = isDiscogsOrdersMode ? 'block' : 'none';
         }
 
-        // Show/hide action buttons
-        // In Add mode: show COGS, Print, and Set Active buttons
-        // In other modes: hide them, we use a single global Set Active button
         if (isAddMode) {
             cogsBtn.style.display = '';
             printBtn.style.display = '';
             setActiveBtn.style.display = '';
-            // Hide global set active button in Add mode
             const globalBtn = document.getElementById('global-set-active-btn');
             if (globalBtn) globalBtn.style.display = 'none';
         } else {
             cogsBtn.style.display = 'none';
             printBtn.style.display = 'none';
             setActiveBtn.style.display = 'none';
-            // Show global set active button in other modes
             let globalBtn = document.getElementById('global-set-active-btn');
             if (!globalBtn) {
                 globalBtn = document.createElement('button');
@@ -1655,14 +1789,12 @@
                 }
                 globalBtn.addEventListener('click', setActiveRecords);
             }
-            // Show in scan, discogs, delete, checkout modes; hide in discogs_orders
             const shouldShow = (isScanMode || isDiscogsMode || isDeleteMode || isCheckoutMode) && !isDiscogsOrdersMode;
             globalBtn.style.display = shouldShow ? 'inline-block' : 'none';
         }
         
         completeActionBtn.style.display = isAddMode ? 'none' : '';
 
-        // Show/hide custom item button (only in checkout mode)
         let customBtn = document.getElementById('custom-item-btn');
         if (isCheckoutMode) {
             if (!customBtn) {
@@ -2080,7 +2212,7 @@
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            loadDiscogsOrdersList(ordersStatusFilter);
+            applyDiscogsOrdersFilters();
         }
         showStatus('Search cleared', 'info');
     }
@@ -2675,31 +2807,25 @@
         if (statuses.length === 0) statuses = [1,2];
         loadRecords({ statusIds: statuses, mode: 'delete', search: searchTerm });
     }
-    
+
     // ========== SET ACTIVE - UNIFIED ==========
     async function setActiveRecords() {
         const mode = currentSearchMode;
         let records = [];
         
-        // FIRST: Check if there's a range selection in ANY mode (except checkout)
-        if (mode !== 'checkout' && rangeFromIndex !== null && rangeToIndex !== null) {
-            // Use the selected range
+        if (rangeFromIndex !== null && rangeToIndex !== null) {
             records = getSelectedRecords();
             console.log(`🔵 setActiveRecords: using range selection, found ${records.length} records`);
         } else if (mode === 'add') {
-            // In Add mode with no range selection, use all filtered records
             records = filteredRecords;
             console.log(`🔵 setActiveRecords: Add mode, no range, using all ${records.length} records`);
         } else if (mode === 'scan') {
-            // In Scan mode, use all scanned records
             records = filteredRecords;
             console.log(`🔵 setActiveRecords: Scan mode, using all ${records.length} scanned records`);
         } else if (mode === 'checkout') {
-            // In checkout mode, use checkoutSelectedItems
             records = checkoutSelectedItems;
             console.log(`🔵 setActiveRecords: Checkout mode, using ${records.length} checkout items`);
         } else {
-            // For other modes (discogs, delete) that require range selection
             if (rangeFromIndex === null || rangeToIndex === null) {
                 showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
                 return;
@@ -2713,14 +2839,12 @@
             return;
         }
         
-        // Filter out already active records (status_id = 2)
         const inactiveRecords = records.filter(r => r.status_id !== 2);
         if (inactiveRecords.length === 0) {
             showStatus('All selected records are already active.', 'info');
             return;
         }
         
-        // Show confirmation with correct count
         if (!confirm(`Set ${inactiveRecords.length} record(s) to Active (status_id=2)? This cannot be undone.`)) {
             return;
         }
@@ -2729,7 +2853,6 @@
         let failed = 0;
         
         for (const record of inactiveRecords) {
-            // Skip custom items (checkout mode)
             if (record.isCustom === true) continue;
             
             try {
@@ -2744,7 +2867,6 @@
         
         showStatus(`✅ ${updated} records set to Active. ${failed > 0 ? failed + ' failed.' : ''}`, updated > 0 ? 'success' : 'error');
         
-        // Refresh the current view based on mode
         if (mode === 'add') {
             await loadRecords({ statusIds: [1], mode: 'add' });
         } else if (mode === 'discogs') {
@@ -2752,30 +2874,24 @@
         } else if (mode === 'delete') {
             applyDeleteFilter();
         } else if (mode === 'scan') {
-            // Re-render the current list
             renderTablePage();
             updateSelectionCount();
         } else if (mode === 'checkout') {
-            // Update the checkout list
             renderTablePage();
             updateSelectionCount();
         }
         
-        // Clear range selection after operation
         cancelRangeSelection();
     }
 
     // ========== COGS Modal ==========
     function showCogsModal() {
-        // In Add mode, COGS should apply to selected records or all records if no selection
         let records = [];
         
-        // Check if there's a range selection
         if (rangeFromIndex !== null && rangeToIndex !== null) {
             records = getSelectedRecords();
         }
         
-        // If no range selection, use all filtered records
         if (records.length === 0) {
             records = filteredRecords;
         }
@@ -3130,15 +3246,12 @@
 
     // ========== Print Price Tags ==========
     function printPriceTags() {
-        // In Add mode, print should apply to selected records or all records if no selection
         let records = [];
         
-        // Check if there's a range selection
         if (rangeFromIndex !== null && rangeToIndex !== null) {
             records = getSelectedRecords();
         }
         
-        // If no range selection, use all filtered records
         if (records.length === 0) {
             records = filteredRecords;
         }
@@ -3193,36 +3306,6 @@
                 renderTablePage();
             }
         }
-    }
-
-    function showCheckoutSelected() {
-        checkoutViewMode = 'list';
-        filteredRecords = checkoutSelectedItems.slice();
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
-        }
-        checkoutShowSelectedBtn.style.display = 'none';
-        checkoutShowAllBtn.style.display = 'inline-block';
-        updateSelectionCount();
-    }
-
-    function showCheckoutAll() {
-        checkoutViewMode = 'search';
-        filteredRecords = allRecords.slice();
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
-        }
-        checkoutShowSelectedBtn.style.display = 'inline-block';
-        checkoutShowAllBtn.style.display = 'none';
-        updateSelectionCount();
     }
 
     // ========== Square Payment Processing ==========
@@ -4019,7 +4102,6 @@
         currentSearchMode = newMode;
         console.log(`🔄 onModeChange: switching to ${newMode}`);
 
-        // Reset range selection when changing modes
         cancelRangeSelection();
 
         if (newMode === 'add') {
@@ -4117,9 +4199,34 @@
             renderPagination();
             renderTablePage();
             showStatus('Discogs Orders mode: Select an order to fulfill.', 'info');
-            searchInput.placeholder = 'Search orders... (coming soon)';
-            loadDiscogsOrdersList(ordersStatusFilter);
-            if (discogsOrderSelect) discogsOrderSelect.value = '';
+            searchInput.placeholder = 'Search orders...';
+            
+            const dateFrom = document.getElementById('discogs-orders-date-from');
+            const dateTo = document.getElementById('discogs-orders-date-to');
+            if (dateFrom && !dateFrom.value) {
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                dateFrom.value = thirtyDaysAgo.toISOString().split('T')[0];
+            }
+            if (dateTo && !dateTo.value) {
+                dateTo.value = new Date().toISOString().split('T')[0];
+            }
+            
+            const search = document.getElementById('discogs-orders-search');
+            if (search) {
+                search.value = '';
+            }
+            
+            const statusFilter = document.getElementById('discogs-orders-status-filter');
+            if (statusFilter) {
+                statusFilter.value = '';
+            }
+            
+            applyDiscogsOrdersFilters();
+            
+            if (discogsOrderSelect) {
+                discogsOrderSelect.value = '';
+            }
             selectedOrderId = null;
             currentOrderItems = [];
         }
@@ -4185,15 +4292,12 @@
         const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
 
         if (mode === 'add') {
-            // In Add mode: COGS and Print use selection if available, otherwise all records
             const hasTargets = hasSelection || hasRecords;
             cogsBtn.disabled = !hasTargets;
             printBtn.disabled = !hasTargets;
-            // Set Active uses all records in Add mode (or selected if we want)
             setActiveBtn.disabled = !hasRecords;
             completeActionBtn.style.display = 'none';
             
-            // Update button text to show selection count if applicable
             if (hasSelection) {
                 cogsBtn.textContent = `📊 COGS (${count} selected)`;
                 printBtn.textContent = `🖨️ Print (${count} selected)`;
@@ -4236,14 +4340,7 @@
             completeActionBtn.textContent = actionLabel;
         }
 
-        // Show/hide cancel range button
         cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
-        
-        // Show selection count in status
-        if (hasSelection && mode !== 'add') {
-            const selectedText = `Selected ${count} record${count > 1 ? 's' : ''}`;
-            // Don't override the status message, just update the counter
-        }
     }
 
     function applyFilters() {
@@ -4437,10 +4534,8 @@
         cogsBtn.addEventListener('click', showCogsModal);
         printBtn.addEventListener('click', printPriceTags);
         
-        // Set Active button (used in Add mode)
         setActiveBtn.addEventListener('click', setActiveRecords);
 
-        // Global Set Active button (used in other modes)
         let globalSetActiveBtn = document.getElementById('global-set-active-btn');
         if (!globalSetActiveBtn) {
             globalSetActiveBtn = document.createElement('button');
@@ -4483,11 +4578,31 @@
             });
         }
 
-        if (discogsOrdersRefreshBtn) {
-            discogsOrdersRefreshBtn.addEventListener('click', function() {
-                loadDiscogsOrdersList(ordersStatusFilter);
+        // Discogs Orders: Apply filters button
+        if (discogsOrdersApplyFiltersBtn) {
+            discogsOrdersApplyFiltersBtn.addEventListener('click', function() {
+                applyDiscogsOrdersFilters();
             });
         }
+
+        // Discogs Orders: Refresh button
+        if (discogsOrdersRefreshBtn) {
+            discogsOrdersRefreshBtn.addEventListener('click', function() {
+                refreshDiscogsOrders();
+            });
+        }
+
+        // Discogs Orders: Enter key on search input
+        if (discogsOrdersSearch) {
+            discogsOrdersSearch.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyDiscogsOrdersFilters();
+                }
+            });
+        }
+
+        // Discogs Orders: Order select
         if (discogsOrderSelect) {
             discogsOrderSelect.addEventListener('change', function() {
                 const orderId = this.value;
@@ -4505,19 +4620,13 @@
                 updateSelectionCount();
             });
         }
+
+        // Discogs Orders: Status filter
         if (discogsOrdersStatusFilter) {
             discogsOrdersStatusFilter.addEventListener('change', function() {
                 ordersStatusFilter = this.value || '';
                 console.log(`📦 Status filter changed to: ${ordersStatusFilter || 'all'}`);
-                loadDiscogsOrdersList(ordersStatusFilter);
-                if (discogsOrderSelect) discogsOrderSelect.value = '';
-                selectedOrderId = null;
-                currentOrderItems = [];
-                filteredRecords = [];
-                totalRecords = 0;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
+                applyDiscogsOrdersFilters();
             });
         }
 
