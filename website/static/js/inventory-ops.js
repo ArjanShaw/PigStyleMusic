@@ -42,6 +42,13 @@
     const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
     const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
 
+    // Default Parameters elements
+    const defaultSleeveSelect = document.getElementById('default-sleeve-condition');
+    const defaultDiscSelect = document.getElementById('default-disc-condition');
+    const defaultPriceInput = document.getElementById('default-price');
+    const defaultCogsInput = document.getElementById('default-cogs');
+    const defaultConsignorSelect = document.getElementById('default-consignor');
+
     // Delete mode filters
     const deleteStatusFilter = document.getElementById('delete-status-filter');
 
@@ -121,6 +128,16 @@
     let isPosting = false;
     let postProgress = 0;
     let postResults = [];
+
+    // Default Parameters state
+    let defaultParams = {
+        sleeveConditionId: null,
+        discConditionId: null,
+        price: null,
+        cogs: null,
+        consignorId: null
+    };
+    let defaultParamsActive = false;
 
     // ========== Audio ==========
     let audioContext = null;
@@ -398,6 +415,142 @@
         document.getElementById('commission-rate').textContent = commission.commission_rate_percent;
     }
 
+    // ========== Default Parameters Functions ==========
+    function toggleDefaultParams() {
+        const content = document.getElementById('default-params-content');
+        const icon = document.getElementById('default-params-toggle-icon');
+        if (!content || !icon) return;
+        if (content.style.display === 'none' || content.style.display === '') {
+            content.style.display = 'block';
+            icon.style.transform = 'rotate(180deg)';
+            loadDefaultParamsFromStorage();
+        } else {
+            content.style.display = 'none';
+            icon.style.transform = 'rotate(0deg)';
+        }
+    }
+
+    function loadDefaultParamsFromStorage() {
+        try {
+            const stored = localStorage.getItem('defaultParams');
+            if (stored) {
+                const params = JSON.parse(stored);
+                if (params.sleeveConditionId && defaultSleeveSelect) {
+                    defaultSleeveSelect.value = params.sleeveConditionId;
+                }
+                if (params.discConditionId && defaultDiscSelect) {
+                    defaultDiscSelect.value = params.discConditionId;
+                }
+                if (params.price && defaultPriceInput) {
+                    defaultPriceInput.value = params.price;
+                }
+                if (params.cogs && defaultCogsInput) {
+                    defaultCogsInput.value = params.cogs;
+                }
+                if (params.consignorId && defaultConsignorSelect) {
+                    defaultConsignorSelect.value = params.consignorId;
+                }
+                defaultParams = params;
+                defaultParamsActive = true;
+                updateDefaultParamsStatus('Defaults loaded from storage', 'info');
+            }
+        } catch (e) {
+            console.warn('Could not load default params from storage:', e);
+        }
+    }
+
+    function saveDefaultParamsToStorage() {
+        try {
+            localStorage.setItem('defaultParams', JSON.stringify(defaultParams));
+        } catch (e) {
+            console.warn('Could not save default params to storage:', e);
+        }
+    }
+
+    function applyDefaultParams() {
+        const sleeveId = defaultSleeveSelect ? parseInt(defaultSleeveSelect.value) : null;
+        const discId = defaultDiscSelect ? parseInt(defaultDiscSelect.value) : null;
+        const price = defaultPriceInput ? parseFloat(defaultPriceInput.value) : null;
+        const cogs = defaultCogsInput ? parseFloat(defaultCogsInput.value) : null;
+        const consignorId = defaultConsignorSelect ? parseInt(defaultConsignorSelect.value) : null;
+
+        defaultParams = {
+            sleeveConditionId: sleeveId || null,
+            discConditionId: discId || null,
+            price: price || null,
+            cogs: cogs || null,
+            consignorId: consignorId || null
+        };
+        defaultParamsActive = true;
+        saveDefaultParamsToStorage();
+
+        // Apply to current search results
+        const rows = document.querySelectorAll('.btn-add-record-from-search');
+        if (rows.length === 0) {
+            updateDefaultParamsStatus('No search results to apply defaults to', 'warning');
+            return;
+        }
+
+        rows.forEach(btn => {
+            const row = btn.closest('tr');
+            if (!row) return;
+            const sleeveSelect = row.querySelector('.sleeve-condition-select');
+            const discSelect = row.querySelector('.disc-condition-select');
+            const priceInput = row.querySelector('.price-input');
+            const cogsInput = row.querySelector('.cogs-input');
+            const consignorSelect = row.querySelector('.consignor-select');
+
+            if (sleeveSelect && defaultParams.sleeveConditionId) sleeveSelect.value = defaultParams.sleeveConditionId;
+            if (discSelect && defaultParams.discConditionId) discSelect.value = defaultParams.discConditionId;
+            if (priceInput && defaultParams.price) priceInput.value = defaultParams.price;
+            if (cogsInput && defaultParams.cogs) cogsInput.value = defaultParams.cogs;
+            if (consignorSelect && defaultParams.consignorId) consignorSelect.value = defaultParams.consignorId;
+        });
+
+        updateDefaultParamsStatus(`Defaults applied to ${rows.length} search results`, 'success');
+        renderTablePage();
+    }
+
+    function clearDefaultParams() {
+        defaultParams = {
+            sleeveConditionId: null,
+            discConditionId: null,
+            price: null,
+            cogs: null,
+            consignorId: null
+        };
+        defaultParamsActive = false;
+        if (defaultSleeveSelect) defaultSleeveSelect.value = '';
+        if (defaultDiscSelect) defaultDiscSelect.value = '';
+        if (defaultPriceInput) defaultPriceInput.value = '';
+        if (defaultCogsInput) defaultCogsInput.value = '';
+        if (defaultConsignorSelect) defaultConsignorSelect.value = '';
+        localStorage.removeItem('defaultParams');
+        updateDefaultParamsStatus('Defaults cleared', 'info');
+        renderTablePage();
+    }
+
+    function updateDefaultParamsStatus(message, type) {
+        const el = document.getElementById('default-params-status');
+        if (!el) return;
+        type = type || 'info';
+        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        el.className = 'status-message status-' + type;
+        el.style.display = 'block';
+        setTimeout(() => { if (el) el.style.display = 'none'; }, 5000);
+    }
+
+    function getDefaultParamsForRecord() {
+        return {
+            sleeveConditionId: defaultParams.sleeveConditionId || null,
+            discConditionId: defaultParams.discConditionId || null,
+            price: defaultParams.price || null,
+            cogs: defaultParams.cogs || null,
+            consignorId: defaultParams.consignorId || null
+        };
+    }
+
     // ========== UNIFIED RECORD LOADER ==========
     async function loadRecords(options = {}) {
         console.log('🔵 loadRecords called with options:', options);
@@ -416,7 +569,8 @@
                 random = false,
                 hasYoutube = false,
                 filterBySearch = true,
-                showAllStatuses = false
+                showAllStatuses = false,
+                format = null
             } = options;
 
             let url = '/records';
@@ -445,6 +599,9 @@
                 if (hasYoutube) params.append('has_youtube', 'true');
                 if (search && filterBySearch) {
                     params.append('search', search);
+                }
+                if (format) {
+                    params.append('format', format);
                 }
             }
 
@@ -1065,6 +1222,10 @@
         if (currentSearchMode === 'add') {
             const isSearchResult = currentMode === 'search' && currentResults.length > 0;
             if (isSearchResult) {
+                // Show hidden default params when defaults are active
+                const showDefaultInputs = !defaultParamsActive;
+                
+                // Build condition options for selects
                 const condOptions = conditions.map(c =>
                     `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
                 ).join('');
@@ -1072,21 +1233,36 @@
                     `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
                 ).join('');
 
-                theadHtml = `
-                    <tr>
-                        <th style="width:60px;">Range</th>
-                        <th style="width:60px;">Image</th>
-                        <th>Artist</th>
-                        <th>Title</th>
-                        <th>Catalog #</th>
-                        <th>Sleeve</th>
-                        <th>Disc</th>
-                        <th>Price</th>
-                        <th>COGS</th>
-                        <th>Consignor</th>
-                        <th>Action</th>
-                    </tr>
-                `;
+                // Build thead with or without condition/price/cogs/consignor columns
+                if (showDefaultInputs) {
+                    theadHtml = `
+                        <tr>
+                            <th style="width:60px;">Range</th>
+                            <th style="width:60px;">Image</th>
+                            <th>Artist</th>
+                            <th>Title</th>
+                            <th>Catalog #</th>
+                            <th>Sleeve</th>
+                            <th>Disc</th>
+                            <th>Price</th>
+                            <th>COGS</th>
+                            <th>Consignor</th>
+                            <th>Action</th>
+                        </tr>
+                    `;
+                } else {
+                    // Hide default params columns when defaults are active
+                    theadHtml = `
+                        <tr>
+                            <th style="width:60px;">Range</th>
+                            <th style="width:60px;">Image</th>
+                            <th>Artist</th>
+                            <th>Title</th>
+                            <th>Catalog #</th>
+                            <th>Action</th>
+                        </tr>
+                    `;
+                }
             } else {
                 theadHtml = `
                     <tr>
@@ -1270,39 +1446,64 @@
 
                     const imageUrl = record.image_url || record.thumb || '';
                     const imageHtml = imageUrl ?
-                        `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px;">` :
+                        `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage('${escapeHtml(imageUrl)}', '${escapeHtml(artist)} - ${escapeHtml(title)}')" title="Click to expand">` :
                         `<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>`;
 
+                    // Show/hide default parameter inputs based on whether defaults are active
+                    const showDefaultInputs = !defaultParamsActive;
+
+                    rowHtml += `<td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>`;
+                    rowHtml += `<td style="text-align:center;">${imageHtml}</td>`;
+                    rowHtml += `<td>${escapeHtml(artist)}</td>`;
+                    rowHtml += `<td>${escapeHtml(title)}</td>`;
+                    rowHtml += `<td>${escapeHtml(catalog)}</td>`;
+                    
+                    if (showDefaultInputs) {
+                        rowHtml += `
+                            <td>
+                                <select class="sleeve-condition-select" style="width:100px; padding:4px;">
+                                    <option value="">Select...</option>
+                                    ${condOptions}
+                                </select>
+                            </td>
+                            <td>
+                                <select class="disc-condition-select" style="width:100px; padding:4px;">
+                                    <option value="">Select...</option>
+                                    ${condOptions}
+                                </select>
+                            </td>
+                            <td>
+                                <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
+                            </td>
+                            <td>
+                                <input type="number" class="cogs-input" step="0.01" min="0" value="" style="width:80px; padding:4px;">
+                            </td>
+                            <td>
+                                <select class="consignor-select" style="width:100px; padding:4px;">
+                                    <option value="">None</option>
+                                    ${consignorOptions}
+                                </select>
+                            </td>
+                        `;
+                    } else {
+                        // Show hidden values as text when defaults are active
+                        const def = getDefaultParamsForRecord();
+                        const sleeveName = def.sleeveConditionId ? conditions.find(c => c.id === def.sleeveConditionId)?.display_name || '—' : '—';
+                        const discName = def.discConditionId ? conditions.find(c => c.id === def.discConditionId)?.display_name || '—' : '—';
+                        const priceDisplay = def.price ? `$${def.price}` : '—';
+                        const cogsDisplay = def.cogs ? `$${def.cogs}` : '—';
+                        const consignorDisplay = def.consignorId ? consignors.find(c => c.id === def.consignorId)?.username || 'None' : 'None';
+                        
+                        rowHtml += `
+                            <td style="font-size:12px; color:#666;" title="Using defaults">S: ${escapeHtml(sleeveName)}</td>
+                            <td style="font-size:12px; color:#666;" title="Using defaults">D: ${escapeHtml(discName)}</td>
+                            <td style="font-size:12px; color:#666;" title="Using defaults">${priceDisplay}</td>
+                            <td style="font-size:12px; color:#666;" title="Using defaults">${cogsDisplay}</td>
+                            <td style="font-size:12px; color:#666;" title="Using defaults">${escapeHtml(consignorDisplay)}</td>
+                        `;
+                    }
+                    
                     rowHtml += `
-                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
-                        <td style="text-align:center;">${imageHtml}</td>
-                        <td>${escapeHtml(artist)}</td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${escapeHtml(catalog)}</td>
-                        <td>
-                            <select class="sleeve-condition-select" style="width:100px; padding:4px;">
-                                <option value="">Select...</option>
-                                ${condOptions}
-                            </select>
-                        </td>
-                        <td>
-                            <select class="disc-condition-select" style="width:100px; padding:4px;">
-                                <option value="">Select...</option>
-                                ${condOptions}
-                            </select>
-                        </td>
-                        <td>
-                            <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
-                        </td>
-                        <td>
-                            <input type="number" class="cogs-input" step="0.01" min="0" value="" style="width:80px; padding:4px;">
-                        </td>
-                        <td>
-                            <select class="consignor-select" style="width:100px; padding:4px;">
-                                <option value="">None</option>
-                                ${consignorOptions}
-                            </select>
-                        </td>
                         <td>
                             <button class="btn-add-record-from-search" data-index="${globalIndex}" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">
                                 <i class="fas fa-plus"></i> Add
@@ -1372,7 +1573,9 @@
                     const markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
                     const displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
 
-                    const imgHtml = imageUrl ? `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px;">` : '<div style="width:80px; height:80px; background:#e0e0e0; border-radius:4px;"></div>';
+                    const imgHtml = imageUrl ? 
+                        `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage('${escapeHtml(imageUrl)}', '${escapeHtml(artist)} - ${escapeHtml(title)}')" title="Click to expand">` : 
+                        '<div style="width:80px; height:80px; background:#e0e0e0; border-radius:4px;"></div>';
 
                     rowHtml += `
                         <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
@@ -1524,22 +1727,25 @@
                 });
             });
 
-            document.querySelectorAll('.sleeve-condition-select').forEach(sel => {
-                sel.addEventListener('change', function() {
-                    const row = this.closest('tr');
-                    const discSelect = row.querySelector('.disc-condition-select');
-                    if (this.value) discSelect.value = this.value;
-                    const catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
-                    estimatePriceForRow(row, catalog);
+            // Only attach condition change listeners if default params are NOT active
+            if (!defaultParamsActive) {
+                document.querySelectorAll('.sleeve-condition-select').forEach(sel => {
+                    sel.addEventListener('change', function() {
+                        const row = this.closest('tr');
+                        const discSelect = row.querySelector('.disc-condition-select');
+                        if (this.value) discSelect.value = this.value;
+                        const catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
+                        estimatePriceForRow(row, catalog);
+                    });
                 });
-            });
-            document.querySelectorAll('.disc-condition-select').forEach(sel => {
-                sel.addEventListener('change', function() {
-                    const row = this.closest('tr');
-                    const catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
-                    estimatePriceForRow(row, catalog);
+                document.querySelectorAll('.disc-condition-select').forEach(sel => {
+                    sel.addEventListener('change', function() {
+                        const row = this.closest('tr');
+                        const catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
+                        estimatePriceForRow(row, catalog);
+                    });
                 });
-            });
+            }
         }
 
         // Single post buttons (Discogs mode)
@@ -1777,35 +1983,22 @@
             ordersFilters.style.display = isDiscogsOrdersMode ? 'block' : 'none';
         }
 
+        // --- SET ACTIVE button: always visible, disabled in Discogs Orders mode ---
+        setActiveBtn.style.display = isDiscogsOrdersMode ? 'none' : '';
+
+        // --- COGS and Print buttons: only in Add mode ---
         if (isAddMode) {
             cogsBtn.style.display = '';
             printBtn.style.display = '';
-            setActiveBtn.style.display = '';
-            const globalBtn = document.getElementById('global-set-active-btn');
-            if (globalBtn) globalBtn.style.display = 'none';
         } else {
             cogsBtn.style.display = 'none';
             printBtn.style.display = 'none';
-            setActiveBtn.style.display = 'none';
-            let globalBtn = document.getElementById('global-set-active-btn');
-            if (!globalBtn) {
-                globalBtn = document.createElement('button');
-                globalBtn.id = 'global-set-active-btn';
-                globalBtn.className = 'btn btn-warning';
-                globalBtn.innerHTML = '<i class="fas fa-check-double"></i> Set Active';
-                globalBtn.style.marginLeft = '8px';
-                globalBtn.title = 'Set selected records to Active (status_id=2)';
-                if (completeActionBtn && completeActionBtn.parentNode) {
-                    completeActionBtn.parentNode.insertBefore(globalBtn, completeActionBtn.nextSibling);
-                }
-                globalBtn.addEventListener('click', setActiveRecords);
-            }
-            const shouldShow = (isScanMode || isDiscogsMode || isDeleteMode || isCheckoutMode) && !isDiscogsOrdersMode;
-            globalBtn.style.display = shouldShow ? 'inline-block' : 'none';
         }
-        
+
+        // --- Complete button: hidden in Add mode, visible in others ---
         completeActionBtn.style.display = isAddMode ? 'none' : '';
 
+        // --- Custom Item button: only in Checkout mode ---
         let customBtn = document.getElementById('custom-item-btn');
         if (isCheckoutMode) {
             if (!customBtn) {
@@ -1857,7 +2050,6 @@
                 </div>
             </div>
         `;
-        customItemModal.id = 'custom-item-modal';
         document.body.appendChild(customItemModal);
 
         setTimeout(() => {
@@ -1986,18 +2178,50 @@
         const sleeveSelect = row.querySelector('.sleeve-condition-select');
         const discSelect = row.querySelector('.disc-condition-select');
 
-        const price = parseFloat(priceInput.value);
-        const cogs = cogsInput.value ? parseFloat(cogsInput.value) : null;
-        const consignorId = consignorSelect.value ? parseInt(consignorSelect.value) : null;
-        const sleeveId = parseInt(sleeveSelect.value);
-        const discId = parseInt(discSelect.value);
+        let price = null;
+        let cogs = null;
+        let consignorId = null;
+        let sleeveId = null;
+        let discId = null;
 
+        // If default params are active, use those
+        if (defaultParamsActive) {
+            sleeveId = defaultParams.sleeveConditionId;
+            discId = defaultParams.discConditionId;
+            price = defaultParams.price;
+            cogs = defaultParams.cogs;
+            consignorId = defaultParams.consignorId;
+        }
+
+        // Override with form values if they exist (and not hidden)
+        if (priceInput && priceInput.value) {
+            const val = parseFloat(priceInput.value);
+            if (!isNaN(val) && val > 0) price = val;
+        }
+        if (cogsInput && cogsInput.value) {
+            const val = parseFloat(cogsInput.value);
+            if (!isNaN(val) && val >= 0) cogs = val;
+        }
+        if (consignorSelect && consignorSelect.value) {
+            const val = parseInt(consignorSelect.value);
+            if (!isNaN(val)) consignorId = val;
+        }
+        if (sleeveSelect && sleeveSelect.value) {
+            const val = parseInt(sleeveSelect.value);
+            if (!isNaN(val)) sleeveId = val;
+        }
+        if (discSelect && discSelect.value) {
+            const val = parseInt(discSelect.value);
+            if (!isNaN(val)) discId = val;
+        }
+
+        // Validate
         if (!sleeveId || !discId) {
-            showStatus('Please select sleeve and disc conditions', 'warning');
+            showStatus('Please select sleeve and disc conditions (or set defaults)', 'warning');
             return;
         }
         if (!price || price <= 0) {
-            showStatus('Please enter a valid price', 'warning');
+            showStatus('Please enter a valid price (or set a default)', 'warning');
             return;
         }
 
@@ -2018,6 +2242,13 @@
 
         const result = await apiPost('/records', recordData);
         showStatus(`✅ Record #${result.record.id} added successfully!`, 'success');
+        
+        // Focus the search input after adding
+        if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+        }
+        
         clearSearch();
         await loadRecords({ statusIds: [1], mode: 'add' });
         await loadStats();
@@ -2107,7 +2338,11 @@
         currentMode = 'search';
         recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>`;
         try {
-            const data = await apiGet('/api/discogs/search?q=' + encodeURIComponent(term));
+            // Get format filter from DOM
+            const formatFilterEl = document.getElementById('discogs-format-filter');
+            const format = formatFilterEl ? formatFilterEl.value : 'all';
+            
+            const data = await apiGet('/api/discogs/search?q=' + encodeURIComponent(term) + (format && format !== 'all' ? '&format=' + encodeURIComponent(format) : ''));
             if (!data.results || !data.results.length) {
                 recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;">No Discogs results found</td></tr>`;
                 return;
@@ -2226,6 +2461,11 @@
             applyDiscogsOrdersFilters();
         }
         showStatus('Search cleared', 'info');
+        
+        // Focus the search input after clearing
+        if (searchInput) {
+            searchInput.focus();
+        }
     }
 
     // ========== Discogs-specific functions ==========
@@ -2252,6 +2492,54 @@
         renderTablePage();
         updateSelectionCount();
         populateDiscogsPrices(filteredRecords);
+    }
+
+    // ========== Image Expand Function ==========
+    function expandImage(imageUrl, title) {
+        if (!imageUrl) return;
+        
+        // Remove existing modal if any
+        const existingModal = document.getElementById('image-expand-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'image-expand-modal';
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        modal.style.background = 'rgba(0,0,0,0.85)';
+        modal.style.zIndex = '10000';
+        modal.innerHTML = `
+            <div style="max-width: 90vw; max-height: 90vh; position: relative; display: flex; flex-direction: column; align-items: center;">
+                <button onclick="document.getElementById('image-expand-modal').remove()" 
+                        style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 24px; cursor: pointer; z-index: 10;">
+                    ×
+                </button>
+                ${title ? `<div style="color: white; font-size: 16px; padding: 10px; text-align: center; background: rgba(0,0,0,0.5); border-radius: 8px; margin-bottom: 10px; max-width: 100%;">${escapeHtml(title)}</div>` : ''}
+                <img src="${escapeHtml(imageUrl)}" 
+                     style="max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 30px rgba(0,0,0,0.5);">
+                <div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 10px;">Click outside to close</div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Close on backdrop click
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape') {
+                if (document.getElementById('image-expand-modal')) {
+                    document.getElementById('image-expand-modal').remove();
+                }
+                document.removeEventListener('keydown', escHandler);
+            }
+        });
     }
 
     // ========== Discogs UI toggle functions ==========
@@ -2282,6 +2570,134 @@
             icon.style.transform = 'rotate(0deg)';
         }
     };
+
+    window.toggleDefaultParams = function() {
+        const content = document.getElementById('default-params-content');
+        const icon = document.getElementById('default-params-toggle-icon');
+        if (!content || !icon) return;
+        if (content.style.display === 'none' || content.style.display === '') {
+            content.style.display = 'block';
+            icon.style.transform = 'rotate(180deg)';
+            loadDefaultParamsFromStorage();
+            // Populate the selects with condition options
+            populateDefaultParamSelects();
+        } else {
+            content.style.display = 'none';
+            icon.style.transform = 'rotate(0deg)';
+        }
+    };
+
+    function populateDefaultParamSelects() {
+        // Populate sleeve and disc condition selects
+        if (defaultSleeveSelect) {
+            const currentVal = defaultSleeveSelect.value;
+            defaultSleeveSelect.innerHTML = '<option value="">Select...</option>';
+            conditions.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.display_name || c.condition_name;
+                defaultSleeveSelect.appendChild(opt);
+            });
+            if (currentVal) defaultSleeveSelect.value = currentVal;
+        }
+        if (defaultDiscSelect) {
+            const currentVal = defaultDiscSelect.value;
+            defaultDiscSelect.innerHTML = '<option value="">Select...</option>';
+            conditions.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.display_name || c.condition_name;
+                defaultDiscSelect.appendChild(opt);
+            });
+            if (currentVal) defaultDiscSelect.value = currentVal;
+        }
+        // Populate consignor select
+        if (defaultConsignorSelect) {
+            const currentVal = defaultConsignorSelect.value;
+            defaultConsignorSelect.innerHTML = '<option value="">None</option>';
+            consignors.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.username + (c.full_name ? ` (${c.full_name})` : '');
+                defaultConsignorSelect.appendChild(opt);
+            });
+            if (currentVal) defaultConsignorSelect.value = currentVal;
+        }
+    }
+
+    window.applyDefaultParams = function() {
+        const sleeveId = defaultSleeveSelect ? parseInt(defaultSleeveSelect.value) : null;
+        const discId = defaultDiscSelect ? parseInt(defaultDiscSelect.value) : null;
+        const price = defaultPriceInput ? parseFloat(defaultPriceInput.value) : null;
+        const cogs = defaultCogsInput ? parseFloat(defaultCogsInput.value) : null;
+        const consignorId = defaultConsignorSelect ? parseInt(defaultConsignorSelect.value) : null;
+
+        defaultParams = {
+            sleeveConditionId: sleeveId || null,
+            discConditionId: discId || null,
+            price: price || null,
+            cogs: cogs || null,
+            consignorId: consignorId || null
+        };
+        defaultParamsActive = true;
+        saveDefaultParamsToStorage();
+
+        // Apply to current search results
+        const rows = document.querySelectorAll('.btn-add-record-from-search');
+        if (rows.length === 0) {
+            updateDefaultParamsStatus('No search results to apply defaults to', 'warning');
+            return;
+        }
+
+        rows.forEach(btn => {
+            const row = btn.closest('tr');
+            if (!row) return;
+            const sleeveSelect = row.querySelector('.sleeve-condition-select');
+            const discSelect = row.querySelector('.disc-condition-select');
+            const priceInput = row.querySelector('.price-input');
+            const cogsInput = row.querySelector('.cogs-input');
+            const consignorSelect = row.querySelector('.consignor-select');
+
+            if (sleeveSelect && defaultParams.sleeveConditionId) sleeveSelect.value = defaultParams.sleeveConditionId;
+            if (discSelect && defaultParams.discConditionId) discSelect.value = defaultParams.discConditionId;
+            if (priceInput && defaultParams.price) priceInput.value = defaultParams.price;
+            if (cogsInput && defaultParams.cogs) cogsInput.value = defaultParams.cogs;
+            if (consignorSelect && defaultParams.consignorId) consignorSelect.value = defaultParams.consignorId;
+        });
+
+        updateDefaultParamsStatus(`Defaults applied to ${rows.length} search results`, 'success');
+        renderTablePage();
+    };
+
+    window.clearDefaultParams = function() {
+        defaultParams = {
+            sleeveConditionId: null,
+            discConditionId: null,
+            price: null,
+            cogs: null,
+            consignorId: null
+        };
+        defaultParamsActive = false;
+        if (defaultSleeveSelect) defaultSleeveSelect.value = '';
+        if (defaultDiscSelect) defaultDiscSelect.value = '';
+        if (defaultPriceInput) defaultPriceInput.value = '';
+        if (defaultCogsInput) defaultCogsInput.value = '';
+        if (defaultConsignorSelect) defaultConsignorSelect.value = '';
+        localStorage.removeItem('defaultParams');
+        updateDefaultParamsStatus('Defaults cleared', 'info');
+        renderTablePage();
+    };
+
+    function updateDefaultParamsStatus(message, type) {
+        const el = document.getElementById('default-params-status');
+        if (!el) return;
+        type = type || 'info';
+        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        el.className = 'status-message status-' + type;
+        el.style.display = 'block';
+        setTimeout(() => { if (el) el.style.display = 'none'; }, 5000);
+    }
 
     // ========== Markup Rules Management ==========
     async function loadMarkupRules() {
@@ -3059,6 +3475,44 @@
         } else if (mode === 'checkout') {
             records = checkoutSelectedItems;
             console.log(`🔵 setActiveRecords: Checkout mode, using ${records.length} checkout items`);
+        } else if (mode === 'discogs_orders') {
+            // In Discogs Orders mode, extract record IDs from pigstyle_id
+            const items = filteredRecords;
+            const recordIds = [];
+            const recordMap = {};
+            for (const item of items) {
+                if (item.pigstyle_id && !isNaN(item.pigstyle_id)) {
+                    if (!recordMap[item.pigstyle_id]) {
+                        recordMap[item.pigstyle_id] = true;
+                        recordIds.push(item.pigstyle_id);
+                    }
+                }
+            }
+            if (recordIds.length === 0) {
+                showStatus('No records with valid PigStyle IDs found in this order.', 'warning');
+                return;
+            }
+            // Fetch the full records
+            try {
+                const response = await fetch(window.AppConfig.baseUrl + '/records/by-ids', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ record_ids: recordIds })
+                });
+                const data = await response.json();
+                if (data.status === 'success' && data.records) {
+                    records = data.records;
+                    console.log(`🔵 setActiveRecords: Discogs Orders mode, found ${records.length} records from ${recordIds.length} PigStyle IDs`);
+                } else {
+                    showStatus('Could not fetch records for the PigStyle IDs.', 'error');
+                    return;
+                }
+            } catch (e) {
+                console.error('Error fetching records by ids:', e);
+                showStatus('Error fetching records: ' + e.message, 'error');
+                return;
+            }
         } else {
             if (rangeFromIndex === null || rangeToIndex === null) {
                 showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
@@ -3113,6 +3567,11 @@
         } else if (mode === 'checkout') {
             renderTablePage();
             updateSelectionCount();
+        } else if (mode === 'discogs_orders') {
+            // Reload the order items to refresh status display
+            if (selectedOrderId) {
+                await loadOrderItems(selectedOrderId);
+            }
         }
         
         cancelRangeSelection();
@@ -4343,6 +4802,8 @@
             currentResults = [];
             loadRecords({ statusIds: [1], mode: 'add' });
             searchInput.placeholder = 'Search Discogs...';
+            // Populate default params selects
+            populateDefaultParamSelects();
         } else if (newMode === 'scan') {
             filteredRecords = [];
             totalRecords = 0;
@@ -4525,12 +4986,29 @@
         const hasRecords = filteredRecords.length > 0;
         const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
 
-        if (mode === 'add') {
+        // --- SET ACTIVE button: enable/disable based on selection ---
+        const isDiscogsOrdersMode = mode === 'discogs_orders';
+        const isAddMode = mode === 'add';
+        
+        if (isDiscogsOrdersMode) {
+            setActiveBtn.style.display = 'none';
+        } else {
+            setActiveBtn.style.display = '';
+            if (isAddMode) {
+                setActiveBtn.disabled = !hasRecords;
+                setActiveBtn.title = 'Set all displayed records to Active (status_id=2)';
+            } else {
+                const selectedCount = getSelectedRecords().length;
+                setActiveBtn.disabled = selectedCount === 0;
+                setActiveBtn.title = `Set ${selectedCount} selected record(s) to Active (status_id=2)`;
+            }
+        }
+
+        // --- COGS and Print buttons (Add mode only) ---
+        if (isAddMode) {
             const hasTargets = hasSelection || hasRecords;
             cogsBtn.disabled = !hasTargets;
             printBtn.disabled = !hasTargets;
-            setActiveBtn.disabled = !hasRecords;
-            completeActionBtn.style.display = 'none';
             
             if (hasSelection) {
                 cogsBtn.textContent = `📊 COGS (${count} selected)`;
@@ -4542,10 +5020,9 @@
         } else {
             cogsBtn.style.display = 'none';
             printBtn.style.display = 'none';
-            setActiveBtn.style.display = 'none';
-            completeActionBtn.style.display = '';
         }
 
+        // --- Complete button ---
         let actionLabel = 'Complete';
         if (mode === 'add') {
             // already handled
@@ -4555,11 +5032,9 @@
         } else if (mode === 'discogs') {
             completeActionBtn.disabled = !hasSelection;
             actionLabel = `📤 Post ${count} selected to Discogs`;
-            console.log(`🔄 updateSelectionCount: discogs mode, hasSelection=${hasSelection}, count=${count}, btn disabled=${completeActionBtn.disabled}`);
         } else if (mode === 'delete') {
             completeActionBtn.disabled = !hasSelection;
             actionLabel = `🗑️ Delete ${count} selected`;
-            console.log(`🔄 updateSelectionCount: delete mode, hasSelection=${hasSelection}, count=${count}, btn disabled=${completeActionBtn.disabled}`);
         } else if (mode === 'checkout') {
             completeActionBtn.disabled = checkoutSelectedItems.length === 0;
             actionLabel = `🛒 Checkout ${checkoutSelectedItems.length} items`;
@@ -4701,6 +5176,9 @@
         await loadAccounts();
         await loadStats();
 
+        // Populate default params selects
+        populateDefaultParamSelects();
+
         searchModeSelect.addEventListener('change', onModeChange);
 
         let searchButton = document.getElementById('searchButton');
@@ -4770,19 +5248,9 @@
         
         setActiveBtn.addEventListener('click', setActiveRecords);
 
-        let globalSetActiveBtn = document.getElementById('global-set-active-btn');
-        if (!globalSetActiveBtn) {
-            globalSetActiveBtn = document.createElement('button');
-            globalSetActiveBtn.id = 'global-set-active-btn';
-            globalSetActiveBtn.className = 'btn btn-warning';
-            globalSetActiveBtn.innerHTML = '<i class="fas fa-check-double"></i> Set Active';
-            globalSetActiveBtn.style.marginLeft = '8px';
-            globalSetActiveBtn.title = 'Set selected records to Active (status_id=2)';
-            if (completeActionBtn && completeActionBtn.parentNode) {
-                completeActionBtn.parentNode.insertBefore(globalSetActiveBtn, completeActionBtn.nextSibling);
-            }
-            globalSetActiveBtn.addEventListener('click', setActiveRecords);
-        }
+        // Remove any previously created global-set-active-btn
+        const oldGlobalBtn = document.getElementById('global-set-active-btn');
+        if (oldGlobalBtn) oldGlobalBtn.remove();
 
         completeActionBtn.addEventListener('click', handleCompleteAction);
         cancelRangeBtn.addEventListener('click', cancelRangeSelection);
