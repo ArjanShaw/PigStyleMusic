@@ -4336,10 +4336,10 @@ def ebay_search_proxy():
     
     return jsonify(response.json())
 
-        
 @app.route('/api/discogs/search', methods=['GET'])
 def discogs_search_proxy():
     search_term = request.args.get('q', '')
+    format_filter = request.args.get('format', 'all')
     
     if not search_term:
         return jsonify({'status': 'error', 'error': 'Search term required'}), 400
@@ -4353,10 +4353,23 @@ def discogs_search_proxy():
         'User-Agent': 'PigStyleMusic/1.0'
     }
     
+    # Map format filter to Discogs format parameter
+    format_map = {
+        'vinyl': 'Vinyl',
+        'cd': 'CD',
+        'tape': 'Cassette',
+        'shellac': 'Shellac'
+    }
+    
+    params = {'q': search_term, 'type': 'release', 'per_page': 20}
+    
+    if format_filter in format_map:
+        params['format'] = format_map[format_filter]
+    
     response = requests.get(
         'https://api.discogs.com/database/search',
         headers=headers,
-        params={'q': search_term, 'type': 'release', 'per_page': 20}
+        params=params
     )
     
     if response.status_code != 200:
@@ -4390,12 +4403,16 @@ def discogs_search_proxy():
         genre_list = item.get('genre', [])
         raw_genre = ', '.join(genre_list) if genre_list else ''
         
+        # Get format
+        format_list = item.get('format', [])
+        format_str = format_list[0] if format_list else ''
+        
         results.append({
             'artist': artist,
             'title': title,
             'year': item.get('year'),
             'genre_raw': raw_genre,
-            'format': item.get('format', [''])[0] if item.get('format') else '',
+            'format': format_str,
             'country': item.get('country'),
             'image_url': item.get('thumb', ''),
             'catalog_number': item.get('catno', ''),
