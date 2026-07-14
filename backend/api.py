@@ -4423,6 +4423,166 @@ def discogs_search_proxy():
     return jsonify({'status': 'success', 'results': results, 'count': len(results)})
 
 
+@app.route('/api/refund/process', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def process_refund():
+    """
+    Process a refund for sold records.
+    
+    Request body:
+    {
+        "record_ids": [1, 2, 3],
+        "amount": 19.99,
+        "method": "cash",  # or "square" or "discogs"
+        "reason": "Customer returned item"
+    }
+    """
+    try:
+        data = request.json
+        record_ids = data.get('record_ids', [])
+        amount = float(data.get('amount', 0))
+        method = data.get('method', 'cash')
+        reason = data.get('reason', 'Customer refund')
+        
+        if not record_ids:
+            return jsonify({'status': 'error', 'error': 'No records selected'}), 400
+        
+        if amount <= 0:
+            return jsonify({'status': 'error', 'error': 'Amount must be greater than 0'}), 400
+        
+        if method not in ['cash', 'square', 'discogs']:
+            return jsonify({'status': 'error', 'error': 'Invalid refund method'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Verify all records exist and are sold
+        placeholders = ','.join('?' for _ in record_ids)
+        cursor.execute(f'''
+            SELECT id, artist, title, store_price, status_id, actual_sale_price
+            FROM records 
+            WHERE id IN ({placeholders})
+        ''', record_ids)
+        
+        records = cursor.fetchall()
+        
+        if len(records) != len(record_ids):
+            return jsonify({'status': 'error', 'error': 'Some records not found'}), 404
+        
+        # Check if any records are not sold (status 3 or 4)
+        for record in records:
+            if record['status_id'] not in [3, 4]:
+                return jsonify({
+                    'status': 'error', 
+                    'error': f'Record "{record["artist"]} - {record["title"]}" is not marked as sold'
+                }), 400
+        
+        # Determine which revenue account to debit based on method
+        # For store sales (status 3), use the payment method to determine revenue account
+        # For Discogs sales (status 4), always use PayPal revenue account
+        account_mapping = {
+            'cash': {
+                'revenue_code': '4001',  # Sales Revenue - Cash
+                'asset_code': '1015'      # Cash - Register
+            },
+            'square': {
+                'revenue_code': '4000',   # Sales Revenue - Square
+                'asset_code': '1025'      # FNBO Bank
+            },
+            'discogs': {
+                'revenue_code': '4003',   # Sales Revenue - PayPal
+                'asset_code': '1020'      # PayPal
+            }
+        }
+        
+        mapping = account_mapping.get(method)
+        if not mapping:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Invalid payment method'}), 400
+        
+        # Get account IDs
+        cursor.execute('SELECT id, code FROM accounts WHERE code IN (?, ?)', 
+                      (mapping['revenue_code'], mapping['asset_code']))
+        accounts = cursor.fetchall()
+        
+        revenue_id = None
+        asset_id = None
+        for acc in accounts:
+            if acc['code'] == mapping['revenue_code']:
+                revenue_id = acc['id']
+            elif acc['code'] == mapping['asset_code']:
+                asset_id = acc['id']
+        
+        if not revenue_id or not asset_id:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
+        
+        amount_cents = int(round(amount * 100))
+        
+        # Store record info before deletion for journal entry
+        refund_records = []
+        for record in records:
+            refund_records.append({
+                'id': record['id'],
+                'artist': record['artist'],
+                'title': record['title'],
+                'store_price': float(record['store_price']),
+                'status_id': record['status_id']
+            })
+        
+        # --- Delete records ---
+        # First, get their info for accounting
+        record_ids_str = ','.join(str(r['id']) for r in refund_records)
+        
+        # Delete from records table
+        cursor.execute(f'DELETE FROM records WHERE id IN ({placeholders})', record_ids)
+        deleted_count = cursor.rowcount
+        
+        if deleted_count == 0:
+            conn.rollback()
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Failed to delete records'}), 500
+        
+        # --- Create journal entry for refund ---
+        description = f"Refund: {', '.join([f'{r["artist"]} - {r["title"]}' for r in refund_records[:3]])}"
+        if len(refund_records) > 3:
+            description += f" and {len(refund_records) - 3} more"
+        
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (datetime.now().strftime('%Y-%m-%d'), description, 'refund', ','.join(str(r['id']) for r in refund_records)))
+        entry_id = cursor.lastrowid
+        
+        # Debit revenue account (reverses the sale)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, revenue_id, amount_cents, 0))
+        
+        # Credit asset account (reverses the payment)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, asset_id, 0, amount_cents))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Refund processed for {deleted_count} record(s)',
+            'refunded_records': len(refund_records),
+            'journal_entry_id': entry_id,
+            'amount': amount
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Refund error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/catalog/records', methods=['GET'])
 def get_catalog_records():
     conn = get_db()

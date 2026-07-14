@@ -1,6 +1,6 @@
 // ============================================================================
-// inventory-ops.js - Unified Inventory Operations
-// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders
+// inventory-ops.js - Unified Inventory Operations (Refactored)
+// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders, Refund
 // ============================================================================
 
 (function() {
@@ -35,29 +35,23 @@
     const setActiveBtn = document.getElementById('set-active-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
-    // Discogs UI elements
     const discogsUi = document.getElementById('filter-group');
     const discogsLocationSelect = document.getElementById('discogs-location-select');
     const discogsStatusMessage = document.getElementById('discogs-status-message');
     const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
     const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
 
-    // Default Parameters elements
     const defaultSleeveSelect = document.getElementById('default-sleeve-condition');
     const defaultDiscSelect = document.getElementById('default-disc-condition');
     const defaultPriceInput = document.getElementById('default-price');
     const defaultCogsInput = document.getElementById('default-cogs');
     const defaultConsignorSelect = document.getElementById('default-consignor');
 
-    // Delete mode filters
     const deleteStatusFilter = document.getElementById('delete-status-filter');
-
-    // Checkout filters
     const checkoutFilters = document.getElementById('checkout-filters');
     const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
     const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
 
-    // Discogs Orders filters
     const discogsOrderSelect = document.getElementById('discogs-order-select');
     const discogsOrdersRefreshBtn = document.getElementById('discogs-orders-refresh-btn');
     const discogsOrdersStatus = document.getElementById('discogs-orders-status');
@@ -91,45 +85,36 @@
     let rangeToIndex = null;
     let isRangeMode = false;
 
-    // Scan state
     let lastSubmittedLocation = localStorage.getItem('lastSubmittedLocation') || null;
-
-    // Checkout state
     let checkoutSelectedItems = [];
     let checkoutViewMode = 'list';
     let checkoutRemaining = 0;
     let checkoutPaymentEntries = [];
     let checkoutTotal = 0;
 
-    // Discogs state
     let currentLocationRecords = [];
     let discogsFilteredRecords = [];
     let currentLocation = null;
     let lastSeenCutoffDate = null;
 
-    // Discogs Orders state
     let ordersList = [];
     let currentOrderItems = [];
     let selectedOrderId = null;
     let ordersStatusFilter = '';
 
-    // Square state
     let squareAvailable = false;
     let squareCheckoutId = null;
     let squarePollInterval = null;
     let availableTerminals = [];
 
-    // Chart variables
     let markupCurveChart = null;
     let markupDistributionChart = null;
     let ageDistributionChart = null;
 
-    // Discogs Post Modal state
     let isPosting = false;
     let postProgress = 0;
     let postResults = [];
 
-    // Default Parameters state
     let defaultParams = {
         sleeveConditionId: null,
         discConditionId: null,
@@ -142,66 +127,50 @@
     // ========== Audio ==========
     let audioContext = null;
 
-    function initAudio() {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-    }
-
-    function playBeep(frequency = 800, duration = 200, type = 'sine') {
+    function playSound(type) {
         try {
-            initAudio();
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
             if (audioContext.state === 'suspended') audioContext.resume();
-            const osc = audioContext.createOscillator();
-            const gain = audioContext.createGain();
-            osc.connect(gain);
-            gain.connect(audioContext.destination);
-            osc.frequency.value = frequency;
-            osc.type = type;
-            gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + duration / 1000);
-            osc.start();
-            osc.stop(audioContext.currentTime + duration / 1000);
-        } catch (e) { console.warn('Beep error:', e); }
-    }
 
-    function playErrorSound() {
-        try {
-            initAudio();
-            if (audioContext.state === 'suspended') audioContext.resume();
-            const osc = audioContext.createOscillator();
-            const gain = audioContext.createGain();
-            osc.connect(gain);
-            gain.connect(audioContext.destination);
-            osc.frequency.value = 220;
-            osc.type = 'sawtooth';
-            gain.gain.setValueAtTime(0.4, audioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.6);
-            osc.start();
-            osc.stop(audioContext.currentTime + 0.6);
-        } catch (e) { console.warn('Error sound error:', e); }
-    }
+            const configs = {
+                beep: { freq: 800, duration: 200, type: 'sine', gain: 0.3 },
+                error: { freq: 220, duration: 600, type: 'sawtooth', gain: 0.4 },
+                success: { freq: 523.25, duration: 200, type: 'sine', gain: 0.2, notes: [523.25, 659.25, 783.99] }
+            };
 
-    function playSuccessSound() {
-        try {
-            initAudio();
-            if (audioContext.state === 'suspended') audioContext.resume();
-            const notes = [523.25, 659.25, 783.99];
-            notes.forEach((freq, i) => {
-                setTimeout(() => {
-                    const osc = audioContext.createOscillator();
-                    const gain = audioContext.createGain();
-                    osc.connect(gain);
-                    gain.connect(audioContext.destination);
-                    osc.frequency.value = freq;
-                    osc.type = 'sine';
-                    gain.gain.setValueAtTime(0.2, audioContext.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.2);
-                    osc.start();
-                    osc.stop(audioContext.currentTime + 0.2);
-                }, i * 100);
-            });
-        } catch (e) { console.warn('Success sound error:', e); }
+            const config = configs[type];
+            if (!config) return;
+
+            if (config.notes) {
+                config.notes.forEach((freq, i) => {
+                    setTimeout(() => {
+                        const osc = audioContext.createOscillator();
+                        const gain = audioContext.createGain();
+                        osc.connect(gain);
+                        gain.connect(audioContext.destination);
+                        osc.frequency.value = freq;
+                        osc.type = config.type;
+                        gain.gain.setValueAtTime(config.gain, audioContext.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + config.duration / 1000);
+                        osc.start();
+                        osc.stop(audioContext.currentTime + config.duration / 1000);
+                    }, i * 100);
+                });
+            } else {
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+                osc.frequency.value = config.freq;
+                osc.type = config.type;
+                gain.gain.setValueAtTime(config.gain, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + config.duration / 1000);
+                osc.start();
+                osc.stop(audioContext.currentTime + config.duration / 1000);
+            }
+        } catch (e) { console.warn('Sound error:', e); }
     }
 
     // ========== Helpers ==========
@@ -232,13 +201,25 @@
         setTimeout(() => { if (el) el.style.display = 'none'; }, 8000);
     }
 
+    function updateDiscogsOrdersStatus(message, type) {
+        if (!discogsOrdersStatus) return;
+        type = type || 'info';
+        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        discogsOrdersStatus.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        discogsOrdersStatus.className = `status-message status-${type}`;
+        discogsOrdersStatus.style.display = 'block';
+        setTimeout(() => {
+            if (discogsOrdersStatus) discogsOrdersStatus.style.display = 'none';
+        }, 8000);
+    }
+
     function getStatusName(statusId) {
-        const map = { 1: 'New', 2: 'Active', 3: 'Sold', 4: 'Removed' };
+        const map = { 1: 'New', 2: 'Active', 3: 'Sold', 4: 'Sold on Discogs' };
         return map[statusId] || 'Unknown';
     }
 
     function getStatusClass(statusId) {
-        const map = { 1: 'new', 2: 'active', 3: 'sold', 4: 'removed' };
+        const map = { 1: 'new', 2: 'active', 3: 'sold', 4: 'discogs' };
         return map[statusId] || '';
     }
 
@@ -304,65 +285,39 @@
         }
     }
 
-    // ========== API Wrappers ==========
-    async function apiGet(endpoint) {
-        const res = await fetch(window.AppConfig.baseUrl + endpoint, {
+    // ========== Consolidated API ==========
+    async function apiRequest(method, endpoint, body) {
+        const options = {
+            method: method,
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status} on GET ${endpoint}`);
+        };
+        if (body && (method === 'POST' || method === 'PUT')) {
+            options.body = JSON.stringify(body);
+        }
+        const res = await fetch(window.AppConfig.baseUrl + endpoint, options);
+        if (!res.ok) throw new Error(`HTTP ${res.status} on ${method} ${endpoint}`);
         return res.json();
     }
 
-    async function apiPost(endpoint, body) {
-        const res = await fetch(window.AppConfig.baseUrl + endpoint, {
-            method: 'POST',
-            credentials: 'include',
-            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status} on POST ${endpoint}`);
-        return res.json();
-    }
-
-    async function apiPut(endpoint, body) {
-        const res = await fetch(window.AppConfig.baseUrl + endpoint, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status} on PUT ${endpoint}`);
-        return res.json();
-    }
-
-    async function apiDelete(endpoint) {
-        const res = await fetch(window.AppConfig.baseUrl + endpoint, {
-            method: 'DELETE',
-            credentials: 'include'
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status} on DELETE ${endpoint}`);
-        return res.json();
-    }
-
-    // ========== Load configs ==========
+    // ========== Config Loaders ==========
     async function loadMinimumPrice() {
-        const data = await apiGet('/config/MIN_STORE_PRICE');
+        const data = await apiRequest('GET', '/config/MIN_STORE_PRICE');
         minimumPrice = parseFloat(data.config_value);
     }
 
     async function loadStorePriceMultiplier() {
-        const data = await apiGet('/config/STORE_PRICE_ESTIMATED_MULTIPLIER');
+        const data = await apiRequest('GET', '/config/STORE_PRICE_ESTIMATED_MULTIPLIER');
         storePriceMultiplier = parseFloat(data.config_value);
     }
 
     async function loadConditions() {
-        const data = await apiGet('/api/conditions');
+        const data = await apiRequest('GET', '/api/conditions');
         conditions = data.conditions;
     }
 
     async function loadConsignors() {
-        const data = await apiGet('/users');
+        const data = await apiRequest('GET', '/users');
         consignors = data.users.filter(u => u.role === 'consignor');
         consignorMap = {};
         data.users.forEach(u => { consignorMap[u.id] = { initials: u.initials || '', name: u.full_name || u.username }; });
@@ -370,7 +325,7 @@
 
     async function loadAccounts() {
         try {
-            const data = await apiGet('/api/accounting/accounts');
+            const data = await apiRequest('GET', '/api/accounting/accounts');
             accounts = data.accounts || [];
             accounts = accounts.filter(acc => acc && acc.code && acc.name);
             console.log('✅ Loaded accounts:', accounts.length);
@@ -382,7 +337,7 @@
 
     async function loadGenres() {
         try {
-            const data = await apiGet('/api/genres');
+            const data = await apiRequest('GET', '/api/genres');
             genres = data.genres || [];
         } catch (e) {
             console.warn('Could not load genres:', e);
@@ -391,12 +346,12 @@
     }
 
     async function loadStats() {
-        const total = await apiGet('/records/count');
+        const total = await apiRequest('GET', '/records/count');
         document.getElementById('total-records').textContent = total.count;
-        const newCount = await apiGet('/records/count?status_id=1');
+        const newCount = await apiRequest('GET', '/records/count?status_id=1');
         document.getElementById('new-records-count').textContent = newCount.count;
 
-        const lastRecordData = await apiGet('/records?limit=1&order_by=created_at&order=desc');
+        const lastRecordData = await apiRequest('GET', '/records?limit=1&order_by=created_at&order=desc');
         const lastRecord = lastRecordData.records && lastRecordData.records.length > 0 ? lastRecordData.records[0] : null;
         if (lastRecord) {
             const artist = lastRecord.artist || 'Unknown';
@@ -411,11 +366,11 @@
             document.getElementById('last-added-record').textContent = 'None';
         }
 
-        const commission = await apiGet('/api/commission-rate');
+        const commission = await apiRequest('GET', '/api/commission-rate');
         document.getElementById('commission-rate').textContent = commission.commission_rate_percent;
     }
 
-    // ========== Default Parameters Functions ==========
+    // ========== Default Parameters ==========
     function toggleDefaultParams() {
         const content = document.getElementById('default-params-content');
         const icon = document.getElementById('default-params-toggle-icon');
@@ -484,7 +439,6 @@
         defaultParamsActive = true;
         saveDefaultParamsToStorage();
 
-        // Apply to current search results
         const rows = document.querySelectorAll('.btn-add-record-from-search');
         if (rows.length === 0) {
             updateDefaultParamsStatus('No search results to apply defaults to', 'warning');
@@ -551,7 +505,43 @@
         };
     }
 
-    // ========== UNIFIED RECORD LOADER ==========
+    function populateDefaultParamSelects() {
+        if (defaultSleeveSelect) {
+            const currentVal = defaultSleeveSelect.value;
+            defaultSleeveSelect.innerHTML = '<option value="">Select...</option>';
+            conditions.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.display_name || c.condition_name;
+                defaultSleeveSelect.appendChild(opt);
+            });
+            if (currentVal) defaultSleeveSelect.value = currentVal;
+        }
+        if (defaultDiscSelect) {
+            const currentVal = defaultDiscSelect.value;
+            defaultDiscSelect.innerHTML = '<option value="">Select...</option>';
+            conditions.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.display_name || c.condition_name;
+                defaultDiscSelect.appendChild(opt);
+            });
+            if (currentVal) defaultDiscSelect.value = currentVal;
+        }
+        if (defaultConsignorSelect) {
+            const currentVal = defaultConsignorSelect.value;
+            defaultConsignorSelect.innerHTML = '<option value="">None</option>';
+            consignors.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.username + (c.full_name ? ` (${c.full_name})` : '');
+                defaultConsignorSelect.appendChild(opt);
+            });
+            if (currentVal) defaultConsignorSelect.value = currentVal;
+        }
+    }
+
+    // ========== Unified Record Loader ==========
     async function loadRecords(options = {}) {
         console.log('🔵 loadRecords called with options:', options);
         try {
@@ -689,17 +679,11 @@
         }
     }
 
-    // ========== Load Discogs Locations ==========
+    // ========== Discogs Locations ==========
     async function loadDiscogsLocations() {
         console.log('📍 Loading discogs locations...');
         try {
-            const url = window.AppConfig.baseUrl + '/api/locations';
-            const response = await fetch(url, {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            const data = await response.json();
+            const data = await apiRequest('GET', '/api/locations');
             if (data.status === 'success') {
                 renderDiscogsLocationSelect(data.locations);
             } else {
@@ -718,9 +702,7 @@
             <option value="all">-- All (no filter) --</option>
             <option value="all_with_location">-- All with Location --</option>
         `;
-        if (!locations || locations.length === 0) {
-            return;
-        }
+        if (!locations || locations.length === 0) return;
         locations.forEach(function(location) {
             const option = document.createElement('option');
             option.value = location;
@@ -729,7 +711,6 @@
         });
     }
 
-    // ========== Refresh Discogs records ==========
     function refreshDiscogsRecords() {
         const selectedValue = discogsLocationSelect ? discogsLocationSelect.value : null;
         const baseOptions = { mode: 'discogs' };
@@ -745,7 +726,7 @@
         }
     }
 
-    // ========== Populate Discogs Prices ==========
+    // ========== Discogs Prices ==========
     async function populateDiscogsPrices(records) {
         console.log(`💰 populateDiscogsPrices: received ${records.length} records`);
         if (!records || records.length === 0) {
@@ -819,7 +800,7 @@
         if (!sleeve || !disc) return;
 
         try {
-            const data = await apiPost('/api/price-estimate-v3', {
+            const data = await apiRequest('POST', '/api/price-estimate-v3', {
                 catalog_number: catalogNumber || '',
                 media_condition: disc.display_name || disc.condition_name,
                 sleeve_condition: sleeve.display_name || sleeve.condition_name
@@ -842,13 +823,7 @@
     async function calculateMarkupBatch(records) {
         if (!records || records.length === 0) return [];
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/calculate-markup-batch', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ records: records })
-            });
-            const result = await response.json();
+            const result = await apiRequest('POST', '/api/discogs/calculate-markup-batch', { records: records });
             if (result.status === 'success') {
                 return result.results;
             } else {
@@ -861,7 +836,7 @@
         }
     }
 
-    // ========== Load Discogs Orders List (with filters) ==========
+    // ========== Discogs Orders ==========
     async function loadDiscogsOrdersList(status, dateFrom, dateTo, search) {
         console.log(`📦 loadDiscogsOrdersList() called with: status=${status || 'all'}, dateFrom=${dateFrom}, dateTo=${dateTo}, search=${search}`);
         try {
@@ -928,7 +903,6 @@
         }
     }
 
-    // ========== Apply Discogs Orders Filters ==========
     async function applyDiscogsOrdersFilters() {
         const status = document.getElementById('discogs-orders-status-filter')?.value || '';
         const dateFrom = document.getElementById('discogs-orders-date-from')?.value || '';
@@ -952,7 +926,6 @@
         updateSelectionCount();
     }
 
-    // ========== Refresh Discogs Orders ==========
     function refreshDiscogsOrders() {
         const dateFrom = document.getElementById('discogs-orders-date-from');
         const dateTo = document.getElementById('discogs-orders-date-to');
@@ -979,7 +952,6 @@
         applyDiscogsOrdersFilters();
     }
 
-    // ========== Load Order Items ==========
     async function loadOrderItems(orderId) {
         console.log(`📦 loadOrderItems() for order ${orderId}`);
         if (!orderId) {
@@ -1020,7 +992,6 @@
             for (const item of items) {
                 let pigstyleId = null;
                 
-                // Check condition_comments for PIGSTYLE ID
                 if (item.condition_comments) {
                     const match = item.condition_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
                     if (match) pigstyleId = parseInt(match[1], 10);
@@ -1097,7 +1068,6 @@
         }
     }
 
-    // ========== Mark Record Sold on Discogs ==========
     async function markRecordSoldOnDiscogs(recordId) {
         if (!recordId) {
             showStatus('No record ID provided.', 'error');
@@ -1122,7 +1092,7 @@
             if (data.status === 'success') {
                 const price = data.record ? data.record.store_price : 'unknown';
                 showStatus(`✅ Record #${recordId} marked as sold on Discogs for $${price}`, 'success');
-                playSuccessSound();
+                playSound('success');
                 
                 if (currentSearchMode === 'discogs_orders' && selectedOrderId) {
                     await loadOrderItems(selectedOrderId);
@@ -1132,16 +1102,15 @@
                 }
             } else {
                 showStatus(`❌ Error: ${data.error || 'Failed to mark record as sold'}`, 'error');
-                playErrorSound();
+                playSound('error');
             }
         } catch (error) {
             console.error('Error marking record sold on Discogs:', error);
             showStatus('❌ Error: ' + error.message, 'error');
-            playErrorSound();
+            playSound('error');
         }
     }
 
-    // ========== Process Discogs Order ==========
     async function processDiscogsOrder() {
         const items = filteredRecords;
         if (items.length === 0) {
@@ -1196,17 +1165,192 @@
         }
     }
 
-    // ========== Helpers for Discogs Orders ==========
-    function updateDiscogsOrdersStatus(message, type) {
-        if (!discogsOrdersStatus) return;
+    // ========== REFUND MODE ==========
+    async function processRefund() {
+        const selected = getSelectedRecords();
+        if (selected.length === 0) {
+            showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
+            return;
+        }
+
+        // Verify all selected records are sold (status 3 or 4)
+        const soldRecords = selected.filter(r => r.status_id === 3 || r.status_id === 4);
+        if (soldRecords.length === 0) {
+            showStatus('No sold records selected. Only records with status "Sold" or "Sold on Discogs" can be refunded.', 'warning');
+            return;
+        }
+
+        if (soldRecords.length < selected.length) {
+            const nonSold = selected.length - soldRecords.length;
+            if (!confirm(`${nonSold} selected record(s) are not sold and will be skipped. Continue with ${soldRecords.length} sold record(s)?`)) {
+                return;
+            }
+        }
+
+        // Calculate total refund amount
+        const totalAmount = soldRecords.reduce((sum, r) => sum + (r.store_price || 0), 0);
+
+        // Show refund modal
+        showRefundModal(soldRecords, totalAmount);
+    }
+
+    function showRefundModal(records, totalAmount) {
+        // Remove existing modal if any
+        const existingModal = document.getElementById('refund-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'refund-modal';
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px; width: 95%;">
+                <div class="modal-header" style="background: #dc3545; color: white;">
+                    <h3 class="modal-title"><i class="fas fa-undo-alt"></i> Process Refund</h3>
+                    <button class="modal-close" onclick="closeRefundModal()" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>${records.length}</strong> record(s) selected for refund.</p>
+                    
+                    <div style="margin-bottom: 15px; max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 13px;">
+                        ${records.map(r => `<div>${escapeHtml(r.artist)} - ${escapeHtml(r.title)} (${getStatusName(r.status_id)}) - $${(r.store_price || 0).toFixed(2)}</div>`).join('')}
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label for="refund-amount" style="display:block; font-weight:500; margin-bottom:4px;">Refund Amount ($)</label>
+                        <input type="number" id="refund-amount" class="form-control" step="0.01" min="0.01" value="${totalAmount.toFixed(2)}" style="width:100%; padding:8px; font-size:16px;">
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label for="refund-method" style="display:block; font-weight:500; margin-bottom:4px;">Refund Method</label>
+                        <select id="refund-method" class="form-control" style="width:100%; padding:8px;">
+                            <option value="cash">Cash</option>
+                            <option value="square">Square</option>
+                            <option value="discogs">Discogs</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label for="refund-reason" style="display:block; font-weight:500; margin-bottom:4px;">Reason (optional)</label>
+                        <input type="text" id="refund-reason" class="form-control" placeholder="e.g., Customer returned item" style="width:100%; padding:8px;">
+                    </div>
+
+                    <div id="refund-status" style="margin-top:10px; display:none;"></div>
+                </div>
+                <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
+                    <button class="btn btn-secondary" onclick="closeRefundModal()">Cancel</button>
+                    <button class="btn btn-danger" id="refund-confirm-btn">
+                        <i class="fas fa-undo-alt"></i> Process Refund
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Focus the amount input
+        setTimeout(() => {
+            const amountInput = document.getElementById('refund-amount');
+            if (amountInput) amountInput.focus();
+        }, 200);
+
+        // Add event listener for Confirm button
+        document.getElementById('refund-confirm-btn').addEventListener('click', function() {
+            confirmRefund(records);
+        });
+
+        // Enter key on amount input triggers confirm
+        document.getElementById('refund-amount').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('refund-confirm-btn').click();
+            }
+        });
+    }
+
+    function closeRefundModal() {
+        const modal = document.getElementById('refund-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            modal.remove();
+        }
+    }
+
+    async function confirmRefund(records) {
+        const amountInput = document.getElementById('refund-amount');
+        const methodSelect = document.getElementById('refund-method');
+        const reasonInput = document.getElementById('refund-reason');
+        const statusDiv = document.getElementById('refund-status');
+        const confirmBtn = document.getElementById('refund-confirm-btn');
+
+        const amount = parseFloat(amountInput.value);
+        const method = methodSelect.value;
+        const reason = reasonInput.value.trim() || 'Customer refund';
+
+        if (isNaN(amount) || amount <= 0) {
+            showRefundStatus('Please enter a valid refund amount.', 'error');
+            return;
+        }
+
+        // Confirm with user
+        const recordSummary = records.map(r => `${r.artist} - ${r.title}`).join('\n');
+        if (!confirm(`Process refund for ${records.length} record(s)?\n\n${recordSummary}\n\nAmount: $${amount.toFixed(2)}\nMethod: ${method}\nReason: ${reason}\n\n⚠️ Records will be DELETED from the database.`)) {
+            return;
+        }
+
+        // Disable button
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Processing...';
+        showRefundStatus('⏳ Processing refund...', 'info');
+
+        try {
+            const recordIds = records.map(r => r.id);
+            const result = await apiRequest('POST', '/api/refund/process', {
+                record_ids: recordIds,
+                amount: amount,
+                method: method,
+                reason: reason
+            });
+
+            if (result.status === 'success') {
+                showRefundStatus(`✅ ${result.message}`, 'success');
+                playSound('success');
+                
+                // Remove records from filtered list and re-render
+                const refundedIds = new Set(recordIds);
+                filteredRecords = filteredRecords.filter(r => !refundedIds.has(r.id));
+                allRecords = allRecords.filter(r => !refundedIds.has(r.id));
+                totalRecords = filteredRecords.length;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                updateSelectionCount();
+                cancelRangeSelection();
+
+                setTimeout(closeRefundModal, 1500);
+            } else {
+                showRefundStatus(`❌ Error: ${result.error || 'Unknown error'}`, 'error');
+                playSound('error');
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Process Refund';
+            }
+        } catch (error) {
+            showRefundStatus(`❌ Error: ${error.message}`, 'error');
+            playSound('error');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Process Refund';
+        }
+    }
+
+    function showRefundStatus(message, type) {
+        const el = document.getElementById('refund-status');
+        if (!el) return;
         type = type || 'info';
         const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        discogsOrdersStatus.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        discogsOrdersStatus.className = `status-message status-${type}`;
-        discogsOrdersStatus.style.display = 'block';
-        setTimeout(() => {
-            if (discogsOrdersStatus) discogsOrdersStatus.style.display = 'none';
-        }, 8000);
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        el.className = 'status-message status-' + type;
+        el.style.display = 'block';
     }
 
     // ========== RENDER TABLE PAGE ==========
@@ -1222,10 +1366,8 @@
         if (currentSearchMode === 'add') {
             const isSearchResult = currentMode === 'search' && currentResults.length > 0;
             if (isSearchResult) {
-                // Show hidden default params when defaults are active
                 const showDefaultInputs = !defaultParamsActive;
                 
-                // Build condition options for selects
                 const condOptions = conditions.map(c =>
                     `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
                 ).join('');
@@ -1233,7 +1375,6 @@
                     `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
                 ).join('');
 
-                // Build thead with or without condition/price/cogs/consignor columns
                 if (showDefaultInputs) {
                     theadHtml = `
                         <tr>
@@ -1251,7 +1392,6 @@
                         </tr>
                     `;
                 } else {
-                    // Hide default params columns when defaults are active
                     theadHtml = `
                         <tr>
                             <th style="width:60px;">Range</th>
@@ -1358,6 +1498,20 @@
                     <th>Action</th>
                 </tr>
             `;
+
+        // ===== REFUND MODE =====
+        } else if (currentSearchMode === 'refund') {
+            theadHtml = `
+                <tr>
+                    <th style="width:100px;">Range</th>
+                    <th>ID</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                    <th>Sale Price</th>
+                    <th>Status</th>
+                    <th>Date Sold</th>
+                </tr>
+            `;
         }
         recordsTableHead.innerHTML = theadHtml;
 
@@ -1368,6 +1522,7 @@
             if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records.';
             if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
             if (currentSearchMode === 'delete') msg = 'No records to delete.';
+            if (currentSearchMode === 'refund') msg = 'No sold records found. Search by artist, title, or barcode to find sold records.';
             if (currentSearchMode === 'checkout') {
                 if (checkoutViewMode === 'list') {
                     msg = checkoutSelectedItems.length === 0 ? 'No records in checkout. Search to add records.' : 'No records in checkout.';
@@ -1381,13 +1536,13 @@
                 else msg = 'This order has no items.';
             }
             const colCount = currentSearchMode === 'discogs_orders' ? 10 :
+                             (currentSearchMode === 'refund' ? 7 :
                              (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 11) :
                              (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
-                             (currentSearchMode === 'delete' ? 6 : 7))));
+                             (currentSearchMode === 'delete' ? 6 : 7)))));
             tbodyHtml = `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;">${msg}</td></tr>`;
         } else {
-            const data = getCurrentData();
             pageRecords.forEach((record, idx) => {
                 const globalIndex = start + idx;
                 const isSelected = (rangeFromIndex !== null && rangeToIndex !== null &&
@@ -1449,7 +1604,6 @@
                         `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage('${escapeHtml(imageUrl)}', '${escapeHtml(artist)} - ${escapeHtml(title)}')" title="Click to expand">` :
                         `<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>`;
 
-                    // Show/hide default parameter inputs based on whether defaults are active
                     const showDefaultInputs = !defaultParamsActive;
 
                     rowHtml += `<td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>`;
@@ -1486,7 +1640,6 @@
                             </td>
                         `;
                     } else {
-                        // Show hidden values as text when defaults are active
                         const def = getDefaultParamsForRecord();
                         const sleeveName = def.sleeveConditionId ? conditions.find(c => c.id === def.sleeveConditionId)?.display_name || '—' : '—';
                         const discName = def.discConditionId ? conditions.find(c => c.id === def.discConditionId)?.display_name || '—' : '—';
@@ -1694,6 +1847,26 @@
                         <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                         <td>${actionButton}</td>
                     `;
+
+                // ===== REFUND MODE =====
+                } else if (currentSearchMode === 'refund') {
+                    const id = record.id;
+                    const artist = record.artist || 'Unknown';
+                    const title = record.title || 'Unknown';
+                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
+                    const statusName = getStatusName(record.status_id);
+                    const statusClass = getStatusClass(record.status_id);
+                    const dateSold = record.date_sold ? new Date(record.date_sold).toLocaleDateString() : 'Unknown';
+                    
+                    rowHtml += `
+                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
+                        <td>${id}</td>
+                        <td>${escapeHtml(artist)}</td>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${price}</td>
+                        <td><span class="status-badge ${statusClass}">${statusName}</span></td>
+                        <td>${dateSold}</td>
+                    `;
                 }
 
                 rowHtml += `</tr>`;
@@ -1702,7 +1875,7 @@
         }
         recordsTableBody.innerHTML = tbodyHtml;
 
-        // Attach event listeners for range buttons
+        // Attach event listeners
         document.querySelectorAll('.btn-from').forEach(btn => {
             btn.addEventListener('click', function() {
                 const index = parseInt(this.dataset.index);
@@ -1716,7 +1889,6 @@
             });
         });
 
-        // Attach event listeners for add buttons (add mode search results)
         if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
             document.querySelectorAll('.btn-add-record-from-search').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -1727,7 +1899,6 @@
                 });
             });
 
-            // Only attach condition change listeners if default params are NOT active
             if (!defaultParamsActive) {
                 document.querySelectorAll('.sleeve-condition-select').forEach(sel => {
                     sel.addEventListener('change', function() {
@@ -1748,7 +1919,6 @@
             }
         }
 
-        // Single post buttons (Discogs mode)
         if (currentSearchMode === 'discogs') {
             document.querySelectorAll('.post-single-btn').forEach(btn => {
                 btn.addEventListener('click', function(e) {
@@ -1769,7 +1939,6 @@
             });
         }
 
-        // Checkout mode Add/Remove buttons
         if (currentSearchMode === 'checkout') {
             document.querySelectorAll('.add-checkout-item').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -1785,7 +1954,6 @@
             });
         }
 
-        // Discogs Orders mode: PigStyle ID inputs and Mark Sold buttons
         if (currentSearchMode === 'discogs_orders') {
             document.querySelectorAll('.pigstyle-id-input').forEach(input => {
                 input.addEventListener('change', function() {
@@ -1844,15 +2012,7 @@
     // ========== Helper: lookup barcode for order item ==========
     async function lookupBarcodeForOrderItem(input, barcode) {
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/records/search?q=' + encodeURIComponent(barcode), {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            if (!response.ok) {
-                showStatus('Error searching barcode.', 'error');
-                return;
-            }
-            const data = await response.json();
+            const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(barcode));
             if (data.status === 'success' && data.records && data.records.length === 1) {
                 const record = data.records[0];
                 input.value = record.id;
@@ -1868,13 +2028,13 @@
                     item.record_status_id = record.status_id;
                     renderTablePage();
                 }
-                playSuccessSound();
+                playSound('success');
                 showStatus(`✅ Record #${record.id} assigned to this order item.`, 'success');
             } else if (data.records && data.records.length > 1) {
                 showStatus(`⚠️ Multiple records (${data.records.length}) found for barcode. Please be more specific.`, 'warning');
             } else {
                 showStatus('❌ No record found for this barcode.', 'error');
-                playErrorSound();
+                playSound('error');
             }
         } catch (error) {
             console.error('Barcode lookup error:', error);
@@ -1922,6 +2082,7 @@
         const isAddMode = currentSearchMode === 'add';
         const isDiscogsOrdersMode = currentSearchMode === 'discogs_orders';
         const isScanMode = currentSearchMode === 'scan';
+        const isRefundMode = currentSearchMode === 'refund';
 
         if (discogsUi) {
             discogsUi.style.display = (isDiscogsMode || isDeleteMode || isCheckoutMode || isDiscogsOrdersMode) ? 'block' : 'none';
@@ -1996,7 +2157,14 @@
         }
 
         // --- Complete button: hidden in Add mode, visible in others ---
-        completeActionBtn.style.display = isAddMode ? 'none' : '';
+        if (isRefundMode) {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '💰 Process Refund';
+        } else if (isAddMode) {
+            completeActionBtn.style.display = 'none';
+        } else {
+            completeActionBtn.style.display = '';
+        }
 
         // --- Custom Item button: only in Checkout mode ---
         let customBtn = document.getElementById('custom-item-btn');
@@ -2012,6 +2180,11 @@
             customBtn.style.display = 'inline-block';
         } else {
             if (customBtn) customBtn.style.display = 'none';
+        }
+
+        // --- Search placeholder ---
+        if (isRefundMode) {
+            searchInput.placeholder = 'Search sold records by artist, title, or barcode...';
         }
     }
 
@@ -2184,7 +2357,6 @@
         let sleeveId = null;
         let discId = null;
 
-        // If default params are active, use those
         if (defaultParamsActive) {
             sleeveId = defaultParams.sleeveConditionId;
             discId = defaultParams.discConditionId;
@@ -2193,7 +2365,6 @@
             consignorId = defaultParams.consignorId;
         }
 
-        // Override with form values if they exist (and not hidden)
         if (priceInput && priceInput.value) {
             const val = parseFloat(priceInput.value);
             if (!isNaN(val) && val > 0) price = val;
@@ -2215,7 +2386,6 @@
             if (!isNaN(val)) discId = val;
         }
 
-        // Validate
         if (!sleeveId || !discId) {
             showStatus('Please select sleeve and disc conditions (or set defaults)', 'warning');
             return;
@@ -2240,10 +2410,9 @@
             notes: null
         };
 
-        const result = await apiPost('/records', recordData);
+        const result = await apiRequest('POST', '/records', recordData);
         showStatus(`✅ Record #${result.record.id} added successfully!`, 'success');
         
-        // Focus the search input after adding
         if (searchInput) {
             searchInput.focus();
             searchInput.select();
@@ -2263,74 +2432,14 @@
             performDiscogsSearch(term);
         } else if (mode === 'scan') {
             performScanSearch(term);
+        } else if (mode === 'refund') {
+            performRefundSearch(term);
         } else if (mode === 'checkout') {
-            const termStr = term.trim();
-            const termLower = termStr.toLowerCase();
-            const isNumeric = /^\d+$/.test(termStr);
-
-            let filtered;
-            if (isNumeric) {
-                filtered = allRecords.filter(r => {
-                    const idMatch = r.id && r.id.toString() === termStr;
-                    const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
-                    return idMatch || barcodeMatch;
-                });
-                if (filtered.length === 0) {
-                    filtered = allRecords.filter(r => {
-                        const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
-                        const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
-                        const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
-                        return artistMatch || titleMatch || catalogMatch;
-                    });
-                }
-            } else {
-                filtered = allRecords.filter(r => {
-                    const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
-                    const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
-                    const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
-                    const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
-                    const idMatch = r.id && r.id.toString() === termStr;
-                    return artistMatch || titleMatch || catalogMatch || barcodeMatch || idMatch;
-                });
-            }
-
-            checkoutViewMode = 'search';
-            filteredRecords = filtered;
-            totalRecords = filtered.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
-            updateSelectionCount();
+            performCheckoutSearch(term);
         } else if (mode === 'discogs') {
-            const termLower = term.toLowerCase();
-            let source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
-            const filtered = source.filter(r => {
-                return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
-            });
-            filteredRecords = filtered;
-            totalRecords = filteredRecords.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+            performDiscogsFilterSearch(term);
         } else if (mode === 'delete') {
-            const termLower = term.toLowerCase();
-            const filtered = allRecords.filter(r => {
-                return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
-                       (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
-            });
-            filteredRecords = filtered;
-            totalRecords = filteredRecords.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+            performDeleteSearch(term);
         }
     }
 
@@ -2338,11 +2447,10 @@
         currentMode = 'search';
         recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>`;
         try {
-            // Get format filter from DOM
             const formatFilterEl = document.getElementById('discogs-format-filter');
             const format = formatFilterEl ? formatFilterEl.value : 'all';
             
-            const data = await apiGet('/api/discogs/search?q=' + encodeURIComponent(term) + (format && format !== 'all' ? '&format=' + encodeURIComponent(format) : ''));
+            const data = await apiRequest('GET', '/api/discogs/search?q=' + encodeURIComponent(term) + (format && format !== 'all' ? '&format=' + encodeURIComponent(format) : ''));
             if (!data.results || !data.results.length) {
                 recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;">No Discogs results found</td></tr>`;
                 return;
@@ -2372,9 +2480,9 @@
 
     async function performScanSearch(term) {
         try {
-            const data = await apiGet('/records/search?q=' + encodeURIComponent(term));
+            const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
             if (!data.records || !data.records.length) {
-                playErrorSound();
+                playSound('error');
                 showStatus('No record found with that barcode or ID', 'error');
                 if (searchInput) searchInput.value = '';
                 return;
@@ -2382,7 +2490,7 @@
 
             const records = data.records;
             if (records.length > 1) {
-                playErrorSound();
+                playSound('error');
                 showStatus(`Multiple records (${records.length}) found. Please use a unique barcode.`, 'error');
                 if (searchInput) searchInput.value = '';
                 return;
@@ -2400,7 +2508,7 @@
                 });
                 renderPagination();
                 renderTablePage();
-                playSuccessSound();
+                playSound('success');
                 showStatus(`✅ Updated last_seen for #${record.id}: ${record.artist} - ${record.title}`, 'success');
                 if (searchInput) searchInput.value = '';
                 return;
@@ -2416,16 +2524,125 @@
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            playSuccessSound();
+            playSound('success');
             showStatus(`✅ Added #${record.id}: ${record.artist} - ${record.title}`, 'success');
             updateSelectionCount();
             if (searchInput) searchInput.value = '';
         } catch (error) {
-            playErrorSound();
+            playSound('error');
             showStatus(`Error scanning: ${error.message}`, 'error');
             console.error('Scan search error:', error);
             if (searchInput) searchInput.value = '';
         }
+    }
+
+    async function performRefundSearch(term) {
+        try {
+            // Search ONLY sold records (status 3 or 4)
+            const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
+            if (!data.records || !data.records.length) {
+                playSound('error');
+                showStatus('No sold record found with that search term', 'error');
+                return;
+            }
+
+            // Filter to only sold records
+            const soldRecords = data.records.filter(r => r.status_id === 3 || r.status_id === 4);
+            
+            if (soldRecords.length === 0) {
+                playSound('error');
+                showStatus('No sold records found matching that term', 'error');
+                return;
+            }
+
+            // Replace filtered records with sold records
+            filteredRecords = soldRecords;
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            playSound('success');
+            showStatus(`Found ${totalRecords} sold record(s)`, 'success');
+            updateSelectionCount();
+        } catch (error) {
+            playSound('error');
+            showStatus(`Error searching: ${error.message}`, 'error');
+            console.error('Refund search error:', error);
+        }
+    }
+
+    function performCheckoutSearch(term) {
+        const termStr = term.trim();
+        const termLower = termStr.toLowerCase();
+        const isNumeric = /^\d+$/.test(termStr);
+
+        let filtered;
+        if (isNumeric) {
+            filtered = allRecords.filter(r => {
+                const idMatch = r.id && r.id.toString() === termStr;
+                const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
+                return idMatch || barcodeMatch;
+            });
+            if (filtered.length === 0) {
+                filtered = allRecords.filter(r => {
+                    const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
+                    const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
+                    const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
+                    return artistMatch || titleMatch || catalogMatch;
+                });
+            }
+        } else {
+            filtered = allRecords.filter(r => {
+                const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
+                const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
+                const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
+                const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
+                const idMatch = r.id && r.id.toString() === termStr;
+                return artistMatch || titleMatch || catalogMatch || barcodeMatch || idMatch;
+            });
+        }
+
+        checkoutViewMode = 'search';
+        filteredRecords = filtered;
+        totalRecords = filtered.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+        updateSelectionCount();
+    }
+
+    function performDiscogsFilterSearch(term) {
+        const termLower = term.toLowerCase();
+        let source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
+        const filtered = source.filter(r => {
+            return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
+                   (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
+                   (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
+                   (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
+        });
+        filteredRecords = filtered;
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+    }
+
+    function performDeleteSearch(term) {
+        const termLower = term.toLowerCase();
+        const filtered = allRecords.filter(r => {
+            return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
+                   (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
+                   (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
+                   (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
+        });
+        filteredRecords = filtered;
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
     }
 
     function clearSearch() {
@@ -2436,6 +2653,13 @@
             loadRecords({ statusIds: [1], mode: 'add' });
         } else if (currentSearchMode === 'scan') {
             // keep list
+        } else if (currentSearchMode === 'refund') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Search cleared', 'info');
         } else if (currentSearchMode === 'discogs') {
             refreshDiscogsRecords();
         } else if (currentSearchMode === 'delete') {
@@ -2462,7 +2686,6 @@
         }
         showStatus('Search cleared', 'info');
         
-        // Focus the search input after clearing
         if (searchInput) {
             searchInput.focus();
         }
@@ -2494,11 +2717,10 @@
         populateDiscogsPrices(filteredRecords);
     }
 
-    // ========== Image Expand Function ==========
-    function expandImage(imageUrl, title) {
+    // ========== Image Expand ==========
+    window.expandImage = function(imageUrl, title) {
         if (!imageUrl) return;
         
-        // Remove existing modal if any
         const existingModal = document.getElementById('image-expand-modal');
         if (existingModal) {
             existingModal.remove();
@@ -2524,14 +2746,12 @@
         `;
         document.body.appendChild(modal);
 
-        // Close on backdrop click
         modal.addEventListener('click', function(e) {
             if (e.target === modal) {
                 modal.remove();
             }
         });
 
-        // Close on Escape key
         document.addEventListener('keydown', function escHandler(e) {
             if (e.key === 'Escape') {
                 if (document.getElementById('image-expand-modal')) {
@@ -2540,9 +2760,9 @@
                 document.removeEventListener('keydown', escHandler);
             }
         });
-    }
+    };
 
-    // ========== Discogs UI toggle functions ==========
+    // ========== Markup Rules ==========
     window.toggleMarkupRules = function() {
         const content = document.getElementById('markup-rules-content');
         const icon = document.getElementById('markup-rules-toggle-icon');
@@ -2579,51 +2799,12 @@
             content.style.display = 'block';
             icon.style.transform = 'rotate(180deg)';
             loadDefaultParamsFromStorage();
-            // Populate the selects with condition options
             populateDefaultParamSelects();
         } else {
             content.style.display = 'none';
             icon.style.transform = 'rotate(0deg)';
         }
     };
-
-    function populateDefaultParamSelects() {
-        // Populate sleeve and disc condition selects
-        if (defaultSleeveSelect) {
-            const currentVal = defaultSleeveSelect.value;
-            defaultSleeveSelect.innerHTML = '<option value="">Select...</option>';
-            conditions.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.display_name || c.condition_name;
-                defaultSleeveSelect.appendChild(opt);
-            });
-            if (currentVal) defaultSleeveSelect.value = currentVal;
-        }
-        if (defaultDiscSelect) {
-            const currentVal = defaultDiscSelect.value;
-            defaultDiscSelect.innerHTML = '<option value="">Select...</option>';
-            conditions.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.display_name || c.condition_name;
-                defaultDiscSelect.appendChild(opt);
-            });
-            if (currentVal) defaultDiscSelect.value = currentVal;
-        }
-        // Populate consignor select
-        if (defaultConsignorSelect) {
-            const currentVal = defaultConsignorSelect.value;
-            defaultConsignorSelect.innerHTML = '<option value="">None</option>';
-            consignors.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.username + (c.full_name ? ` (${c.full_name})` : '');
-                defaultConsignorSelect.appendChild(opt);
-            });
-            if (currentVal) defaultConsignorSelect.value = currentVal;
-        }
-    }
 
     window.applyDefaultParams = function() {
         const sleeveId = defaultSleeveSelect ? parseInt(defaultSleeveSelect.value) : null;
@@ -2642,7 +2823,6 @@
         defaultParamsActive = true;
         saveDefaultParamsToStorage();
 
-        // Apply to current search results
         const rows = document.querySelectorAll('.btn-add-record-from-search');
         if (rows.length === 0) {
             updateDefaultParamsStatus('No search results to apply defaults to', 'warning');
@@ -2688,29 +2868,12 @@
         renderTablePage();
     };
 
-    function updateDefaultParamsStatus(message, type) {
-        const el = document.getElementById('default-params-status');
-        if (!el) return;
-        type = type || 'info';
-        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        el.className = 'status-message status-' + type;
-        el.style.display = 'block';
-        setTimeout(() => { if (el) el.style.display = 'none'; }, 5000);
-    }
-
     // ========== Markup Rules Management ==========
     async function loadMarkupRules() {
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules', {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            if (response.ok) {
-                const data = await response.json();
-                if (data.status === 'success') {
-                    renderMarkupRules(data.rules);
-                }
+            const data = await apiRequest('GET', '/api/markup-rules');
+            if (data.status === 'success') {
+                renderMarkupRules(data.rules);
             }
         } catch (error) {
             console.error('Error loading markup rules:', error);
@@ -2754,13 +2917,12 @@
             return;
         }
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ days_old: days_old, markup_percent: markup_percent, description: description })
+            const result = await apiRequest('POST', '/api/markup-rules', {
+                days_old: days_old,
+                markup_percent: markup_percent,
+                description: description
             });
-            if (response.ok) {
+            if (result.status === 'success') {
                 showDiscogsStatus('Markup rule added successfully', 'success');
                 daysInput.value = '';
                 percentInput.value = '';
@@ -2768,8 +2930,7 @@
                 loadMarkupRules();
                 refreshDiscogsRecords();
             } else {
-                const error = await response.json();
-                showDiscogsStatus('Error: ' + error.error, 'error');
+                showDiscogsStatus('Error: ' + (result.error || 'Unknown error'), 'error');
             }
         } catch (error) {
             showDiscogsStatus('Error: ' + error.message, 'error');
@@ -2787,19 +2948,16 @@
             return;
         }
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ markup_percent: markup_percent, description: description })
+            const result = await apiRequest('PUT', '/api/markup-rules/' + ruleId, {
+                markup_percent: markup_percent,
+                description: description
             });
-            if (response.ok) {
+            if (result.status === 'success') {
                 showDiscogsStatus('Markup rule updated successfully', 'success');
                 loadMarkupRules();
                 refreshDiscogsRecords();
             } else {
-                const error = await response.json();
-                showDiscogsStatus('Error: ' + error.error, 'error');
+                showDiscogsStatus('Error: ' + (result.error || 'Unknown error'), 'error');
             }
         } catch (error) {
             showDiscogsStatus('Error: ' + error.message, 'error');
@@ -2809,18 +2967,13 @@
     window.deleteMarkupRule = async function(ruleId) {
         if (!confirm('Are you sure you want to delete this markup rule?')) return;
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/markup-rules/' + ruleId, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            if (response.ok) {
+            const result = await apiRequest('DELETE', '/api/markup-rules/' + ruleId);
+            if (result.status === 'success') {
                 showDiscogsStatus('Markup rule deleted successfully', 'success');
                 loadMarkupRules();
                 refreshDiscogsRecords();
             } else {
-                const error = await response.json();
-                showDiscogsStatus('Error: ' + error.error, 'error');
+                showDiscogsStatus('Error: ' + (result.error || 'Unknown error'), 'error');
             }
         } catch (error) {
             showDiscogsStatus('Error: ' + error.message, 'error');
@@ -3102,13 +3255,7 @@
         };
 
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify(listingData)
-            });
-            const result = await response.json();
+            const result = await apiRequest('POST', '/api/discogs/create-listing-single', listingData);
             if (result.success) {
                 let discogsUrl = result.listing_url;
                 if (!discogsUrl && result.listing_id) {
@@ -3132,7 +3279,6 @@
             return;
         }
 
-        // Remove existing modal if any
         const existingModal = document.getElementById('discogs-post-modal');
         if (existingModal) {
             existingModal.remove();
@@ -3199,18 +3345,15 @@
         `;
         document.body.appendChild(modal);
 
-        // Focus the location input
         setTimeout(() => {
             const locationInput = document.getElementById('discogs-post-location');
             if (locationInput) locationInput.focus();
         }, 200);
 
-        // Add event listener for Start button
         document.getElementById('discogs-post-start-btn').addEventListener('click', function() {
             startDiscogsPosting(records);
         });
 
-        // Enter key on location input triggers start
         document.getElementById('discogs-post-location').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -3246,7 +3389,6 @@
         const logCount = document.getElementById('discogs-post-log-count');
         if (!logContainer) return;
 
-        // Remove empty placeholder
         const placeholder = logContainer.querySelector('div[style*="color:#999"]');
         if (placeholder) {
             placeholder.remove();
@@ -3269,7 +3411,6 @@
         logContainer.appendChild(entry);
         logContainer.scrollTop = logContainer.scrollHeight;
 
-        // Update count
         const entries = logContainer.querySelectorAll('div:not([style*="color:#999"])');
         if (logCount) {
             const total = document.querySelector('#discogs-post-progress-text')?.textContent?.replace('%', '') || '0';
@@ -3302,7 +3443,6 @@
             return;
         }
 
-        // Disable buttons
         const startBtn = document.getElementById('discogs-post-start-btn');
         const cancelBtn = document.getElementById('discogs-post-cancel-btn');
         if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Posting...'; }
@@ -3320,15 +3460,12 @@
             const record = records[i];
             const current = i + 1;
 
-            // Update progress
             updateDiscogsPostProgress(current, records.length);
 
             try {
-                // Step 1: Update location
                 updateDiscogsPostLog('info', `📝 Updating location for #${record.id}: ${record.artist} - ${record.title}`);
-                await apiPut('/records/' + record.id, { location: location });
+                await apiRequest('PUT', '/records/' + record.id, { location: location });
 
-                // Step 2: Calculate markup price
                 updateDiscogsPostLog('info', `💰 Calculating price for #${record.id}...`);
                 const priceRequests = [{
                     id: record.id,
@@ -3348,7 +3485,6 @@
                     throw new Error('Could not calculate Discogs price');
                 }
 
-                // Step 3: Post to Discogs
                 updateDiscogsPostLog('info', `📤 Posting #${record.id}: ${record.artist} - ${record.title} at $${discogsPrice}...`);
                 
                 const listingData = {
@@ -3365,13 +3501,7 @@
                     }
                 };
 
-                const response = await fetch(window.AppConfig.baseUrl + '/api/discogs/create-listing-single', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(listingData)
-                });
-                const result = await response.json();
+                const result = await apiRequest('POST', '/api/discogs/create-listing-single', listingData);
 
                 if (result.success) {
                     successCount++;
@@ -3386,13 +3516,11 @@
                 console.error('Error posting record #' + record.id, error);
             }
 
-            // Small delay between posts to avoid rate limiting
             if (i < records.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
 
-        // Complete
         isPosting = false;
         updateDiscogsPostProgress(records.length, records.length);
 
@@ -3401,26 +3529,23 @@
 
         if (failCount === 0) {
             showDiscogsPostStatus(`🎉 All ${records.length} records posted successfully!`, 'success');
-            playSuccessSound();
+            playSound('success');
         } else if (successCount > 0) {
             showDiscogsPostStatus(`⚠️ ${successCount} posted, ${failCount} failed. Check log for details.`, 'warning');
-            playErrorSound();
+            playSound('error');
         } else {
             showDiscogsPostStatus(`❌ All ${records.length} records failed to post.`, 'error');
-            playErrorSound();
+            playSound('error');
         }
 
-        // Re-enable buttons
         if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Start Posting'; }
         if (cancelBtn) { cancelBtn.disabled = false; }
 
-        // Refresh records
         refreshDiscogsRecords();
     }
 
-    // ========== Post Selected Records (Legacy - replaced by modal) ==========
+    // ========== Post Selected Records ==========
     async function postSelectedRecords() {
-        // This is now handled by the modal flow
         showDiscogsPostModal();
     }
 
@@ -3438,7 +3563,7 @@
         let deleted = 0;
         for (const record of records) {
             try {
-                await apiDelete('/records/' + record.id);
+                await apiRequest('DELETE', '/records/' + record.id);
                 deleted++;
             } catch (e) {
                 console.error('Delete failed for record', record.id, e);
@@ -3458,7 +3583,7 @@
         loadRecords({ statusIds: statuses, mode: 'delete', search: searchTerm });
     }
 
-    // ========== SET ACTIVE - UNIFIED ==========
+    // ========== SET ACTIVE ==========
     async function setActiveRecords() {
         const mode = currentSearchMode;
         let records = [];
@@ -3476,7 +3601,6 @@
             records = checkoutSelectedItems;
             console.log(`🔵 setActiveRecords: Checkout mode, using ${records.length} checkout items`);
         } else if (mode === 'discogs_orders') {
-            // In Discogs Orders mode, extract record IDs from pigstyle_id
             const items = filteredRecords;
             const recordIds = [];
             const recordMap = {};
@@ -3492,7 +3616,6 @@
                 showStatus('No records with valid PigStyle IDs found in this order.', 'warning');
                 return;
             }
-            // Fetch the full records
             try {
                 const response = await fetch(window.AppConfig.baseUrl + '/records/by-ids', {
                     method: 'POST',
@@ -3544,7 +3667,7 @@
             if (record.isCustom === true) continue;
             
             try {
-                await apiPut('/records/' + record.id, { status_id: 2 });
+                await apiRequest('PUT', '/records/' + record.id, { status_id: 2 });
                 updated++;
                 record.status_id = 2;
             } catch (e) {
@@ -3568,7 +3691,6 @@
             renderTablePage();
             updateSelectionCount();
         } else if (mode === 'discogs_orders') {
-            // Reload the order items to refresh status display
             if (selectedOrderId) {
                 await loadOrderItems(selectedOrderId);
             }
@@ -3664,6 +3786,7 @@
             document.body.appendChild(modal);
         }
 
+        // Populate account select
         const accountSelect = document.getElementById('cogs-payment-account');
         if (accountSelect) {
             accountSelect.innerHTML = '<option value="">-- Select how you paid --</option>';
@@ -4162,7 +4285,7 @@
                 continue;
             }
             try {
-                await apiPut('/records/' + record.id, {
+                await apiRequest('PUT', '/records/' + record.id, {
                     status_id: 3,
                     date_sold: today,
                     actual_sale_price: record.store_price
@@ -4485,6 +4608,8 @@
             showCheckoutModal();
         } else if (mode === 'discogs_orders') {
             processDiscogsOrder();
+        } else if (mode === 'refund') {
+            processRefund();
         } else {
             showStatus('No action available for this mode', 'warning');
         }
@@ -4742,7 +4867,7 @@
             const locationString = parts.join(' | ');
 
             try {
-                await apiPut('/records/' + record.id, {
+                await apiRequest('PUT', '/records/' + record.id, {
                     location: locationString,
                     last_seen: today
                 });
@@ -4771,7 +4896,7 @@
         renderTablePage();
 
         showScanStatus(`✅ Updated ${updated} of ${records.length} records with location.`, 'success');
-        playSuccessSound();
+        playSound('success');
 
         setTimeout(() => {
             document.getElementById('complete-scan-modal').style.display = 'none';
@@ -4802,7 +4927,6 @@
             currentResults = [];
             loadRecords({ statusIds: [1], mode: 'add' });
             searchInput.placeholder = 'Search Discogs...';
-            // Populate default params selects
             populateDefaultParamSelects();
         } else if (newMode === 'scan') {
             filteredRecords = [];
@@ -4842,7 +4966,20 @@
             searchInput.placeholder = 'Search records...';
             allRecords = [];
             loadRecords({ statusIds: [1,2], mode: 'delete' });
-        } else if (newMode === 'checkout') {
+        } 
+        else if (newMode === 'refund') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Refund mode: Search sold records (status 3 or 4) to refund.', 'info');
+            searchInput.placeholder = 'Search sold records by artist, title, or barcode...';
+            allRecords = [];
+            // Load all records so search can filter sold ones
+            loadRecords({ statusIds: [3, 4], mode: 'refund' });
+        }
+        else if (newMode === 'checkout') {
             checkoutSelectedItems = [];
             checkoutViewMode = 'list';
             filteredRecords = [];
@@ -4960,7 +5097,7 @@
         return filteredRecords;
     }
 
-    // ========== UNIFIED SELECTION LOGIC ==========
+    // ========== Unified Selection Logic ==========
     function getSelectedRecords() {
         if (currentSearchMode === 'checkout') {
             return checkoutSelectedItems.slice();
@@ -4986,9 +5123,9 @@
         const hasRecords = filteredRecords.length > 0;
         const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
 
-        // --- SET ACTIVE button: enable/disable based on selection ---
         const isDiscogsOrdersMode = mode === 'discogs_orders';
         const isAddMode = mode === 'add';
+        const isRefundMode = mode === 'refund';
         
         if (isDiscogsOrdersMode) {
             setActiveBtn.style.display = 'none';
@@ -5004,7 +5141,6 @@
             }
         }
 
-        // --- COGS and Print buttons (Add mode only) ---
         if (isAddMode) {
             const hasTargets = hasSelection || hasRecords;
             cogsBtn.disabled = !hasTargets;
@@ -5022,7 +5158,6 @@
             printBtn.style.display = 'none';
         }
 
-        // --- Complete button ---
         let actionLabel = 'Complete';
         if (mode === 'add') {
             // already handled
@@ -5043,6 +5178,9 @@
             const hasItems = filteredRecords.length > 0;
             completeActionBtn.disabled = !(hasOrder && hasItems);
             actionLabel = `📦 Mark ${filteredRecords.length} items sold`;
+        } else if (mode === 'refund') {
+            completeActionBtn.disabled = !hasSelection;
+            actionLabel = `💰 Refund ${count} selected`;
         }
 
         if (mode !== 'add') {
@@ -5053,7 +5191,7 @@
     }
 
     function applyFilters() {
-        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders') {
+        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders' || currentSearchMode === 'refund') {
             return;
         }
         if (currentMode === 'search') {
@@ -5074,18 +5212,18 @@
         if (!records.length) { showStatus('No records to print', 'warning'); return; }
         const { jsPDF } = window.jspdf;
 
-        const labelWidthMM = parseFloat((await apiGet('/config/LABEL_WIDTH_MM')).config_value);
-        const labelHeightMM = parseFloat((await apiGet('/config/LABEL_HEIGHT_MM')).config_value);
-        const leftMarginMM = parseFloat((await apiGet('/config/LEFT_MARGIN_MM')).config_value);
-        const gutterSpacingMM = parseFloat((await apiGet('/config/GUTTER_SPACING_MM')).config_value);
-        const topMarginMM = parseFloat((await apiGet('/config/TOP_MARGIN_MM')).config_value);
-        const priceFontSize = parseInt((await apiGet('/config/PRICE_FONT_SIZE')).config_value);
-        const textFontSize = parseInt((await apiGet('/config/TEXT_FONT_SIZE')).config_value);
-        const barcodeHeightMM = parseFloat((await apiGet('/config/BARCODE_HEIGHT')).config_value);
-        const printBorders = (await apiGet('/config/PRINT_BORDERS')).config_value === 'true';
-        const priceYPosMM = parseFloat((await apiGet('/config/PRICE_Y_POS')).config_value);
-        const barcodeYPosMM = parseFloat((await apiGet('/config/BARCODE_Y_POS')).config_value);
-        const infoYPosMM = parseFloat((await apiGet('/config/INFO_Y_POS')).config_value);
+        const labelWidthMM = parseFloat((await apiRequest('GET', '/config/LABEL_WIDTH_MM')).config_value);
+        const labelHeightMM = parseFloat((await apiRequest('GET', '/config/LABEL_HEIGHT_MM')).config_value);
+        const leftMarginMM = parseFloat((await apiRequest('GET', '/config/LEFT_MARGIN_MM')).config_value);
+        const gutterSpacingMM = parseFloat((await apiRequest('GET', '/config/GUTTER_SPACING_MM')).config_value);
+        const topMarginMM = parseFloat((await apiRequest('GET', '/config/TOP_MARGIN_MM')).config_value);
+        const priceFontSize = parseInt((await apiRequest('GET', '/config/PRICE_FONT_SIZE')).config_value);
+        const textFontSize = parseInt((await apiRequest('GET', '/config/TEXT_FONT_SIZE')).config_value);
+        const barcodeHeightMM = parseFloat((await apiRequest('GET', '/config/BARCODE_HEIGHT')).config_value);
+        const printBorders = (await apiRequest('GET', '/config/PRINT_BORDERS')).config_value === 'true';
+        const priceYPosMM = parseFloat((await apiRequest('GET', '/config/PRICE_Y_POS')).config_value);
+        const barcodeYPosMM = parseFloat((await apiRequest('GET', '/config/BARCODE_Y_POS')).config_value);
+        const infoYPosMM = parseFloat((await apiRequest('GET', '/config/INFO_Y_POS')).config_value);
 
         const mmToPt = 2.83465;
         const labelWidthPt = labelWidthMM * mmToPt;
@@ -5176,7 +5314,6 @@
         await loadAccounts();
         await loadStats();
 
-        // Populate default params selects
         populateDefaultParamSelects();
 
         searchModeSelect.addEventListener('change', onModeChange);
@@ -5248,7 +5385,6 @@
         
         setActiveBtn.addEventListener('click', setActiveRecords);
 
-        // Remove any previously created global-set-active-btn
         const oldGlobalBtn = document.getElementById('global-set-active-btn');
         if (oldGlobalBtn) oldGlobalBtn.remove();
 
@@ -5280,21 +5416,18 @@
             });
         }
 
-        // Discogs Orders: Apply filters button
         if (discogsOrdersApplyFiltersBtn) {
             discogsOrdersApplyFiltersBtn.addEventListener('click', function() {
                 applyDiscogsOrdersFilters();
             });
         }
 
-        // Discogs Orders: Refresh button
         if (discogsOrdersRefreshBtn) {
             discogsOrdersRefreshBtn.addEventListener('click', function() {
                 refreshDiscogsOrders();
             });
         }
 
-        // Discogs Orders: Enter key on search input
         if (discogsOrdersSearch) {
             discogsOrdersSearch.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
@@ -5304,7 +5437,6 @@
             });
         }
 
-        // Discogs Orders: Order select
         if (discogsOrderSelect) {
             discogsOrderSelect.addEventListener('change', function() {
                 const orderId = this.value;
@@ -5323,7 +5455,6 @@
             });
         }
 
-        // Discogs Orders: Status filter
         if (discogsOrdersStatusFilter) {
             discogsOrdersStatusFilter.addEventListener('change', function() {
                 ordersStatusFilter = this.value || '';
@@ -5345,5 +5476,6 @@
     // Expose modal functions globally for onclick handlers
     window.closeDiscogsPostModal = closeDiscogsPostModal;
     window.showDiscogsPostModal = showDiscogsPostModal;
+    window.closeRefundModal = closeRefundModal;
 
 })();
