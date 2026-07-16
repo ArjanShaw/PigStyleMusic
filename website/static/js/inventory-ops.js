@@ -5344,22 +5344,7 @@
         });
 
         clearSearchBtn.addEventListener('click', clearSearch);
-
-        searchInput.addEventListener('input', function() {
-            if (currentSearchMode === 'scan') {
-                const term = this.value.trim();
-                if (term.length > 2) {
-                    performScanSearch(term);
-                } else if (term.length === 0) {
-                    filteredRecords = [];
-                    totalRecords = 0;
-                    currentPage = 1;
-                    renderPagination();
-                    renderTablePage();
-                    updateSelectionCount();
-                }
-            }
-        });
+ 
 
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
