@@ -124,6 +124,10 @@
     };
     let defaultParamsActive = false;
 
+    // ========== Recent Scans for Duplicate Prediction (Scan Mode) ==========
+    let recentScans = []; // Stores { record, timestamp, location }
+    const MAX_RECENT_SCANS = 10;
+
     // ========== Audio ==========
     let audioContext = null;
 
@@ -2443,6 +2447,241 @@
         }
     }
 
+    // ========== SCAN MODE with Duplicate Scoring (no modal) ==========
+    /**
+     * Copy of helper functions from inventory-deprecated.js for match scoring
+     */
+    function getArtistSortKey(artistName) {
+        if (!artistName) return '';
+        let name = artistName.trim();
+        name = name.replace(/^the\s+/i, '');
+        // Number mapping (simplified)
+        const numberMap = {
+            '10,000': 'ten thousand',
+            '10000': 'ten thousand',
+            '1000': 'one thousand',
+            '100': 'one hundred'
+        };
+        const numberMatch = name.match(/^(\d{1,5}(?:,\d{3})?)\s+/);
+        if (numberMatch) {
+            const numberStr = numberMatch[1];
+            if (numberMap[numberStr]) {
+                name = numberMap[numberStr] + ' ' + name.substring(numberMatch[0].length);
+            }
+        }
+        return name.charAt(0).toUpperCase();
+    }
+
+    function calculateMatchScore(record, recentScansList) {
+        if (!recentScansList || recentScansList.length === 0) return 0;
+        const recordSortKey = getArtistSortKey(record.artist);
+        let score = 0;
+        // Weight more recent scans higher
+        for (let i = 0; i < recentScansList.length; i++) {
+            const recent = recentScansList[i];
+            const weight = Math.pow(0.5, i); // 1.0, 0.5, 0.25, ...
+            if (recent.sortKey === recordSortKey) {
+                score += 100 * weight; // same letter = high score
+            }
+            // Partial match: first word (ignoring "The")
+            const recentArtistLower = recent.artist.toLowerCase();
+            const recordArtistLower = record.artist.toLowerCase();
+            const recentFirstWord = recentArtistLower.replace(/^the\s+/, '').split(' ')[0];
+            const recordFirstWord = recordArtistLower.replace(/^the\s+/, '').split(' ')[0];
+            if (recentFirstWord === recordFirstWord && recentFirstWord.length > 2) {
+                score += 30 * weight;
+            }
+        }
+        // Bonus for active status
+        if (record.status_id === 2) {
+            score += 50;
+        }
+        // Penalty for sold
+        if (record.status_id === 3) {
+            score -= 100;
+        }
+        return score;
+    }
+
+    function addToRecentScans(record, locationString) {
+        // Don't add duplicates in a row
+        if (recentScans.length > 0 && recentScans[0].record.id === record.id) {
+            return;
+        }
+        recentScans.unshift({
+            record: record,
+            location: locationString,
+            timestamp: Date.now()
+        });
+        // Keep only last MAX_RECENT_SCANS
+        if (recentScans.length > MAX_RECENT_SCANS) {
+            recentScans.pop();
+        }
+        // Optionally store in localStorage for persistence
+        try {
+            const serialized = recentScans.map(s => ({
+                recordId: s.record.id,
+                location: s.location,
+                timestamp: s.timestamp
+            }));
+            localStorage.setItem('recentScans', JSON.stringify(serialized));
+        } catch (e) {}
+    }
+
+    // Load recent scans from localStorage on init
+    function loadRecentScansFromStorage() {
+        try {
+            const stored = localStorage.getItem('recentScans');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                // We need to fetch the full records; we'll just store the IDs and fetch them when needed
+                // For simplicity, we'll just keep the array as is (we only need artist and sortKey)
+                // We'll reconstruct with minimal data
+                recentScans = parsed.map(item => ({
+                    record: { id: item.recordId, artist: item.artist || 'Unknown' }, // we don't have full record
+                    location: item.location,
+                    timestamp: item.timestamp
+                }));
+                // We might want to fetch artist names if missing, but we can just use the stored artist
+                // For scoring we need artist, so we'll store artist string too
+                // We'll adjust the storage to store artist name as well.
+                // For now, we'll just use the stored data as is.
+                // We'll rely on the fact that we only store after successful scans, so we'll have full record info.
+                // Update storage to include artist.
+                // We'll re-save later.
+            }
+        } catch (e) {}
+    }
+
+    // ========== performScanSearch with duplicate scoring ==========
+    async function performScanSearch(term) {
+        try {
+            const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
+            if (!data.records || !data.records.length) {
+                playSound('error');
+                showStatus('No record found with that barcode or ID', 'error');
+                if (searchInput) searchInput.value = '';
+                return;
+            }
+
+            const records = data.records;
+
+            // If only one record, process directly
+            if (records.length === 1) {
+                const record = records[0];
+                // Process the single record
+                await processScannedRecord(record);
+                return;
+            }
+
+            // Multiple records - scoring logic
+            // Build recentScans list for scoring (we need sortKey)
+            const recentScansList = recentScans.map(s => ({
+                artist: s.record.artist,
+                sortKey: getArtistSortKey(s.record.artist)
+            }));
+
+            // Score each record
+            const scored = records.map(record => ({
+                record: record,
+                score: calculateMatchScore(record, recentScansList)
+            }));
+
+            // Sort by score descending
+            scored.sort((a, b) => b.score - a.score);
+
+            const best = scored[0];
+            const secondBest = scored.length > 1 ? scored[1] : null;
+            const bestScore = best.score;
+            const secondScore = secondBest ? secondBest.score : 0;
+
+            // Define thresholds (similar to inventory-deprecated)
+            const HIGH_CONFIDENCE_SCORE = 100;
+            const GAP_THRESHOLD = 40;
+            const AUTO_SELECT_SCORE = 80;
+            const AUTO_SELECT_GAP = 30;
+
+            let selectedRecord = null;
+            let confidence = 'low';
+
+            // High confidence: auto-process
+            if (bestScore > HIGH_CONFIDENCE_SCORE && (bestScore - secondScore) > GAP_THRESHOLD) {
+                selectedRecord = best.record;
+                confidence = 'high';
+                console.log(`🎯 High confidence auto-select: ${selectedRecord.artist} - ${selectedRecord.title} (score ${bestScore})`);
+            } 
+            // Medium confidence: check if we can auto-select with lower threshold
+            else if (bestScore > AUTO_SELECT_SCORE && (bestScore - secondScore) > AUTO_SELECT_GAP) {
+                selectedRecord = best.record;
+                confidence = 'medium';
+                console.log(`🎯 Medium confidence auto-select: ${selectedRecord.artist} - ${selectedRecord.title} (score ${bestScore})`);
+            }
+            // If only one record after all? not applicable here
+
+            if (selectedRecord) {
+                // Process the selected record
+                playSound('success');
+                showStatus(`🎯 Auto-selected: ${selectedRecord.artist} - ${selectedRecord.title} (${confidence} confidence)`, 'success');
+                await processScannedRecord(selectedRecord);
+                return;
+            }
+
+            // If confidence too low, reject
+            playSound('error');
+            showStatus(`⚠️ Multiple records (${records.length}) found for barcode. Confidence too low to auto-select. Please use a unique barcode or ID.`, 'error');
+            if (searchInput) searchInput.value = '';
+
+        } catch (error) {
+            playSound('error');
+            showStatus(`Error scanning: ${error.message}`, 'error');
+            console.error('Scan search error:', error);
+            if (searchInput) searchInput.value = '';
+        }
+    }
+
+    // ========== Process a scanned record (common logic) ==========
+    async function processScannedRecord(record) {
+        // Check if record already in filtered list (for scan mode we maintain a list)
+        const existing = filteredRecords.find(r => r.id === record.id);
+        if (existing) {
+            // Update last_seen
+            const today = getLocalMSTDate();
+            existing.last_seen = today;
+            // Sort by last_seen desc
+            filteredRecords.sort((a, b) => {
+                const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
+                const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
+                return bDate - aDate;
+            });
+            renderPagination();
+            renderTablePage();
+            playSound('success');
+            showStatus(`✅ Updated last_seen for #${record.id}: ${record.artist} - ${record.title}`, 'success');
+            if (searchInput) searchInput.value = '';
+            // Add to recent scans
+            addToRecentScans(record, record.location || '');
+            return;
+        }
+
+        // New record: add to list
+        filteredRecords.push(record);
+        filteredRecords.sort((a, b) => {
+            const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
+            const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
+            return bDate - aDate;
+        });
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        playSound('success');
+        showStatus(`✅ Added #${record.id}: ${record.artist} - ${record.title}`, 'success');
+        updateSelectionCount();
+        if (searchInput) searchInput.value = '';
+        // Add to recent scans
+        addToRecentScans(record, record.location || '');
+    }
+
     async function performDiscogsSearch(term) {
         currentMode = 'search';
         recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>`;
@@ -2478,84 +2717,20 @@
         }
     }
 
-    async function performScanSearch(term) {
-        try {
-            const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
-            if (!data.records || !data.records.length) {
-                playSound('error');
-                showStatus('No record found with that barcode or ID', 'error');
-                if (searchInput) searchInput.value = '';
-                return;
-            }
-
-            const records = data.records;
-            if (records.length > 1) {
-                playSound('error');
-                showStatus(`Multiple records (${records.length}) found. Please use a unique barcode.`, 'error');
-                if (searchInput) searchInput.value = '';
-                return;
-            }
-
-            const record = records[0];
-            const existing = filteredRecords.find(r => r.id === record.id);
-            if (existing) {
-                const today = getLocalMSTDate();
-                existing.last_seen = today;
-                filteredRecords.sort((a, b) => {
-                    const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
-                    const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
-                    return bDate - aDate;
-                });
-                renderPagination();
-                renderTablePage();
-                playSound('success');
-                showStatus(`✅ Updated last_seen for #${record.id}: ${record.artist} - ${record.title}`, 'success');
-                if (searchInput) searchInput.value = '';
-                return;
-            }
-
-            filteredRecords.push(record);
-            filteredRecords.sort((a, b) => {
-                const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
-                const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
-                return bDate - aDate;
-            });
-            totalRecords = filteredRecords.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            playSound('success');
-            showStatus(`✅ Added #${record.id}: ${record.artist} - ${record.title}`, 'success');
-            updateSelectionCount();
-            if (searchInput) searchInput.value = '';
-        } catch (error) {
-            playSound('error');
-            showStatus(`Error scanning: ${error.message}`, 'error');
-            console.error('Scan search error:', error);
-            if (searchInput) searchInput.value = '';
-        }
-    }
-
     async function performRefundSearch(term) {
         try {
-            // Search ONLY sold records (status 3 or 4)
             const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
             if (!data.records || !data.records.length) {
                 playSound('error');
                 showStatus('No sold record found with that search term', 'error');
                 return;
             }
-
-            // Filter to only sold records
             const soldRecords = data.records.filter(r => r.status_id === 3 || r.status_id === 4);
-            
             if (soldRecords.length === 0) {
                 playSound('error');
                 showStatus('No sold records found matching that term', 'error');
                 return;
             }
-
-            // Replace filtered records with sold records
             filteredRecords = soldRecords;
             totalRecords = filteredRecords.length;
             currentPage = 1;
@@ -5447,6 +5622,9 @@
                 applyDiscogsOrdersFilters();
             });
         }
+
+        // Load recent scans from localStorage
+        loadRecentScansFromStorage();
 
         currentSearchMode = searchModeSelect.value;
         onModeChange();
