@@ -2448,9 +2448,6 @@
     }
 
     // ========== SCAN MODE with Duplicate Scoring (no modal) ==========
-    /**
-     * Copy of helper functions from inventory-deprecated.js for match scoring
-     */
     function getArtistSortKey(artistName) {
         if (!artistName) return '';
         let name = artistName.trim();
@@ -2479,9 +2476,9 @@
         // Weight more recent scans higher
         for (let i = 0; i < recentScansList.length; i++) {
             const recent = recentScansList[i];
-            const weight = Math.pow(0.5, i); // 1.0, 0.5, 0.25, ...
+            const weight = Math.pow(0.5, i);
             if (recent.sortKey === recordSortKey) {
-                score += 100 * weight; // same letter = high score
+                score += 100 * weight;
             }
             // Partial match: first word (ignoring "The")
             const recentArtistLower = recent.artist.toLowerCase();
@@ -2504,7 +2501,6 @@
     }
 
     function addToRecentScans(record, locationString) {
-        // Don't add duplicates in a row
         if (recentScans.length > 0 && recentScans[0].record.id === record.id) {
             return;
         }
@@ -2513,14 +2509,13 @@
             location: locationString,
             timestamp: Date.now()
         });
-        // Keep only last MAX_RECENT_SCANS
         if (recentScans.length > MAX_RECENT_SCANS) {
             recentScans.pop();
         }
-        // Optionally store in localStorage for persistence
         try {
             const serialized = recentScans.map(s => ({
                 recordId: s.record.id,
+                artist: s.record.artist,
                 location: s.location,
                 timestamp: s.timestamp
             }));
@@ -2528,29 +2523,21 @@
         } catch (e) {}
     }
 
-    // Load recent scans from localStorage on init
     function loadRecentScansFromStorage() {
         try {
             const stored = localStorage.getItem('recentScans');
             if (stored) {
                 const parsed = JSON.parse(stored);
-                // We need to fetch the full records; we'll just store the IDs and fetch them when needed
-                // For simplicity, we'll just keep the array as is (we only need artist and sortKey)
-                // We'll reconstruct with minimal data
                 recentScans = parsed.map(item => ({
-                    record: { id: item.recordId, artist: item.artist || 'Unknown' }, // we don't have full record
+                    record: { id: item.recordId, artist: item.artist || 'Unknown' },
                     location: item.location,
                     timestamp: item.timestamp
                 }));
-                // We might want to fetch artist names if missing, but we can just use the stored artist
-                // For scoring we need artist, so we'll store artist string too
-                // We'll adjust the storage to store artist name as well.
-                // For now, we'll just use the stored data as is.
-                // We'll rely on the fact that we only store after successful scans, so we'll have full record info.
-                // Update storage to include artist.
-                // We'll re-save later.
+                console.log(`📋 Loaded ${recentScans.length} recent scans from storage`);
             }
-        } catch (e) {}
+        } catch (e) {
+            console.warn('Could not load recent scans from storage:', e);
+        }
     }
 
     // ========== performScanSearch with duplicate scoring ==========
@@ -2569,25 +2556,21 @@
             // If only one record, process directly
             if (records.length === 1) {
                 const record = records[0];
-                // Process the single record
                 await processScannedRecord(record);
                 return;
             }
 
             // Multiple records - scoring logic
-            // Build recentScans list for scoring (we need sortKey)
             const recentScansList = recentScans.map(s => ({
                 artist: s.record.artist,
                 sortKey: getArtistSortKey(s.record.artist)
             }));
 
-            // Score each record
             const scored = records.map(record => ({
                 record: record,
                 score: calculateMatchScore(record, recentScansList)
             }));
 
-            // Sort by score descending
             scored.sort((a, b) => b.score - a.score);
 
             const best = scored[0];
@@ -2595,7 +2578,6 @@
             const bestScore = best.score;
             const secondScore = secondBest ? secondBest.score : 0;
 
-            // Define thresholds (similar to inventory-deprecated)
             const HIGH_CONFIDENCE_SCORE = 100;
             const GAP_THRESHOLD = 40;
             const AUTO_SELECT_SCORE = 80;
@@ -2604,22 +2586,17 @@
             let selectedRecord = null;
             let confidence = 'low';
 
-            // High confidence: auto-process
             if (bestScore > HIGH_CONFIDENCE_SCORE && (bestScore - secondScore) > GAP_THRESHOLD) {
                 selectedRecord = best.record;
                 confidence = 'high';
                 console.log(`🎯 High confidence auto-select: ${selectedRecord.artist} - ${selectedRecord.title} (score ${bestScore})`);
-            } 
-            // Medium confidence: check if we can auto-select with lower threshold
-            else if (bestScore > AUTO_SELECT_SCORE && (bestScore - secondScore) > AUTO_SELECT_GAP) {
+            } else if (bestScore > AUTO_SELECT_SCORE && (bestScore - secondScore) > AUTO_SELECT_GAP) {
                 selectedRecord = best.record;
                 confidence = 'medium';
                 console.log(`🎯 Medium confidence auto-select: ${selectedRecord.artist} - ${selectedRecord.title} (score ${bestScore})`);
             }
-            // If only one record after all? not applicable here
 
             if (selectedRecord) {
-                // Process the selected record
                 playSound('success');
                 showStatus(`🎯 Auto-selected: ${selectedRecord.artist} - ${selectedRecord.title} (${confidence} confidence)`, 'success');
                 await processScannedRecord(selectedRecord);
@@ -2639,15 +2616,12 @@
         }
     }
 
-    // ========== Process a scanned record (common logic) ==========
+    // ========== Process a scanned record ==========
     async function processScannedRecord(record) {
-        // Check if record already in filtered list (for scan mode we maintain a list)
         const existing = filteredRecords.find(r => r.id === record.id);
         if (existing) {
-            // Update last_seen
             const today = getLocalMSTDate();
             existing.last_seen = today;
-            // Sort by last_seen desc
             filteredRecords.sort((a, b) => {
                 const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
                 const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
@@ -2658,12 +2632,10 @@
             playSound('success');
             showStatus(`✅ Updated last_seen for #${record.id}: ${record.artist} - ${record.title}`, 'success');
             if (searchInput) searchInput.value = '';
-            // Add to recent scans
             addToRecentScans(record, record.location || '');
             return;
         }
 
-        // New record: add to list
         filteredRecords.push(record);
         filteredRecords.sort((a, b) => {
             const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
@@ -2678,10 +2650,10 @@
         showStatus(`✅ Added #${record.id}: ${record.artist} - ${record.title}`, 'success');
         updateSelectionCount();
         if (searchInput) searchInput.value = '';
-        // Add to recent scans
         addToRecentScans(record, record.location || '');
     }
 
+    // ========== Discogs search, etc. (unchanged) ==========
     async function performDiscogsSearch(term) {
         currentMode = 'search';
         recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>`;
@@ -4790,7 +4762,7 @@
         }
     }
 
-    // ========== Complete Scan Modal ==========
+    // ========== Complete Scan Modal with Genre Creation ==========
     function showCompleteScanModal() {
         const records = filteredRecords;
         if (records.length === 0) {
@@ -4824,9 +4796,16 @@
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                             <div style="grid-column: 1 / -1;">
                                 <label for="scan-genre" style="display:block; font-weight:500; margin-bottom:4px;">Genre *</label>
-                                <select id="scan-genre" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="">-- Select Genre --</option>
-                                </select>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                    <select id="scan-genre" class="form-control" style="flex:1; min-width:150px; padding:8px;">
+                                        <option value="">-- Select Genre --</option>
+                                    </select>
+                                    <input type="text" id="scan-new-genre-input" placeholder="New genre name" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:4px; display:none;">
+                                    <button id="scan-add-genre-btn" class="btn btn-sm btn-primary" style="padding:4px 12px; white-space:nowrap;">
+                                        <i class="fas fa-plus"></i> Add
+                                    </button>
+                                </div>
+                                <div id="scan-genre-status" style="margin-top:4px; font-size:13px; display:none;"></div>
                             </div>
                             <div>
                                 <label for="scan-main-location-type" style="display:block; font-weight:500; margin-bottom:4px;">Main Location Type</label>
@@ -4871,19 +4850,85 @@
             document.body.appendChild(modal);
         }
 
+        // Populate genre select
         const genreSelect = document.getElementById('scan-genre');
         if (genreSelect) {
-            if (genres.length === 0) {
-                loadGenres().then(() => {
-                    genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-                    genres.forEach(g => {
-                        const opt = document.createElement('option');
-                        opt.value = g;
-                        opt.textContent = g;
-                        genreSelect.appendChild(opt);
-                    });
-                });
+            const currentVal = genreSelect.value;
+            genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+            genres.forEach(g => {
+                const opt = document.createElement('option');
+                opt.value = g;
+                opt.textContent = g;
+                if (g === currentVal) opt.selected = true;
+                genreSelect.appendChild(opt);
+            });
+        }
+
+        // ----- Genre Add Button Logic -----
+        const addGenreBtn = document.getElementById('scan-add-genre-btn');
+        const newGenreInput = document.getElementById('scan-new-genre-input');
+        const genreStatus = document.getElementById('scan-genre-status');
+        let genreStatusTimeout = null;
+
+        function showGenreStatus(message, type, persistent = false) {
+            if (!genreStatus) return;
+            genreStatus.textContent = message;
+            genreStatus.className = `status-message status-${type}`;
+            genreStatus.style.display = 'block';
+            if (!persistent) {
+                if (genreStatusTimeout) clearTimeout(genreStatusTimeout);
+                genreStatusTimeout = setTimeout(() => {
+                    if (genreStatus) genreStatus.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Toggle input field visibility
+        genreSelect.addEventListener('change', function() {
+            if (this.value === '') {
+                newGenreInput.style.display = 'inline-block';
+                newGenreInput.focus();
             } else {
+                newGenreInput.style.display = 'none';
+                newGenreInput.value = '';
+            }
+            updateScanLocationPreview();
+        });
+
+        addGenreBtn.addEventListener('click', async function() {
+            const genreName = newGenreInput.value.trim();
+            if (!genreName) {
+                showGenreStatus('Please enter a genre name.', 'warning');
+                return;
+            }
+            // Format: capitalize each word
+            const formattedName = genreName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+            
+            // Check if already exists locally
+            if (genres.includes(formattedName)) {
+                showGenreStatus(`Genre "${formattedName}" already exists in the list.`, 'warning');
+                if (genreSelect) {
+                    genreSelect.value = formattedName;
+                }
+                newGenreInput.value = '';
+                newGenreInput.style.display = 'none';
+                updateScanLocationPreview();
+                return;
+            }
+
+            // Disable button and show loading
+            addGenreBtn.disabled = true;
+            addGenreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+            showGenreStatus('Adding genre...', 'info', true);
+
+            try {
+                // Try to save to database
+                await apiRequest('POST', '/api/genres', { genre: formattedName });
+                // If successful, add to local list and refresh select
+                genres.push(formattedName);
+                genres.sort();
+                // Re-populate select
+                const currentVal = genreSelect.value;
                 genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
                 genres.forEach(g => {
                     const opt = document.createElement('option');
@@ -4891,9 +4936,49 @@
                     opt.textContent = g;
                     genreSelect.appendChild(opt);
                 });
+                genreSelect.value = formattedName;
+                newGenreInput.value = '';
+                newGenreInput.style.display = 'none';
+                showGenreStatus(`✅ Genre "${formattedName}" added and selected.`, 'success', false);
+                playSound('success');
+            } catch (error) {
+                // On error (405, etc.), still add locally but warn
+                console.warn('Could not save genre to DB:', error);
+                // Add to local list anyway
+                genres.push(formattedName);
+                genres.sort();
+                genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+                genres.forEach(g => {
+                    const opt = document.createElement('option');
+                    opt.value = g;
+                    opt.textContent = g;
+                    genreSelect.appendChild(opt);
+                });
+                genreSelect.value = formattedName;
+                newGenreInput.value = '';
+                newGenreInput.style.display = 'none';
+                showGenreStatus(
+                    `⚠️ Genre "${formattedName}" added locally, but could not be saved to the database (${error.message || 'API error'}). You can still use it for this session.`,
+                    'warning',
+                    true
+                );
+                playSound('error');
+            } finally {
+                addGenreBtn.disabled = false;
+                addGenreBtn.innerHTML = '<i class="fas fa-plus"></i> Add';
+                updateScanLocationPreview();
             }
-        }
+        });
 
+        // Allow pressing Enter in the input field to trigger add
+        newGenreInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addGenreBtn.click();
+            }
+        });
+
+        // Prediction logic
         const prediction = getLocationPrediction(lastSubmittedLocation);
         if (prediction) {
             const mainType = document.getElementById('scan-main-location-type');
@@ -4902,7 +4987,26 @@
             if (mainType) mainType.value = prediction.mainType || 'Bin';
             if (mainNumber) mainNumber.value = prediction.mainNumber || '1';
             if (sublocation) sublocation.value = prediction.sublocation || 'LT';
-            if (prediction.genre && genreSelect) genreSelect.value = prediction.genre;
+            if (prediction.genre && genreSelect) {
+                if (genres.includes(prediction.genre)) {
+                    genreSelect.value = prediction.genre;
+                } else {
+                    // Try to auto-add missing genre (only if it exists as a prediction)
+                    // We'll just show a message and let the user add it manually if needed.
+                    // Optionally, we could auto-add it here, but we'll leave it to the user.
+                    // Instead, set the input field with the predicted genre.
+                    if (newGenreInput) {
+                        newGenreInput.value = prediction.genre;
+                        newGenreInput.style.display = 'inline-block';
+                        genreSelect.value = '';
+                        showGenreStatus(
+                            `Predicted genre "${prediction.genre}" is not in the list. Click "Add" to create it.`,
+                            'info',
+                            true
+                        );
+                    }
+                }
+            }
         } else {
             const mainType = document.getElementById('scan-main-location-type');
             const mainNumber = document.getElementById('scan-main-location-number');
@@ -4912,6 +5016,7 @@
             if (sublocation) sublocation.value = 'LT';
         }
 
+        // Sublocation custom toggle
         const sublocationSelect = document.getElementById('scan-sublocation');
         const customContainer = document.getElementById('scan-custom-sublocation-container');
         const customInput = document.getElementById('scan-custom-sublocation');
@@ -5007,7 +5112,7 @@
         const sublocation = document.getElementById('scan-sublocation')?.value || 'LT';
 
         if (!genre) {
-            showScanStatus('Please select a genre', 'error');
+            showScanStatus('Please select or add a genre', 'error');
             return;
         }
 
@@ -5151,7 +5256,6 @@
             showStatus('Refund mode: Search sold records (status 3 or 4) to refund.', 'info');
             searchInput.placeholder = 'Search sold records by artist, title, or barcode...';
             allRecords = [];
-            // Load all records so search can filter sold ones
             loadRecords({ statusIds: [3, 4], mode: 'refund' });
         }
         else if (newMode === 'checkout') {
@@ -5488,6 +5592,7 @@
         await loadConsignors();
         await loadAccounts();
         await loadStats();
+        await loadGenres();
 
         populateDefaultParamSelects();
 
@@ -5623,7 +5728,6 @@
             });
         }
 
-        // Load recent scans from localStorage
         loadRecentScansFromStorage();
 
         currentSearchMode = searchModeSelect.value;
@@ -5636,7 +5740,6 @@
     window.refreshDiscogsLocations = loadDiscogsLocations;
     window.initAddRecordsTab = init;
 
-    // Expose modal functions globally for onclick handlers
     window.closeDiscogsPostModal = closeDiscogsPostModal;
     window.showDiscogsPostModal = showDiscogsPostModal;
     window.closeRefundModal = closeRefundModal;
