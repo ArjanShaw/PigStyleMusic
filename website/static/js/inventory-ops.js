@@ -44,7 +44,6 @@
     const defaultSleeveSelect = document.getElementById('default-sleeve-condition');
     const defaultDiscSelect = document.getElementById('default-disc-condition');
     const defaultPriceInput = document.getElementById('default-price');
-    const defaultCogsInput = document.getElementById('default-cogs');
     const defaultConsignorSelect = document.getElementById('default-consignor');
 
     const deleteStatusFilter = document.getElementById('delete-status-filter');
@@ -119,7 +118,6 @@
         sleeveConditionId: null,
         discConditionId: null,
         price: null,
-        cogs: null,
         consignorId: null
     };
     let defaultParamsActive = false;
@@ -403,9 +401,6 @@
                 if (params.price && defaultPriceInput) {
                     defaultPriceInput.value = params.price;
                 }
-                if (params.cogs && defaultCogsInput) {
-                    defaultCogsInput.value = params.cogs;
-                }
                 if (params.consignorId && defaultConsignorSelect) {
                     defaultConsignorSelect.value = params.consignorId;
                 }
@@ -430,14 +425,12 @@
         const sleeveId = defaultSleeveSelect ? parseInt(defaultSleeveSelect.value) : null;
         const discId = defaultDiscSelect ? parseInt(defaultDiscSelect.value) : null;
         const price = defaultPriceInput ? parseFloat(defaultPriceInput.value) : null;
-        const cogs = defaultCogsInput ? parseFloat(defaultCogsInput.value) : null;
         const consignorId = defaultConsignorSelect ? parseInt(defaultConsignorSelect.value) : null;
 
         defaultParams = {
             sleeveConditionId: sleeveId || null,
             discConditionId: discId || null,
             price: price || null,
-            cogs: cogs || null,
             consignorId: consignorId || null
         };
         defaultParamsActive = true;
@@ -455,13 +448,11 @@
             const sleeveSelect = row.querySelector('.sleeve-condition-select');
             const discSelect = row.querySelector('.disc-condition-select');
             const priceInput = row.querySelector('.price-input');
-            const cogsInput = row.querySelector('.cogs-input');
             const consignorSelect = row.querySelector('.consignor-select');
 
             if (sleeveSelect && defaultParams.sleeveConditionId) sleeveSelect.value = defaultParams.sleeveConditionId;
             if (discSelect && defaultParams.discConditionId) discSelect.value = defaultParams.discConditionId;
             if (priceInput && defaultParams.price) priceInput.value = defaultParams.price;
-            if (cogsInput && defaultParams.cogs) cogsInput.value = defaultParams.cogs;
             if (consignorSelect && defaultParams.consignorId) consignorSelect.value = defaultParams.consignorId;
         });
 
@@ -474,14 +465,12 @@
             sleeveConditionId: null,
             discConditionId: null,
             price: null,
-            cogs: null,
             consignorId: null
         };
         defaultParamsActive = false;
         if (defaultSleeveSelect) defaultSleeveSelect.value = '';
         if (defaultDiscSelect) defaultDiscSelect.value = '';
         if (defaultPriceInput) defaultPriceInput.value = '';
-        if (defaultCogsInput) defaultCogsInput.value = '';
         if (defaultConsignorSelect) defaultConsignorSelect.value = '';
         localStorage.removeItem('defaultParams');
         updateDefaultParamsStatus('Defaults cleared', 'info');
@@ -504,7 +493,6 @@
             sleeveConditionId: defaultParams.sleeveConditionId || null,
             discConditionId: defaultParams.discConditionId || null,
             price: defaultParams.price || null,
-            cogs: defaultParams.cogs || null,
             consignorId: defaultParams.consignorId || null
         };
     }
@@ -1390,7 +1378,6 @@
                             <th>Sleeve</th>
                             <th>Disc</th>
                             <th>Price</th>
-                            <th>COGS</th>
                             <th>Consignor</th>
                             <th>Action</th>
                         </tr>
@@ -1415,7 +1402,6 @@
                         <th>Artist</th>
                         <th>Title</th>
                         <th>Price</th>
-                        <th>COGS</th>
                         <th>Catalog #</th>
                         <th>Sleeve</th>
                         <th>Disc</th>
@@ -1541,7 +1527,7 @@
             }
             const colCount = currentSearchMode === 'discogs_orders' ? 10 :
                              (currentSearchMode === 'refund' ? 7 :
-                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 11) :
+                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 10 : 10) :
                              (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
                              (currentSearchMode === 'delete' ? 6 : 7)))));
@@ -1634,9 +1620,6 @@
                                 <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
                             </td>
                             <td>
-                                <input type="number" class="cogs-input" step="0.01" min="0" value="" style="width:80px; padding:4px;">
-                            </td>
-                            <td>
                                 <select class="consignor-select" style="width:100px; padding:4px;">
                                     <option value="">None</option>
                                     ${consignorOptions}
@@ -1648,14 +1631,12 @@
                         const sleeveName = def.sleeveConditionId ? conditions.find(c => c.id === def.sleeveConditionId)?.display_name || '—' : '—';
                         const discName = def.discConditionId ? conditions.find(c => c.id === def.discConditionId)?.display_name || '—' : '—';
                         const priceDisplay = def.price ? `$${def.price}` : '—';
-                        const cogsDisplay = def.cogs ? `$${def.cogs}` : '—';
                         const consignorDisplay = def.consignorId ? consignors.find(c => c.id === def.consignorId)?.username || 'None' : 'None';
                         
                         rowHtml += `
                             <td style="font-size:12px; color:#666;" title="Using defaults">S: ${escapeHtml(sleeveName)}</td>
                             <td style="font-size:12px; color:#666;" title="Using defaults">D: ${escapeHtml(discName)}</td>
                             <td style="font-size:12px; color:#666;" title="Using defaults">${priceDisplay}</td>
-                            <td style="font-size:12px; color:#666;" title="Using defaults">${cogsDisplay}</td>
                             <td style="font-size:12px; color:#666;" title="Using defaults">${escapeHtml(consignorDisplay)}</td>
                         `;
                     }
@@ -1674,7 +1655,6 @@
                     const artist = record.artist || 'Unknown';
                     const title = record.title || 'Unknown';
                     const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                    const cogs = record.cogs ? `$${record.cogs.toFixed(2)}` : '—';
                     const catalog = record.catalog_number || '—';
                     const sleeveCondition = record.sleeve_condition_name || '—';
                     const discCondition = record.disc_condition_name || '—';
@@ -1687,7 +1667,6 @@
                         <td>${escapeHtml(artist)}</td>
                         <td>${escapeHtml(title)}</td>
                         <td>${price}</td>
-                        <td>${cogs}</td>
                         <td>${escapeHtml(catalog)}</td>
                         <td>${escapeHtml(sleeveCondition)}</td>
                         <td>${escapeHtml(discCondition)}</td>
@@ -2088,6 +2067,12 @@
         const isScanMode = currentSearchMode === 'scan';
         const isRefundMode = currentSearchMode === 'refund';
 
+        // Show/hide default parameters section
+        const defaultParamsSection = document.getElementById('default-params-section');
+        if (defaultParamsSection) {
+            defaultParamsSection.style.display = isAddMode ? 'block' : 'none';
+        }
+
         if (discogsUi) {
             discogsUi.style.display = (isDiscogsMode || isDeleteMode || isCheckoutMode || isDiscogsOrdersMode) ? 'block' : 'none';
         }
@@ -2350,13 +2335,11 @@
     // ========== Add Record from Discogs ==========
     async function addRecordFromDiscogs(row, discogsRecord) {
         const priceInput = row.querySelector('.price-input');
-        const cogsInput = row.querySelector('.cogs-input');
         const consignorSelect = row.querySelector('.consignor-select');
         const sleeveSelect = row.querySelector('.sleeve-condition-select');
         const discSelect = row.querySelector('.disc-condition-select');
 
         let price = null;
-        let cogs = null;
         let consignorId = null;
         let sleeveId = null;
         let discId = null;
@@ -2365,17 +2348,12 @@
             sleeveId = defaultParams.sleeveConditionId;
             discId = defaultParams.discConditionId;
             price = defaultParams.price;
-            cogs = defaultParams.cogs;
             consignorId = defaultParams.consignorId;
         }
 
         if (priceInput && priceInput.value) {
             const val = parseFloat(priceInput.value);
             if (!isNaN(val) && val > 0) price = val;
-        }
-        if (cogsInput && cogsInput.value) {
-            const val = parseFloat(cogsInput.value);
-            if (!isNaN(val) && val >= 0) cogs = val;
         }
         if (consignorSelect && consignorSelect.value) {
             const val = parseInt(consignorSelect.value);
@@ -2408,7 +2386,6 @@
             condition_sleeve_id: sleeveId,
             condition_disc_id: discId,
             store_price: price,
-            cogs: cogs,
             consignor_id: consignorId,
             status_id: 1,
             notes: null
@@ -2957,14 +2934,12 @@
         const sleeveId = defaultSleeveSelect ? parseInt(defaultSleeveSelect.value) : null;
         const discId = defaultDiscSelect ? parseInt(defaultDiscSelect.value) : null;
         const price = defaultPriceInput ? parseFloat(defaultPriceInput.value) : null;
-        const cogs = defaultCogsInput ? parseFloat(defaultCogsInput.value) : null;
         const consignorId = defaultConsignorSelect ? parseInt(defaultConsignorSelect.value) : null;
 
         defaultParams = {
             sleeveConditionId: sleeveId || null,
             discConditionId: discId || null,
             price: price || null,
-            cogs: cogs || null,
             consignorId: consignorId || null
         };
         defaultParamsActive = true;
@@ -2982,13 +2957,11 @@
             const sleeveSelect = row.querySelector('.sleeve-condition-select');
             const discSelect = row.querySelector('.disc-condition-select');
             const priceInput = row.querySelector('.price-input');
-            const cogsInput = row.querySelector('.cogs-input');
             const consignorSelect = row.querySelector('.consignor-select');
 
             if (sleeveSelect && defaultParams.sleeveConditionId) sleeveSelect.value = defaultParams.sleeveConditionId;
             if (discSelect && defaultParams.discConditionId) discSelect.value = defaultParams.discConditionId;
             if (priceInput && defaultParams.price) priceInput.value = defaultParams.price;
-            if (cogsInput && defaultParams.cogs) cogsInput.value = defaultParams.cogs;
             if (consignorSelect && defaultParams.consignorId) consignorSelect.value = defaultParams.consignorId;
         });
 
@@ -3001,14 +2974,12 @@
             sleeveConditionId: null,
             discConditionId: null,
             price: null,
-            cogs: null,
             consignorId: null
         };
         defaultParamsActive = false;
         if (defaultSleeveSelect) defaultSleeveSelect.value = '';
         if (defaultDiscSelect) defaultDiscSelect.value = '';
         if (defaultPriceInput) defaultPriceInput.value = '';
-        if (defaultCogsInput) defaultCogsInput.value = '';
         if (defaultConsignorSelect) defaultConsignorSelect.value = '';
         localStorage.removeItem('defaultParams');
         updateDefaultParamsStatus('Defaults cleared', 'info');

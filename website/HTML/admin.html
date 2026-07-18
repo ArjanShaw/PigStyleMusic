@@ -2202,7 +2202,7 @@
         <!-- DEFAULT PARAMETERS SECTION - Expandable -->
         <div id="default-params-section" style="margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
             <div style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%); color: white; padding: 10px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleDefaultParams()">
-                <span><i class="fas fa-sliders-h"></i> Default Parameters <span style="font-size: 12px; opacity: 0.7;">(sleeve, disc, price, cogs, consignor)</span></span>
+                <span><i class="fas fa-sliders-h"></i> Default Parameters <span style="font-size: 12px; opacity: 0.7;">(sleeve, disc, price, consignor)</span></span>
                 <span><i class="fas fa-chevron-down" id="default-params-toggle-icon" style="transition: transform 0.3s;"></i></span>
             </div>
             <div id="default-params-content" style="display: none; padding: 15px; background: #f8f9fa;">
@@ -2222,10 +2222,6 @@
                     <div>
                         <label for="default-price" style="display:block; font-weight:500; margin-bottom:4px;">Default Price ($)</label>
                         <input type="number" id="default-price" class="form-control" step="1" min="0" placeholder="e.g., 19.99" style="width:100%; padding:8px;">
-                    </div>
-                    <div>
-                        <label for="default-cogs" style="display:block; font-weight:500; margin-bottom:4px;">Default COGS ($)</label>
-                        <input type="number" id="default-cogs" class="form-control" step="0.01" min="0" placeholder="e.g., 5.00" style="width:100%; padding:8px;">
                     </div>
                     <div>
                         <label for="default-consignor" style="display:block; font-weight:500; margin-bottom:4px;">Default Consignor</label>
