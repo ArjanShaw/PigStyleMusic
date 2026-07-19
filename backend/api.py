@@ -2470,13 +2470,15 @@ def create_record():
         
         # Get discogs_genre_raw if provided
         discogs_genre_raw = data.get('discogs_genre_raw', '')
+        # Get notes
+        notes = data.get('notes', '')
         
         cursor.execute('''
             INSERT INTO records (
                 artist, title, barcode, image_url, catalog_number,
                 condition_sleeve_id, condition_disc_id, store_price, youtube_url, 
-                consignor_id, commission_rate, status_id, discogs_genre_raw, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                consignor_id, commission_rate, status_id, discogs_genre_raw, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ''', (
             data.get('artist'), 
             data.get('title'), 
@@ -2490,7 +2492,8 @@ def create_record():
             consignor_id, 
             float(commission_rate) if commission_rate else None, 
             int(status_id),
-            discogs_genre_raw
+            discogs_genre_raw,
+            notes
         ))
         
         record_id = cursor.lastrowid
