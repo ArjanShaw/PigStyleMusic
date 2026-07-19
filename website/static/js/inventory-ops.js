@@ -59,6 +59,21 @@
     const discogsOrdersDateTo = document.getElementById('discogs-orders-date-to');
     const discogsOrdersSearch = document.getElementById('discogs-orders-search');
 
+    // ========== Scan Location Builder Panel Elements ==========
+    const scanLocationBuilder = document.getElementById('scan-location-builder');
+    const scanGenreSelect = document.getElementById('scan-genre');
+    const scanNewGenreInput = document.getElementById('scan-new-genre-input');
+    const scanAddGenreBtn = document.getElementById('scan-add-genre-btn');
+    const scanGenreStatus = document.getElementById('scan-genre-status');
+    const scanMainLocationType = document.getElementById('scan-main-location-type');
+    const scanMainLocationNumber = document.getElementById('scan-main-location-number');
+    const scanSublocation = document.getElementById('scan-sublocation');
+    const scanCustomSublocationContainer = document.getElementById('scan-custom-sublocation-container');
+    const scanCustomSublocation = document.getElementById('scan-custom-sublocation');
+    const scanLocationPreview = document.getElementById('scan-location-preview');
+    const scanCounterDisplay = document.getElementById('scan-counter-display');
+    const scanResetCounterBtn = document.getElementById('scan-reset-counter-btn');
+
     // ========== State ==========
     let currentSearchMode = 'add';
     let currentResults = [];
@@ -124,6 +139,9 @@
     // ========== Recent Scans for Duplicate Prediction (Scan Mode) ==========
     let recentScans = []; // Stores { record, timestamp, location }
     const MAX_RECENT_SCANS = 10;
+
+    // ========== Scan Mode specific counter ==========
+    let scanCounter = 0; // This will be used to track the next index for location
 
     // ========== Audio ==========
     let audioContext = null;
@@ -942,7 +960,6 @@
             search.value = '';
         }
         
-        // Keep status filter as is (no reset)
         applyDiscogsOrdersFilters();
     }
 
@@ -958,7 +975,6 @@
             const email = (order.buyer_email || '').toLowerCase();
             return buyer.includes(termLower) || email.includes(termLower);
         });
-        // Update dropdown with filtered results
         if (discogsOrderSelect) {
             discogsOrderSelect.innerHTML = '<option value="">-- Select an order --</option>';
             for (const order of filtered) {
@@ -971,7 +987,6 @@
                 option.textContent = `${order.order_id} - ${buyer} ${date} ${total} (${itemCount} items)`;
                 discogsOrderSelect.appendChild(option);
             }
-            // Clear selection
             discogsOrderSelect.value = '';
             selectedOrderId = null;
             currentOrderItems = [];
@@ -1206,7 +1221,6 @@
             return;
         }
 
-        // Verify all selected records are sold (status 3 or 4)
         const soldRecords = selected.filter(r => r.status_id === 3 || r.status_id === 4);
         if (soldRecords.length === 0) {
             showStatus('No sold records selected. Only records with status "Sold" or "Sold on Discogs" can be refunded.', 'warning');
@@ -1220,15 +1234,11 @@
             }
         }
 
-        // Calculate total refund amount
         const totalAmount = soldRecords.reduce((sum, r) => sum + (r.store_price || 0), 0);
-
-        // Show refund modal
         showRefundModal(soldRecords, totalAmount);
     }
 
     function showRefundModal(records, totalAmount) {
-        // Remove existing modal if any
         const existingModal = document.getElementById('refund-modal');
         if (existingModal) {
             existingModal.remove();
@@ -1246,16 +1256,13 @@
                 </div>
                 <div class="modal-body">
                     <p><strong>${records.length}</strong> record(s) selected for refund.</p>
-                    
                     <div style="margin-bottom: 15px; max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 13px;">
                         ${records.map(r => `<div>${escapeHtml(r.artist)} - ${escapeHtml(r.title)} (${getStatusName(r.status_id)}) - $${(r.store_price || 0).toFixed(2)}</div>`).join('')}
                     </div>
-
                     <div style="margin-bottom: 15px;">
                         <label for="refund-amount" style="display:block; font-weight:500; margin-bottom:4px;">Refund Amount ($)</label>
                         <input type="number" id="refund-amount" class="form-control" step="0.01" min="0.01" value="${totalAmount.toFixed(2)}" style="width:100%; padding:8px; font-size:16px;">
                     </div>
-
                     <div style="margin-bottom: 15px;">
                         <label for="refund-method" style="display:block; font-weight:500; margin-bottom:4px;">Refund Method</label>
                         <select id="refund-method" class="form-control" style="width:100%; padding:8px;">
@@ -1264,12 +1271,10 @@
                             <option value="discogs">Discogs</option>
                         </select>
                     </div>
-
                     <div style="margin-bottom: 15px;">
                         <label for="refund-reason" style="display:block; font-weight:500; margin-bottom:4px;">Reason (optional)</label>
                         <input type="text" id="refund-reason" class="form-control" placeholder="e.g., Customer returned item" style="width:100%; padding:8px;">
                     </div>
-
                     <div id="refund-status" style="margin-top:10px; display:none;"></div>
                 </div>
                 <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
@@ -1282,18 +1287,15 @@
         `;
         document.body.appendChild(modal);
 
-        // Focus the amount input
         setTimeout(() => {
             const amountInput = document.getElementById('refund-amount');
             if (amountInput) amountInput.focus();
         }, 200);
 
-        // Add event listener for Confirm button
         document.getElementById('refund-confirm-btn').addEventListener('click', function() {
             confirmRefund(records);
         });
 
-        // Enter key on amount input triggers confirm
         document.getElementById('refund-amount').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -1326,13 +1328,11 @@
             return;
         }
 
-        // Confirm with user
         const recordSummary = records.map(r => `${r.artist} - ${r.title}`).join('\n');
         if (!confirm(`Process refund for ${records.length} record(s)?\n\n${recordSummary}\n\nAmount: $${amount.toFixed(2)}\nMethod: ${method}\nReason: ${reason}\n\n⚠️ Records will be DELETED from the database.`)) {
             return;
         }
 
-        // Disable button
         confirmBtn.disabled = true;
         confirmBtn.textContent = 'Processing...';
         showRefundStatus('⏳ Processing refund...', 'info');
@@ -1349,8 +1349,6 @@
             if (result.status === 'success') {
                 showRefundStatus(`✅ ${result.message}`, 'success');
                 playSound('success');
-                
-                // Remove records from filtered list and re-render
                 const refundedIds = new Set(recordIds);
                 filteredRecords = filteredRecords.filter(r => !refundedIds.has(r.id));
                 allRecords = allRecords.filter(r => !refundedIds.has(r.id));
@@ -1360,7 +1358,6 @@
                 renderTablePage();
                 updateSelectionCount();
                 cancelRangeSelection();
-
                 setTimeout(closeRefundModal, 1500);
             } else {
                 showRefundStatus(`❌ Error: ${result.error || 'Unknown error'}`, 'error');
@@ -1395,12 +1392,10 @@
 
         let theadHtml = '';
         
-        // ===== ADD MODE =====
         if (currentSearchMode === 'add') {
             const isSearchResult = currentMode === 'search' && currentResults.length > 0;
             if (isSearchResult) {
                 const showDefaultInputs = !defaultParamsActive;
-                
                 const condOptions = conditions.map(c =>
                     `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
                 ).join('');
@@ -1408,7 +1403,6 @@
                     `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
                 ).join('');
 
-                // ---- HEADER with Notes column ----
                 if (showDefaultInputs) {
                     theadHtml = `
                         <tr>
@@ -1453,8 +1447,6 @@
                     </tr>
                 `;
             }
-        
-        // ===== SCAN MODE =====
         } else if (currentSearchMode === 'scan') {
             theadHtml = `
                 <tr>
@@ -1467,8 +1459,6 @@
                     <th>Last Seen</th>
                 </tr>
             `;
-            
-        // ===== DISCOGS MODE =====
         } else if (currentSearchMode === 'discogs') {
             theadHtml = `
                 <tr>
@@ -1487,8 +1477,6 @@
                     <th>Post</th>
                 </tr>
             `;
-            
-        // ===== DELETE MODE =====
         } else if (currentSearchMode === 'delete') {
             theadHtml = `
                 <tr>
@@ -1500,8 +1488,6 @@
                     <th>Status</th>
                 </tr>
             `;
-            
-        // ===== CHECKOUT MODE =====
         } else if (currentSearchMode === 'checkout') {
             theadHtml = `
                 <tr>
@@ -1514,8 +1500,6 @@
                     <th>Action</th>
                 </tr>
             `;
-            
-        // ===== DISCOGS ORDERS MODE =====
         } else if (currentSearchMode === 'discogs_orders') {
             theadHtml = `
                 <tr>
@@ -1531,8 +1515,6 @@
                     <th>Action</th>
                 </tr>
             `;
-
-        // ===== REFUND MODE =====
         } else if (currentSearchMode === 'refund') {
             theadHtml = `
                 <tr>
@@ -1546,17 +1528,12 @@
                 </tr>
             `;
         } else if (currentSearchMode === 'purchases') {
-            // Inventory Purchases mode: display a simple table for list view, but we'll render a special UI.
-            // We'll handle this in renderPurchasesTable() instead.
-            // For now, we just set thead to empty – the main render will detect purchases mode and call a separate function.
-            // We'll handle this below.
-            theadHtml = ''; // will be replaced
+            theadHtml = '';
         }
         recordsTableHead.innerHTML = theadHtml;
 
         let tbodyHtml = '';
         if (currentSearchMode === 'purchases') {
-            // Render purchases mode entirely differently – we'll show a form and list.
             renderPurchasesMode();
             return;
         }
@@ -1595,7 +1572,6 @@
                                     globalIndex <= Math.max(rangeFromIndex, rangeToIndex));
 
                 let rowClass = isSelected ? 'record-selected' : '';
-                
                 let rangeButtons = '';
                 const showRange = currentSearchMode !== 'discogs_orders';
                 
@@ -1632,7 +1608,6 @@
 
                 let rowHtml = `<tr class="${rowClass}" data-index="${globalIndex}">`;
 
-                // ===== ADD MODE - SEARCH RESULTS =====
                 if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
                     const artist = record.artist || 'Unknown';
                     const title = record.title || 'Unknown';
@@ -1680,7 +1655,7 @@
                                     ${consignorOptions}
                                 </select>
                             </td>
-                            <td>   <!-- NEW: Notes column -->
+                            <td>
                                 <input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;">
                             </td>
                         `;
@@ -1696,7 +1671,7 @@
                             <td style="font-size:12px; color:#666;" title="Using defaults">D: ${escapeHtml(discName)}</td>
                             <td style="font-size:12px; color:#666;" title="Using defaults">${priceDisplay}</td>
                             <td style="font-size:12px; color:#666;" title="Using defaults">${escapeHtml(consignorDisplay)}</td>
-                            <td>   <!-- NEW: Notes column even when defaults active -->
+                            <td>
                                 <input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;">
                             </td>
                         `;
@@ -1709,8 +1684,6 @@
                             </button>
                         </td>
                     `;
-                    
-                // ===== ADD MODE - INVENTORY VIEW =====
                 } else if (currentSearchMode === 'add' && currentMode !== 'search') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1734,8 +1707,6 @@
                         <td><span class="barcode-value">${barcode}</span></td>
                         <td>${created}</td>
                     `;
-                    
-                // ===== SCAN MODE =====
                 } else if (currentSearchMode === 'scan') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1752,8 +1723,6 @@
                         <td><span class="barcode-value">${barcode}</span></td>
                         <td>${lastSeen}</td>
                     `;
-                    
-                // ===== DISCOGS MODE =====
                 } else if (currentSearchMode === 'discogs') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1792,8 +1761,6 @@
                                     '<span style="color: #999;">—</span>'}
                         </td>
                     `;
-                    
-                // ===== DELETE MODE =====
                 } else if (currentSearchMode === 'delete') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1809,8 +1776,6 @@
                         <td>${price}</td>
                         <td><span class="status-badge ${statusClass}">${statusName}</span></td>
                     `;
-                    
-                // ===== CHECKOUT MODE =====
                 } else if (currentSearchMode === 'checkout') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1842,8 +1807,6 @@
                         <td><span class="barcode-value">${barcode}</span></td>
                         <td>${actionHtml}</td>
                     `;
-                    
-                // ===== DISCOGS ORDERS MODE =====
                 } else if (currentSearchMode === 'discogs_orders') {
                     const orderItem = record;
                     const idxNum = globalIndex + 1;
@@ -1891,8 +1854,6 @@
                         <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                         <td>${actionButton}</td>
                     `;
-
-                // ===== REFUND MODE =====
                 } else if (currentSearchMode === 'refund') {
                     const id = record.id;
                     const artist = record.artist || 'Unknown';
@@ -1919,7 +1880,6 @@
         }
         recordsTableBody.innerHTML = tbodyHtml;
 
-        // Attach event listeners
         document.querySelectorAll('.btn-from').forEach(btn => {
             btn.addEventListener('click', function() {
                 const index = parseInt(this.dataset.index);
@@ -2129,10 +2089,20 @@
         const isRefundMode = currentSearchMode === 'refund';
         const isPurchasesMode = currentSearchMode === 'purchases';
 
-        // Show/hide default parameters section
         const defaultParamsSection = document.getElementById('default-params-section');
         if (defaultParamsSection) {
             defaultParamsSection.style.display = isAddMode ? 'block' : 'none';
+        }
+
+        // Show/hide the scan location builder panel
+        if (scanLocationBuilder) {
+            scanLocationBuilder.style.display = isScanMode ? 'block' : 'none';
+            if (isScanMode) {
+                // Populate genres and update preview
+                populateScanGenreDropdown();
+                updateScanLocationPreview();
+                updateScanCounter();
+            }
         }
 
         if (discogsUi) {
@@ -2195,29 +2165,25 @@
             ordersFilters.style.display = isDiscogsOrdersMode ? 'block' : 'none';
         }
 
-        // --- SET ACTIVE button: always visible, disabled in Discogs Orders mode ---
         setActiveBtn.style.display = isDiscogsOrdersMode ? 'none' : '';
 
-        // --- Print button: only in Add mode ---
         if (isAddMode) {
             printBtn.style.display = '';
         } else {
             printBtn.style.display = 'none';
         }
 
-        // --- Complete button: hidden in Add mode, visible in others ---
         if (isRefundMode) {
             completeActionBtn.style.display = '';
             completeActionBtn.textContent = '💰 Process Refund';
         } else if (isAddMode) {
             completeActionBtn.style.display = 'none';
         } else if (isPurchasesMode) {
-            completeActionBtn.style.display = 'none'; // handled separately
+            completeActionBtn.style.display = 'none';
         } else {
             completeActionBtn.style.display = '';
         }
 
-        // --- Custom Item button: only in Checkout mode ---
         let customBtn = document.getElementById('custom-item-btn');
         if (isCheckoutMode) {
             if (!customBtn) {
@@ -2233,7 +2199,6 @@
             if (customBtn) customBtn.style.display = 'none';
         }
 
-        // --- Search placeholder ---
         if (isRefundMode) {
             searchInput.placeholder = 'Search sold records by artist, title, or barcode...';
         } else if (isPurchasesMode) {
@@ -2241,6 +2206,173 @@
         } else {
             // default placeholder set by mode switch
         }
+    }
+
+    // ========== Scan Location Builder Functions ==========
+    function populateScanGenreDropdown() {
+        if (!scanGenreSelect) return;
+        const currentVal = scanGenreSelect.value;
+        scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+        genres.forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = g;
+            scanGenreSelect.appendChild(opt);
+        });
+        if (currentVal && genres.includes(currentVal)) {
+            scanGenreSelect.value = currentVal;
+        }
+        updateScanLocationPreview();
+    }
+
+    function updateScanLocationPreview() {
+        const genre = scanGenreSelect ? scanGenreSelect.value : '';
+        const mainType = scanMainLocationType ? scanMainLocationType.value : 'Bin';
+        const mainNumber = scanMainLocationNumber ? scanMainLocationNumber.value : '1';
+        const sublocation = scanSublocation ? scanSublocation.value : '';
+
+        let mainLocation = mainType + ' ' + mainNumber;
+        let sublocStr = '';
+        if (sublocation === 'CUSTOM') {
+            sublocStr = scanCustomSublocation ? scanCustomSublocation.value.trim() : 'Custom';
+        } else if (sublocation && sublocation !== 'NA') {
+            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
+            sublocStr = names[sublocation] || '';
+        }
+
+        let parts = [];
+        if (genre) parts.push(genre);
+        if (mainLocation) parts.push(mainLocation);
+        if (sublocStr) parts.push(sublocStr);
+
+        if (scanLocationPreview) {
+            scanLocationPreview.textContent = parts.join(' | ') || '--';
+        }
+
+        // Update counter display
+        updateScanCounter();
+
+        // Enable/disable Complete button based on mandatory fields
+        const hasGenre = !!genre;
+        const hasSublocation = sublocation && sublocation !== '';
+        const isValid = hasGenre && hasSublocation;
+        const hasRecords = filteredRecords.length > 0;
+
+        if (completeActionBtn) {
+            completeActionBtn.disabled = !(isValid && hasRecords);
+            if (!isValid) {
+                completeActionBtn.title = 'Genre and sublocation are required';
+            } else if (!hasRecords) {
+                completeActionBtn.title = 'No records scanned yet';
+            } else {
+                completeActionBtn.title = 'Apply location to all scanned records';
+            }
+        }
+    }
+
+    function updateScanCounter() {
+        if (scanCounterDisplay) {
+            scanCounterDisplay.textContent = scanCounter || filteredRecords.length;
+        }
+    }
+
+    function resetScanCounter() {
+        scanCounter = 0;
+        updateScanCounter();
+    }
+
+    function applyScanLocation() {
+        const records = filteredRecords;
+        if (records.length === 0) {
+            showStatus('No scanned records to process.', 'warning');
+            return;
+        }
+
+        const genre = scanGenreSelect ? scanGenreSelect.value : '';
+        const mainType = scanMainLocationType ? scanMainLocationType.value : 'Bin';
+        const mainNumber = scanMainLocationNumber ? scanMainLocationNumber.value : '1';
+        const sublocation = scanSublocation ? scanSublocation.value : '';
+
+        if (!genre) {
+            showStatus('Please select or add a genre.', 'warning');
+            return;
+        }
+        if (!sublocation) {
+            showStatus('Please select a sublocation.', 'warning');
+            return;
+        }
+
+        let mainLocation = mainType + ' ' + mainNumber;
+        let sublocStr = '';
+        if (sublocation === 'CUSTOM') {
+            const custom = scanCustomSublocation ? scanCustomSublocation.value.trim() : '';
+            if (!custom) {
+                showStatus('Please enter custom sublocation text.', 'warning');
+                return;
+            }
+            sublocStr = custom;
+        } else if (sublocation !== 'NA') {
+            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
+            sublocStr = names[sublocation] || '';
+        }
+
+        const today = getLocalMSTDate();
+
+        // Assign counters from bottom to top (oldest to newest)
+        // records is already in newest-first order (from filteredRecords)
+        let updated = 0;
+        for (let i = records.length - 1; i >= 0; i--) {
+            const record = records[i];
+            const counter = records.length - i; // bottom = 1, top = N
+            let parts = [];
+            if (genre) parts.push(genre);
+            if (mainLocation) parts.push(mainLocation);
+            if (sublocStr) parts.push(sublocStr);
+            parts.push(String(counter));
+            const locationString = parts.join(' | ');
+
+            try {
+                // Update the record in the database
+                apiRequest('PUT', '/records/' + record.id, {
+                    location: locationString,
+                    last_seen: today
+                }).then(() => {
+                    // Update local record
+                    record.location = locationString;
+                    record.last_seen = today;
+                }).catch(e => {
+                    console.error('Failed to update record', record.id, e);
+                });
+                updated++;
+            } catch (e) {
+                console.error('Failed to update record', record.id, e);
+            }
+        }
+
+        // Save last submitted location for prediction
+        if (updated > 0) {
+            const firstRecord = records[0];
+            const firstCounter = records.length;
+            let firstParts = [];
+            if (genre) firstParts.push(genre);
+            if (mainLocation) firstParts.push(mainLocation);
+            if (sublocStr) firstParts.push(sublocStr);
+            firstParts.push(String(firstCounter));
+            lastSubmittedLocation = firstParts.join(' | ');
+            localStorage.setItem('lastSubmittedLocation', lastSubmittedLocation);
+        }
+
+        // Clear the list
+        filteredRecords = [];
+        totalRecords = 0;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+
+        showStatus(`✅ Applied location to ${updated} of ${records.length} scanned records.`, 'success');
+        playSound('success');
+        resetScanCounter();
+        updateScanLocationPreview();
     }
 
     // ========== Custom Item Modal ==========
@@ -2456,7 +2588,7 @@
             store_price: price,
             consignor_id: consignorId,
             status_id: 1,
-            notes: notes   // <-- include notes
+            notes: notes
         };
 
         const result = await apiRequest('POST', '/records', recordData);
@@ -2478,7 +2610,6 @@
         const mode = currentSearchMode;
 
         if (mode === 'add') {
-            // Add mode uses Discogs search
             performDiscogsSearch(term);
             return;
         } else if (mode === 'scan') {
@@ -2493,19 +2624,17 @@
         } else if (mode === 'delete') {
             performDeleteSearch(term);
             return;
-        } else if (mode === 'checkout') {   // <-- FIX: added checkout case
+        } else if (mode === 'checkout') {
             performLocalSearch(term);
             return;
-        } else if (mode === 'discogs_orders') {   // <-- NEW: Discogs Orders search
+        } else if (mode === 'discogs_orders') {
             performDiscogsOrdersSearch(term);
             return;
         } else if (mode === 'purchases') {
-            // For purchases mode, we handle filtering separately in renderPurchasesMode
             renderPurchasesMode();
             return;
         }
 
-        // Fallback: do nothing
         showStatus('No search available for this mode', 'info');
     }
 
@@ -2514,13 +2643,10 @@
         const termLower = term.trim().toLowerCase();
         const isNumeric = /^\d+$/.test(termLower);
 
-        // Determine which records to search
         let source = [];
         if (currentSearchMode === 'checkout') {
-            // Checkout uses allRecords loaded with status 2 (active)
             source = allRecords;
         } else if (currentSearchMode === 'delete') {
-            // Delete uses allRecords loaded with status 1 and 2
             source = allRecords;
         }
 
@@ -2529,17 +2655,14 @@
             return;
         }
 
-        // Filter logic: match by ID, barcode, artist, title, catalog number
         let filtered;
         if (isNumeric) {
-            // Exact numeric matches on ID or barcode first
             const numericTerm = termLower;
             filtered = source.filter(r => {
                 const idMatch = r.id && r.id.toString() === numericTerm;
                 const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === numericTerm;
                 return idMatch || barcodeMatch;
             });
-            // If no exact numeric matches, fall back to partial text matches
             if (filtered.length === 0) {
                 filtered = source.filter(r => {
                     const artistMatch = r.artist && r.artist.toLowerCase().includes(numericTerm);
@@ -2549,7 +2672,6 @@
                 });
             }
         } else {
-            // Non-numeric: partial matches on artist, title, catalog, barcode
             filtered = source.filter(r => {
                 const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
                 const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
@@ -2560,10 +2682,7 @@
             });
         }
 
-        // Update the filtered records and re-render
         if (currentSearchMode === 'checkout') {
-            // For checkout, we are searching within all records, but we keep the checkout list separate.
-            // We'll store the search results in filteredRecords, but the view mode is 'search'.
             checkoutViewMode = 'search';
             filteredRecords = filtered;
             totalRecords = filtered.length;
@@ -2572,7 +2691,6 @@
             renderTablePage();
             showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
         } else if (currentSearchMode === 'delete') {
-            // For delete, we simply replace filteredRecords with the search results.
             filteredRecords = filtered;
             totalRecords = filtered.length;
             currentPage = 1;
@@ -2589,7 +2707,6 @@
         if (!artistName) return '';
         let name = artistName.trim();
         name = name.replace(/^the\s+/i, '');
-        // Number mapping (simplified)
         const numberMap = {
             '10,000': 'ten thousand',
             '10000': 'ten thousand',
@@ -2610,14 +2727,12 @@
         if (!recentScansList || recentScansList.length === 0) return 0;
         const recordSortKey = getArtistSortKey(record.artist);
         let score = 0;
-        // Weight more recent scans higher
         for (let i = 0; i < recentScansList.length; i++) {
             const recent = recentScansList[i];
             const weight = Math.pow(0.5, i);
             if (recent.sortKey === recordSortKey) {
                 score += 100 * weight;
             }
-            // Partial match: first word (ignoring "The")
             const recentArtistLower = recent.artist.toLowerCase();
             const recordArtistLower = record.artist.toLowerCase();
             const recentFirstWord = recentArtistLower.replace(/^the\s+/, '').split(' ')[0];
@@ -2626,11 +2741,9 @@
                 score += 30 * weight;
             }
         }
-        // Bonus for active status
         if (record.status_id === 2) {
             score += 50;
         }
-        // Penalty for sold
         if (record.status_id === 3) {
             score -= 100;
         }
@@ -2677,7 +2790,6 @@
         }
     }
 
-    // ========== performScanSearch with duplicate scoring ==========
     async function performScanSearch(term) {
         try {
             const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
@@ -2690,14 +2802,12 @@
 
             const records = data.records;
 
-            // If only one record, process directly
             if (records.length === 1) {
                 const record = records[0];
                 await processScannedRecord(record);
                 return;
             }
 
-            // Multiple records - scoring logic
             const recentScansList = recentScans.map(s => ({
                 artist: s.record.artist,
                 sortKey: getArtistSortKey(s.record.artist)
@@ -2740,7 +2850,6 @@
                 return;
             }
 
-            // If confidence too low, reject
             playSound('error');
             showStatus(`⚠️ Multiple records (${records.length}) found for barcode. Confidence too low to auto-select. Please use a unique barcode or ID.`, 'error');
             if (searchInput) searchInput.value = '';
@@ -2753,17 +2862,12 @@
         }
     }
 
-    // ========== Process a scanned record ==========
     async function processScannedRecord(record) {
         const existing = filteredRecords.find(r => r.id === record.id);
         if (existing) {
             const today = getLocalMSTDate();
             existing.last_seen = today;
-            filteredRecords.sort((a, b) => {
-                const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
-                const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
-                return bDate - aDate;
-            });
+            // Keep the list order (newest first) – we don't re-sort by last_seen.
             renderPagination();
             renderTablePage();
             playSound('success');
@@ -2773,12 +2877,8 @@
             return;
         }
 
-        filteredRecords.push(record);
-        filteredRecords.sort((a, b) => {
-            const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
-            const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
-            return bDate - aDate;
-        });
+        // Add to front of filteredRecords (newest first)
+        filteredRecords.unshift(record);
         totalRecords = filteredRecords.length;
         currentPage = 1;
         renderPagination();
@@ -2788,9 +2888,11 @@
         updateSelectionCount();
         if (searchInput) searchInput.value = '';
         addToRecentScans(record, record.location || '');
+        // Update counter display
+        updateScanCounter();
     }
 
-    // ========== Discogs search, etc. (unchanged) ==========
+    // ========== Discogs search, etc. ==========
     async function performDiscogsSearch(term) {
         currentMode = 'search';
         recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>`;
@@ -2920,7 +3022,6 @@
         }
     }
 
-    // ========== Discogs-specific functions ==========
     function applyDiscogsSearchFilter() {
         const searchTerm = searchInput.value.trim().toLowerCase();
         let records = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
@@ -4456,7 +4557,7 @@
         if (mode === 'add') {
             showStatus('Use Print or Set Active buttons.', 'info');
         } else if (mode === 'scan') {
-            showCompleteScanModal();
+            applyScanLocation();
         } else if (mode === 'discogs') {
             console.log(`🔵 handleCompleteAction: calling showDiscogsPostModal`);
             showDiscogsPostModal();
@@ -4473,457 +4574,16 @@
         } else if (mode === 'refund') {
             processRefund();
         } else if (mode === 'purchases') {
-            // Not used – purchase form has its own submit.
             showStatus('Use the purchase form to add a new purchase.', 'info');
         } else {
             showStatus('No action available for this mode', 'warning');
         }
     }
 
-    // ========== Complete Scan Modal with Genre Creation ==========
-    function showCompleteScanModal() {
-        const records = filteredRecords;
-        if (records.length === 0) {
-            showStatus('No scanned records to process', 'warning');
-            return;
-        }
-
-        const sorted = [...records].sort((a, b) => {
-            const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
-            const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
-            return aDate - bDate;
-        });
-        const counterMap = {};
-        sorted.forEach((r, idx) => {
-            counterMap[r.id] = idx + 1;
-        });
-
-        let modal = document.getElementById('complete-scan-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'complete-scan-modal';
-            modal.className = 'modal-overlay';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 600px; width: 95%;">
-                    <div class="modal-header" style="background: #28a745; color: white;">
-                        <h3 class="modal-title"><i class="fas fa-check-double"></i> Complete Scan</h3>
-                        <button class="modal-close" onclick="document.getElementById('complete-scan-modal').style.display='none'" style="color: white;">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <p><strong>${records.length}</strong> record(s) scanned. Set the location for all scanned records.</p>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div style="grid-column: 1 / -1;">
-                                <label for="scan-genre" style="display:block; font-weight:500; margin-bottom:4px;">Genre *</label>
-                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                                    <select id="scan-genre" class="form-control" style="flex:1; min-width:150px; padding:8px;">
-                                        <option value="">-- Select Genre --</option>
-                                    </select>
-                                    <input type="text" id="scan-new-genre-input" placeholder="New genre name" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:4px; display:none;">
-                                    <button id="scan-add-genre-btn" class="btn btn-sm btn-primary" style="padding:4px 12px; white-space:nowrap;">
-                                        <i class="fas fa-plus"></i> Add
-                                    </button>
-                                </div>
-                                <div id="scan-genre-status" style="margin-top:4px; font-size:13px; display:none;"></div>
-                            </div>
-                            <div>
-                                <label for="scan-main-location-type" style="display:block; font-weight:500; margin-bottom:4px;">Main Location Type</label>
-                                <select id="scan-main-location-type" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="Bin">📦 Bin</option>
-                                    <option value="Display">🖼️ Display</option>
-                                    <option value="Wall">🧱 Wall</option>
-                                    <option value="Custom">✏️ Custom</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="scan-main-location-number" style="display:block; font-weight:500; margin-bottom:4px;">Number/Identifier</label>
-                                <input type="text" id="scan-main-location-number" class="form-control" value="1" style="width:100%; padding:8px;">
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="scan-sublocation" style="display:block; font-weight:500; margin-bottom:4px;">Sublocation</label>
-                                <select id="scan-sublocation" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="LT">↖️ Left Top</option>
-                                    <option value="RT">↗️ Right Top</option>
-                                    <option value="LB">↙️ Left Bottom</option>
-                                    <option value="RB">↘️ Right Bottom</option>
-                                    <option value="NA">⚪ N/A</option>
-                                    <option value="CUSTOM">✏️ Custom</option>
-                                </select>
-                            </div>
-                            <div style="grid-column: 1 / -1; display: none;" id="scan-custom-sublocation-container">
-                                <label for="scan-custom-sublocation" style="display:block; font-weight:500; margin-bottom:4px;">Custom Sublocation</label>
-                                <input type="text" id="scan-custom-sublocation" class="form-control" placeholder="e.g., Shelf 3" style="width:100%; padding:8px;">
-                            </div>
-                        </div>
-                        <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                            <strong>Location Preview:</strong> <span id="scan-location-preview" style="font-weight: bold; color: #007bff;">--</span>
-                        </div>
-                        <div id="scan-status" style="margin-top:10px; padding:8px; border-radius:4px; display:none;"></div>
-                    </div>
-                    <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
-                        <button class="btn btn-secondary" onclick="document.getElementById('complete-scan-modal').style.display='none'">Cancel</button>
-                        <button class="btn btn-success" id="scan-submit-btn"><i class="fas fa-check"></i> Apply Location</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        // Populate genre select
-        const genreSelect = document.getElementById('scan-genre');
-        if (genreSelect) {
-            const currentVal = genreSelect.value;
-            genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-            genres.forEach(g => {
-                const opt = document.createElement('option');
-                opt.value = g;
-                opt.textContent = g;
-                if (g === currentVal) opt.selected = true;
-                genreSelect.appendChild(opt);
-            });
-        }
-
-        // ----- Genre Add Button Logic -----
-        const addGenreBtn = document.getElementById('scan-add-genre-btn');
-        const newGenreInput = document.getElementById('scan-new-genre-input');
-        const genreStatus = document.getElementById('scan-genre-status');
-        let genreStatusTimeout = null;
-
-        function showGenreStatus(message, type, persistent = false) {
-            if (!genreStatus) return;
-            genreStatus.textContent = message;
-            genreStatus.className = `status-message status-${type}`;
-            genreStatus.style.display = 'block';
-            if (!persistent) {
-                if (genreStatusTimeout) clearTimeout(genreStatusTimeout);
-                genreStatusTimeout = setTimeout(() => {
-                    if (genreStatus) genreStatus.style.display = 'none';
-                }, 5000);
-            }
-        }
-
-        // Toggle input field visibility
-        genreSelect.addEventListener('change', function() {
-            if (this.value === '') {
-                newGenreInput.style.display = 'inline-block';
-                newGenreInput.focus();
-            } else {
-                newGenreInput.style.display = 'none';
-                newGenreInput.value = '';
-            }
-            updateScanLocationPreview();
-        });
-
-        addGenreBtn.addEventListener('click', async function() {
-            const genreName = newGenreInput.value.trim();
-            if (!genreName) {
-                showGenreStatus('Please enter a genre name.', 'warning');
-                return;
-            }
-            // Format: capitalize each word
-            const formattedName = genreName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
-            
-            // Check if already exists locally
-            if (genres.includes(formattedName)) {
-                showGenreStatus(`Genre "${formattedName}" already exists in the list.`, 'warning');
-                if (genreSelect) {
-                    genreSelect.value = formattedName;
-                }
-                newGenreInput.value = '';
-                newGenreInput.style.display = 'none';
-                updateScanLocationPreview();
-                return;
-            }
-
-            // Disable button and show loading
-            addGenreBtn.disabled = true;
-            addGenreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
-            showGenreStatus('Adding genre...', 'info', true);
-
-            try {
-                // Try to save to database
-                await apiRequest('POST', '/api/genres', { genre: formattedName });
-                // If successful, add to local list and refresh select
-                genres.push(formattedName);
-                genres.sort();
-                // Re-populate select
-                const currentVal = genreSelect.value;
-                genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-                genres.forEach(g => {
-                    const opt = document.createElement('option');
-                    opt.value = g;
-                    opt.textContent = g;
-                    genreSelect.appendChild(opt);
-                });
-                genreSelect.value = formattedName;
-                newGenreInput.value = '';
-                newGenreInput.style.display = 'none';
-                showGenreStatus(`✅ Genre "${formattedName}" added and selected.`, 'success', false);
-                playSound('success');
-            } catch (error) {
-                // On error (405, etc.), still add locally but warn
-                console.warn('Could not save genre to DB:', error);
-                // Add to local list anyway
-                genres.push(formattedName);
-                genres.sort();
-                genreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-                genres.forEach(g => {
-                    const opt = document.createElement('option');
-                    opt.value = g;
-                    opt.textContent = g;
-                    genreSelect.appendChild(opt);
-                });
-                genreSelect.value = formattedName;
-                newGenreInput.value = '';
-                newGenreInput.style.display = 'none';
-                showGenreStatus(
-                    `⚠️ Genre "${formattedName}" added locally, but could not be saved to the database (${error.message || 'API error'}). You can still use it for this session.`,
-                    'warning',
-                    true
-                );
-                playSound('error');
-            } finally {
-                addGenreBtn.disabled = false;
-                addGenreBtn.innerHTML = '<i class="fas fa-plus"></i> Add';
-                updateScanLocationPreview();
-            }
-        });
-
-        // Allow pressing Enter in the input field to trigger add
-        newGenreInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                addGenreBtn.click();
-            }
-        });
-
-        // Prediction logic
-        const prediction = getLocationPrediction(lastSubmittedLocation);
-        if (prediction) {
-            const mainType = document.getElementById('scan-main-location-type');
-            const mainNumber = document.getElementById('scan-main-location-number');
-            const sublocation = document.getElementById('scan-sublocation');
-            if (mainType) mainType.value = prediction.mainType || 'Bin';
-            if (mainNumber) mainNumber.value = prediction.mainNumber || '1';
-            if (sublocation) sublocation.value = prediction.sublocation || 'LT';
-            if (prediction.genre && genreSelect) {
-                if (genres.includes(prediction.genre)) {
-                    genreSelect.value = prediction.genre;
-                } else {
-                    // Try to auto-add missing genre (only if it exists as a prediction)
-                    // We'll just show a message and let the user add it manually if needed.
-                    // Optionally, we could auto-add it here, but we'll leave it to the user.
-                    // Instead, set the input field with the predicted genre.
-                    if (newGenreInput) {
-                        newGenreInput.value = prediction.genre;
-                        newGenreInput.style.display = 'inline-block';
-                        genreSelect.value = '';
-                        showGenreStatus(
-                            `Predicted genre "${prediction.genre}" is not in the list. Click "Add" to create it.`,
-                            'info',
-                            true
-                        );
-                    }
-                }
-            }
-        } else {
-            const mainType = document.getElementById('scan-main-location-type');
-            const mainNumber = document.getElementById('scan-main-location-number');
-            const sublocation = document.getElementById('scan-sublocation');
-            if (mainType) mainType.value = 'Bin';
-            if (mainNumber) mainNumber.value = '1';
-            if (sublocation) sublocation.value = 'LT';
-        }
-
-        // Sublocation custom toggle
-        const sublocationSelect = document.getElementById('scan-sublocation');
-        const customContainer = document.getElementById('scan-custom-sublocation-container');
-        const customInput = document.getElementById('scan-custom-sublocation');
-        sublocationSelect.onchange = function() {
-            customContainer.style.display = this.value === 'CUSTOM' ? 'block' : 'none';
-            updateScanLocationPreview();
-        };
-        if (customInput) {
-            customInput.oninput = updateScanLocationPreview;
-        }
-        document.querySelectorAll('#scan-genre, #scan-main-location-type, #scan-main-location-number, #scan-sublocation').forEach(el => {
-            el.addEventListener('change', updateScanLocationPreview);
-            el.addEventListener('input', updateScanLocationPreview);
-        });
-
-        updateScanLocationPreview();
-        modal.style.display = 'flex';
-
-        const submitBtn = document.getElementById('scan-submit-btn');
-        const newSubmit = submitBtn.cloneNode(true);
-        submitBtn.parentNode.replaceChild(newSubmit, submitBtn);
-        newSubmit.addEventListener('click', async function() {
-            await handleScanSubmit(counterMap);
-        });
-    }
-
-    function updateScanLocationPreview() {
-        const genre = document.getElementById('scan-genre')?.value || '';
-        const mainType = document.getElementById('scan-main-location-type')?.value || 'Bin';
-        const mainNumber = document.getElementById('scan-main-location-number')?.value || '1';
-        const sublocation = document.getElementById('scan-sublocation')?.value || 'LT';
-
-        let mainLocation = mainType + ' ' + mainNumber;
-        let sublocStr = '';
-        if (sublocation === 'CUSTOM') {
-            sublocStr = document.getElementById('scan-custom-sublocation')?.value.trim() || 'Custom';
-        } else if (sublocation !== 'NA') {
-            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
-            sublocStr = names[sublocation] || '';
-        }
-
-        let parts = [];
-        if (genre) parts.push(genre);
-        if (mainLocation) parts.push(mainLocation);
-        if (sublocStr) parts.push(sublocStr);
-
-        const preview = document.getElementById('scan-location-preview');
-        if (preview) preview.textContent = parts.join(' | ') || '--';
-    }
-
-    function getLocationPrediction(lastLocation) {
-        if (!lastLocation) return null;
-        const parts = lastLocation.split(' | ').map(s => s.trim());
-        let genre = '', mainType = 'Bin', mainNumber = '1', sublocation = 'LT';
-
-        parts.forEach(p => {
-            if (p.match(/^(Bin|Display|Wall)\s+\S+$/i)) {
-                const match = p.match(/^(Bin|Display|Wall)\s+(\S+)$/i);
-                if (match) { mainType = match[1]; mainNumber = match[2]; }
-            } else if (p.match(/^(LT|RT|LB|RB|NA|CUSTOM)$/i)) {
-                sublocation = p;
-            } else if (!p.match(/^(Bin|Display|Wall|LT|RT|LB|RB|NA|CUSTOM|\d+)/i)) {
-                genre = p;
-            }
-        });
-
-        const sequence = ['LT', 'RT', 'LB', 'RB'];
-        let idx = sequence.indexOf(sublocation);
-        if (idx !== -1) {
-            if (idx < sequence.length - 1) {
-                sublocation = sequence[idx + 1];
-            } else {
-                sublocation = sequence[0];
-                const num = parseInt(mainNumber) || 1;
-                mainNumber = String(num + 1);
-            }
-        } else {
-            sublocation = 'LT';
-        }
-        return { genre, mainType, mainNumber, sublocation };
-    }
-
-    async function handleScanSubmit(counterMap) {
-        const records = filteredRecords;
-        if (records.length === 0) {
-            showScanStatus('No records to update.', 'error');
-            return;
-        }
-
-        const genre = document.getElementById('scan-genre')?.value || '';
-        const mainType = document.getElementById('scan-main-location-type')?.value || 'Bin';
-        const mainNumber = document.getElementById('scan-main-location-number')?.value || '1';
-        const sublocation = document.getElementById('scan-sublocation')?.value || 'LT';
-
-        if (!genre) {
-            showScanStatus('Please select or add a genre', 'error');
-            return;
-        }
-
-        let mainLocation = mainType + ' ' + mainNumber;
-        let sublocStr = '';
-        if (sublocation === 'CUSTOM') {
-            const custom = document.getElementById('scan-custom-sublocation')?.value.trim();
-            if (!custom) {
-                showScanStatus('Please enter custom sublocation text', 'error');
-                return;
-            }
-            sublocStr = custom;
-        } else if (sublocation !== 'NA') {
-            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
-            sublocStr = names[sublocation] || '';
-        }
-
-        const today = getLocalMSTDate();
-
-        const submitBtn = document.getElementById('scan-submit-btn');
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
-
-        let updated = 0;
-        for (const record of records) {
-            const counter = counterMap[record.id] || 1;
-            let parts = [];
-            if (genre) parts.push(genre);
-            if (mainLocation) parts.push(mainLocation);
-            if (sublocStr) parts.push(sublocStr);
-            parts.push(String(counter));
-            const locationString = parts.join(' | ');
-
-            try {
-                await apiRequest('PUT', '/records/' + record.id, {
-                    location: locationString,
-                    last_seen: today
-                });
-                updated++;
-            } catch (e) {
-                console.error('Failed to update record', record.id, e);
-            }
-        }
-
-        if (updated > 0) {
-            const firstRecord = records[0];
-            const firstCounter = counterMap[firstRecord.id] || 1;
-            let firstParts = [];
-            if (genre) firstParts.push(genre);
-            if (mainLocation) firstParts.push(mainLocation);
-            if (sublocStr) firstParts.push(sublocStr);
-            firstParts.push(String(firstCounter));
-            lastSubmittedLocation = firstParts.join(' | ');
-            localStorage.setItem('lastSubmittedLocation', lastSubmittedLocation);
-        }
-
-        filteredRecords = [];
-        totalRecords = 0;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-
-        showScanStatus(`✅ Updated ${updated} of ${records.length} records with location.`, 'success');
-        playSound('success');
-
-        setTimeout(() => {
-            document.getElementById('complete-scan-modal').style.display = 'none';
-        }, 1500);
-
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-check"></i> Apply Location';
-    }
-
-    function showScanStatus(message, type = 'info') {
-        const el = document.getElementById('scan-status');
-        if (!el) return;
-        el.textContent = message;
-        el.className = `status-message status-${type}`;
-        el.style.display = 'block';
-    }
-
     // ========== INVENTORY PURCHASES MODE ==========
-    // This mode provides a form to record a new inventory purchase and displays a table of past purchases.
-
     function renderPurchasesMode() {
-        // Hide the table and pagination, show the purchases UI.
-        // We'll render it inside the existing table area – we can replace the table body with a custom layout.
-        // We'll build a form and a list of purchases.
-
-        // Clear the table head
         recordsTableHead.innerHTML = '';
 
-        // Build the purchases UI
         let html = `
             <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 20px;">
                 <h3><i class="fas fa-shopping-cart"></i> Record Inventory Purchase</h3>
@@ -4998,7 +4658,6 @@
 
         recordsTableBody.innerHTML = `<tr><td colspan="1"><div>${html}</div></td></tr>`;
 
-        // Populate consignor dropdown
         const consignorSelect = document.getElementById('purchase-consignor');
         if (consignorSelect) {
             consignorSelect.innerHTML = '<option value="">-- Select consignor --</option>';
@@ -5010,7 +4669,6 @@
             });
         }
 
-        // Handle payment type toggle
         document.querySelectorAll('input[name="purchase-payment-type"]').forEach(radio => {
             radio.addEventListener('change', function() {
                 const section = document.getElementById('purchase-consignor-section');
@@ -5022,7 +4680,6 @@
             });
         });
 
-        // Handle file preview
         const fileInput = document.getElementById('purchase-bill-image');
         const previewDiv = document.getElementById('purchase-bill-preview');
         if (fileInput) {
@@ -5047,7 +4704,6 @@
             };
         }
 
-        // Handle form submission
         const form = document.getElementById('purchase-form');
         if (form) {
             form.addEventListener('submit', function(e) {
@@ -5056,10 +4712,8 @@
             });
         }
 
-        // Load recent purchases
         loadPurchasesList();
 
-        // Search filtering: we'll re-render based on search term
         const searchTerm = searchInput.value.trim().toLowerCase();
         if (searchTerm) {
             filterPurchasesList(searchTerm);
@@ -5137,7 +4791,6 @@
         const consignorId = document.getElementById('purchase-consignor')?.value || null;
         const billFile = document.getElementById('purchase-bill-image')?.files[0] || null;
 
-        // Validate
         if (!sellerName) {
             showPurchaseStatus('Seller name is required.', 'error');
             return;
@@ -5151,7 +4804,6 @@
             return;
         }
 
-        // Upload bill if present
         let billPath = null;
         if (billFile) {
             const formData = new FormData();
@@ -5175,7 +4827,6 @@
             }
         }
 
-        // Build payload
         const payload = {
             seller_name: sellerName,
             seller_contact: sellerContact || '',
@@ -5191,16 +4842,13 @@
             const result = await apiRequest('POST', '/api/inventory-purchases', payload);
             if (result.status === 'success') {
                 showPurchaseStatus('✅ Purchase recorded successfully!', 'success');
-                // Reset form (except date)
                 document.getElementById('purchase-seller-name').value = '';
                 document.getElementById('purchase-seller-contact').value = '';
                 document.getElementById('purchase-amount').value = '';
                 document.getElementById('purchase-description').value = '';
                 document.getElementById('purchase-bill-image').value = '';
                 document.getElementById('purchase-bill-preview').innerHTML = '';
-                // Reload purchases list
                 loadPurchasesList();
-                // Also reload stats? Not necessary for this mode.
                 playSound('success');
             } else {
                 showPurchaseStatus('Error: ' + (result.error || 'Unknown error'), 'error');
@@ -5221,7 +4869,6 @@
         setTimeout(() => { el.style.display = 'none'; }, 5000);
     }
 
-    // Delete purchase (admin only)
     window.deletePurchase = async function(purchaseId) {
         if (!confirm('Delete this purchase record?')) return;
         try {
@@ -5259,6 +4906,9 @@
             renderTablePage();
             showStatus('Scan mode: Scan barcodes to build the list.', 'info');
             searchInput.placeholder = 'Scan barcode here...';
+            // Reset scan counter
+            resetScanCounter();
+            // Show the location builder panel (handled by updateFilterVisibility)
         } else if (newMode === 'discogs') {
             filteredRecords = [];
             totalRecords = 0;
@@ -5288,13 +4938,10 @@
             showStatus('Delete mode: Use filters to find records to delete.', 'info');
             searchInput.placeholder = 'Search records...';
             allRecords = [];
-            // Await loadRecords to ensure data is ready before search
             loadRecords({ statusIds: [1,2], mode: 'delete' }).then(() => {
-                // Load completed, re-render to show data
                 renderTablePage();
             });
-        } 
-        else if (newMode === 'refund') {
+        } else if (newMode === 'refund') {
             filteredRecords = [];
             totalRecords = 0;
             currentPage = 1;
@@ -5304,8 +4951,7 @@
             searchInput.placeholder = 'Search sold records by artist, title, or barcode...';
             allRecords = [];
             loadRecords({ statusIds: [3, 4], mode: 'refund' });
-        }
-        else if (newMode === 'checkout') {
+        } else if (newMode === 'checkout') {
             checkoutSelectedItems = [];
             checkoutViewMode = 'list';
             filteredRecords = [];
@@ -5375,7 +5021,6 @@
                 search.value = '';
             }
             
-            // Set status filter default to 'Payment Received'
             const statusFilter = document.getElementById('discogs-orders-status-filter');
             if (statusFilter) {
                 statusFilter.value = 'Payment Received';
@@ -5389,12 +5034,11 @@
             selectedOrderId = null;
             currentOrderItems = [];
         } else if (newMode === 'purchases') {
-            // Show the purchases UI
             filteredRecords = [];
             totalRecords = 0;
             currentPage = 1;
             renderPagination();
-            renderTablePage(); // will call renderPurchasesMode()
+            renderTablePage();
             showStatus('Inventory Purchases mode: Record total purchase amounts.', 'info');
             searchInput.placeholder = 'Filter purchases by seller or description...';
         }
@@ -5413,14 +5057,11 @@
 
     // ========== Pagination ==========
     function renderPagination() {
-        // For purchases mode, we hide the pagination.
         if (currentSearchMode === 'purchases') {
-            // Hide pagination controls
             const paginationEl = document.querySelector('.pagination');
             if (paginationEl) paginationEl.style.display = 'none';
             return;
         }
-        // Show pagination
         const paginationEl = document.querySelector('.pagination');
         if (paginationEl) paginationEl.style.display = 'flex';
         const totalPages = Math.ceil(totalRecords / pageSize) || 1;
@@ -5449,7 +5090,7 @@
             return checkoutSelectedItems.slice();
         }
         if (currentSearchMode === 'purchases') {
-            return []; // no selection in purchases mode
+            return [];
         }
         if (rangeFromIndex === null || rangeToIndex === null) {
             console.log('🔍 getSelectedRecords: no range selected');
@@ -5494,7 +5135,6 @@
         if (isAddMode) {
             const hasTargets = hasSelection || hasRecords;
             printBtn.disabled = !hasTargets;
-            
             if (hasSelection) {
                 printBtn.textContent = `🖨️ Print (${count} selected)`;
             } else {
@@ -5508,8 +5148,13 @@
         if (mode === 'add') {
             // no action button in add mode
         } else if (mode === 'scan') {
-            completeActionBtn.disabled = !hasRecords;
-            actionLabel = 'Complete Scan';
+            // Complete button state is handled by updateScanLocationPreview()
+            // but we also need to reflect the count
+            const genre = scanGenreSelect ? scanGenreSelect.value : '';
+            const sublocation = scanSublocation ? scanSublocation.value : '';
+            const isValid = genre && sublocation && hasRecords;
+            completeActionBtn.disabled = !isValid;
+            actionLabel = `Apply Location to ${hasRecords ? filteredRecords.length : 0} scanned records`;
         } else if (mode === 'discogs') {
             completeActionBtn.disabled = !hasSelection;
             actionLabel = `📤 Post ${count} selected to Discogs`;
@@ -5528,7 +5173,7 @@
             completeActionBtn.disabled = !hasSelection;
             actionLabel = `💰 Refund ${count} selected`;
         } else if (mode === 'purchases') {
-            completeActionBtn.disabled = true; // no action
+            completeActionBtn.disabled = true;
             actionLabel = 'Record Purchase';
         }
 
@@ -5666,6 +5311,82 @@
 
         populateDefaultParamSelects();
 
+        // Set up event listeners for the scan location builder
+        if (scanGenreSelect) {
+            scanGenreSelect.addEventListener('change', updateScanLocationPreview);
+        }
+        if (scanMainLocationType) {
+            scanMainLocationType.addEventListener('change', updateScanLocationPreview);
+        }
+        if (scanMainLocationNumber) {
+            scanMainLocationNumber.addEventListener('input', updateScanLocationPreview);
+        }
+        if (scanSublocation) {
+            scanSublocation.addEventListener('change', function() {
+                const customContainer = document.getElementById('scan-custom-sublocation-container');
+                if (this.value === 'CUSTOM') {
+                    if (customContainer) customContainer.style.display = 'block';
+                } else {
+                    if (customContainer) customContainer.style.display = 'none';
+                }
+                updateScanLocationPreview();
+            });
+        }
+        if (scanCustomSublocation) {
+            scanCustomSublocation.addEventListener('input', updateScanLocationPreview);
+        }
+        if (scanAddGenreBtn) {
+            scanAddGenreBtn.addEventListener('click', function() {
+                const genreName = scanNewGenreInput ? scanNewGenreInput.value.trim() : '';
+                if (!genreName) {
+                    showScanGenreStatus('Please enter a genre name.', 'warning');
+                    return;
+                }
+                const formattedName = genreName.split(' ').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+                ).join(' ');
+                
+                if (genres.includes(formattedName)) {
+                    showScanGenreStatus(`Genre "${formattedName}" already exists.`, 'warning');
+                    if (scanGenreSelect) scanGenreSelect.value = formattedName;
+                    if (scanNewGenreInput) scanNewGenreInput.value = '';
+                    updateScanLocationPreview();
+                    return;
+                }
+                
+                genres.push(formattedName);
+                genres.sort();
+                
+                // Refresh the select options
+                if (scanGenreSelect) {
+                    const currentVal = scanGenreSelect.value;
+                    scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+                    genres.forEach(g => {
+                        const opt = document.createElement('option');
+                        opt.value = g;
+                        opt.textContent = g;
+                        scanGenreSelect.appendChild(opt);
+                    });
+                    scanGenreSelect.value = formattedName;
+                }
+                if (scanNewGenreInput) scanNewGenreInput.value = '';
+                showScanGenreStatus(`✅ Genre "${formattedName}" added.`, 'success');
+                playSound('success');
+                updateScanLocationPreview();
+            });
+        }
+        if (scanNewGenreInput) {
+            scanNewGenreInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (scanAddGenreBtn) scanAddGenreBtn.click();
+                }
+            });
+        }
+        if (scanResetCounterBtn) {
+            scanResetCounterBtn.addEventListener('click', resetScanCounter);
+        }
+
         searchModeSelect.addEventListener('change', onModeChange);
 
         let searchButton = document.getElementById('searchButton');
@@ -5700,7 +5421,6 @@
 
         clearSearchBtn.addEventListener('click', clearSearch);
  
-
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
             currentPage = 1;
@@ -5721,7 +5441,6 @@
         lastPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; currentPage = totalPages; renderPagination(); renderTablePage(); });
 
         printBtn.addEventListener('click', printPriceTags);
-        
         setActiveBtn.addEventListener('click', setActiveRecords);
 
         const oldGlobalBtn = document.getElementById('global-set-active-btn');
@@ -5809,6 +5528,17 @@
 
         _initialized = true;
         console.log('✅ inventory-ops.js initialized');
+    }
+
+    function showScanGenreStatus(message, type) {
+        const el = document.getElementById('scan-genre-status');
+        if (!el) return;
+        type = type || 'info';
+        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        el.className = `status-message status-${type}`;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 3000);
     }
 
     // ========== AUTO-INITIALIZE ==========

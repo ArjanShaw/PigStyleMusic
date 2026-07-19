@@ -33,12 +33,10 @@
         .status-badge.returned { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .status-badge.draft { background: #e9ecef; color: #495057; border: 1px solid #dee2e6; }
         
-        /* Batch Status Badges */
         .status-badge.batch-active { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
         .status-badge.batch-completed { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .status-badge.batch-cancelled { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         
-        /* Price Input Step Styling */
         input[type="number"][step="1"] {
             -moz-appearance: textfield;
         }
@@ -48,7 +46,6 @@
             height: 24px;
         }
 
-        /* Pagination Styles */
         .pagination-container {
             display: flex;
             justify-content: space-between;
@@ -147,7 +144,6 @@
             }
         }
 
-        /* New Layout Styles */
         .dashboard-main {
             display: flex;
             flex-direction: column;
@@ -918,7 +914,6 @@
             margin-bottom: 30px;
         }
 
-        /* User Management Styles */
         .user-form-section {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 25px;
@@ -986,7 +981,6 @@
         .role-badge.youtube_linker { background: #ffc107; color: #333; }
         .role-badge.seller { background: #17a2b8; color: white; }
 
-        /* Flag Color Styles */
         .flag-badge {
             display: inline-block;
             padding: 4px 8px;
@@ -1067,7 +1061,6 @@
             border-bottom: 1px solid #eee;
         }
 
-        /* Locator highlight styles */
         .record-locator-match {
             background-color: #fff3cd !important;
             border-left: 4px solid #ffc107 !important;
@@ -1087,7 +1080,6 @@
             background-color: #fff3cd !important;
         }
 
-        /* Locator search section */
         .locator-stats {
             background: #e9ecef;
             padding: 5px 12px;
@@ -1100,7 +1092,6 @@
             box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
         }
 
-        /* Queue Styles */
         .queue-container {
             background: white;
             border: 1px solid #ddd;
@@ -1290,7 +1281,6 @@
             align-items: center;
         }
 
-        /* Range selection styles */
         .range-mode-active .from-btn {
             background-color: #28a745 !important;
             color: white !important;
@@ -1339,7 +1329,6 @@
             100% { opacity: 0.6; }
         }
 
-        /* Sort indicator styles */
         .sort-indicator {
             display: inline-block;
             margin-left: 5px;
@@ -1355,7 +1344,6 @@
             background-color: #e9ecef;
         }
 
-        /* Database Query Tab Styles */
         .db-query-container {
             display: flex;
             gap: 20px;
@@ -1750,7 +1738,6 @@
             margin-top: 2px;
         }
 
-        /* Starting Position Styles */
         .starting-position-section {
             background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
             padding: 15px 20px;
@@ -1759,7 +1746,6 @@
             color: white;
         }
 
-        /* Gift Card Styles */
         .gift-card-section {
             background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
             padding: 20px;
@@ -1834,7 +1820,6 @@
             margin-top: 10px;
         }
 
-        /* Sticky Notes Styles */
         .sticky-note-preview {
             background: #ffeb3b;
             padding: 15px;
@@ -1847,7 +1832,6 @@
             word-wrap: break-word;
         }
 
-        /* Inventory Tab Styles */
         .inventory-scanner-section {
             background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
             padding: 25px;
@@ -1898,7 +1882,6 @@
             font-size: 14px;
         }
 
-        /* Discogs Tab Simplified Styles */
         .discogs-sync-section {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 25px;
@@ -1919,7 +1902,6 @@
             color: #333;
         }
         
-        /* Discogs Genre Display Styles */
         .discogs-genre-display {
             background: #f8f9fa;
             padding: 10px;
@@ -1941,7 +1923,79 @@
             margin-bottom: 5px;
         }
 
-        /* Square Payment Modal Styles */
+        /* Scan Location Builder Panel */
+        .scan-location-builder {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .scan-location-builder .form-control {
+            background: white;
+            color: #333;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .scan-location-builder .form-control:focus {
+            border-color: #ffd700;
+            box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.3);
+        }
+        .scan-location-builder .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .scan-location-builder .btn-secondary:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .scan-location-preview {
+            background: rgba(0,0,0,0.2);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            font-family: monospace;
+            text-align: center;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+        .scan-counter-display {
+            font-size: 32px;
+            font-weight: bold;
+            background: rgba(0,0,0,0.3);
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-family: monospace;
+            display: inline-block;
+        }
+        .scan-location-builder .form-group {
+            margin-bottom: 10px;
+        }
+        .scan-location-builder .form-group label {
+            font-weight: 500;
+            opacity: 0.9;
+        }
+        .scan-location-builder .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        @media (max-width: 768px) {
+            .scan-location-builder .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        .scan-location-builder .invalid-feedback {
+            color: #ffd700;
+            font-size: 13px;
+            margin-top: 5px;
+            display: none;
+        }
+        .scan-location-builder .invalid-feedback.show {
+            display: block;
+        }
+
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -2007,95 +2061,6 @@
             justify-content: flex-end;
             gap: 10px;
         }
-        #square-payment-status {
-            text-align: center;
-            padding: 20px 0;
-        }
-        #square-status-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-            color: #ffc107;
-        }
-        #square-status-message {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-        }
-        #square-status-detail {
-            font-size: 14px;
-            color: #666;
-            margin-top: 8px;
-        }
-        #square-payment-info {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-        }
-        #square-payment-info .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 5px 0;
-        }
-        #square-payment-info .info-row .label {
-            color: #666;
-        }
-        #square-payment-info .info-row .value {
-            font-weight: 600;
-            color: #333;
-        }
-        #square-force-warning {
-            display: none;
-            margin-top: 15px;
-            padding: 10px;
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            border-radius: 4px;
-            font-size: 13px;
-            color: #856404;
-        }
-        #square-force-warning.show {
-            display: block;
-        }
-        #square-payment-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-top: 15px;
-            flex-wrap: wrap;
-        }
-        #square-payment-actions .btn {
-            padding: 10px 25px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-square-force {
-            background: #ffc107;
-            color: #333;
-        }
-        .btn-square-force:hover {
-            background: #e0a800;
-        }
-        .btn-square-force:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-square-cancel {
-            background: #dc3545;
-            color: white;
-        }
-        .btn-square-cancel:hover {
-            background: #bd2130;
-        }
-        .status-text-waiting { color: #ffc107; }
-        .status-text-completed { color: #28a745; }
-        .status-text-error { color: #dc3545; }
-        .status-text-force { color: #856404; }
     </style>
 </head>
 <body>
@@ -2242,6 +2207,72 @@
                     </span>
                 </div>
                 <div id="default-params-status" style="margin-top: 10px; display: none;"></div>
+            </div>
+        </div>
+
+        <!-- SCAN LOCATION BUILDER PANEL (visible only in Scan mode) -->
+        <div id="scan-location-builder" class="scan-location-builder" style="display: none;">
+            <h3 style="margin-top: 0; margin-bottom: 15px; color: white;"><i class="fas fa-map-pin"></i> Location Builder for Scanned Records</h3>
+            <div class="form-row">
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label for="scan-genre">Genre <span style="color: #ffd700;">*</span></label>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <select id="scan-genre" class="form-control" style="flex:2; min-width:150px;">
+                            <option value="">-- Select Genre --</option>
+                        </select>
+                        <input type="text" id="scan-new-genre-input" class="form-control" placeholder="New genre name" style="flex:1; min-width:120px;">
+                        <button id="scan-add-genre-btn" class="btn btn-secondary" style="white-space:nowrap;">
+                            <i class="fas fa-plus"></i> Add
+                        </button>
+                    </div>
+                    <div id="scan-genre-status" style="margin-top:4px; font-size:13px; display:none;"></div>
+                </div>
+                <div class="form-group">
+                    <label for="scan-main-location-type">Main Location Type</label>
+                    <select id="scan-main-location-type" class="form-control">
+                        <option value="Bin">📦 Bin</option>
+                        <option value="Display">🖼️ Display</option>
+                        <option value="Wall">🧱 Wall</option>
+                        <option value="Custom">✏️ Custom</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="scan-main-location-number">Number/Identifier</label>
+                    <input type="text" id="scan-main-location-number" class="form-control" value="1">
+                </div>
+                <div class="form-group">
+                    <label for="scan-sublocation">Sublocation <span style="color: #ffd700;">*</span></label>
+                    <select id="scan-sublocation" class="form-control">
+                        <option value="">-- Select Sublocation --</option>
+                        <option value="LT">↖️ Left Top</option>
+                        <option value="RT">↗️ Right Top</option>
+                        <option value="LB">↙️ Left Bottom</option>
+                        <option value="RB">↘️ Right Bottom</option>
+                        <option value="NA">⚪ N/A</option>
+                        <option value="CUSTOM">✏️ Custom</option>
+                    </select>
+                </div>
+                <div class="form-group" id="scan-custom-sublocation-container" style="display: none;">
+                    <label for="scan-custom-sublocation">Custom Sublocation</label>
+                    <input type="text" id="scan-custom-sublocation" class="form-control" placeholder="e.g., Shelf 3">
+                </div>
+            </div>
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
+                <div>
+                    <span style="font-weight: 500;">Counter:</span>
+                    <span class="scan-counter-display" id="scan-counter-display">0</span>
+                </div>
+                <div style="flex:1; min-width:200px;">
+                    <div style="font-weight: 500;">Location Preview:</div>
+                    <div id="scan-location-preview" class="scan-location-preview">--</div>
+                </div>
+            </div>
+            <div id="scan-builder-status" style="margin-top:10px; display:none;"></div>
+            <div style="margin-top:15px;">
+                <button id="scan-reset-counter-btn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> Reset Counter</button>
+                <span style="font-size:12px; opacity:0.8; margin-left:10px;">
+                    <i class="fas fa-info-circle"></i> Counter resets to 0 when location changes
+                </span>
             </div>
         </div>
 
