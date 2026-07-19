@@ -1,6 +1,6 @@
 // ============================================================================
 // inventory-ops.js - Unified Inventory Operations (Refactored)
-// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders, Refund
+// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders, Refund, Inventory Purchases
 // ============================================================================
 
 (function() {
@@ -30,7 +30,6 @@
 
     const selectedCountSpan = document.getElementById('selected-count');
     const completeActionBtn = document.getElementById('complete-action-btn');
-    const cogsBtn = document.getElementById('cogs-btn');
     const printBtn = document.getElementById('print-btn');
     const setActiveBtn = document.getElementById('set-active-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
@@ -1367,6 +1366,7 @@
                     `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
                 ).join('');
 
+                // ---- HEADER with Notes column ----
                 if (showDefaultInputs) {
                     theadHtml = `
                         <tr>
@@ -1379,6 +1379,7 @@
                             <th>Disc</th>
                             <th>Price</th>
                             <th>Consignor</th>
+                            <th>Notes</th>
                             <th>Action</th>
                         </tr>
                     `;
@@ -1502,10 +1503,22 @@
                     <th>Date Sold</th>
                 </tr>
             `;
+        } else if (currentSearchMode === 'purchases') {
+            // Inventory Purchases mode: display a simple table for list view, but we'll render a special UI.
+            // We'll handle this in renderPurchasesTable() instead.
+            // For now, we just set thead to empty – the main render will detect purchases mode and call a separate function.
+            // We'll handle this below.
+            theadHtml = ''; // will be replaced
         }
         recordsTableHead.innerHTML = theadHtml;
 
         let tbodyHtml = '';
+        if (currentSearchMode === 'purchases') {
+            // Render purchases mode entirely differently – we'll show a form and list.
+            renderPurchasesMode();
+            return;
+        }
+
         if (pageRecords.length === 0) {
             let msg = 'No records found';
             if (currentSearchMode === 'add' && currentMode !== 'search') msg = 'No new records (status_id=1). Search Discogs to add records.';
@@ -1527,7 +1540,7 @@
             }
             const colCount = currentSearchMode === 'discogs_orders' ? 10 :
                              (currentSearchMode === 'refund' ? 7 :
-                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 10 : 10) :
+                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 10) :
                              (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
                              (currentSearchMode === 'delete' ? 6 : 7)))));
@@ -1625,6 +1638,9 @@
                                     ${consignorOptions}
                                 </select>
                             </td>
+                            <td>   <!-- NEW: Notes column -->
+                                <input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;">
+                            </td>
                         `;
                     } else {
                         const def = getDefaultParamsForRecord();
@@ -1638,6 +1654,9 @@
                             <td style="font-size:12px; color:#666;" title="Using defaults">D: ${escapeHtml(discName)}</td>
                             <td style="font-size:12px; color:#666;" title="Using defaults">${priceDisplay}</td>
                             <td style="font-size:12px; color:#666;" title="Using defaults">${escapeHtml(consignorDisplay)}</td>
+                            <td>   <!-- NEW: Notes column even when defaults active -->
+                                <input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;">
+                            </td>
                         `;
                     }
                     
@@ -2066,6 +2085,7 @@
         const isDiscogsOrdersMode = currentSearchMode === 'discogs_orders';
         const isScanMode = currentSearchMode === 'scan';
         const isRefundMode = currentSearchMode === 'refund';
+        const isPurchasesMode = currentSearchMode === 'purchases';
 
         // Show/hide default parameters section
         const defaultParamsSection = document.getElementById('default-params-section');
@@ -2136,12 +2156,10 @@
         // --- SET ACTIVE button: always visible, disabled in Discogs Orders mode ---
         setActiveBtn.style.display = isDiscogsOrdersMode ? 'none' : '';
 
-        // --- COGS and Print buttons: only in Add mode ---
+        // --- Print button: only in Add mode ---
         if (isAddMode) {
-            cogsBtn.style.display = '';
             printBtn.style.display = '';
         } else {
-            cogsBtn.style.display = 'none';
             printBtn.style.display = 'none';
         }
 
@@ -2151,6 +2169,8 @@
             completeActionBtn.textContent = '💰 Process Refund';
         } else if (isAddMode) {
             completeActionBtn.style.display = 'none';
+        } else if (isPurchasesMode) {
+            completeActionBtn.style.display = 'none'; // handled separately
         } else {
             completeActionBtn.style.display = '';
         }
@@ -2174,6 +2194,10 @@
         // --- Search placeholder ---
         if (isRefundMode) {
             searchInput.placeholder = 'Search sold records by artist, title, or barcode...';
+        } else if (isPurchasesMode) {
+            searchInput.placeholder = 'Filter purchases by seller name or description...';
+        } else {
+            // default placeholder set by mode switch
         }
     }
 
@@ -2338,11 +2362,13 @@
         const consignorSelect = row.querySelector('.consignor-select');
         const sleeveSelect = row.querySelector('.sleeve-condition-select');
         const discSelect = row.querySelector('.disc-condition-select');
+        const notesInput = row.querySelector('.notes-input');
 
         let price = null;
         let consignorId = null;
         let sleeveId = null;
         let discId = null;
+        let notes = notesInput ? notesInput.value.trim() : '';
 
         if (defaultParamsActive) {
             sleeveId = defaultParams.sleeveConditionId;
@@ -2388,7 +2414,7 @@
             store_price: price,
             consignor_id: consignorId,
             status_id: 1,
-            notes: null
+            notes: notes   // <-- include notes
         };
 
         const result = await apiRequest('POST', '/records', recordData);
@@ -2404,24 +2430,113 @@
         await loadStats();
     }
 
-    // ========== Search Logic ==========
+    // ========== CONSOLIDATED SEARCH ==========
     function performSearch(term) {
         if (!term) { clearSearch(); return; }
         const mode = currentSearchMode;
 
         if (mode === 'add') {
+            // Add mode uses Discogs search
             performDiscogsSearch(term);
+            return;
         } else if (mode === 'scan') {
             performScanSearch(term);
+            return;
         } else if (mode === 'refund') {
             performRefundSearch(term);
-        } else if (mode === 'checkout') {
-            performCheckoutSearch(term);
+            return;
         } else if (mode === 'discogs') {
             performDiscogsFilterSearch(term);
+            return;
         } else if (mode === 'delete') {
             performDeleteSearch(term);
+            return;
+        } else if (mode === 'checkout') {   // <-- FIX: added checkout case
+            performLocalSearch(term);
+            return;
+        } else if (mode === 'purchases') {
+            // For purchases mode, we handle filtering separately in renderPurchasesMode
+            renderPurchasesMode();
+            return;
         }
+
+        // Fallback: do nothing
+        showStatus('No search available for this mode', 'info');
+    }
+
+    // ========== Unified Local Search (Delete & Checkout) ==========
+    function performLocalSearch(term) {
+        const termLower = term.trim().toLowerCase();
+        const isNumeric = /^\d+$/.test(termLower);
+
+        // Determine which records to search
+        let source = [];
+        if (currentSearchMode === 'checkout') {
+            // Checkout uses allRecords loaded with status 2 (active)
+            source = allRecords;
+        } else if (currentSearchMode === 'delete') {
+            // Delete uses allRecords loaded with status 1 and 2
+            source = allRecords;
+        }
+
+        if (!source || source.length === 0) {
+            showStatus('No records loaded. Please wait or refresh.', 'warning');
+            return;
+        }
+
+        // Filter logic: match by ID, barcode, artist, title, catalog number
+        let filtered;
+        if (isNumeric) {
+            // Exact numeric matches on ID or barcode first
+            const numericTerm = termLower;
+            filtered = source.filter(r => {
+                const idMatch = r.id && r.id.toString() === numericTerm;
+                const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === numericTerm;
+                return idMatch || barcodeMatch;
+            });
+            // If no exact numeric matches, fall back to partial text matches
+            if (filtered.length === 0) {
+                filtered = source.filter(r => {
+                    const artistMatch = r.artist && r.artist.toLowerCase().includes(numericTerm);
+                    const titleMatch = r.title && r.title.toLowerCase().includes(numericTerm);
+                    const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(numericTerm);
+                    return artistMatch || titleMatch || catalogMatch;
+                });
+            }
+        } else {
+            // Non-numeric: partial matches on artist, title, catalog, barcode
+            filtered = source.filter(r => {
+                const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
+                const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
+                const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
+                const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase().includes(termLower);
+                const idMatch = r.id && r.id.toString().includes(termLower);
+                return artistMatch || titleMatch || catalogMatch || barcodeMatch || idMatch;
+            });
+        }
+
+        // Update the filtered records and re-render
+        if (currentSearchMode === 'checkout') {
+            // For checkout, we are searching within all records, but we keep the checkout list separate.
+            // We'll store the search results in filteredRecords, but the view mode is 'search'.
+            checkoutViewMode = 'search';
+            filteredRecords = filtered;
+            totalRecords = filtered.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+        } else if (currentSearchMode === 'delete') {
+            // For delete, we simply replace filteredRecords with the search results.
+            filteredRecords = filtered;
+            totalRecords = filtered.length;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+        }
+
+        updateSelectionCount();
     }
 
     // ========== SCAN MODE with Duplicate Scoring (no modal) ==========
@@ -2695,67 +2810,10 @@
         }
     }
 
-    function performCheckoutSearch(term) {
-        const termStr = term.trim();
-        const termLower = termStr.toLowerCase();
-        const isNumeric = /^\d+$/.test(termStr);
-
-        let filtered;
-        if (isNumeric) {
-            filtered = allRecords.filter(r => {
-                const idMatch = r.id && r.id.toString() === termStr;
-                const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
-                return idMatch || barcodeMatch;
-            });
-            if (filtered.length === 0) {
-                filtered = allRecords.filter(r => {
-                    const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
-                    const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
-                    const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
-                    return artistMatch || titleMatch || catalogMatch;
-                });
-            }
-        } else {
-            filtered = allRecords.filter(r => {
-                const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
-                const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
-                const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
-                const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === termLower;
-                const idMatch = r.id && r.id.toString() === termStr;
-                return artistMatch || titleMatch || catalogMatch || barcodeMatch || idMatch;
-            });
-        }
-
-        checkoutViewMode = 'search';
-        filteredRecords = filtered;
-        totalRecords = filtered.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
-        updateSelectionCount();
-    }
-
     function performDiscogsFilterSearch(term) {
         const termLower = term.toLowerCase();
         let source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
         const filtered = source.filter(r => {
-            return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
-                   (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
-                   (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
-                   (r.catalog_number && r.catalog_number.toLowerCase().indexOf(termLower) !== -1);
-        });
-        filteredRecords = filtered;
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
-    }
-
-    function performDeleteSearch(term) {
-        const termLower = term.toLowerCase();
-        const filtered = allRecords.filter(r => {
             return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
                    (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
                    (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
@@ -2807,6 +2865,8 @@
             renderPagination();
             renderTablePage();
             applyDiscogsOrdersFilters();
+        } else if (currentSearchMode === 'purchases') {
+            renderPurchasesMode();
         }
         showStatus('Search cleared', 'info');
         
@@ -3817,367 +3877,6 @@
         cancelRangeSelection();
     }
 
-    // ========== COGS Modal ==========
-    function showCogsModal() {
-        let records = [];
-        
-        if (rangeFromIndex !== null && rangeToIndex !== null) {
-            records = getSelectedRecords();
-        }
-        
-        if (records.length === 0) {
-            records = filteredRecords;
-        }
-        
-        if (records.length === 0) {
-            showStatus('No records to apply COGS to.', 'warning');
-            return;
-        }
-
-        let modal = document.getElementById('cogs-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'cogs-modal';
-            modal.className = 'modal-overlay';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 600px; width: 95%;">
-                    <div class="modal-header" style="background: #17a2b8; color: white;">
-                        <h3 class="modal-title"><i class="fas fa-dollar-sign"></i> Apply COGS</h3>
-                        <button class="modal-close" onclick="document.getElementById('cogs-modal').style.display='none'" style="color: white;">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <p><strong>${records.length}</strong> record(s) selected.</p>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div>
-                                <label for="cogs-seller-name" style="display:block; font-weight:500; margin-bottom:4px;">Seller Name *</label>
-                                <input type="text" id="cogs-seller-name" class="form-control" placeholder="e.g., John's Records" style="width:100%; padding:8px;">
-                            </div>
-                            <div>
-                                <label for="cogs-seller-contact" style="display:block; font-weight:500; margin-bottom:4px;">Seller Contact</label>
-                                <input type="text" id="cogs-seller-contact" class="form-control" placeholder="Email or Phone" style="width:100%; padding:8px;">
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="cogs-amount-spent" style="display:block; font-weight:500; margin-bottom:4px;">Amount Spent ($) *</label>
-                                <input type="number" id="cogs-amount-spent" step="0.01" min="0.01" class="form-control" placeholder="0.00" style="width:100%; padding:8px;">
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="cogs-payment-account" style="display:block; font-weight:500; margin-bottom:4px;">Payment Account *</label>
-                                <select id="cogs-payment-account" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="">-- Select how you paid --</option>
-                                </select>
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label style="display:block; font-weight:500; margin-bottom:4px;">Payment Type:</label>
-                                <div style="display:flex; gap:20px;">
-                                    <label><input type="radio" name="cogs_payment_type" value="cash" checked> Cash</label>
-                                    <label><input type="radio" name="cogs_payment_type" value="store_credit"> Store Credit</label>
-                                </div>
-                            </div>
-                            <div id="cogs-consignor-section" style="grid-column:1/-1; display:none;">
-                                <label for="cogs-consignor" style="display:block; font-weight:500; margin-bottom:4px;">Consignor (to receive store credit) *</label>
-                                <select id="cogs-consignor" class="form-control" style="width:100%; padding:8px;">
-                                    <option value="">-- Select consignor --</option>
-                                </select>
-                                <p style="margin-top:8px; font-size:13px; color:#666;">
-                                    Store credit amount: <strong><span id="cogs-store-credit-amount">$0.00</span></strong> 
-                                    (x<span id="cogs-multiplier-display">1.5</span> multiplier)
-                                </p>
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="cogs-description" style="display:block; font-weight:500; margin-bottom:4px;">Description</label>
-                                <textarea id="cogs-description" rows="2" class="form-control" placeholder="Optional notes about this purchase" style="width:100%; padding:8px;"></textarea>
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label for="cogs-bill-image" style="display:block; font-weight:500; margin-bottom:4px;">Bill of Sale (Image)</label>
-                                <input type="file" id="cogs-bill-image" accept="image/*,application/pdf" style="width:100%; padding:8px;">
-                                <div id="cogs-bill-preview" style="margin-top:8px;"></div>
-                            </div>
-                        </div>
-                        <div id="cogs-status" style="margin-top:10px; padding:8px; border-radius:4px; display:none;"></div>
-                    </div>
-                    <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
-                        <button class="btn btn-secondary" onclick="document.getElementById('cogs-modal').style.display='none'">Cancel</button>
-                        <button class="btn btn-success" id="cogs-apply-btn" disabled><i class="fas fa-check"></i> Apply COGS</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        // Populate account select
-        const accountSelect = document.getElementById('cogs-payment-account');
-        if (accountSelect) {
-            accountSelect.innerHTML = '<option value="">-- Select how you paid --</option>';
-            accounts.forEach(acc => {
-                if (acc && acc.code && acc.name) {
-                    const opt = document.createElement('option');
-                    opt.value = acc.code;
-                    opt.textContent = `${acc.code} - ${acc.name}`;
-                    accountSelect.appendChild(opt);
-                }
-            });
-        }
-
-        const consignorSelect = document.getElementById('cogs-consignor');
-        if (consignorSelect) {
-            consignorSelect.innerHTML = '<option value="">-- Select consignor --</option>';
-            consignors.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.username + (c.full_name ? ` (${c.full_name})` : '');
-                consignorSelect.appendChild(opt);
-            });
-        }
-
-        const radios = document.querySelectorAll('input[name="cogs_payment_type"]');
-        radios.forEach(radio => {
-            radio.addEventListener('change', function() {
-                const isStoreCredit = this.value === 'store_credit';
-                document.getElementById('cogs-consignor-section').style.display = isStoreCredit ? 'block' : 'none';
-                if (isStoreCredit) {
-                    fetch('/api/config/STORE_CREDIT_MULTIPLIER', { credentials: 'include' })
-                        .then(res => res.json())
-                        .then(data => {
-                            const multiplier = parseFloat(data.config_value) || 1.5;
-                            document.getElementById('cogs-multiplier-display').textContent = multiplier;
-                            updateCreditAmount(multiplier);
-                        })
-                        .catch(() => {
-                            const multiplier = 1.5;
-                            document.getElementById('cogs-multiplier-display').textContent = multiplier;
-                            updateCreditAmount(multiplier);
-                        });
-                }
-            });
-        });
-
-        const amountInput = document.getElementById('cogs-amount-spent');
-        amountInput.addEventListener('input', function() {
-            const paymentType = document.querySelector('input[name="cogs_payment_type"]:checked');
-            if (paymentType && paymentType.value === 'store_credit') {
-                const amount = parseFloat(this.value) || 0;
-                const multiplier = parseFloat(document.getElementById('cogs-multiplier-display').textContent) || 1.5;
-                document.getElementById('cogs-store-credit-amount').textContent = '$' + (amount * multiplier).toFixed(2);
-            }
-        });
-
-        function updateCreditAmount(multiplier) {
-            const amount = parseFloat(amountInput.value) || 0;
-            document.getElementById('cogs-store-credit-amount').textContent = '$' + (amount * multiplier).toFixed(2);
-        }
-
-        const fileInput = document.getElementById('cogs-bill-image');
-        const previewDiv = document.getElementById('cogs-bill-preview');
-        fileInput.onchange = function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                if (file.type.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onload = function(ev) {
-                        previewDiv.innerHTML = `
-                            <img src="${ev.target.result}" alt="Bill preview" style="max-width:200px; max-height:200px; border-radius:4px; border:1px solid #ddd;">
-                            <p style="font-size:12px; color:#666; margin-top:5px;">${file.name}</p>
-                        `;
-                    };
-                    reader.readAsDataURL(file);
-                } else {
-                    previewDiv.innerHTML = `<p style="color:#666;"><i class="fas fa-file-pdf"></i> ${file.name}</p>`;
-                }
-            } else {
-                previewDiv.innerHTML = '';
-            }
-        };
-
-        function validateForm() {
-            const btn = document.getElementById('cogs-apply-btn');
-            if (!btn) return;
-            const sellerName = document.getElementById('cogs-seller-name').value.trim();
-            const amount = parseFloat(amountInput.value);
-            const paymentType = document.querySelector('input[name="cogs_payment_type"]:checked');
-            let valid = sellerName && !isNaN(amount) && amount > 0;
-            if (paymentType && paymentType.value === 'store_credit') {
-                const consignor = document.getElementById('cogs-consignor').value;
-                valid = valid && consignor;
-            } else {
-                const account = document.getElementById('cogs-payment-account').value;
-                valid = valid && account;
-            }
-            btn.disabled = !valid;
-        }
-
-        document.getElementById('cogs-seller-name').addEventListener('input', validateForm);
-        amountInput.addEventListener('input', validateForm);
-        document.getElementById('cogs-payment-account').addEventListener('change', validateForm);
-        document.getElementById('cogs-consignor').addEventListener('change', validateForm);
-        document.querySelectorAll('input[name="cogs_payment_type"]').forEach(r => r.addEventListener('change', validateForm));
-
-        validateForm();
-
-        const applyBtn = document.getElementById('cogs-apply-btn');
-        const newApply = applyBtn.cloneNode(true);
-        applyBtn.parentNode.replaceChild(newApply, applyBtn);
-        newApply.addEventListener('click', function() {
-            handleCogsApply(records);
-        });
-
-        modal.style.display = 'flex';
-    }
-
-    // ========== COGS Apply Handler ==========
-    async function handleCogsApply(records) {
-        const statusDiv = document.getElementById('cogs-status');
-        const applyBtn = document.getElementById('cogs-apply-btn');
-
-        function showCogsStatusMsg(msg, type) {
-            if (statusDiv) {
-                statusDiv.textContent = msg;
-                statusDiv.className = `status-message status-${type}`;
-                statusDiv.style.display = 'block';
-            } else {
-                showStatus(msg, type);
-            }
-        }
-
-        if (applyBtn) applyBtn.disabled = true;
-
-        if (!records || records.length === 0) {
-            showCogsStatusMsg('No records to apply COGS to.', 'error');
-            if (applyBtn) applyBtn.disabled = false;
-            return;
-        }
-
-        const sellerNameEl = document.getElementById('cogs-seller-name');
-        const sellerContactEl = document.getElementById('cogs-seller-contact');
-        const amountEl = document.getElementById('cogs-amount-spent');
-        const accountEl = document.getElementById('cogs-payment-account');
-        const descEl = document.getElementById('cogs-description');
-        const billFileEl = document.getElementById('cogs-bill-image');
-        const paymentTypeRadio = document.querySelector('input[name="cogs_payment_type"]:checked');
-        const consignorSelect = document.getElementById('cogs-consignor');
-
-        if (!sellerNameEl || !amountEl) {
-            showCogsStatusMsg('Form elements missing.', 'error');
-            if (applyBtn) applyBtn.disabled = false;
-            return;
-        }
-
-        const sellerName = sellerNameEl.value.trim();
-        const sellerContact = sellerContactEl ? sellerContactEl.value.trim() : '';
-        const amountSpent = parseFloat(amountEl.value);
-        const description = descEl ? descEl.value.trim() : '';
-        const billFile = billFileEl ? billFileEl.files[0] : null;
-        const paymentType = paymentTypeRadio ? paymentTypeRadio.value : 'cash';
-        const consignorId = consignorSelect ? consignorSelect.value : null;
-
-        if (!sellerName) {
-            showCogsStatusMsg('Seller name is required.', 'error');
-            if (applyBtn) applyBtn.disabled = false;
-            return;
-        }
-        if (isNaN(amountSpent) || amountSpent <= 0) {
-            showCogsStatusMsg('Please enter a valid amount greater than 0.', 'error');
-            if (applyBtn) applyBtn.disabled = false;
-            return;
-        }
-        if (paymentType === 'cash') {
-            const paymentAccount = accountEl ? accountEl.value : '';
-            if (!paymentAccount) {
-                showCogsStatusMsg('Please select a payment account for cash.', 'error');
-                if (applyBtn) applyBtn.disabled = false;
-                return;
-            }
-        } else if (paymentType === 'store_credit') {
-            if (!consignorId) {
-                showCogsStatusMsg('Please select a consignor for store credit.', 'error');
-                if (applyBtn) applyBtn.disabled = false;
-                return;
-            }
-        }
-
-        let billPath = null;
-        if (billFile) {
-            const formData = new FormData();
-            formData.append('bill_image', billFile);
-            try {
-                const uploadRes = await fetch(window.AppConfig.baseUrl + '/api/inventory-purchases/upload-bill', {
-                    method: 'POST',
-                    credentials: 'include',
-                    body: formData
-                });
-                const uploadData = await uploadRes.json();
-                if (uploadData.status === 'success') {
-                    billPath = uploadData.file_path;
-                } else {
-                    showCogsStatusMsg(`Image upload failed: ${uploadData.error}`, 'error');
-                    if (applyBtn) applyBtn.disabled = false;
-                    return;
-                }
-            } catch (err) {
-                showCogsStatusMsg(`Image upload error: ${err.message}`, 'error');
-                if (applyBtn) applyBtn.disabled = false;
-                return;
-            }
-        }
-
-        const purchaseData = {
-            purchase_date: new Date().toISOString().split('T')[0],
-            seller_name: sellerName,
-            seller_contact: sellerContact,
-            amount_spent: amountSpent,
-            description: description,
-            payment_account_id: paymentType === 'cash' ? accountEl.value : null,
-            payment_type: paymentType,
-            consignor_id: paymentType === 'store_credit' ? consignorId : null,
-            bill_of_sale_path: billPath
-        };
-
-        try {
-            const createResponse = await fetch(window.AppConfig.baseUrl + '/api/inventory-purchases', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify(purchaseData)
-            });
-            const createResult = await createResponse.json();
-            if (createResult.status !== 'success') {
-                throw new Error(createResult.error || 'Failed to record purchase');
-            }
-            const purchaseId = createResult.purchase_id;
-
-            const recordIds = records.map(r => r.id);
-            const cogsResponse = await fetch(window.AppConfig.baseUrl + '/api/cogs/batch', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    batch_cogs: amountSpent,
-                    record_ids: recordIds
-                })
-            });
-            const cogsResult = await cogsResponse.json();
-            if (cogsResult.status !== 'success') {
-                throw new Error(cogsResult.error || 'Failed to apply COGS');
-            }
-
-            let msg = `✅ Purchase #${purchaseId} recorded and COGS applied to ${cogsResult.records_updated} records.`;
-            if (paymentType === 'store_credit') {
-                msg += ` Store credit issued to consignor.`;
-            }
-            showCogsStatusMsg(msg, 'success');
-            await loadRecords({ statusIds: [1], mode: 'add' });
-            setTimeout(() => {
-                const modal = document.getElementById('cogs-modal');
-                if (modal) modal.style.display = 'none';
-            }, 1500);
-
-        } catch (error) {
-            showCogsStatusMsg(`❌ Error: ${error.message}`, 'error');
-            console.error('COGS apply error:', error);
-        } finally {
-            if (applyBtn) applyBtn.disabled = false;
-        }
-    }
-
     // ========== Print Price Tags ==========
     function printPriceTags() {
         let records = [];
@@ -4710,7 +4409,7 @@
         const mode = currentSearchMode;
         console.log(`🔵 handleCompleteAction called for mode: ${mode}`);
         if (mode === 'add') {
-            showStatus('Use COGS, Print, or Set Active buttons.', 'info');
+            showStatus('Use Print or Set Active buttons.', 'info');
         } else if (mode === 'scan') {
             showCompleteScanModal();
         } else if (mode === 'discogs') {
@@ -4728,6 +4427,9 @@
             processDiscogsOrder();
         } else if (mode === 'refund') {
             processRefund();
+        } else if (mode === 'purchases') {
+            // Not used – purchase form has its own submit.
+            showStatus('Use the purchase form to add a new purchase.', 'info');
         } else {
             showStatus('No action available for this mode', 'warning');
         }
@@ -5165,6 +4867,331 @@
         el.style.display = 'block';
     }
 
+    // ========== INVENTORY PURCHASES MODE ==========
+    // This mode provides a form to record a new inventory purchase and displays a table of past purchases.
+
+    function renderPurchasesMode() {
+        // Hide the table and pagination, show the purchases UI.
+        // We'll render it inside the existing table area – we can replace the table body with a custom layout.
+        // We'll build a form and a list of purchases.
+
+        // Clear the table head
+        recordsTableHead.innerHTML = '';
+
+        // Build the purchases UI
+        let html = `
+            <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 20px;">
+                <h3><i class="fas fa-shopping-cart"></i> Record Inventory Purchase</h3>
+                <form id="purchase-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label for="purchase-seller-name" style="display:block; font-weight:500; margin-bottom:4px;">Seller Name *</label>
+                        <input type="text" id="purchase-seller-name" class="form-control" placeholder="e.g., John's Records" required>
+                    </div>
+                    <div>
+                        <label for="purchase-seller-contact" style="display:block; font-weight:500; margin-bottom:4px;">Seller Contact</label>
+                        <input type="text" id="purchase-seller-contact" class="form-control" placeholder="Email or Phone">
+                    </div>
+                    <div>
+                        <label for="purchase-amount" style="display:block; font-weight:500; margin-bottom:4px;">Amount Spent ($) *</label>
+                        <input type="number" id="purchase-amount" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+                    </div>
+                    <div>
+                        <label for="purchase-date" style="display:block; font-weight:500; margin-bottom:4px;">Purchase Date</label>
+                        <input type="date" id="purchase-date" class="form-control" value="${getLocalMSTDate()}">
+                    </div>
+                    <div style="grid-column: 1 / -1;">
+                        <label for="purchase-description" style="display:block; font-weight:500; margin-bottom:4px;">Description</label>
+                        <textarea id="purchase-description" class="form-control" rows="2" placeholder="Optional notes about this purchase"></textarea>
+                    </div>
+                    <div style="grid-column: 1 / -1;">
+                        <label style="display:block; font-weight:500; margin-bottom:4px;">Payment Type</label>
+                        <div style="display:flex; gap:20px;">
+                            <label><input type="radio" name="purchase-payment-type" value="cash" checked> Cash</label>
+                            <label><input type="radio" name="purchase-payment-type" value="store_credit"> Store Credit</label>
+                        </div>
+                    </div>
+                    <div id="purchase-consignor-section" style="grid-column: 1 / -1; display: none;">
+                        <label for="purchase-consignor" style="display:block; font-weight:500; margin-bottom:4px;">Consignor (for store credit) *</label>
+                        <select id="purchase-consignor" class="form-control">
+                            <option value="">-- Select consignor --</option>
+                        </select>
+                    </div>
+                    <div style="grid-column: 1 / -1;">
+                        <label for="purchase-bill-image" style="display:block; font-weight:500; margin-bottom:4px;">Bill of Sale (Image)</label>
+                        <input type="file" id="purchase-bill-image" accept="image/*,application/pdf" style="width:100%; padding:8px;">
+                        <div id="purchase-bill-preview" style="margin-top:8px;"></div>
+                    </div>
+                    <div style="grid-column: 1 / -1; display: flex; gap: 10px; justify-content: flex-start;">
+                        <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Record Purchase</button>
+                        <button type="reset" class="btn btn-secondary"><i class="fas fa-undo"></i> Clear</button>
+                    </div>
+                </form>
+                <div id="purchase-status" style="margin-top: 10px; display: none;"></div>
+            </div>
+            <div>
+                <h4><i class="fas fa-list"></i> Recent Purchases</h4>
+                <div style="overflow-x:auto;">
+                    <table class="records-table" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Seller</th>
+                                <th>Contact</th>
+                                <th>Amount</th>
+                                <th>Description</th>
+                                <th>Bill</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchases-list-body">
+                            <tr><td colspan="7" style="text-align:center; padding:20px;">Loading purchases...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        recordsTableBody.innerHTML = `<tr><td colspan="1"><div>${html}</div></td></tr>`;
+
+        // Populate consignor dropdown
+        const consignorSelect = document.getElementById('purchase-consignor');
+        if (consignorSelect) {
+            consignorSelect.innerHTML = '<option value="">-- Select consignor --</option>';
+            consignors.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.username + (c.full_name ? ` (${c.full_name})` : '');
+                consignorSelect.appendChild(opt);
+            });
+        }
+
+        // Handle payment type toggle
+        document.querySelectorAll('input[name="purchase-payment-type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const section = document.getElementById('purchase-consignor-section');
+                if (this.value === 'store_credit') {
+                    section.style.display = 'block';
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+        });
+
+        // Handle file preview
+        const fileInput = document.getElementById('purchase-bill-image');
+        const previewDiv = document.getElementById('purchase-bill-preview');
+        if (fileInput) {
+            fileInput.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = function(ev) {
+                            previewDiv.innerHTML = `
+                                <img src="${ev.target.result}" alt="Bill preview" style="max-width:200px; max-height:200px; border-radius:4px; border:1px solid #ddd;">
+                                <p style="font-size:12px; color:#666; margin-top:5px;">${file.name}</p>
+                            `;
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        previewDiv.innerHTML = `<p style="color:#666;"><i class="fas fa-file-pdf"></i> ${file.name}</p>`;
+                    }
+                } else {
+                    previewDiv.innerHTML = '';
+                }
+            };
+        }
+
+        // Handle form submission
+        const form = document.getElementById('purchase-form');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                submitPurchase();
+            });
+        }
+
+        // Load recent purchases
+        loadPurchasesList();
+
+        // Search filtering: we'll re-render based on search term
+        const searchTerm = searchInput.value.trim().toLowerCase();
+        if (searchTerm) {
+            filterPurchasesList(searchTerm);
+        }
+    }
+
+    let allPurchases = [];
+
+    async function loadPurchasesList() {
+        try {
+            const data = await apiRequest('GET', '/api/inventory-purchases?limit=100&offset=0');
+            if (data.status === 'success') {
+                allPurchases = data.purchases || [];
+                renderPurchasesTable(allPurchases);
+            } else {
+                showStatus('Failed to load purchases: ' + (data.error || 'Unknown error'), 'error');
+            }
+        } catch (e) {
+            console.error('Error loading purchases:', e);
+            showStatus('Error loading purchases.', 'error');
+        }
+    }
+
+    function renderPurchasesTable(purchases) {
+        const tbody = document.getElementById('purchases-list-body');
+        if (!tbody) return;
+
+        if (purchases.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">No purchases recorded.</td></tr>';
+            return;
+        }
+
+        let html = '';
+        purchases.forEach(p => {
+            const bill = p.bill_of_sale_path ? `<a href="${p.bill_of_sale_path}" target="_blank"><i class="fas fa-file-pdf"></i> View</a>` : '—';
+            html += `
+                <tr>
+                    <td>${p.purchase_date}</td>
+                    <td>${escapeHtml(p.seller_name || '')}</td>
+                    <td>${escapeHtml(p.seller_contact || '')}</td>
+                    <td>$${parseFloat(p.amount_spent).toFixed(2)}</td>
+                    <td>${escapeHtml(p.description || '')}</td>
+                    <td>${bill}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="deletePurchase(${p.id})"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    }
+
+    function filterPurchasesList(term) {
+        if (!term) {
+            renderPurchasesTable(allPurchases);
+            return;
+        }
+        const filtered = allPurchases.filter(p => 
+            (p.seller_name && p.seller_name.toLowerCase().includes(term)) ||
+            (p.description && p.description.toLowerCase().includes(term))
+        );
+        renderPurchasesTable(filtered);
+    }
+
+    async function submitPurchase() {
+        const statusDiv = document.getElementById('purchase-status');
+        if (!statusDiv) return;
+
+        const sellerName = document.getElementById('purchase-seller-name')?.value.trim();
+        const sellerContact = document.getElementById('purchase-seller-contact')?.value.trim();
+        const amount = parseFloat(document.getElementById('purchase-amount')?.value);
+        const purchaseDate = document.getElementById('purchase-date')?.value || getLocalMSTDate();
+        const description = document.getElementById('purchase-description')?.value.trim();
+        const paymentType = document.querySelector('input[name="purchase-payment-type"]:checked')?.value || 'cash';
+        const consignorId = document.getElementById('purchase-consignor')?.value || null;
+        const billFile = document.getElementById('purchase-bill-image')?.files[0] || null;
+
+        // Validate
+        if (!sellerName) {
+            showPurchaseStatus('Seller name is required.', 'error');
+            return;
+        }
+        if (isNaN(amount) || amount <= 0) {
+            showPurchaseStatus('Amount must be greater than 0.', 'error');
+            return;
+        }
+        if (paymentType === 'store_credit' && !consignorId) {
+            showPurchaseStatus('Please select a consignor for store credit.', 'error');
+            return;
+        }
+
+        // Upload bill if present
+        let billPath = null;
+        if (billFile) {
+            const formData = new FormData();
+            formData.append('bill_image', billFile);
+            try {
+                const response = await fetch(window.AppConfig.baseUrl + '/api/inventory-purchases/upload-bill', {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    billPath = data.file_path;
+                } else {
+                    showPurchaseStatus('Bill upload failed: ' + (data.error || 'Unknown error'), 'error');
+                    return;
+                }
+            } catch (e) {
+                showPurchaseStatus('Bill upload error: ' + e.message, 'error');
+                return;
+            }
+        }
+
+        // Build payload
+        const payload = {
+            seller_name: sellerName,
+            seller_contact: sellerContact || '',
+            amount_spent: amount,
+            purchase_date: purchaseDate,
+            description: description || '',
+            payment_type: paymentType,
+            consignor_id: paymentType === 'store_credit' ? consignorId : null,
+            bill_of_sale_path: billPath
+        };
+
+        try {
+            const result = await apiRequest('POST', '/api/inventory-purchases', payload);
+            if (result.status === 'success') {
+                showPurchaseStatus('✅ Purchase recorded successfully!', 'success');
+                // Reset form (except date)
+                document.getElementById('purchase-seller-name').value = '';
+                document.getElementById('purchase-seller-contact').value = '';
+                document.getElementById('purchase-amount').value = '';
+                document.getElementById('purchase-description').value = '';
+                document.getElementById('purchase-bill-image').value = '';
+                document.getElementById('purchase-bill-preview').innerHTML = '';
+                // Reload purchases list
+                loadPurchasesList();
+                // Also reload stats? Not necessary for this mode.
+                playSound('success');
+            } else {
+                showPurchaseStatus('Error: ' + (result.error || 'Unknown error'), 'error');
+                playSound('error');
+            }
+        } catch (e) {
+            showPurchaseStatus('Error: ' + e.message, 'error');
+            playSound('error');
+        }
+    }
+
+    function showPurchaseStatus(message, type) {
+        const el = document.getElementById('purchase-status');
+        if (!el) return;
+        el.textContent = message;
+        el.className = `status-message status-${type}`;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+
+    // Delete purchase (admin only)
+    window.deletePurchase = async function(purchaseId) {
+        if (!confirm('Delete this purchase record?')) return;
+        try {
+            const result = await apiRequest('DELETE', '/api/inventory-purchases/' + purchaseId);
+            if (result.status === 'success') {
+                showStatus('Purchase deleted.', 'success');
+                loadPurchasesList();
+            } else {
+                showStatus('Error deleting purchase: ' + (result.error || 'Unknown'), 'error');
+            }
+        } catch (e) {
+            showStatus('Error: ' + e.message, 'error');
+        }
+    };
+
     // ========== Mode Change Handler ==========
     function onModeChange() {
         const newMode = searchModeSelect.value;
@@ -5216,7 +5243,11 @@
             showStatus('Delete mode: Use filters to find records to delete.', 'info');
             searchInput.placeholder = 'Search records...';
             allRecords = [];
-            loadRecords({ statusIds: [1,2], mode: 'delete' });
+            // Await loadRecords to ensure data is ready before search
+            loadRecords({ statusIds: [1,2], mode: 'delete' }).then(() => {
+                // Load completed, re-render to show data
+                renderTablePage();
+            });
         } 
         else if (newMode === 'refund') {
             filteredRecords = [];
@@ -5311,6 +5342,15 @@
             }
             selectedOrderId = null;
             currentOrderItems = [];
+        } else if (newMode === 'purchases') {
+            // Show the purchases UI
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage(); // will call renderPurchasesMode()
+            showStatus('Inventory Purchases mode: Record total purchase amounts.', 'info');
+            searchInput.placeholder = 'Filter purchases by seller or description...';
         }
 
         updateSelectionCount();
@@ -5327,6 +5367,16 @@
 
     // ========== Pagination ==========
     function renderPagination() {
+        // For purchases mode, we hide the pagination.
+        if (currentSearchMode === 'purchases') {
+            // Hide pagination controls
+            const paginationEl = document.querySelector('.pagination');
+            if (paginationEl) paginationEl.style.display = 'none';
+            return;
+        }
+        // Show pagination
+        const paginationEl = document.querySelector('.pagination');
+        if (paginationEl) paginationEl.style.display = 'flex';
         const totalPages = Math.ceil(totalRecords / pageSize) || 1;
         if (currentPage > totalPages) currentPage = totalPages;
         if (currentPage < 1) currentPage = 1;
@@ -5352,6 +5402,9 @@
         if (currentSearchMode === 'checkout') {
             return checkoutSelectedItems.slice();
         }
+        if (currentSearchMode === 'purchases') {
+            return []; // no selection in purchases mode
+        }
         if (rangeFromIndex === null || rangeToIndex === null) {
             console.log('🔍 getSelectedRecords: no range selected');
             return [];
@@ -5376,6 +5429,7 @@
         const isDiscogsOrdersMode = mode === 'discogs_orders';
         const isAddMode = mode === 'add';
         const isRefundMode = mode === 'refund';
+        const isPurchasesMode = mode === 'purchases';
         
         if (isDiscogsOrdersMode) {
             setActiveBtn.style.display = 'none';
@@ -5393,24 +5447,20 @@
 
         if (isAddMode) {
             const hasTargets = hasSelection || hasRecords;
-            cogsBtn.disabled = !hasTargets;
             printBtn.disabled = !hasTargets;
             
             if (hasSelection) {
-                cogsBtn.textContent = `📊 COGS (${count} selected)`;
                 printBtn.textContent = `🖨️ Print (${count} selected)`;
             } else {
-                cogsBtn.textContent = '📊 COGS (all)';
                 printBtn.textContent = '🖨️ Print (all)';
             }
         } else {
-            cogsBtn.style.display = 'none';
             printBtn.style.display = 'none';
         }
 
         let actionLabel = 'Complete';
         if (mode === 'add') {
-            // already handled
+            // no action button in add mode
         } else if (mode === 'scan') {
             completeActionBtn.disabled = !hasRecords;
             actionLabel = 'Complete Scan';
@@ -5431,9 +5481,12 @@
         } else if (mode === 'refund') {
             completeActionBtn.disabled = !hasSelection;
             actionLabel = `💰 Refund ${count} selected`;
+        } else if (mode === 'purchases') {
+            completeActionBtn.disabled = true; // no action
+            actionLabel = 'Record Purchase';
         }
 
-        if (mode !== 'add') {
+        if (mode !== 'add' && mode !== 'purchases') {
             completeActionBtn.textContent = actionLabel;
         }
 
@@ -5441,7 +5494,7 @@
     }
 
     function applyFilters() {
-        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders' || currentSearchMode === 'refund') {
+        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders' || currentSearchMode === 'refund' || currentSearchMode === 'purchases') {
             return;
         }
         if (currentMode === 'search') {
@@ -5578,7 +5631,12 @@
             searchButton.innerHTML = '<i class="fas fa-search"></i> Search';
             searchButton.style.marginLeft = '8px';
             const parent = searchInput.parentNode;
-            parent.insertBefore(searchButton, clearSearchBtn);
+            if (parent) {
+                parent.insertBefore(searchButton, clearSearchBtn);
+                console.log('✅ Search button created and inserted.');
+            } else {
+                console.error('❌ Could not find parent for searchInput.');
+            }
         }
 
         searchButton.addEventListener('click', function() {
@@ -5616,7 +5674,6 @@
         nextPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; if (currentPage < totalPages) { currentPage++; renderPagination(); renderTablePage(); } });
         lastPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; currentPage = totalPages; renderPagination(); renderTablePage(); });
 
-        cogsBtn.addEventListener('click', showCogsModal);
         printBtn.addEventListener('click', printPriceTags);
         
         setActiveBtn.addEventListener('click', setActiveRecords);
@@ -5708,6 +5765,16 @@
         console.log('✅ inventory-ops.js initialized');
     }
 
+    // ========== AUTO-INITIALIZE ==========
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!_initialized) init();
+        });
+    } else {
+        if (!_initialized) init();
+    }
+
+    // ========== Expose globals ==========
     window.refreshDiscogsLocations = loadDiscogsLocations;
     window.initAddRecordsTab = init;
 
