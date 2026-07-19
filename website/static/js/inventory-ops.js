@@ -870,7 +870,13 @@
             }
 
             ordersList = data.orders || [];
-            console.log(`📦 Loaded ${ordersList.length} orders`);
+            // Sort newest first (descending by created_at)
+            ordersList.sort((a, b) => {
+                const dateA = new Date(a.created_at);
+                const dateB = new Date(b.created_at);
+                return dateB - dateA;
+            });
+            console.log(`📦 Loaded ${ordersList.length} orders (newest first)`);
 
             if (discogsOrderSelect) {
                 discogsOrderSelect.innerHTML = '<option value="">-- Select an order --</option>';
@@ -921,7 +927,7 @@
         const dateFrom = document.getElementById('discogs-orders-date-from');
         const dateTo = document.getElementById('discogs-orders-date-to');
         const search = document.getElementById('discogs-orders-search');
-        const statusFilter = document.getElementById('discogs-orders-status-filter');
+        // Do NOT reset status filter – keep current selection
         
         if (!dateFrom.value) {
             const thirtyDaysAgo = new Date();
@@ -936,13 +942,49 @@
             search.value = '';
         }
         
-        if (statusFilter) {
-            statusFilter.value = '';
-        }
-        
+        // Keep status filter as is (no reset)
         applyDiscogsOrdersFilters();
     }
 
+    // ========== DISCOGS ORDERS SEARCH (by buyer username/email) ==========
+    function performDiscogsOrdersSearch(term) {
+        if (!term) {
+            applyDiscogsOrdersFilters();
+            return;
+        }
+        const termLower = term.toLowerCase().trim();
+        const filtered = ordersList.filter(order => {
+            const buyer = (order.buyer_username || order.buyer_name || '').toLowerCase();
+            const email = (order.buyer_email || '').toLowerCase();
+            return buyer.includes(termLower) || email.includes(termLower);
+        });
+        // Update dropdown with filtered results
+        if (discogsOrderSelect) {
+            discogsOrderSelect.innerHTML = '<option value="">-- Select an order --</option>';
+            for (const order of filtered) {
+                const option = document.createElement('option');
+                option.value = order.order_id || order.id;
+                const buyer = order.buyer_username || order.buyer_name || 'Unknown buyer';
+                const date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '';
+                const total = order.total_amount ? `$${order.total_amount.toFixed(2)}` : '';
+                const itemCount = order.items ? order.items.length : 0;
+                option.textContent = `${order.order_id} - ${buyer} ${date} ${total} (${itemCount} items)`;
+                discogsOrderSelect.appendChild(option);
+            }
+            // Clear selection
+            discogsOrderSelect.value = '';
+            selectedOrderId = null;
+            currentOrderItems = [];
+            filteredRecords = [];
+            totalRecords = 0;
+            renderPagination();
+            renderTablePage();
+            updateSelectionCount();
+            updateDiscogsOrdersStatus(`🔍 Found ${filtered.length} orders matching "${term}"`, 'info');
+        }
+    }
+
+    // ========== loadOrderItems (unchanged) ==========
     async function loadOrderItems(orderId) {
         console.log(`📦 loadOrderItems() for order ${orderId}`);
         if (!orderId) {
@@ -2453,6 +2495,9 @@
             return;
         } else if (mode === 'checkout') {   // <-- FIX: added checkout case
             performLocalSearch(term);
+            return;
+        } else if (mode === 'discogs_orders') {   // <-- NEW: Discogs Orders search
+            performDiscogsOrdersSearch(term);
             return;
         } else if (mode === 'purchases') {
             // For purchases mode, we handle filtering separately in renderPurchasesMode
@@ -5330,9 +5375,10 @@
                 search.value = '';
             }
             
+            // Set status filter default to 'Payment Received'
             const statusFilter = document.getElementById('discogs-orders-status-filter');
             if (statusFilter) {
-                statusFilter.value = '';
+                statusFilter.value = 'Payment Received';
             }
             
             applyDiscogsOrdersFilters();
