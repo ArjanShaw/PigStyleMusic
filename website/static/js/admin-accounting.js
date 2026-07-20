@@ -1693,7 +1693,7 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW (with expandable charts)
+// CASH FLOW (with expandable charts and full date range titles)
 // ============================================================
 
 async function loadCashFlow() {
@@ -1830,7 +1830,20 @@ function renderCashFlowCharts(data) {
         card.dataset.month = month;
         card.dataset.index = idx;
         card.style.cursor = 'pointer';
-        card.innerHTML = `<h4>${month}</h4><canvas id="cash-flow-chart-${idx}"></canvas>`;
+        
+        // Get the first and last day of the month for the title
+        const [year, monthNum] = month.split('-').map(Number);
+        const firstDay = new Date(year, monthNum - 1, 1);
+        const lastDay = new Date(year, monthNum, 0);
+        const formatDate = (d) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+        const dateRange = `${formatDate(firstDay)} to ${formatDate(lastDay)}`;
+        
+        card.innerHTML = `<h4>${dateRange}</h4><canvas id="cash-flow-chart-${idx}"></canvas>`;
         container.appendChild(card);
 
         // Click on card (not on canvas) = expand
