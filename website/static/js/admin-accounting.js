@@ -18,6 +18,12 @@ let bankAccounts = [];
 // Monthly charts
 let monthlyChartsData = [];
 
+// Cash flow expansion state
+let cashFlowExpanded = false;
+let expandedChartIndex = null;
+let cashFlowMonths = [];
+let cashFlowAccountBreakdown = {};
+
 // Register annotation plugin if available
 if (typeof ChartAnnotation !== 'undefined') {
     Chart.register(ChartAnnotation);
@@ -28,6 +34,7 @@ if (typeof ChartAnnotation !== 'undefined') {
 // ============================================================
 
 function showToast(message, type = 'success') {
+    console.log('[TOAST]', type, message);
     const toast = document.createElement('div');
     toast.className = `toast-notification ${type}`;
     toast.innerHTML = message;
@@ -71,13 +78,19 @@ if (!document.getElementById('toast-styles')) {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('[INIT] DOM loaded');
     const accountingContainer = document.getElementById('accounting-container');
-    if (!accountingContainer) return;
+    if (!accountingContainer) {
+        console.error('[INIT] No accounting container found');
+        return;
+    }
+    console.log('[INIT] Accounting container found');
 
     // Sub-tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
+            console.log('[INIT] Tab clicked:', sub);
             document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => t.classList.remove('active'));
             this.classList.add('active');
             document.querySelectorAll('#accounting-container .sub-tab-content').forEach(c => c.classList.remove('active'));
@@ -100,6 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 loadAccountsList();
             }
             else if (sub === 'cash-flow') {
+                console.log('[INIT] Cash Flow tab selected');
                 const now = new Date();
                 const endMonth = now.toISOString().slice(0, 7);
                 const endInput = document.getElementById('cash-flow-end');
@@ -120,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     loadCashFlow();
                 })
                 .catch(err => {
-                    console.error('Failed to fetch earliest transaction:', err);
+                    console.error('[INIT] Failed to fetch earliest transaction:', err);
                     loadCashFlow();
                 });
             }
@@ -212,6 +226,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     const publicToken = urlParams.get('public_token');
     if (publicToken) {
+        console.log('[INIT] Plaid OAuth redirect detected');
         fetch('/api/plaid/exchange', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -236,29 +251,35 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Bank view filter change
     document.getElementById('bank-view-filter')?.addEventListener('change', function() {
+        console.log('[INIT] Bank view filter changed');
         loadBankTransactions();
     });
 
     // Bank source filter change
     document.getElementById('bank-source-filter')?.addEventListener('change', function() {
+        console.log('[INIT] Bank source filter changed');
         loadBankTransactions();
     });
 
     // Bank search filter - auto-search on input
     document.getElementById('bank-filter')?.addEventListener('input', function() {
+        console.log('[INIT] Bank search filter changed');
         loadBankTransactions();
     });
 
     // Accounts tab - add account form
     document.getElementById('add-account-btn')?.addEventListener('click', function() {
+        console.log('[INIT] Add account button clicked');
         document.getElementById('add-account-modal').classList.add('active');
     });
 
     document.getElementById('close-add-account-modal')?.addEventListener('click', function() {
+        console.log('[INIT] Close add account modal');
         document.getElementById('add-account-modal').classList.remove('active');
     });
 
     document.getElementById('save-account-btn')?.addEventListener('click', function() {
+        console.log('[INIT] Save account button clicked');
         saveAccount();
     });
 
@@ -266,10 +287,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
+                console.log('[INIT] Modal overlay clicked, closing');
                 this.classList.remove('active');
             }
         });
     });
+    
+    console.log('[INIT] Initialization complete');
 });
 
 // ============================================================
@@ -277,6 +301,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================================
 
 async function loadAccountSelects() {
+    console.log('[ACCOUNTS] Loading account dropdowns');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
             credentials: 'include',
@@ -285,6 +310,7 @@ async function loadAccountSelects() {
         if (!res.ok) throw new Error('Failed to load accounts');
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[ACCOUNTS] Loaded', data.accounts.length, 'accounts');
             const selects = document.querySelectorAll('.manual-account, #journal-account-filter');
             selects.forEach(sel => {
                 const currentVal = sel.value;
@@ -299,11 +325,12 @@ async function loadAccountSelects() {
             });
         }
     } catch (err) {
-        console.error('Error loading accounts:', err);
+        console.error('[ACCOUNTS] Error loading accounts:', err);
     }
 }
 
 async function loadAccountSelectsForBank() {
+    console.log('[BANK] Loading account selects for bank');
     const select = document.getElementById('bank-destination-account');
     if (!select) return;
     try {
@@ -313,6 +340,7 @@ async function loadAccountSelectsForBank() {
         });
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[BANK] Loaded', data.accounts.length, 'accounts for bank');
             const currentVal = select.value;
             select.innerHTML = '<option value="">Select Destination</option>';
             data.accounts.forEach(acc => {
@@ -324,11 +352,12 @@ async function loadAccountSelectsForBank() {
             select.value = currentVal;
         }
     } catch (e) {
-        console.error('Failed to load accounts for bank:', e);
+        console.error('[BANK] Failed to load accounts for bank:', e);
     }
 }
 
 async function loadBankAccountsForRowDropdowns() {
+    console.log('[BANK] Loading accounts for row dropdowns');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
             credentials: 'include',
@@ -337,15 +366,17 @@ async function loadBankAccountsForRowDropdowns() {
         const data = await res.json();
         if (data.status === 'success') {
             bankAccounts = data.accounts;
+            console.log('[BANK] Loaded', bankAccounts.length, 'accounts for row dropdowns');
         }
         return data;
     } catch (e) {
-        console.error('Failed to load accounts for row dropdowns:', e);
+        console.error('[BANK] Failed to load accounts for row dropdowns:', e);
         throw e;
     }
 }
 
 async function loadBulkDestinationAccounts() {
+    console.log('[BANK] Loading bulk destination accounts');
     const select = document.getElementById('bank-bulk-destination');
     if (!select) return;
     try {
@@ -355,6 +386,7 @@ async function loadBulkDestinationAccounts() {
         });
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[BANK] Loaded', data.accounts.length, 'accounts for bulk destination');
             const currentVal = select.value;
             select.innerHTML = '<option value="">Bulk Set Destination</option>';
             data.accounts.forEach(acc => {
@@ -366,7 +398,7 @@ async function loadBulkDestinationAccounts() {
             select.value = currentVal;
         }
     } catch (e) {
-        console.error('Failed to load bulk destination accounts:', e);
+        console.error('[BANK] Failed to load bulk destination accounts:', e);
     }
 }
 
@@ -375,6 +407,7 @@ async function loadBulkDestinationAccounts() {
 // ============================================================
 
 async function loadAccountTransactionsSelect() {
+    console.log('[ACCOUNT-TX] Loading account transactions select');
     const select = document.getElementById('account-transactions-select');
     if (!select) return;
     try {
@@ -384,6 +417,7 @@ async function loadAccountTransactionsSelect() {
         });
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[ACCOUNT-TX] Loaded', data.accounts.length, 'accounts');
             select.innerHTML = '<option value="">-- Select an account --</option>';
             data.accounts.forEach(acc => {
                 const opt = document.createElement('option');
@@ -398,11 +432,12 @@ async function loadAccountTransactionsSelect() {
             }
         }
     } catch (e) {
-        console.error('Failed to load accounts for account transactions:', e);
+        console.error('[ACCOUNT-TX] Failed to load accounts for account transactions:', e);
     }
 }
 
 async function updateAccountDateRange(accountId) {
+    console.log('[ACCOUNT-TX] Updating date range for account:', accountId);
     const fromInput = document.getElementById('account-tx-date-from');
     const toInput = document.getElementById('account-tx-date-to');
     const today = new Date().toISOString().split('T')[0];
@@ -414,14 +449,16 @@ async function updateAccountDateRange(accountId) {
         );
         const data = await res.json();
         if (data.status === 'success' && data.min_date && data.max_date) {
+            console.log('[ACCOUNT-TX] Date range:', data.min_date, 'to', data.max_date);
             fromInput.value = data.min_date;
             toInput.value = data.max_date;
         } else {
+            console.log('[ACCOUNT-TX] No transactions found, using fallback dates');
             fromInput.value = '2026-02-01';
             toInput.value = today;
         }
     } catch (e) {
-        console.error('Failed to fetch account date range:', e);
+        console.error('[ACCOUNT-TX] Failed to fetch account date range:', e);
         fromInput.value = '2026-02-01';
         toInput.value = today;
     }
@@ -433,6 +470,7 @@ async function updateAccountDateRange(accountId) {
 // ============================================================
 
 async function loadJournalEntries() {
+    console.log('[JOURNAL] Loading journal entries');
     const body = document.getElementById('journal-body');
     body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
@@ -452,18 +490,22 @@ async function loadJournalEntries() {
         if (!res.ok) throw new Error('Failed to load journal');
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[JOURNAL] Loaded', data.entries.length, 'entries, total:', data.total);
             journalTotalEntries = data.total;
             renderJournal(data.entries);
             updateJournalPagination();
         } else {
+            console.error('[JOURNAL] Error:', data.error);
             body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading journal') + '</td></tr>';
         }
     } catch (err) {
+        console.error('[JOURNAL] Error:', err);
         body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
 function renderJournal(entries) {
+    console.log('[JOURNAL] Rendering', entries.length, 'entries');
     const body = document.getElementById('journal-body');
     if (!entries || entries.length === 0) {
         body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px;">No entries found.</td></tr>';
@@ -495,6 +537,7 @@ function updateJournalPagination() {
 }
 
 function resetJournalFilters() {
+    console.log('[JOURNAL] Resetting filters');
     document.getElementById('journal-account-filter').value = '';
     document.getElementById('journal-search').value = '';
     journalCurrentPage = 1;
@@ -502,6 +545,7 @@ function resetJournalFilters() {
 }
 
 function exportJournalCSV() {
+    console.log('[JOURNAL] Exporting CSV');
     const params = new URLSearchParams();
     params.append('page', 1);
     params.append('per_page', 9999);
@@ -517,6 +561,7 @@ function exportJournalCSV() {
     .then(res => res.json())
     .then(data => {
         if (data.status === 'success' && data.entries) {
+            console.log('[JOURNAL] Exporting', data.entries.length, 'entries');
             let csv = 'ID,Date,Description,Debit Account,Debit Amount,Credit Account,Credit Amount,Source\n';
             data.entries.forEach(e => {
                 csv += `${e.id},${e.transaction_date},"${(e.description||'').replace(/"/g,'""')}","${e.debit_account||''}",${e.debit_amount||0},"${e.credit_account||''}",${e.credit_amount||0},${e.source_type}:${e.source_id}\n`;
@@ -533,6 +578,7 @@ function exportJournalCSV() {
 }
 
 function viewJournalEntry(entryId) {
+    console.log('[JOURNAL] Viewing entry:', entryId);
     alert('View details for journal entry #' + entryId + ' (modal to be implemented)');
 }
 
@@ -541,6 +587,7 @@ function viewJournalEntry(entryId) {
 // ============================================================
 
 function addManualLine() {
+    console.log('[MANUAL] Adding line');
     const container = document.getElementById('manual-lines-container');
     const row = document.createElement('div');
     row.className = 'manual-entry-row';
@@ -560,6 +607,7 @@ function addManualLine() {
 }
 
 function removeManualLine(btn) {
+    console.log('[MANUAL] Removing line');
     const row = btn.closest('.manual-entry-row');
     if (document.querySelectorAll('.manual-entry-row').length > 1) {
         row.remove();
@@ -589,6 +637,7 @@ function updateManualBalance() {
 }
 
 async function submitManualEntry() {
+    console.log('[MANUAL] Submitting manual entry');
     const date = document.getElementById('manual-date').value;
     const description = document.getElementById('manual-description').value.trim();
     if (!date || !description) {
@@ -619,6 +668,7 @@ async function submitManualEntry() {
     const status = document.getElementById('manual-status');
     status.textContent = '⏳ Posting...';
     try {
+        console.log('[MANUAL] Posting entry with', lines.length, 'lines');
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/manual`, {
             method: 'POST',
             credentials: 'include',
@@ -627,6 +677,7 @@ async function submitManualEntry() {
         });
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[MANUAL] Entry posted, ID:', data.entry_id);
             status.textContent = '✅ Entry posted (ID: ' + data.entry_id + ')';
             document.getElementById('manual-description').value = '';
             document.querySelectorAll('.manual-entry-row').forEach((row, idx) => {
@@ -639,9 +690,11 @@ async function submitManualEntry() {
             });
             updateManualBalance();
         } else {
+            console.error('[MANUAL] Error posting:', data.error);
             status.textContent = '❌ ' + (data.error || 'Failed to post');
         }
     } catch (err) {
+        console.error('[MANUAL] Error:', err);
         status.textContent = '❌ Error: ' + err.message;
     }
 }
@@ -651,6 +704,7 @@ async function submitManualEntry() {
 // ============================================================
 
 function handleBankUpload(file) {
+    console.log('[RECONCILE] Uploading file:', file.name);
     const status = document.getElementById('upload-status');
     status.textContent = '⏳ Uploading and parsing...';
     const reader = new FileReader();
@@ -660,6 +714,7 @@ function handleBankUpload(file) {
         if (typeof Papa !== 'undefined') {
             const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
             rows = parsed.data;
+            console.log('[RECONCILE] Parsed', rows.length, 'rows with Papa');
         } else {
             const lines = csv.split('\n').filter(l => l.trim());
             const headers = lines[0].split(',').map(h => h.trim());
@@ -669,6 +724,7 @@ function handleBankUpload(file) {
                 headers.forEach((h, i) => obj[h] = vals[i] || '');
                 return obj;
             });
+            console.log('[RECONCILE] Parsed', rows.length, 'rows manually');
         }
         try {
             const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/upload`, {
@@ -682,12 +738,15 @@ function handleBankUpload(file) {
             });
             const data = await res.json();
             if (data.status === 'success') {
+                console.log('[RECONCILE] Uploaded', data.inserted, 'transactions');
                 status.textContent = '✅ Uploaded ' + data.inserted + ' transactions.';
                 loadReconciliationStatus();
             } else {
+                console.error('[RECONCILE] Upload error:', data.error);
                 status.textContent = '❌ ' + (data.error || 'Upload failed');
             }
         } catch (err) {
+            console.error('[RECONCILE] Error:', err);
             status.textContent = '❌ Error: ' + err.message;
         }
     };
@@ -695,6 +754,7 @@ function handleBankUpload(file) {
 }
 
 async function loadReconciliationStatus() {
+    console.log('[RECONCILE] Loading reconciliation status');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/status`, {
             credentials: 'include',
@@ -703,16 +763,18 @@ async function loadReconciliationStatus() {
         if (!res.ok) throw new Error('Failed to load reconciliation status');
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[RECONCILE] Status loaded');
             renderExpectedPayments(data.expected);
             renderBankDeposits(data.deposits);
             renderUnmatched(data.unmatched);
         }
     } catch (err) {
-        console.error('Reconciliation load error:', err);
+        console.error('[RECONCILE] Error:', err);
     }
 }
 
 function renderExpectedPayments(payments) {
+    console.log('[RECONCILE] Rendering', payments.length, 'expected payments');
     const container = document.getElementById('expected-payments-list');
     if (!payments || payments.length === 0) {
         container.innerHTML = '<p class="text-muted">No expected payments found.</p>';
@@ -730,6 +792,7 @@ function renderExpectedPayments(payments) {
 }
 
 function renderBankDeposits(deposits) {
+    console.log('[RECONCILE] Rendering', deposits.length, 'bank deposits');
     const container = document.getElementById('bank-deposits-list');
     if (!deposits || deposits.length === 0) {
         container.innerHTML = '<p class="text-muted">No bank deposits loaded.</p>';
@@ -747,6 +810,7 @@ function renderBankDeposits(deposits) {
 }
 
 function renderUnmatched(unmatched) {
+    console.log('[RECONCILE] Rendering', unmatched.length, 'unmatched');
     const container = document.getElementById('unmatched-list');
     if (!unmatched || unmatched.length === 0) {
         container.innerHTML = '<p class="text-muted">All matched!</p>';
@@ -766,6 +830,7 @@ function renderUnmatched(unmatched) {
 }
 
 async function runAutoMatch() {
+    console.log('[RECONCILE] Running auto-match');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/auto-match`, {
             method: 'POST',
@@ -774,17 +839,21 @@ async function runAutoMatch() {
         });
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[RECONCILE] Auto-match complete:', data.matched, 'matches');
             alert('Auto‑match complete: ' + data.matched + ' matches found.');
             loadReconciliationStatus();
         } else {
+            console.error('[RECONCILE] Auto-match error:', data.error);
             alert('Error: ' + (data.error || 'Auto‑match failed'));
         }
     } catch (err) {
+        console.error('[RECONCILE] Error:', err);
         alert('Error: ' + err.message);
     }
 }
 
 function manualMatch(id) {
+    console.log('[RECONCILE] Manual match for ID:', id);
     alert('Manual match for ID ' + id + ' (to be implemented with a modal)');
 }
 
@@ -793,6 +862,7 @@ function manualMatch(id) {
 // ============================================================
 
 async function runReport() {
+    console.log('[REPORTS] Generating report');
     const reportType = document.getElementById('report-type').value;
     const dateFrom = document.getElementById('report-date-from').value;
     const dateTo = document.getElementById('report-date-to').value;
@@ -810,17 +880,21 @@ async function runReport() {
         if (!res.ok) throw new Error('Failed to generate report');
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[REPORTS] Report generated, type:', reportType);
             currentReportData = data;
             renderReport(data, reportType);
         } else {
+            console.error('[REPORTS] Error:', data.error);
             container.innerHTML = '<p class="text-muted" style="color:#dc3545;">' + (data.error || 'Error generating report') + '</p>';
         }
     } catch (err) {
+        console.error('[REPORTS] Error:', err);
         container.innerHTML = '<p class="text-muted" style="color:#dc3545;">Error: ' + err.message + '</p>';
     }
 }
 
 function renderReport(data, type) {
+    console.log('[REPORTS] Rendering report, type:', type);
     const container = document.getElementById('report-result');
     if (!data.report || data.report.length === 0) {
         container.innerHTML = '<p class="text-muted">No data for this report.</p>';
@@ -849,6 +923,7 @@ function renderReport(data, type) {
 }
 
 function exportReportCSV() {
+    console.log('[REPORTS] Exporting CSV');
     if (!currentReportData || !currentReportData.report) {
         alert('Please generate a report first.');
         return;
@@ -877,6 +952,7 @@ function exportReportCSV() {
 // ============================================================
 
 async function checkBankConnection() {
+    console.log('[BANK] Checking bank connection');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/plaid/status`, {
             credentials: 'include',
@@ -886,18 +962,21 @@ async function checkBankConnection() {
         const statusEl = document.getElementById('bank-connection-status');
         const connectBtn = document.getElementById('connect-bank-btn');
         if (data.connected) {
+            console.log('[BANK] Connected');
             statusEl.innerHTML = '✅ Connected';
             connectBtn.style.display = 'none';
         } else {
+            console.log('[BANK] Not connected');
             statusEl.innerHTML = '⚠️ Not connected';
             connectBtn.style.display = 'inline-block';
         }
     } catch (e) {
-        console.error('Failed to check bank connection:', e);
+        console.error('[BANK] Failed to check bank connection:', e);
     }
 }
 
 async function connectBank() {
+    console.log('[BANK] Connecting bank');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/plaid/create-link-token`, {
             method: 'POST',
@@ -910,10 +989,12 @@ async function connectBank() {
             return;
         }
         const linkToken = data.link_token;
+        console.log('[BANK] Got link token');
         const handler = Plaid.create({
             token: linkToken,
             isOAuth: true,
             onSuccess: async (public_token, metadata) => {
+                console.log('[BANK] Plaid success');
                 const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/exchange`, {
                     method: 'POST',
                     credentials: 'include',
@@ -922,26 +1003,31 @@ async function connectBank() {
                 });
                 const exchangeData = await exchangeRes.json();
                 if (exchangeData.status === 'success') {
+                    console.log('[BANK] Exchange success');
                     alert('Bank connected successfully!');
                     checkBankConnection();
                     loadBankTransactions();
                 } else {
+                    console.error('[BANK] Exchange error:', exchangeData.error);
                     alert('Failed to connect bank: ' + (exchangeData.error || 'Unknown error'));
                 }
             },
             onExit: (err, metadata) => {
                 if (err) {
+                    console.error('[BANK] Plaid exit error:', err);
                     alert('Error: ' + (err.display_message || err.error_message || 'Unknown error'));
                 }
             }
         });
         handler.open();
     } catch (e) {
+        console.error('[BANK] Error:', e);
         alert('Failed to initiate bank connection: ' + e.message);
     }
 }
 
 async function loadBankTransactions() {
+    console.log('[BANK] Loading bank transactions');
     const body = document.getElementById('bank-body');
     body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
@@ -982,20 +1068,24 @@ async function loadBankTransactions() {
                 transactions = transactions.filter(t => t.processed === true);
             }
             
+            console.log('[BANK] Loaded', transactions.length, 'transactions');
             renderBankTransactions(transactions);
             const total = data.total_count || transactions.length;
             const unprocessed = data.unprocessed_count || 0;
             updateBankCounts(unprocessed, total);
             document.getElementById('bank-pagination-info').textContent = `Showing ${transactions.length} entries (${total} total)`;
         } else {
+            console.error('[BANK] Error:', data.error);
             body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
+        console.error('[BANK] Error:', err);
         body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
 function renderBankTransactions(transactions) {
+    console.log('[BANK] Rendering', transactions.length, 'transactions');
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
         body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
@@ -1030,9 +1120,11 @@ function renderBankTransactions(transactions) {
         </tr>`;
     });
     body.innerHTML = html;
+    console.log('[BANK] Rendering complete');
 }
 
 function updateBankCounts(unprocessed, total) {
+    console.log('[BANK] Updating counts: unprocessed=', unprocessed, 'total=', total);
     const countEl = document.getElementById('bank-unprocessed-count');
     const labelEl = document.getElementById('bank-count-label');
     const totalEl = document.getElementById('bank-total-count');
@@ -1054,6 +1146,7 @@ function updateBankCounts(unprocessed, total) {
 }
 
 async function applyAllSelections() {
+    console.log('[BANK] Applying all selections');
     // Get source from filter dropdown - default to plaid
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'plaid';
     let sourceAccountId = null;
@@ -1115,6 +1208,7 @@ async function applyAllSelections() {
         return;
     }
 
+    console.log('[BANK] Applying', updates.length, 'transactions, skipping', skippedCount);
     if (!confirm(`Apply ${updates.length} transaction(s)? (${skippedCount} skipped - no destination selected)`)) {
         return;
     }
@@ -1128,12 +1222,15 @@ async function applyAllSelections() {
         });
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[BANK] Applied', data.processed, 'transactions');
             showToast(`✅ ${data.processed} transaction(s) posted successfully. ${skippedCount} skipped.`, 'success');
             loadBankTransactions();
         } else {
+            console.error('[BANK] Error:', data.error);
             showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (e) {
+        console.error('[BANK] Error:', e);
         showToast('❌ Error: ' + e.message, 'error');
     }
 }
@@ -1143,6 +1240,7 @@ async function applyAllSelections() {
 // ============================================================
 
 async function loadAccountsList() {
+    console.log('[ACCOUNTS] Loading accounts list');
     const body = document.getElementById('accounts-body');
     body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading accounts...</td></tr>';
 
@@ -1154,16 +1252,20 @@ async function loadAccountsList() {
         if (!res.ok) throw new Error('Failed to load accounts');
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[ACCOUNTS] Loaded', data.accounts.length, 'accounts');
             renderAccounts(data.accounts);
         } else {
+            console.error('[ACCOUNTS] Error:', data.error);
             body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading accounts') + '</td></tr>';
         }
     } catch (err) {
+        console.error('[ACCOUNTS] Error:', err);
         body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
 function renderAccounts(accounts) {
+    console.log('[ACCOUNTS] Rendering', accounts.length, 'accounts');
     const body = document.getElementById('accounts-body');
     if (!accounts || accounts.length === 0) {
         body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No accounts found.</td></tr>';
@@ -1186,6 +1288,7 @@ function renderAccounts(accounts) {
 }
 
 function showAddAccountModal() {
+    console.log('[ACCOUNTS] Showing add account modal');
     document.getElementById('add-account-modal').classList.add('active');
     document.getElementById('account-form-id').value = '';
     document.getElementById('account-form-code').value = '';
@@ -1197,6 +1300,7 @@ function showAddAccountModal() {
 }
 
 async function editAccount(accountId) {
+    console.log('[ACCOUNTS] Editing account:', accountId);
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
             credentials: 'include',
@@ -1206,6 +1310,7 @@ async function editAccount(accountId) {
         if (data.status === 'success') {
             const account = data.accounts.find(a => a.id === accountId);
             if (account) {
+                console.log('[ACCOUNTS] Found account:', account.code, account.name);
                 document.getElementById('add-account-modal').classList.add('active');
                 document.getElementById('account-form-id').value = account.id;
                 document.getElementById('account-form-code').value = account.code;
@@ -1217,6 +1322,7 @@ async function editAccount(accountId) {
             }
         }
     } catch (e) {
+        console.error('[ACCOUNTS] Error loading account details:', e);
         showToast('Error loading account details', 'error');
     }
 }
@@ -1227,6 +1333,8 @@ async function saveAccount() {
     const name = document.getElementById('account-form-name').value.trim();
     const type = document.getElementById('account-form-type').value;
     const description = document.getElementById('account-form-description').value.trim();
+
+    console.log('[ACCOUNTS] Saving account:', id ? 'update' : 'create', code, name);
 
     if (!code || !name || !type) {
         showToast('Code, Name, and Type are required.', 'error');
@@ -1246,6 +1354,7 @@ async function saveAccount() {
         });
         const result = await res.json();
         if (result.status === 'success') {
+            console.log('[ACCOUNTS] Saved successfully');
             showToast(id ? 'Account updated successfully' : 'Account created successfully', 'success');
             document.getElementById('add-account-modal').classList.remove('active');
             loadAccountsList();
@@ -1254,14 +1363,17 @@ async function saveAccount() {
             loadBankAccountsForRowDropdowns();
             loadBulkDestinationAccounts();
         } else {
+            console.error('[ACCOUNTS] Error saving:', result.error);
             showToast('Error: ' + (result.error || 'Failed to save account'), 'error');
         }
     } catch (e) {
+        console.error('[ACCOUNTS] Error:', e);
         showToast('Error: ' + e.message, 'error');
     }
 }
 
 async function deleteAccount(accountId, accountName) {
+    console.log('[ACCOUNTS] Deleting account:', accountId, accountName);
     // First check if account has transactions
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-transactions?account_id=${accountId}&page=1&per_page=1`, {
@@ -1277,6 +1389,7 @@ async function deleteAccount(accountId, accountName) {
         }
 
         if (!confirm(message)) {
+            console.log('[ACCOUNTS] Delete cancelled');
             return;
         }
 
@@ -1287,6 +1400,7 @@ async function deleteAccount(accountId, accountName) {
         });
         const result = await deleteRes.json();
         if (result.status === 'success') {
+            console.log('[ACCOUNTS] Deleted successfully, unposted:', result.unposted_count);
             showToast(`Account "${accountName}" deleted successfully. ${result.unposted_count || 0} transaction(s) unposted.`, 'success');
             loadAccountsList();
             loadAccountSelects();
@@ -1294,9 +1408,11 @@ async function deleteAccount(accountId, accountName) {
             loadBankAccountsForRowDropdowns();
             loadBulkDestinationAccounts();
         } else {
+            console.error('[ACCOUNTS] Error deleting:', result.error);
             showToast('Error: ' + (result.error || 'Failed to delete account'), 'error');
         }
     } catch (e) {
+        console.error('[ACCOUNTS] Error:', e);
         showToast('Error: ' + e.message, 'error');
     }
 }
@@ -1306,6 +1422,7 @@ async function deleteAccount(accountId, accountName) {
 // ============================================================
 
 async function loadAccountTransactions() {
+    console.log('[ACCOUNT-TX] Loading account transactions');
     const body = document.getElementById('account-tx-body');
     const accountId = document.getElementById('account-transactions-select').value;
 
@@ -1333,19 +1450,23 @@ async function loadAccountTransactions() {
         if (!res.ok) throw new Error('Failed to load account transactions');
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[ACCOUNT-TX] Loaded', data.entries.length, 'entries, total:', data.total);
             accountTxTotalEntries = data.total;
             renderAccountTransactions(data.entries);
             updateAccountTxPagination();
             updateAccountBalance(accountId);
         } else {
+            console.error('[ACCOUNT-TX] Error:', data.error);
             body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
+        console.error('[ACCOUNT-TX] Error:', err);
         body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
 function renderAccountTransactions(entries) {
+    console.log('[ACCOUNT-TX] Rendering', entries.length, 'entries');
     const body = document.getElementById('account-tx-body');
     if (!entries || entries.length === 0) {
         body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No transactions found for this account.</td></tr>';
@@ -1377,6 +1498,7 @@ function updateAccountTxPagination() {
 }
 
 async function updateAccountBalance(accountId) {
+    console.log('[ACCOUNT-TX] Updating balance for account:', accountId);
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-balance?account_id=${accountId}`, {
             credentials: 'include',
@@ -1385,6 +1507,7 @@ async function updateAccountBalance(accountId) {
         const data = await res.json();
         if (data.status === 'success') {
             const balance = data.balance || 0;
+            console.log('[ACCOUNT-TX] Balance:', balance);
             const display = document.getElementById('account-balance-display');
             const span = display.querySelector('span') || display;
             const cls = balance > 0 ? 'balance-positive' : (balance < 0 ? 'balance-negative' : 'balance-zero');
@@ -1392,11 +1515,12 @@ async function updateAccountBalance(accountId) {
             span.textContent = (balance >= 0 ? '' : '-') + '$' + Math.abs(balance).toFixed(2);
         }
     } catch (e) {
-        console.error('Failed to fetch account balance:', e);
+        console.error('[ACCOUNT-TX] Failed to fetch account balance:', e);
     }
 }
 
 function resetAccountTxFilters() {
+    console.log('[ACCOUNT-TX] Resetting filters');
     const accountId = document.getElementById('account-transactions-select').value;
     if (accountId) {
         updateAccountDateRange(accountId);
@@ -1414,6 +1538,7 @@ function exportAccountTransactionsCSV() {
         alert('Please select an account first.');
         return;
     }
+    console.log('[ACCOUNT-TX] Exporting CSV for account:', accountId);
     const params = new URLSearchParams();
     params.append('page', 1);
     params.append('per_page', 9999);
@@ -1430,6 +1555,7 @@ function exportAccountTransactionsCSV() {
     .then(res => res.json())
     .then(data => {
         if (data.status === 'success' && data.entries) {
+            console.log('[ACCOUNT-TX] Exporting', data.entries.length, 'entries');
             let csv = 'ID,Date,Description,Debit, Credit,Source\n';
             data.entries.forEach(e => {
                 csv += `${e.id},${e.transaction_date},"${(e.description||'').replace(/"/g,'""')}",${e.debit_amount||0},${e.credit_amount||0},${e.source_type}:${e.source_id}\n`;
@@ -1446,26 +1572,16 @@ function exportAccountTransactionsCSV() {
 }
 
 // ============================================================
-// MONTHLY PERFORMANCE – functions kept but not used (tab removed)
-// ============================================================
-
-async function loadMonthlyPerformance() {
-    console.warn('loadMonthlyPerformance called but Monthly tab is removed.');
-}
-
-function renderMonthlyCharts(data) {
-    // Kept for reference
-}
-
-// ============================================================
 // MODAL FUNCTIONS
 // ============================================================
 
 function closeMonthlyModal() {
+    console.log('[MODAL] Closing monthly modal');
     document.getElementById('monthly-tx-modal').classList.remove('active');
 }
 
 function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false) {
+    console.log('[MODAL] Showing monthly transactions:', month, accountName);
     const modal = document.getElementById('monthly-tx-modal');
     const body = document.getElementById('modal-body');
     const title = document.getElementById('modal-title');
@@ -1488,18 +1604,21 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     .then(res => res.json())
     .then(data => {
         if (data.status === 'success' && data.transactions) {
+            console.log('[MODAL] Loaded', data.transactions.length, 'transactions');
             renderModalTransactions(data.transactions);
         } else {
+            console.error('[MODAL] Error:', data.error);
             body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load transactions'}</p>`;
         }
     })
     .catch(err => {
+        console.error('[MODAL] Error:', err);
         body.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
-        console.error(err);
     });
 }
 
 function renderModalTransactions(transactions) {
+    console.log('[MODAL] Rendering', transactions.length, 'transactions');
     const body = document.getElementById('modal-body');
     if (!transactions || transactions.length === 0) {
         body.innerHTML = '<p>No transactions found.</p>';
@@ -1529,20 +1648,24 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW (with zero line annotation)
+// CASH FLOW (with expandable charts)
 // ============================================================
 
 async function loadCashFlow() {
+    console.log('[CASHFLOW] Loading cash flow');
     const startInput = document.getElementById('cash-flow-start');
     const endInput = document.getElementById('cash-flow-end');
     const start = startInput.value;
     const end = endInput.value;
+    console.log('[CASHFLOW] Start:', start, 'End:', end);
+    
     if (!start || !end) {
         alert('Please select both start and end months.');
         return;
     }
 
     if (bankAccounts.length === 0) {
+        console.log('[CASHFLOW] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
     }
 
@@ -1550,6 +1673,7 @@ async function loadCashFlow() {
     container.innerHTML = '<p class="monthly-loading">Loading...</p>';
 
     try {
+        console.log('[CASHFLOW] Fetching data from API');
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${start}&end=${end}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
@@ -1557,22 +1681,28 @@ async function loadCashFlow() {
         if (!res.ok) throw new Error('Failed to fetch cash flow data');
         const data = await res.json();
         if (data.status === 'success') {
+            console.log('[CASHFLOW] Data loaded, months:', data.months.length);
+            cashFlowMonths = data.months;
+            cashFlowAccountBreakdown = data.account_breakdown;
             renderCashFlowCharts(data);
         } else {
+            console.error('[CASHFLOW] Error:', data.error);
             container.innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
         }
     } catch (err) {
+        console.error('[CASHFLOW] Error:', err);
         container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
-        console.error('Cash flow error:', err);
     }
 }
 
 function renderCashFlowCharts(data) {
+    console.log('[CASHFLOW] Rendering charts');
     const { months, account_breakdown } = data;
     const container = document.getElementById('cash-flow-chart-grid');
     container.innerHTML = '';
 
     if (!months || months.length === 0) {
+        console.log('[CASHFLOW] No months data');
         container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
         return;
     }
@@ -1583,6 +1713,7 @@ function renderCashFlowCharts(data) {
         Object.keys(monthData).forEach(acc => allAccounts.add(acc));
     });
     const accountNames = Array.from(allAccounts).sort();
+    console.log('[CASHFLOW] Accounts:', accountNames.length);
 
     const accountNameToId = {};
     bankAccounts.forEach(acc => {
@@ -1606,11 +1737,15 @@ function renderCashFlowCharts(data) {
         if (Math.abs(net) > globalMax) globalMax = Math.abs(net);
     });
     const yMax = Math.ceil(globalMax / 500) * 500 || 100;
+    console.log('[CASHFLOW] YMax:', yMax);
 
     if (window._cashFlowCharts) {
         window._cashFlowCharts.forEach(chart => chart.destroy());
     }
     window._cashFlowCharts = [];
+
+    cashFlowMonths = months;
+    cashFlowAccountBreakdown = account_breakdown;
 
     months.forEach((month, idx) => {
         const monthData = account_breakdown[month] || {};
@@ -1631,10 +1766,32 @@ function renderCashFlowCharts(data) {
 
         const card = document.createElement('div');
         card.className = 'monthly-chart-card';
+        card.dataset.month = month;
+        card.dataset.index = idx;
+        card.style.cursor = 'pointer';
         card.innerHTML = `<h4>${month}</h4><canvas id="cash-flow-chart-${idx}"></canvas>`;
         container.appendChild(card);
 
+        // Click on card (not on canvas) = expand
+        card.addEventListener('click', function(e) {
+            console.log('[CASHFLOW] Card clicked, index:', idx, 'target:', e.target.tagName);
+            // If clicking on canvas or its children, let the chart handle it
+            if (e.target.closest('canvas')) {
+                console.log('[CASHFLOW] Click was on canvas, ignoring for expansion');
+                return;
+            }
+            console.log('[CASHFLOW] Expanding chart', idx);
+            expandChart(idx);
+        });
+
+        // Double click on canvas = expand
         const canvas = card.querySelector('canvas');
+        canvas.addEventListener('dblclick', function(e) {
+            console.log('[CASHFLOW] Canvas double-clicked, expanding chart', idx);
+            e.stopPropagation();
+            expandChart(idx);
+        });
+
         const ctx = canvas.getContext('2d');
 
         const chart = new Chart(ctx, {
@@ -1698,6 +1855,7 @@ function renderCashFlowCharts(data) {
                     }
                 },
                 onClick: function(e, elements) {
+                    console.log('[CASHFLOW] Chart bar clicked, elements:', elements.length);
                     if (elements.length === 0) return;
                     const element = elements[0];
                     const index = element.index;
@@ -1705,6 +1863,7 @@ function renderCashFlowCharts(data) {
                     const amount = this.data.datasets[0].data[index];
                     if (Math.abs(amount) < 0.01) return;
 
+                    console.log('[CASHFLOW] Bar clicked:', label, amount);
                     if (label === 'Net') {
                         showMonthlyTransactions(month, null, 'Net Cash Flow', true);
                     } else {
@@ -1721,5 +1880,134 @@ function renderCashFlowCharts(data) {
             }
         });
         window._cashFlowCharts.push(chart);
+        console.log('[CASHFLOW] Chart', idx, 'created');
     });
+    console.log('[CASHFLOW] Rendering complete');
+}
+
+function expandChart(index) {
+    console.log('[CASHFLOW] expandChart called with index:', index, 'current expanded:', cashFlowExpanded, 'expandedIndex:', expandedChartIndex);
+    
+    if (cashFlowExpanded && expandedChartIndex === index) {
+        console.log('[CASHFLOW] Chart already expanded, collapsing');
+        collapseChart();
+        return;
+    }
+
+    const container = document.getElementById('cash-flow-chart-grid');
+    const cards = container.querySelectorAll('.monthly-chart-card');
+    const card = cards[index];
+    
+    if (!card) {
+        console.error('[CASHFLOW] Card not found for index:', index);
+        return;
+    }
+
+    console.log('[CASHFLOW] Expanding card', index);
+
+    // Store the current state
+    cashFlowExpanded = true;
+    expandedChartIndex = index;
+
+    // Hide all cards
+    cards.forEach(c => {
+        c.style.display = 'none';
+    });
+
+    // Show the expanded card
+    card.style.display = 'block';
+    card.style.position = 'fixed';
+    card.style.top = '80px';
+    card.style.left = '20px';
+    card.style.right = '20px';
+    card.style.bottom = '20px';
+    card.style.width = 'auto';
+    card.style.height = 'auto';
+    card.style.zIndex = '999';
+    card.style.boxShadow = '0 4px 30px rgba(0,0,0,0.3)';
+    card.style.background = 'white';
+    card.style.padding = '30px';
+    card.style.borderRadius = '8px';
+    card.style.overflow = 'auto';
+    card.style.cursor = 'default';
+
+    // Add close button to card
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'btn btn-secondary chart-close-btn';
+    closeBtn.style.cssText = 'position:absolute; top:10px; right:10px; padding:8px 16px; z-index:1000;';
+    closeBtn.innerHTML = '<i class="fas fa-times"></i> Close';
+    closeBtn.onclick = function(e) {
+        console.log('[CASHFLOW] Close button clicked');
+        e.stopPropagation();
+        collapseChart();
+    };
+    card.appendChild(closeBtn);
+
+    // Resize the chart
+    const canvas = card.querySelector('canvas');
+    if (canvas) {
+        canvas.style.height = 'calc(100% - 60px)';
+        canvas.style.width = '100%';
+        const chart = window._cashFlowCharts[index];
+        if (chart) {
+            console.log('[CASHFLOW] Resizing chart');
+            chart.resize();
+        }
+    }
+    console.log('[CASHFLOW] Expansion complete');
+}
+
+function collapseChart() {
+    console.log('[CASHFLOW] collapseChart called');
+    if (!cashFlowExpanded) {
+        console.log('[CASHFLOW] Not expanded, nothing to collapse');
+        return;
+    }
+
+    cashFlowExpanded = false;
+    expandedChartIndex = null;
+
+    const container = document.getElementById('cash-flow-chart-grid');
+    const cards = container.querySelectorAll('.monthly-chart-card');
+
+    // Reset all cards
+    cards.forEach(c => {
+        c.style.display = '';
+        c.style.position = '';
+        c.style.top = '';
+        c.style.left = '';
+        c.style.right = '';
+        c.style.bottom = '';
+        c.style.width = '';
+        c.style.height = '';
+        c.style.zIndex = '';
+        c.style.boxShadow = '';
+        c.style.background = '';
+        c.style.padding = '';
+        c.style.borderRadius = '';
+        c.style.overflow = '';
+        c.style.cursor = 'pointer';
+
+        // Remove close button if exists
+        const closeBtn = c.querySelector('.chart-close-btn');
+        if (closeBtn) {
+            closeBtn.remove();
+        }
+
+        // Reset canvas size
+        const canvas = c.querySelector('canvas');
+        if (canvas) {
+            canvas.style.height = '';
+            canvas.style.width = '';
+        }
+    });
+
+    // Re-render all charts to fix sizing
+    if (window._cashFlowCharts) {
+        console.log('[CASHFLOW] Resizing all charts after collapse');
+        window._cashFlowCharts.forEach((chart, idx) => {
+            chart.resize();
+        });
+    }
+    console.log('[CASHFLOW] Collapse complete');
 }
