@@ -1428,7 +1428,7 @@ async function deleteAccount(accountId, accountName) {
 }
 
 // ============================================================
-// ACCOUNT TRANSACTIONS (load function)
+// ACCOUNT TRANSACTIONS - UPDATED (no eye button, added unpost)
 // ============================================================
 
 async function loadAccountTransactions() {
@@ -1437,11 +1437,11 @@ async function loadAccountTransactions() {
     const accountId = document.getElementById('account-transactions-select').value;
 
     if (!accountId) {
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">Please select an account.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Please select an account.</td></tr>';
         return;
     }
 
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const params = new URLSearchParams();
     params.append('page', accountTxCurrentPage);
@@ -1467,11 +1467,11 @@ async function loadAccountTransactions() {
             updateAccountBalance(accountId);
         } else {
             console.error('[ACCOUNT-TX] Error:', data.error);
-            body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
         console.error('[ACCOUNT-TX] Error:', err);
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
@@ -1479,24 +1479,59 @@ function renderAccountTransactions(entries) {
     console.log('[ACCOUNT-TX] Rendering', entries.length, 'entries');
     const body = document.getElementById('account-tx-body');
     if (!entries || entries.length === 0) {
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No transactions found for this account.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No transactions found for this account.</td></tr>';
         return;
     }
     let html = '';
     entries.forEach(e => {
         const debit = e.debit_amount ? '$' + parseFloat(e.debit_amount).toFixed(2) : '';
         const credit = e.credit_amount ? '$' + parseFloat(e.credit_amount).toFixed(2) : '';
+        const source = e.source_type && e.source_id ? `${e.source_type}: ${e.source_id}` : '';
         html += `<tr>
             <td>${e.id}</td>
             <td>${e.transaction_date}</td>
             <td>${e.description || ''}</td>
             <td class="debit">${debit}</td>
             <td class="credit">${credit}</td>
-            <td>${e.source_type}: ${e.source_id}</td>
-            <td><button class="btn btn-sm btn-info" onclick="viewJournalEntry(${e.id})"><i class="fas fa-eye"></i></button></td>
+            <td>${source}</td>
+            <td><button class="btn btn-sm btn-warning" onclick="unpostTransaction(${e.id})"><i class="fas fa-undo"></i> Unpost</button></td>
         </tr>`;
     });
     body.innerHTML = html;
+}
+
+async function unpostTransaction(entryId) {
+    console.log('[ACCOUNT-TX] Unposting transaction:', entryId);
+    
+    if (!confirm(`Are you sure you want to unpost journal entry #${entryId}?\n\nThis will delete the journal entry and, if it was a bank transaction, mark it as unprocessed.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal/${entryId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            console.log('[ACCOUNT-TX] Unposted successfully');
+            showToast(`✅ Journal entry #${entryId} unposted successfully. ${data.unposted_count || 0} transaction(s) restored.`, 'success');
+            // Reload the transactions
+            loadAccountTransactions();
+            // Also reload the account balance
+            const accountId = document.getElementById('account-transactions-select').value;
+            if (accountId) {
+                updateAccountBalance(accountId);
+            }
+        } else {
+            console.error('[ACCOUNT-TX] Error unposting:', data.error);
+            showToast('❌ Error: ' + (data.error || 'Failed to unpost'), 'error');
+        }
+    } catch (e) {
+        console.error('[ACCOUNT-TX] Error:', e);
+        showToast('❌ Error: ' + e.message, 'error');
+    }
 }
 
 function updateAccountTxPagination() {
@@ -1658,7 +1693,7 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW (with expandable charts - IMPROVED)
+// CASH FLOW (with expandable charts)
 // ============================================================
 
 async function loadCashFlow() {
@@ -1908,8 +1943,7 @@ function expandChart(index) {
     }
 
     const container = document.getElementById('cash-flow-chart-grid');
-    const gridWrapper = document.getElementById('cash-flow-grid-wrapper');
-    const cards = gridWrapper ? gridWrapper.querySelectorAll('.monthly-chart-card') : container.querySelectorAll('.monthly-chart-card');
+    const cards = container.querySelectorAll('.monthly-chart-card');
     const card = cards[index];
     
     if (!card) {
@@ -1923,14 +1957,10 @@ function expandChart(index) {
     cashFlowExpanded = true;
     expandedChartIndex = index;
 
-    // Hide all cards and the grid wrapper
-    if (gridWrapper) {
-        gridWrapper.style.display = 'none';
-    } else {
-        cards.forEach(c => {
-            c.style.display = 'none';
-        });
-    }
+    // Hide all cards
+    cards.forEach(c => {
+        c.style.display = 'none';
+    });
 
     // Create expanded container
     const expandedContainer = document.createElement('div');
@@ -2154,11 +2184,12 @@ function collapseChart() {
     cashFlowExpanded = false;
     expandedChartIndex = null;
 
-    // Show the grid wrapper again
-    const gridWrapper = document.getElementById('cash-flow-grid-wrapper');
-    if (gridWrapper) {
-        gridWrapper.style.display = '';
-    }
+    // Show all cards again
+    const container = document.getElementById('cash-flow-chart-grid');
+    const cards = container.querySelectorAll('.monthly-chart-card');
+    cards.forEach(c => {
+        c.style.display = '';
+    });
 
     // Resize all original charts
     if (window._cashFlowCharts) {
