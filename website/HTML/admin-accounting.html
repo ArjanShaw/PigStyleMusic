@@ -9,10 +9,8 @@
     <link rel="stylesheet" href="/static/css/admin.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- ChartJS Annotation Plugin for zero line -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <style>
-        /* ====== GLOBAL STYLES ====== */
         body { background: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
         .admin-container { max-width: 1400px; margin: 0 auto; padding: 25px 30px; }
         .accounting-title { margin-top: 0; margin-bottom: 20px; color: #333; font-size: 24px; display: flex; align-items: center; gap: 12px; }
@@ -22,15 +20,6 @@
         .sub-tab.active { background: #007bff; color: white; border-color: #007bff; }
         .sub-tab-content { display: none; background: white; padding: 20px; border-radius: 0 8px 8px 8px; border: 1px solid #ddd; border-top: none; }
         .sub-tab-content.active { display: block; }
-
-        /* ====== OTHER STYLES ====== */
-        .accounting-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
-        .accounting-stat-card { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #007bff; }
-        .accounting-stat-card .stat-value { font-size: 28px; font-weight: bold; color: #007bff; }
-        .accounting-stat-card .stat-label { color: #666; font-size: 14px; }
-        .accounting-stat-card.warning { border-left-color: #ffc107; }
-        .accounting-stat-card.danger { border-left-color: #dc3545; }
-        .accounting-stat-card.success { border-left-color: #28a745; }
 
         .journal-table-container { overflow-x: auto; max-height: 500px; overflow-y: auto; }
         .journal-table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -83,10 +72,6 @@
         .form-group { display: flex; flex-direction: column; gap: 5px; }
         .form-group label { font-weight: 500; font-size: 13px; color: #333; }
         .form-group input, .form-group select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
-        .status-badge.active { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .status-badge.removed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .status-badge.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
         .bank-table-container { overflow-x: auto; max-height: 500px; overflow-y: auto; }
         .records-table-container { overflow-x: auto; }
         .records-table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -119,27 +104,13 @@
         .bank-status-bar .filter-group { display: flex; align-items: center; gap: 10px; margin-left: auto; }
         .bank-status-bar .filter-group .form-group { margin: 0; }
 
-        /* Bank row colors */
-        .bank-row-posted {
-            background-color: #d4edda !important;
-        }
-        .bank-row-posted td {
-            background-color: #d4edda !important;
-        }
-        .bank-row-unposted {
-            background-color: #f8d7da !important;
-        }
-        .bank-row-unposted td {
-            background-color: #f8d7da !important;
-        }
-        .bank-row-posted:hover td {
-            background-color: #c3e6cb !important;
-        }
-        .bank-row-unposted:hover td {
-            background-color: #f5c6cb !important;
-        }
+        .bank-row-posted { background-color: #d4edda !important; }
+        .bank-row-posted td { background-color: #d4edda !important; }
+        .bank-row-unposted { background-color: #f8d7da !important; }
+        .bank-row-unposted td { background-color: #f8d7da !important; }
+        .bank-row-posted:hover td { background-color: #c3e6cb !important; }
+        .bank-row-unposted:hover td { background-color: #f5c6cb !important; }
 
-        /* Monthly and Cash Flow chart grid */
         .monthly-controls { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; }
         .monthly-controls .form-group { min-width: 150px; }
         .monthly-controls .form-group input[type="month"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
@@ -195,7 +166,7 @@
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
 
-            <!-- ====== JOURNAL ====== -->
+            <!-- JOURNAL -->
             <div id="sub-journal" class="sub-tab-content active">
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
                     <div class="form-group"><label>Account</label><select id="journal-account-filter"><option value="">All Accounts</option></select></div>
@@ -216,7 +187,7 @@
                 </div>
             </div>
 
-            <!-- ====== ACCOUNT TRANSACTIONS ====== -->
+            <!-- ACCOUNT TRANSACTIONS -->
             <div id="sub-account-transactions" class="sub-tab-content">
                 <h4><i class="fas fa-receipt"></i> Account Transactions</h4>
                 <p class="text-muted">View all journal entries filtered by account. Select an account to see its transaction history.</p>
@@ -243,7 +214,7 @@
                 </div>
             </div>
 
-            <!-- ====== ADJUSTMENTS ====== -->
+            <!-- ADJUSTMENTS -->
             <div id="sub-adjustments" class="sub-tab-content">
                 <h4><i class="fas fa-pencil-alt"></i> Post a Manual Journal Entry</h4>
                 <p class="text-muted">Use this for inventory write‑offs, initial seed, cash register adjustments, etc.</p>
@@ -266,7 +237,7 @@
                 </div>
             </div>
 
-            <!-- ====== RECONCILIATION ====== -->
+            <!-- RECONCILIATION -->
             <div id="sub-reconcile" class="sub-tab-content">
                 <h4><i class="fas fa-handshake"></i> Bank Reconciliation</h4>
                 <p class="text-muted">Upload your bank statement (CSV) and match deposits to expected payments.</p>
@@ -292,10 +263,10 @@
                 <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
 
-            <!-- ====== BANK TAB (UPDATED) ====== -->
+            <!-- BANK TAB - NO REFRESH, NO RESET -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown, then choose a <strong>Destination</strong> for each transaction. Transactions are automatically posted when you select a destination.</p>
+                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown, check the transactions you want to post, select a <strong>Destination</strong> for each, then click <strong>Apply Selected</strong>.</p>
                 <div style="margin-bottom:15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display:none;"><i class="fas fa-university"></i> Connect Bank Account</button>
                     <span id="bank-connection-status" class="text-muted"></span>
@@ -319,27 +290,30 @@
                         </div>
                     </div>
                 </div>
-                <!-- Filter bar -->
+                <!-- Filter bar - NO REFRESH, NO RESET -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
-                    <div class="form-group" style="flex:1;">
+                    <div class="form-group" style="flex:2;">
                         <label>Filter by description</label>
                         <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
                     </div>
+                    <div class="form-group" style="flex:0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply Selected</button>
+                    </div>
                 </div>
 
-                <!-- ====== GUIDANCE NOTE FOR DEPOSIT TRANSFERS ====== -->
                 <div style="background: #e3f2fd; border-left: 4px solid #007bff; padding: 10px 15px; margin-bottom: 15px; border-radius: 4px; color: #004085;">
                     <i class="fas fa-info-circle"></i> 
                     <strong>How to record deposits from payment processors (Square / PayPal):</strong><br>
                     For a deposit that appears in your bank account from Square or PayPal, set <strong>Source</strong> to the processor asset account (e.g., <code>Square Asset</code> or <code>PayPal</code>) and <strong>Destination</strong> to your bank account (e.g., <code>FNBO Bank</code>). 
                     This creates a transfer that reduces the processor asset and increases your bank balance – it will <strong>not</strong> duplicate revenue.
                 </div>
-                <!-- ======================================================== -->
 
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
                         <thead>
                             <tr>
+                                <th style="width:30px;">✓</th>
                                 <th>Date</th>
                                 <th>Description</th>
                                 <th>Amount</th>
@@ -347,7 +321,7 @@
                                 <th>Destination</th>
                             </tr>
                         </thead>
-                        <tbody id="bank-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
+                        <tbody id="bank-body"><tr><td colspan="6" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
                     </table>
                 </div>
                 <div style="margin-top:15px;">
@@ -355,7 +329,7 @@
                 </div>
             </div>
 
-            <!-- ====== REPORTS ====== -->
+            <!-- REPORTS -->
             <div id="sub-reports" class="sub-tab-content">
                 <h4><i class="fas fa-chart-pie"></i> Financial Reports</h4>
                 <div class="report-selector">
@@ -368,7 +342,7 @@
                 <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
             </div>
 
-            <!-- ====== CASH FLOW ====== -->
+            <!-- CASH FLOW -->
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
                 <p class="text-muted">Positive bars = cash inflows (revenue), negative bars = cash outflows (expenses). Click any bar to see the underlying transactions. The purple bar is the net cash flow for the month.</p>
@@ -382,7 +356,7 @@
                 </div>
             </div>
 
-            <!-- ====== ORDERS ====== -->
+            <!-- ORDERS -->
             <div id="sub-orders" class="sub-tab-content">
                 <h2><i class="fas fa-shopping-bag"></i> Order Management</h2>
                 <div class="stats-grid" style="margin-bottom:20px;">
@@ -421,7 +395,7 @@
         </div>
     </div>
 
-    <!-- ====== MODAL ====== -->
+    <!-- MODAL -->
     <div class="modal-overlay" id="monthly-tx-modal">
         <div class="modal-box">
             <div class="modal-header">

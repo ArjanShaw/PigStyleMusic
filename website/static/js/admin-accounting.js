@@ -200,7 +200,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('report-date-from').value = firstDay;
     document.getElementById('report-date-to').value = today;
     document.getElementById('manual-date').value = today;
-    // Do NOT set account-tx-date-from/to globally – they will be set per account
 
     // Load journal by default
     loadJournalEntries();
@@ -348,7 +347,6 @@ async function loadAccountTransactionsSelect() {
             if (data.accounts.length > 0) {
                 const firstAccount = data.accounts[0];
                 select.value = firstAccount.id;
-                // Set date range and load
                 await updateAccountDateRange(firstAccount.id);
             }
         }
@@ -372,7 +370,6 @@ async function updateAccountDateRange(accountId) {
             fromInput.value = data.min_date;
             toInput.value = data.max_date;
         } else {
-            // No transactions – fallback to Feb 2026 to today
             fromInput.value = '2026-02-01';
             toInput.value = today;
         }
@@ -829,7 +826,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS – UPDATED
+// BANK TRANSACTIONS – UPDATED WITH BULK APPLY
 // ============================================================
 
 async function checkBankConnection() {
@@ -899,7 +896,7 @@ async function connectBank() {
 
 async function loadBankTransactions() {
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const params = new URLSearchParams();
     params.append('page', 1);
@@ -908,15 +905,12 @@ async function loadBankTransactions() {
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
 
-    // Get view filter: 'unposted', 'posted', 'all'
     const viewFilter = document.getElementById('bank-view-filter')?.value || 'unposted';
     if (viewFilter === 'unposted') {
         params.append('unprocessed_only', 'true');
     } else if (viewFilter === 'posted') {
         params.append('unprocessed_only', 'false');
-        // We'll filter on the client side for posted only
     }
-    // 'all' means no filter
 
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
     if (sourceFilter !== 'all') {
@@ -937,7 +931,6 @@ async function loadBankTransactions() {
         if (data.status === 'success') {
             let transactions = data.transactions || [];
             
-            // Filter for 'posted' view
             if (viewFilter === 'posted') {
                 transactions = transactions.filter(t => t.processed === true);
             }
@@ -948,17 +941,17 @@ async function loadBankTransactions() {
             updateBankCounts(unprocessed, total);
             document.getElementById('bank-pagination-info').textContent = `Showing ${transactions.length} entries (${total} total)`;
         } else {
-            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
-        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
     let html = '';
@@ -969,13 +962,19 @@ function renderBankTransactions(transactions) {
         const processed = t.processed || false;
         const assignedTargetId = t.account_id || null;
         
-        // Row color: green if posted, red if unposted
         const rowClass = processed ? 'bank-row-posted' : 'bank-row-unposted';
         
+        // Checkbox - only show for unprocessed transactions
+        let checkboxHtml = '';
+        if (!processed) {
+            checkboxHtml = `<input type="checkbox" class="tx-checkbox" data-tx-id="${t.id}">`;
+        } else {
+            checkboxHtml = '';
+        }
+        
         // Destination dropdown - all accounts except cash accounts (exclude 1 and 21)
-        // This is the only dropdown - NO Source dropdown
         const targetOptions = bankAccounts.filter(acc => acc.id != 1 && acc.id != 21);
-        let targetHtml = `<select class="tx-target-select" id="tx-target-${t.id}" data-processed="${processed}" data-tx-id="${t.id}" data-source-type="${t.source_type || 'plaid'}">`;
+        let targetHtml = `<select class="tx-target-select" id="tx-target-${t.id}" data-tx-id="${t.id}" data-processed="${processed}">`;
         targetHtml += `<option value="">Select Destination</option>`;
         targetOptions.forEach(acc => {
             const selected = (assignedTargetId == acc.id) ? 'selected' : '';
@@ -983,8 +982,8 @@ function renderBankTransactions(transactions) {
         });
         targetHtml += '</select>';
 
-        // IMPORTANT: Only 5 columns - NO Source column
         html += `<tr class="${rowClass}">
+            <td>${checkboxHtml}</td>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
@@ -993,43 +992,7 @@ function renderBankTransactions(transactions) {
         </tr>`;
     });
     body.innerHTML = html;
-
-    // Attach event listeners to all destination dropdowns
-    document.querySelectorAll('.tx-target-select').forEach(select => {
-        select.addEventListener('change', function() {
-            const txId = this.dataset.txId;
-            const destinationId = this.value;
-            const processed = this.dataset.processed === 'true';
-            const sourceType = this.dataset.sourceType || 'plaid';
-            
-            if (!destinationId) {
-                return;
-            }
-            
-            // Get source from the filter dropdown
-            const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
-            let sourceAccountId = null;
-            if (sourceFilter === 'plaid') {
-                sourceAccountId = 21; // FNBO Bank
-            } else if (sourceFilter === 'historic') {
-                sourceAccountId = 1; // Bluevine Bank
-            } else {
-                // 'all' - use the transaction's source_type
-                sourceAccountId = (sourceType === 'plaid') ? 21 : 1;
-            }
-            
-            if (!sourceAccountId) {
-                showToast('Please select a source filter first (Live Plaid or Historic CSV)', 'warning');
-                this.value = '';
-                return;
-            }
-            
-            // Post the transaction
-            postSingleTransaction(txId, sourceAccountId, destinationId, processed);
-        });
-    });
 }
-
 
 function updateBankCounts(unprocessed, total) {
     const countEl = document.getElementById('bank-unprocessed-count');
@@ -1052,31 +1015,91 @@ function updateBankCounts(unprocessed, total) {
     }
 }
 
-async function postSingleTransaction(transactionId, sourceAccountId, destinationAccountId, isUpdate = false) {
+function refreshBankTable() {
+    loadBankTransactions();
+}
+
+function resetBankFilters() {
+    document.getElementById('bank-filter').value = '';
+    document.getElementById('bank-view-filter').value = 'unposted';
+    document.getElementById('bank-source-filter').value = 'all';
+    loadBankTransactions();
+}
+
+async function applyAllSelections() {
+    // Get all checked transactions
+    const checkboxes = document.querySelectorAll('.tx-checkbox:checked');
+    if (checkboxes.length === 0) {
+        showToast('Please select at least one transaction to apply.', 'warning');
+        return;
+    }
+
+    // Get source from filter dropdown
+    const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
+    let sourceAccountId = null;
+    if (sourceFilter === 'plaid') {
+        sourceAccountId = 21; // FNBO Bank
+    } else if (sourceFilter === 'historic') {
+        sourceAccountId = 1; // Bluevine Bank
+    } else {
+        showToast('Please select a specific source (Live Plaid or Historic CSV)', 'warning');
+        return;
+    }
+
+    const updates = [];
+    let hasErrors = false;
+    let errorMessages = [];
+
+    checkboxes.forEach(checkbox => {
+        const txId = checkbox.dataset.txId;
+        const row = checkbox.closest('tr');
+        const targetSelect = row.querySelector('.tx-target-select');
+        const destinationId = targetSelect.value;
+        
+        if (!destinationId) {
+            hasErrors = true;
+            errorMessages.push(`Transaction ${txId} has no destination selected.`);
+            return;
+        }
+
+        // Get the transaction's source type from the row data
+        const sourceType = row.dataset.sourceType || 'plaid';
+        
+        updates.push({
+            transaction_id: txId,
+            source_account_id: sourceAccountId,
+            target_account_id: parseInt(destinationId),
+            source_type: sourceType
+        });
+    });
+
+    if (hasErrors) {
+        showToast('Errors found: ' + errorMessages.join(' '), 'error');
+        return;
+    }
+
+    if (updates.length === 0) {
+        showToast('No valid transactions to apply.', 'warning');
+        return;
+    }
+
+    if (!confirm(`Apply ${updates.length} transaction(s)?`)) {
+        return;
+    }
+
     try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/post-single`, {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-multiple`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transaction_id: transactionId,
-                source_account_id: parseInt(sourceAccountId),
-                target_account_id: parseInt(destinationAccountId),
-                is_update: isUpdate
-            })
+            body: JSON.stringify({ updates })
         });
-        
         const data = await res.json();
         if (data.status === 'success') {
-            if (isUpdate) {
-                showToast(`🔄 Transaction updated to "${data.account_name}"`, 'info');
-            } else {
-                showToast(`✅ Transaction posted to "${data.account_name}"`, 'success');
-            }
-            // Reload the table to reflect changes
+            showToast(`✅ ${data.processed} transaction(s) posted successfully.`, 'success');
             loadBankTransactions();
         } else {
-            showToast('❌ Error: ' + (data.error || 'Failed to post transaction'), 'error');
+            showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (e) {
         showToast('❌ Error: ' + e.message, 'error');
@@ -1232,7 +1255,6 @@ function exportAccountTransactionsCSV() {
 // ============================================================
 
 async function loadMonthlyPerformance() {
-    // Kept for reference but no longer called
     console.warn('loadMonthlyPerformance called but Monthly tab is removed.');
 }
 
