@@ -115,17 +115,29 @@
         .account-balance-display .balance-zero { color: #666; }
         .bank-status-bar { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px; align-items: center; background: #f8f9fa; padding: 10px 15px; border-radius: 4px; }
         .bank-status-bar .count-badge { font-weight: 600; color: #007bff; }
-        .bank-status-bar .toggle-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; color: #333; margin: 0; }
-        .bank-status-bar .toggle-label input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
         .bank-status-bar .source-filter-select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: white; }
         .bank-status-bar .filter-group { display: flex; align-items: center; gap: 10px; margin-left: auto; }
         .bank-status-bar .filter-group .form-group { margin: 0; }
-        .bank-account-select { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; background: white; min-width: 120px; max-width: 180px; }
-        .bank-account-select:focus { border-color: #007bff; outline: none; }
-        .bank-account-select:disabled { opacity: 0.6; cursor: not-allowed; }
-        .tx-account-select { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; background: white; min-width: 130px; max-width: 180px; }
-        .tx-account-select:focus { border-color: #007bff; outline: none; }
-        .tx-account-select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* Bank row colors */
+        .bank-row-posted {
+            background-color: #d4edda !important;
+        }
+        .bank-row-posted td {
+            background-color: #d4edda !important;
+        }
+        .bank-row-unposted {
+            background-color: #f8d7da !important;
+        }
+        .bank-row-unposted td {
+            background-color: #f8d7da !important;
+        }
+        .bank-row-posted:hover td {
+            background-color: #c3e6cb !important;
+        }
+        .bank-row-unposted:hover td {
+            background-color: #f5c6cb !important;
+        }
 
         /* Monthly and Cash Flow chart grid */
         .monthly-controls { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; }
@@ -173,7 +185,6 @@
         <div class="admin-container" id="accounting-container">
             <h1 class="accounting-title"><i class="fas fa-calculator"></i> Accounting</h1>
             <div class="sub-tabs" id="accounting-sub-tabs">
-                <!-- Dashboard and Monthly tabs removed -->
                 <button class="sub-tab active" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
                 <button class="sub-tab" data-subtab="account-transactions"><i class="fas fa-receipt"></i> Account Transactions</button>
                 <button class="sub-tab" data-subtab="adjustments"><i class="fas fa-pencil-alt"></i> Adjustments</button>
@@ -284,7 +295,7 @@
             <!-- ====== BANK TAB (UPDATED) ====== -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">Select a <strong>Source</strong> account (Bluevine or FNBO) and a <strong>Destination</strong> account for each transaction, then click <strong>Apply All</strong> to process all at once.</p>
+                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown, then choose a <strong>Destination</strong> for each transaction. Transactions are automatically posted when you select a destination.</p>
                 <div style="margin-bottom:15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display:none;"><i class="fas fa-university"></i> Connect Bank Account</button>
                     <span id="bank-connection-status" class="text-muted"></span>
@@ -292,45 +303,35 @@
                 <div class="bank-status-bar">
                     <div><span class="count-badge" id="bank-unprocessed-count">0</span><span class="text-muted" id="bank-count-label"> unprocessed transactions</span><span class="text-muted" id="bank-total-count" style="margin-left:10px;">(0 total)</span></div>
                     <div class="filter-group">
-                        <div class="form-group" style="margin:0;"><select id="bank-source-filter" class="source-filter-select" onchange="bankSourceFilterChanged()"><option value="all">All Sources</option><option value="plaid">Live (Plaid)</option><option value="historic">Historic (CSV)</option></select></div>
-                        <label class="toggle-label"><input type="checkbox" id="bank-show-all" onchange="toggleBankShowAll()"><span>Show all transactions</span></label>
+                        <div class="form-group" style="margin:0;">
+                            <select id="bank-source-filter" class="source-filter-select">
+                                <option value="all">All Sources</option>
+                                <option value="plaid">Live (Plaid)</option>
+                                <option value="historic">Historic (CSV)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <select id="bank-view-filter" class="source-filter-select">
+                                <option value="unposted">Unposted</option>
+                                <option value="posted">Posted</option>
+                                <option value="all">All</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
-                <!-- Filter + Refresh + Bulk Apply with Source and Target -->
+                <!-- Filter bar -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
-                    <div class="form-group" style="flex:2;">
+                    <div class="form-group" style="flex:1;">
                         <label>Filter by description</label>
                         <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
                     </div>
-                    <div class="form-group" style="flex:0 0 auto;">
-                        <label>&nbsp;</label>
-                        <button class="btn btn-primary" onclick="refreshBankTable()"><i class="fas fa-sync-alt"></i> Refresh</button>
-                    </div>
-                    <div class="filter-group">
-                        <label>Bulk apply source</label>
-                        <select id="bank-apply-source"><option value="">Select Source</option></select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Bulk apply target</label>
-                        <select id="bank-apply-target"><option value="">Select Target</option></select>
-                    </div>
-                    <div class="filter-group" style="flex:0 0 auto;">
-                        <label>&nbsp;</label>
-                        <button class="btn btn-warning" onclick="applyFilterToTransactions()"><i class="fas fa-tag"></i> Bulk Apply</button>
-                    </div>
-                    <span id="filter-apply-status" class="text-muted"></span>
-                </div>
-                <!-- Action buttons -->
-                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
-                    <button class="btn btn-secondary" onclick="resetBankFilters()"><i class="fas fa-undo"></i> Reset</button>
-                    <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply All</button>
                 </div>
 
                 <!-- ====== GUIDANCE NOTE FOR DEPOSIT TRANSFERS ====== -->
                 <div style="background: #e3f2fd; border-left: 4px solid #007bff; padding: 10px 15px; margin-bottom: 15px; border-radius: 4px; color: #004085;">
                     <i class="fas fa-info-circle"></i> 
                     <strong>How to record deposits from payment processors (Square / PayPal):</strong><br>
-                    For a deposit that appears in your bank account from Square or PayPal, set <strong>Source</strong> to the processor asset account (e.g., <code>Square Asset</code> or <code>PayPal</code>) and <strong>Target</strong> to your bank account (e.g., <code>FNBO Bank</code>). 
+                    For a deposit that appears in your bank account from Square or PayPal, set <strong>Source</strong> to the processor asset account (e.g., <code>Square Asset</code> or <code>PayPal</code>) and <strong>Destination</strong> to your bank account (e.g., <code>FNBO Bank</code>). 
                     This creates a transfer that reduces the processor asset and increases your bank balance – it will <strong>not</strong> duplicate revenue.
                 </div>
                 <!-- ======================================================== -->
@@ -343,12 +344,10 @@
                                 <th>Description</th>
                                 <th>Amount</th>
                                 <th>Category</th>
-                                <th>Status</th>
-                                <th>Source</th>
                                 <th>Destination</th>
                             </tr>
                         </thead>
-                        <tbody id="bank-body"><tr><td colspan="7" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
+                        <tbody id="bank-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
                     </table>
                 </div>
                 <div style="margin-top:15px;">

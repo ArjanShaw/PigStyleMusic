@@ -9794,5 +9794,179 @@ def mark_discogs_sold(record_id):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+# ==================== ACCOUNTING: POST SINGLE BANK TRANSACTION ====================
+# ==================== ACCOUNTING: POST SINGLE BANK TRANSACTION ====================
+
+@app.route('/api/accounting/bank/post-single', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def post_single_bank_transaction():
+    """
+    Post a single bank transaction to the general ledger.
+    If the transaction already has a journal entry, update it.
+    
+    Request body:
+    {
+        "transaction_id": "123",
+        "source_account_id": 21,
+        "target_account_id": 6090,
+        "is_update": false
+    }
+    """
+    try:
+        data = request.json
+        transaction_id = data.get('transaction_id')
+        source_account_id = data.get('source_account_id')
+        target_account_id = data.get('target_account_id')
+        is_update = data.get('is_update', False)
+        
+        if not transaction_id or not source_account_id or not target_account_id:
+            return jsonify({
+                'status': 'error',
+                'error': 'transaction_id, source_account_id, and target_account_id required'
+            }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Verify source account exists
+        cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (source_account_id,))
+        source = cursor.fetchone()
+        if not source:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Source account not found'}), 404
+        
+        # Verify target account exists
+        cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (target_account_id,))
+        target = cursor.fetchone()
+        if not target:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Target account not found'}), 404
+        
+        # Find the transaction in either plaid or historic source
+        tx = None
+        source_type = None
+        
+        # Check if it's a Plaid transaction
+        try:
+            plaid_tx = fetch_bank_transactions()
+            for pt in plaid_tx:
+                if str(pt['id']) == str(transaction_id):
+                    tx = pt
+                    source_type = 'plaid'
+                    break
+        except Exception as e:
+            app.logger.warning(f"Could not fetch Plaid transactions: {e}")
+        
+        # If not found in Plaid, check historic bank_transactions table
+        if not tx:
+            cursor.execute('''
+                SELECT id, transaction_date as date, amount, description, processed
+                FROM bank_transactions
+                WHERE id = ?
+            ''', (int(transaction_id),))
+            row = cursor.fetchone()
+            if row:
+                tx = {
+                    'id': row['id'],
+                    'date': row['date'],
+                    'amount': row['amount'] / 100.0,
+                    'description': row['description'],
+                    'processed': row['processed'] == 1
+                }
+                source_type = 'historic'
+        
+        if not tx:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Transaction {transaction_id} not found'
+            }), 404
+        
+        amount = tx['amount']
+        date_raw = tx['date']
+        description = tx.get('description', '')
+        
+        date_str = parse_plaid_date(date_raw) or datetime.now().date().isoformat()
+        amount_cents = int(round(abs(amount) * 100))
+        is_expense = amount > 0
+        
+        # Check if already processed
+        cursor.execute('''
+            SELECT id FROM journal_entries
+            WHERE source_type = ? AND source_id = ?
+        ''', (source_type, str(transaction_id)))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Entry exists – delete its old lines
+            cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+            entry_id = existing['id']
+            action = 'updated'
+        else:
+            # Create new entry
+            cursor.execute('''
+                INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                VALUES (?, ?, ?, ?)
+            ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
+            entry_id = cursor.lastrowid
+            action = 'posted'
+        
+        # Get cash account for this source type
+        cash_id = get_cash_account_id(source_type)
+        if not cash_id:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Cash account not configured for source {source_type}'
+            }), 500
+        
+        # Insert the new lines for this entry
+        if is_expense:
+            # Withdrawal: Debit target (expense), Credit source (cash)
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, target_account_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, source_account_id, 0, amount_cents))
+        else:
+            # Deposit: Debit source (cash), Credit target (revenue/liability)
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, source_account_id, amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, target_account_id, 0, amount_cents))
+        
+        # Mark as processed in the appropriate table
+        if source_type == 'historic':
+            cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Transaction {action} successfully to {target["name"]}',
+            'action': action,
+            'entry_id': entry_id,
+            'account_name': target['name'],
+            'account_code': target['code'],
+            'source_account_name': source['name'],
+            'amount': amount,
+            'is_expense': is_expense
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error posting single transaction: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

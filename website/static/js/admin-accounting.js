@@ -24,6 +24,49 @@ if (typeof ChartAnnotation !== 'undefined') {
 }
 
 // ============================================================
+// TOAST NOTIFICATION
+// ============================================================
+
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    toast.innerHTML = message;
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        border-radius: 8px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        background: ${type === 'success' ? '#28a745' : '#17a2b8'};
+        max-width: 400px;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// Add animation styles if not present
+if (!document.getElementById('toast-styles')) {
+    const style = document.createElement('style');
+    style.id = 'toast-styles';
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// ============================================================
 // INITIALIZATION
 // ============================================================
 
@@ -51,7 +94,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 checkBankConnection();
                 loadAccountSelectsForBank();
                 loadBankAccountsForRowDropdowns();
-                loadBulkApplyAccounts();
             }
             else if (sub === 'cash-flow') {
                 const now = new Date();
@@ -188,6 +230,21 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Error: ' + err.message);
         });
     }
+
+    // Bank view filter change
+    document.getElementById('bank-view-filter')?.addEventListener('change', function() {
+        loadBankTransactions();
+    });
+
+    // Bank source filter change
+    document.getElementById('bank-source-filter')?.addEventListener('change', function() {
+        loadBankTransactions();
+    });
+
+    // Bank search filter - auto-search on input
+    document.getElementById('bank-filter')?.addEventListener('input', function() {
+        loadBankTransactions();
+    });
 });
 
 // ============================================================
@@ -226,7 +283,7 @@ async function loadAccountSelects() {
 }
 
 async function loadAccountSelectsForBank() {
-    const select = document.getElementById('bank-apply-account');
+    const select = document.getElementById('bank-destination-account');
     if (!select) return;
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
@@ -235,16 +292,18 @@ async function loadAccountSelectsForBank() {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            select.innerHTML = '<option value="">Select Account</option>';
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Select Destination</option>';
             data.accounts.forEach(acc => {
                 const opt = document.createElement('option');
                 opt.value = acc.id;
                 opt.textContent = acc.code + ' - ' + acc.name;
                 select.appendChild(opt);
             });
+            select.value = currentVal;
         }
     } catch (e) {
-        console.error('Failed to load accounts for bank apply:', e);
+        console.error('Failed to load accounts for bank:', e);
     }
 }
 
@@ -262,42 +321,6 @@ async function loadBankAccountsForRowDropdowns() {
     } catch (e) {
         console.error('Failed to load accounts for row dropdowns:', e);
         throw e;
-    }
-}
-
-async function loadBulkApplyAccounts() {
-    const sourceSelect = document.getElementById('bank-apply-source');
-    const targetSelect = document.getElementById('bank-apply-target');
-    if (!sourceSelect || !targetSelect) return;
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            // Source dropdown – only Bluevine (1) and FNBO (21)
-            const sourceOptions = data.accounts.filter(acc => acc.id == 1 || acc.id == 21);
-            sourceSelect.innerHTML = '<option value="">Select Source</option>';
-            sourceOptions.forEach(acc => {
-                const opt = document.createElement('option');
-                opt.value = acc.id;
-                opt.textContent = acc.code + ' - ' + acc.name;
-                sourceSelect.appendChild(opt);
-            });
-
-            // Target dropdown – all non‑cash accounts (exclude 1 and 21)
-            const targetOptions = data.accounts.filter(acc => acc.id != 1 && acc.id != 21);
-            targetSelect.innerHTML = '<option value="">Select Target</option>';
-            targetOptions.forEach(acc => {
-                const opt = document.createElement('option');
-                opt.value = acc.id;
-                opt.textContent = acc.code + ' - ' + acc.name;
-                targetSelect.appendChild(opt);
-            });
-        }
-    } catch (e) {
-        console.error('Failed to load bulk apply accounts:', e);
     }
 }
 
@@ -806,7 +829,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS – with source + target dropdowns
+// BANK TRANSACTIONS – UPDATED
 // ============================================================
 
 async function checkBankConnection() {
@@ -876,7 +899,7 @@ async function connectBank() {
 
 async function loadBankTransactions() {
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const params = new URLSearchParams();
     params.append('page', 1);
@@ -885,10 +908,15 @@ async function loadBankTransactions() {
     const filter = document.getElementById('bank-filter').value.trim();
     if (filter) params.append('search', filter);
 
-    const showAll = document.getElementById('bank-show-all')?.checked || false;
-    if (!showAll) {
+    // Get view filter: 'unposted', 'posted', 'all'
+    const viewFilter = document.getElementById('bank-view-filter')?.value || 'unposted';
+    if (viewFilter === 'unposted') {
         params.append('unprocessed_only', 'true');
+    } else if (viewFilter === 'posted') {
+        params.append('unprocessed_only', 'false');
+        // We'll filter on the client side for posted only
     }
+    // 'all' means no filter
 
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
     if (sourceFilter !== 'all') {
@@ -907,24 +935,30 @@ async function loadBankTransactions() {
         if (!res.ok) throw new Error('Failed to load bank transactions');
         const data = await res.json();
         if (data.status === 'success') {
-            const transactions = data.transactions || [];
+            let transactions = data.transactions || [];
+            
+            // Filter for 'posted' view
+            if (viewFilter === 'posted') {
+                transactions = transactions.filter(t => t.processed === true);
+            }
+            
             renderBankTransactions(transactions);
             const total = data.total_count || transactions.length;
             const unprocessed = data.unprocessed_count || 0;
             updateBankCounts(unprocessed, total);
             document.getElementById('bank-pagination-info').textContent = `Showing ${transactions.length} entries (${total} total)`;
         } else {
-            body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
     let html = '';
@@ -932,41 +966,68 @@ function renderBankTransactions(transactions) {
         const amount = parseFloat(t.amount) || 0;
         const isDebit = amount < 0;
         const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
-        const status = t.status || (t.pending ? 'Pending' : 'Posted');
-        const category = t.category || '';
         const processed = t.processed || false;
-        const assignedCashId = t.cash_account_id || null;
         const assignedTargetId = t.account_id || null;
-
-        // Source dropdown – only Bluevine (1) and FNBO (21)
-        const sourceOptions = bankAccounts.filter(acc => acc.id == 1 || acc.id == 21);
-        let sourceHtml = `<select class="tx-source-select" id="tx-source-${t.id}" data-source-type="${t.source_type}">`;
-        sourceOptions.forEach(acc => {
-            const selected = (assignedCashId == acc.id) ? 'selected' : '';
-            sourceHtml += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
-        });
-        sourceHtml += '</select>';
-
-        // Target dropdown – all accounts except cash accounts (exclude 1 and 21)
+        
+        // Row color: green if posted, red if unposted
+        const rowClass = processed ? 'bank-row-posted' : 'bank-row-unposted';
+        
+        // Destination dropdown - all accounts except cash accounts (exclude 1 and 21)
         const targetOptions = bankAccounts.filter(acc => acc.id != 1 && acc.id != 21);
-        let targetHtml = `<select class="tx-target-select" id="tx-target-${t.id}">`;
+        let targetHtml = `<select class="tx-target-select" id="tx-target-${t.id}" data-processed="${processed}" data-tx-id="${t.id}" data-source-type="${t.source_type || 'plaid'}">`;
+        targetHtml += `<option value="">Select Destination</option>`;
         targetOptions.forEach(acc => {
             const selected = (assignedTargetId == acc.id) ? 'selected' : '';
             targetHtml += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
         });
         targetHtml += '</select>';
 
-        html += `<tr>
+        html += `<tr class="${rowClass}">
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
-            <td>${category}</td>
-            <td><span class="status-badge ${status === 'Pending' ? 'warning' : 'active'}">${status}</span></td>
-            <td>${sourceHtml}</td>
+            <td>${t.category || ''}</td>
             <td>${targetHtml}</td>
         </tr>`;
     });
     body.innerHTML = html;
+
+    // Attach event listeners to all destination dropdowns
+    document.querySelectorAll('.tx-target-select').forEach(select => {
+        select.addEventListener('change', function() {
+            const txId = this.dataset.txId;
+            const destinationId = this.value;
+            const processed = this.dataset.processed === 'true';
+            const sourceType = this.dataset.sourceType || 'plaid';
+            
+            if (!destinationId) {
+                // If they selected empty, don't do anything
+                return;
+            }
+            
+            // Get source from the filter dropdown
+            const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
+            // Map source filter to account ID
+            let sourceAccountId = null;
+            if (sourceFilter === 'plaid') {
+                sourceAccountId = 21; // FNBO Bank (default for Plaid)
+            } else if (sourceFilter === 'historic') {
+                sourceAccountId = 1; // Bluevine Bank (default for historic)
+            } else {
+                // 'all' - use the transaction's source_type
+                sourceAccountId = (sourceType === 'plaid') ? 21 : 1;
+            }
+            
+            if (!sourceAccountId) {
+                showToast('Please select a source filter first (Live Plaid or Historic CSV)', 'warning');
+                this.value = '';
+                return;
+            }
+            
+            // Post the transaction
+            postSingleTransaction(txId, sourceAccountId, destinationId, processed);
+        });
+    });
 }
 
 function updateBankCounts(unprocessed, total) {
@@ -974,8 +1035,12 @@ function updateBankCounts(unprocessed, total) {
     const labelEl = document.getElementById('bank-count-label');
     const totalEl = document.getElementById('bank-total-count');
 
-    const showAll = document.getElementById('bank-show-all')?.checked || false;
-    if (showAll) {
+    const viewFilter = document.getElementById('bank-view-filter')?.value || 'unposted';
+    if (viewFilter === 'posted') {
+        countEl.textContent = total - unprocessed;
+        labelEl.textContent = ' posted transactions';
+        totalEl.textContent = `(${total} total)`;
+    } else if (viewFilter === 'all') {
         countEl.textContent = total;
         labelEl.textContent = ' transactions';
         totalEl.textContent = `(${total} total)`;
@@ -986,118 +1051,34 @@ function updateBankCounts(unprocessed, total) {
     }
 }
 
-function toggleBankShowAll() {
-    loadBankTransactions();
-}
-
-function bankSourceFilterChanged() {
-    loadBankTransactions();
-}
-
-function refreshBankTable() {
-    loadBankTransactions();
-}
-
-function resetBankFilters() {
-    document.getElementById('bank-filter').value = '';
-    document.getElementById('bank-show-all').checked = false;
-    document.getElementById('bank-source-filter').value = 'all';
-    loadBankTransactions();
-}
-
-async function applyAllSelections() {
-    const sourceSelects = document.querySelectorAll('#bank-body .tx-source-select');
-    const targetSelects = document.querySelectorAll('#bank-body .tx-target-select');
-    const updates = [];
-    sourceSelects.forEach((sel, index) => {
-        const sourceId = sel.value;
-        const targetId = targetSelects[index].value;
-        if (!sourceId || !targetId) return;
-        const idParts = sel.id.split('-');
-        if (idParts.length < 3) return;
-        const transactionId = idParts.slice(2).join('-');
-        const sourceType = sel.dataset.sourceType || 'bank_transaction';
-        updates.push({
-            transaction_id: transactionId,
-            source_account_id: parseInt(sourceId),
-            target_account_id: parseInt(targetId),
-            source_type: sourceType
-        });
-    });
-
-    if (updates.length === 0) {
-        alert('No selections to apply. Please select both source and target accounts for at least one transaction.');
-        return;
-    }
-
-    if (!confirm(`Apply accounts to ${updates.length} transaction(s)?`)) return;
-
+async function postSingleTransaction(transactionId, sourceAccountId, destinationAccountId, isUpdate = false) {
     try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-multiple`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ updates })
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            alert(`✅ ${data.processed} transaction(s) updated.`);
-            loadBankTransactions();
-        } else {
-            alert('❌ Error: ' + (data.error || 'Unknown error'));
-        }
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-}
-
-async function applyFilterToTransactions() {
-    const filterInput = document.getElementById('bank-filter');
-    const sourceSelect = document.getElementById('bank-apply-source');
-    const targetSelect = document.getElementById('bank-apply-target');
-    const statusSpan = document.getElementById('filter-apply-status');
-
-    const pattern = filterInput.value.trim();
-    const sourceId = parseInt(sourceSelect.value);
-    const targetId = parseInt(targetSelect.value);
-
-    if (!pattern) {
-        alert('Please enter a filter pattern (e.g. STAMPS.COM).');
-        return;
-    }
-    if (!sourceId || !targetId) {
-        alert('Please select both a Source and a Target account.');
-        return;
-    }
-
-    const showAll = document.getElementById('bank-show-all')?.checked || false;
-    const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
-
-    statusSpan.textContent = '⏳ Applying...';
-
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-filter-bulk`, {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/post-single`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                search: pattern,
-                unprocessed_only: !showAll,
-                source_type: sourceFilter === 'all' ? null : sourceFilter,
-                source_account_id: sourceId,
-                target_account_id: targetId
+                transaction_id: transactionId,
+                source_account_id: parseInt(sourceAccountId),
+                target_account_id: parseInt(destinationAccountId),
+                is_update: isUpdate
             })
         });
-
+        
         const data = await res.json();
         if (data.status === 'success') {
-            statusSpan.textContent = `✅ ${data.message}`;
+            if (isUpdate) {
+                showToast(`🔄 Transaction updated to "${data.account_name}"`, 'info');
+            } else {
+                showToast(`✅ Transaction posted to "${data.account_name}"`, 'success');
+            }
+            // Reload the table to reflect changes
             loadBankTransactions();
         } else {
-            statusSpan.textContent = '❌ Error: ' + (data.error || 'Unknown');
+            showToast('❌ Error: ' + (data.error || 'Failed to post transaction'), 'error');
         }
     } catch (e) {
-        statusSpan.textContent = '❌ Error: ' + e.message;
+        showToast('❌ Error: ' + e.message, 'error');
     }
 }
 
@@ -1463,7 +1444,6 @@ function renderCashFlowCharts(data) {
                             }
                         }
                     },
-                    // Add zero line annotation
                     annotation: {
                         annotations: {
                             zeroLine: {
