@@ -1709,13 +1709,16 @@ async function loadCashFlow() {
         return;
     }
 
-    // Display the date range - THIS IS THE NEW CODE
+    // Display the date range
     const dateRangeEl = document.getElementById('cash-flow-date-range');
     if (dateRangeEl) {
         const startDisplay = startInput.value || 'Start';
         const endDisplay = endInput.value || 'End';
         dateRangeEl.textContent = `Showing cash flow from ${startDisplay} to ${endDisplay}`;
         dateRangeEl.style.display = 'block';
+        console.log('[CASHFLOW] Date range displayed:', dateRangeEl.textContent);
+    } else {
+        console.log('[CASHFLOW] cash-flow-date-range element not found!');
     }
 
     if (bankAccounts.length === 0) {
@@ -1749,7 +1752,6 @@ async function loadCashFlow() {
         container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
 }
-
 
 function renderCashFlowCharts(data) {
     console.log('[CASHFLOW] Rendering charts');
