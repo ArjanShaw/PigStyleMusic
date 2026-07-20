@@ -263,7 +263,7 @@
                 <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
 
-            <!-- BANK TAB - NO REFRESH, NO RESET, NO CHECKBOXES -->
+            <!-- BANK TAB - DEFAULT PLAID, NO CHECKBOXES, NO REFRESH, NO RESET -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
                 <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown, select a <strong>Destination</strong> for each transaction, then click <strong>Apply</strong> to post all transactions with a destination selected.</p>
@@ -276,8 +276,8 @@
                     <div class="filter-group">
                         <div class="form-group" style="margin:0;">
                             <select id="bank-source-filter" class="source-filter-select">
+                                <option value="plaid" selected>Live (Plaid)</option>
                                 <option value="all">All Sources</option>
-                                <option value="plaid">Live (Plaid)</option>
                                 <option value="historic">Historic (CSV)</option>
                             </select>
                         </div>
