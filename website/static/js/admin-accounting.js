@@ -140,6 +140,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     loadCashFlow();
                 });
             }
+            else if (sub === 'monthly-pl') {
+                console.log('[INIT] Monthly P&L tab selected');
+                const now = new Date();
+                const endMonth = now.toISOString().slice(0, 7);
+                const endInput = document.getElementById('pl-end');
+                if (!endInput.value) endInput.value = endMonth;
+                const startInput = document.getElementById('pl-start');
+                if (!startInput.value) {
+                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                    startInput.value = startDate.toISOString().slice(0, 7);
+                }
+                loadMonthlyPL();
+            }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
                     window.loadOrders();
@@ -1693,7 +1706,7 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW (with expandable charts and full date range titles)
+// CASH FLOW (with expandable charts)
 // ============================================================
 
 async function loadCashFlow() {
@@ -2224,4 +2237,192 @@ function collapseChart() {
         });
     }
     console.log('[CASHFLOW] Collapse complete');
+}
+
+// ============================================================
+// MONTHLY P&L
+// ============================================================
+
+let monthlyPLCharts = [];
+
+async function loadMonthlyPL() {
+    console.log('[MONTHLY-PL] Loading monthly P&L');
+    const startInput = document.getElementById('pl-start');
+    const endInput = document.getElementById('pl-end');
+    const start = startInput.value;
+    const end = endInput.value;
+    
+    if (!start || !end) {
+        alert('Please select both start and end months.');
+        return;
+    }
+
+    // Display the date range
+    const dateRangeEl = document.getElementById('pl-date-range');
+    if (dateRangeEl) {
+        const startDisplay = startInput.value || 'Start';
+        const endDisplay = endInput.value || 'End';
+        dateRangeEl.textContent = `Showing P&L from ${startDisplay} to ${endDisplay}`;
+        dateRangeEl.style.display = 'block';
+        console.log('[MONTHLY-PL] Date range displayed:', dateRangeEl.textContent);
+    }
+
+    const container = document.getElementById('pl-chart-grid');
+    container.innerHTML = '<p class="monthly-loading">Loading...</p>';
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${start}&end=${end}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to fetch P&L data');
+        const data = await res.json();
+        if (data.status === 'success') {
+            console.log('[MONTHLY-PL] Data loaded, months:', data.months.length);
+            renderMonthlyPL(data);
+        } else {
+            container.innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
+        }
+    } catch (err) {
+        container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+        console.error('Monthly P&L error:', err);
+    }
+}
+
+function renderMonthlyPL(data) {
+    console.log('[MONTHLY-PL] Rendering charts');
+    const { months, account_breakdown } = data;
+    const container = document.getElementById('pl-chart-grid');
+    container.innerHTML = '';
+
+    if (!months || months.length === 0) {
+        container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
+        return;
+    }
+
+    // Get all account names
+    const allAccounts = new Set();
+    months.forEach(m => {
+        const monthData = account_breakdown[m] || {};
+        Object.keys(monthData).forEach(acc => allAccounts.add(acc));
+    });
+    const accountNames = Array.from(allAccounts).sort();
+    
+    // Remove "Net Income" from the list to handle it specially
+    const revenueExpenseAccounts = accountNames.filter(name => name !== 'Net Income');
+
+    // Calculate max for Y axis
+    let globalMax = 0;
+    months.forEach(m => {
+        const monthData = account_breakdown[m] || {};
+        revenueExpenseAccounts.forEach(acc => {
+            const val = monthData[acc] || 0;
+            if (Math.abs(val) > globalMax) globalMax = Math.abs(val);
+        });
+        // Also check net income
+        const net = monthData['Net Income'] || 0;
+        if (Math.abs(net) > globalMax) globalMax = Math.abs(net);
+    });
+    const yMax = Math.ceil(globalMax / 500) * 500 || 500;
+
+    if (window._monthlyPLCharts) {
+        window._monthlyPLCharts.forEach(chart => chart.destroy());
+    }
+    window._monthlyPLCharts = [];
+
+    months.forEach((month, idx) => {
+        const monthData = account_breakdown[month] || {};
+        
+        // Get values for all accounts
+        const values = revenueExpenseAccounts.map(acc => monthData[acc] || 0);
+        const labels = revenueExpenseAccounts.slice();
+        
+        // Add Net Income as the last bar
+        const netIncome = monthData['Net Income'] || 0;
+        labels.push('Net Income');
+        values.push(netIncome);
+
+        // Bar colors: green for positive, red for negative, purple for net income
+        const barColors = values.map((v, i) => {
+            if (i === values.length - 1) return 'rgba(111, 66, 193, 0.8)'; // Net Income
+            return v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)';
+        });
+        const borderColors = values.map((v, i) => {
+            if (i === values.length - 1) return '#6f42c1';
+            return v >= 0 ? '#28a745' : '#dc3545';
+        });
+
+        const card = document.createElement('div');
+        card.className = 'monthly-chart-card';
+        card.innerHTML = `<h4>${month}</h4><canvas id="pl-chart-${idx}"></canvas>`;
+        container.appendChild(card);
+
+        const canvas = card.querySelector('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Amount',
+                    data: values,
+                    backgroundColor: barColors,
+                    borderColor: borderColors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const val = ctx.raw;
+                                return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            zeroLine: {
+                                type: 'line',
+                                yMin: 0,
+                                yMax: 0,
+                                borderColor: 'rgba(0, 0, 0, 0.3)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: {
+                                    content: '0',
+                                    enabled: true,
+                                    position: 'right',
+                                    color: '#333',
+                                    font: { size: 10 }
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: yMax,
+                        min: -yMax,
+                        ticks: { callback: (val) => '$' + val }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            font: { size: 10 }
+                        }
+                    }
+                }
+            }
+        });
+        window._monthlyPLCharts.push(chart);
+    });
+    console.log('[MONTHLY-PL] Rendering complete');
 }
