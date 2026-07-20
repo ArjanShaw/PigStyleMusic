@@ -826,7 +826,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS – UPDATED WITH BULK APPLY
+// BANK TRANSACTIONS – UPDATED (NO CHECKBOXES)
 // ============================================================
 
 async function checkBankConnection() {
@@ -896,7 +896,7 @@ async function connectBank() {
 
 async function loadBankTransactions() {
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const params = new URLSearchParams();
     params.append('page', 1);
@@ -941,17 +941,17 @@ async function loadBankTransactions() {
             updateBankCounts(unprocessed, total);
             document.getElementById('bank-pagination-info').textContent = `Showing ${transactions.length} entries (${total} total)`;
         } else {
-            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
         }
     } catch (err) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
     let html = '';
@@ -964,14 +964,6 @@ function renderBankTransactions(transactions) {
         
         const rowClass = processed ? 'bank-row-posted' : 'bank-row-unposted';
         
-        // Checkbox - only show for unprocessed transactions
-        let checkboxHtml = '';
-        if (!processed) {
-            checkboxHtml = `<input type="checkbox" class="tx-checkbox" data-tx-id="${t.id}">`;
-        } else {
-            checkboxHtml = '';
-        }
-        
         // Destination dropdown - all accounts except cash accounts (exclude 1 and 21)
         const targetOptions = bankAccounts.filter(acc => acc.id != 1 && acc.id != 21);
         let targetHtml = `<select class="tx-target-select" id="tx-target-${t.id}" data-tx-id="${t.id}" data-processed="${processed}">`;
@@ -982,8 +974,8 @@ function renderBankTransactions(transactions) {
         });
         targetHtml += '</select>';
 
+        // NO CHECKBOX - just 5 columns
         html += `<tr class="${rowClass}">
-            <td>${checkboxHtml}</td>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
@@ -1015,25 +1007,7 @@ function updateBankCounts(unprocessed, total) {
     }
 }
 
-function refreshBankTable() {
-    loadBankTransactions();
-}
-
-function resetBankFilters() {
-    document.getElementById('bank-filter').value = '';
-    document.getElementById('bank-view-filter').value = 'unposted';
-    document.getElementById('bank-source-filter').value = 'all';
-    loadBankTransactions();
-}
-
 async function applyAllSelections() {
-    // Get all checked transactions
-    const checkboxes = document.querySelectorAll('.tx-checkbox:checked');
-    if (checkboxes.length === 0) {
-        showToast('Please select at least one transaction to apply.', 'warning');
-        return;
-    }
-
     // Get source from filter dropdown
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
     let sourceAccountId = null;
@@ -1046,30 +1020,35 @@ async function applyAllSelections() {
         return;
     }
 
+    // Get all unprocessed transactions with a destination selected
+    const rows = document.querySelectorAll('#bank-body tr');
     const updates = [];
     let hasErrors = false;
     let errorMessages = [];
 
-    checkboxes.forEach(checkbox => {
-        const txId = checkbox.dataset.txId;
-        const row = checkbox.closest('tr');
+    rows.forEach(row => {
         const targetSelect = row.querySelector('.tx-target-select');
-        const destinationId = targetSelect.value;
+        if (!targetSelect) return;
         
+        const destinationId = targetSelect.value;
+        const txId = targetSelect.dataset.txId;
+        const processed = targetSelect.dataset.processed === 'true';
+        
+        // Skip if already processed
+        if (processed) return;
+        
+        // Skip if no destination selected
         if (!destinationId) {
             hasErrors = true;
             errorMessages.push(`Transaction ${txId} has no destination selected.`);
             return;
         }
 
-        // Get the transaction's source type from the row data
-        const sourceType = row.dataset.sourceType || 'plaid';
-        
         updates.push({
             transaction_id: txId,
             source_account_id: sourceAccountId,
             target_account_id: parseInt(destinationId),
-            source_type: sourceType
+            source_type: 'plaid' // will be determined by backend
         });
     });
 
@@ -1079,7 +1058,7 @@ async function applyAllSelections() {
     }
 
     if (updates.length === 0) {
-        showToast('No valid transactions to apply.', 'warning');
+        showToast('No unprocessed transactions with destinations selected.', 'warning');
         return;
     }
 

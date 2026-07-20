@@ -263,10 +263,10 @@
                 <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
 
-            <!-- BANK TAB - NO REFRESH, NO RESET -->
+            <!-- BANK TAB - NO REFRESH, NO RESET, NO CHECKBOXES -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown, check the transactions you want to post, select a <strong>Destination</strong> for each, then click <strong>Apply Selected</strong>.</p>
+                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown, select a <strong>Destination</strong> for each transaction, then click <strong>Apply</strong> to post all transactions with a destination selected.</p>
                 <div style="margin-bottom:15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display:none;"><i class="fas fa-university"></i> Connect Bank Account</button>
                     <span id="bank-connection-status" class="text-muted"></span>
@@ -298,7 +298,7 @@
                     </div>
                     <div class="form-group" style="flex:0 0 auto;">
                         <label>&nbsp;</label>
-                        <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply Selected</button>
+                        <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply</button>
                     </div>
                 </div>
 
@@ -313,7 +313,6 @@
                     <table class="journal-table" id="bank-table">
                         <thead>
                             <tr>
-                                <th style="width:30px;">✓</th>
                                 <th>Date</th>
                                 <th>Description</th>
                                 <th>Amount</th>
@@ -321,7 +320,7 @@
                                 <th>Destination</th>
                             </tr>
                         </thead>
-                        <tbody id="bank-body"><tr><td colspan="6" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
+                        <tbody id="bank-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
                     </table>
                 </div>
                 <div style="margin-top:15px;">
