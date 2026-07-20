@@ -826,7 +826,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS – UPDATED (NO CHECKBOXES)
+// BANK TRANSACTIONS – UPDATED (NO CHECKBOXES, DEFAULT PLAID)
 // ============================================================
 
 async function checkBankConnection() {
@@ -912,7 +912,7 @@ async function loadBankTransactions() {
         params.append('unprocessed_only', 'false');
     }
 
-    const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
+    const sourceFilter = document.getElementById('bank-source-filter')?.value || 'plaid';
     if (sourceFilter !== 'all') {
         params.append('source_type', sourceFilter);
     }
@@ -974,7 +974,6 @@ function renderBankTransactions(transactions) {
         });
         targetHtml += '</select>';
 
-        // NO CHECKBOX - just 5 columns
         html += `<tr class="${rowClass}">
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
@@ -1008,8 +1007,8 @@ function updateBankCounts(unprocessed, total) {
 }
 
 async function applyAllSelections() {
-    // Get source from filter dropdown
-    const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
+    // Get source from filter dropdown - default to plaid
+    const sourceFilter = document.getElementById('bank-source-filter')?.value || 'plaid';
     let sourceAccountId = null;
     if (sourceFilter === 'plaid') {
         sourceAccountId = 21; // FNBO Bank
@@ -1023,8 +1022,7 @@ async function applyAllSelections() {
     // Get all unprocessed transactions with a destination selected
     const rows = document.querySelectorAll('#bank-body tr');
     const updates = [];
-    let hasErrors = false;
-    let errorMessages = [];
+    let skippedCount = 0;
 
     rows.forEach(row => {
         const targetSelect = row.querySelector('.tx-target-select');
@@ -1037,10 +1035,9 @@ async function applyAllSelections() {
         // Skip if already processed
         if (processed) return;
         
-        // Skip if no destination selected
+        // Skip if no destination selected (just count them)
         if (!destinationId) {
-            hasErrors = true;
-            errorMessages.push(`Transaction ${txId} has no destination selected.`);
+            skippedCount++;
             return;
         }
 
@@ -1048,21 +1045,20 @@ async function applyAllSelections() {
             transaction_id: txId,
             source_account_id: sourceAccountId,
             target_account_id: parseInt(destinationId),
-            source_type: 'plaid' // will be determined by backend
+            source_type: sourceFilter === 'plaid' ? 'plaid' : 'historic'
         });
     });
 
-    if (hasErrors) {
-        showToast('Errors found: ' + errorMessages.join(' '), 'error');
-        return;
-    }
-
     if (updates.length === 0) {
-        showToast('No unprocessed transactions with destinations selected.', 'warning');
+        if (skippedCount > 0) {
+            showToast(`No transactions with destinations selected. ${skippedCount} transaction(s) skipped.`, 'warning');
+        } else {
+            showToast('No unprocessed transactions found.', 'warning');
+        }
         return;
     }
 
-    if (!confirm(`Apply ${updates.length} transaction(s)?`)) {
+    if (!confirm(`Apply ${updates.length} transaction(s)? (${skippedCount} skipped - no destination selected)`)) {
         return;
     }
 
@@ -1075,7 +1071,7 @@ async function applyAllSelections() {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            showToast(`✅ ${data.processed} transaction(s) posted successfully.`, 'success');
+            showToast(`✅ ${data.processed} transaction(s) posted successfully. ${skippedCount} skipped.`, 'success');
             loadBankTransactions();
         } else {
             showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
