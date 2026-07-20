@@ -94,6 +94,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 checkBankConnection();
                 loadAccountSelectsForBank();
                 loadBankAccountsForRowDropdowns();
+                loadBulkDestinationAccounts();
+            }
+            else if (sub === 'accounts') {
+                loadAccountsList();
             }
             else if (sub === 'cash-flow') {
                 const now = new Date();
@@ -244,11 +248,29 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('bank-filter')?.addEventListener('input', function() {
         loadBankTransactions();
     });
-});
 
-// ============================================================
-// DASHBOARD FUNCTIONS REMOVED
-// ============================================================
+    // Accounts tab - add account form
+    document.getElementById('add-account-btn')?.addEventListener('click', function() {
+        document.getElementById('add-account-modal').classList.add('active');
+    });
+
+    document.getElementById('close-add-account-modal')?.addEventListener('click', function() {
+        document.getElementById('add-account-modal').classList.remove('active');
+    });
+
+    document.getElementById('save-account-btn')?.addEventListener('click', function() {
+        saveAccount();
+    });
+
+    // Close modal on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('active');
+            }
+        });
+    });
+});
 
 // ============================================================
 // ACCOUNT DROPDOWNS
@@ -320,6 +342,31 @@ async function loadBankAccountsForRowDropdowns() {
     } catch (e) {
         console.error('Failed to load accounts for row dropdowns:', e);
         throw e;
+    }
+}
+
+async function loadBulkDestinationAccounts() {
+    const select = document.getElementById('bank-bulk-destination');
+    if (!select) return;
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Bulk Set Destination</option>';
+            data.accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.textContent = acc.code + ' - ' + acc.name;
+                select.appendChild(opt);
+            });
+            select.value = currentVal;
+        }
+    } catch (e) {
+        console.error('Failed to load bulk destination accounts:', e);
     }
 }
 
@@ -826,7 +873,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS – UPDATED (NO CHECKBOXES, DEFAULT PLAID)
+// BANK TRANSACTIONS – WITH BULK DESTINATION
 // ============================================================
 
 async function checkBankConnection() {
@@ -974,7 +1021,7 @@ function renderBankTransactions(transactions) {
         });
         targetHtml += '</select>';
 
-        html += `<tr class="${rowClass}">
+        html += `<tr class="${rowClass}" data-tx-id="${t.id}">
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
@@ -1019,7 +1066,10 @@ async function applyAllSelections() {
         return;
     }
 
-    // Get all unprocessed transactions with a destination selected
+    // Get bulk destination from dropdown
+    const bulkDestinationId = document.getElementById('bank-bulk-destination')?.value || null;
+
+    // Get all rows
     const rows = document.querySelectorAll('#bank-body tr');
     const updates = [];
     let skippedCount = 0;
@@ -1028,14 +1078,21 @@ async function applyAllSelections() {
         const targetSelect = row.querySelector('.tx-target-select');
         if (!targetSelect) return;
         
-        const destinationId = targetSelect.value;
         const txId = targetSelect.dataset.txId;
         const processed = targetSelect.dataset.processed === 'true';
         
         // Skip if already processed
         if (processed) return;
+
+        // If bulk destination is set, use it
+        let destinationId = targetSelect.value;
+        if (bulkDestinationId) {
+            destinationId = bulkDestinationId;
+            // Update the dropdown visually
+            targetSelect.value = bulkDestinationId;
+        }
         
-        // Skip if no destination selected (just count them)
+        // Skip if no destination selected (after applying bulk)
         if (!destinationId) {
             skippedCount++;
             return;
@@ -1078,6 +1135,169 @@ async function applyAllSelections() {
         }
     } catch (e) {
         showToast('❌ Error: ' + e.message, 'error');
+    }
+}
+
+// ============================================================
+// ACCOUNTS TAB - CRUD OPERATIONS
+// ============================================================
+
+async function loadAccountsList() {
+    const body = document.getElementById('accounts-body');
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading accounts...</td></tr>';
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to load accounts');
+        const data = await res.json();
+        if (data.status === 'success') {
+            renderAccounts(data.accounts);
+        } else {
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading accounts') + '</td></tr>';
+        }
+    } catch (err) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+    }
+}
+
+function renderAccounts(accounts) {
+    const body = document.getElementById('accounts-body');
+    if (!accounts || accounts.length === 0) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No accounts found.</td></tr>';
+        return;
+    }
+    let html = '';
+    accounts.forEach(acc => {
+        html += `<tr>
+            <td>${acc.id}</td>
+            <td>${acc.code}</td>
+            <td>${acc.name}</td>
+            <td><span class="status-badge ${acc.type}">${acc.type}</span></td>
+            <td>
+                <button class="btn btn-sm btn-info" onclick="editAccount(${acc.id})"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-danger" onclick="deleteAccount(${acc.id}, '${acc.code} - ${acc.name}')"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`;
+    });
+    body.innerHTML = html;
+}
+
+function showAddAccountModal() {
+    document.getElementById('add-account-modal').classList.add('active');
+    document.getElementById('account-form-id').value = '';
+    document.getElementById('account-form-code').value = '';
+    document.getElementById('account-form-name').value = '';
+    document.getElementById('account-form-type').value = '';
+    document.getElementById('account-form-description').value = '';
+    document.getElementById('add-account-modal-title').textContent = 'Add New Account';
+    document.getElementById('save-account-btn').textContent = 'Save Account';
+}
+
+async function editAccount(accountId) {
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const account = data.accounts.find(a => a.id === accountId);
+            if (account) {
+                document.getElementById('add-account-modal').classList.add('active');
+                document.getElementById('account-form-id').value = account.id;
+                document.getElementById('account-form-code').value = account.code;
+                document.getElementById('account-form-name').value = account.name;
+                document.getElementById('account-form-type').value = account.type;
+                document.getElementById('account-form-description').value = account.description || '';
+                document.getElementById('add-account-modal-title').textContent = 'Edit Account';
+                document.getElementById('save-account-btn').textContent = 'Update Account';
+            }
+        }
+    } catch (e) {
+        showToast('Error loading account details', 'error');
+    }
+}
+
+async function saveAccount() {
+    const id = document.getElementById('account-form-id').value;
+    const code = document.getElementById('account-form-code').value.trim();
+    const name = document.getElementById('account-form-name').value.trim();
+    const type = document.getElementById('account-form-type').value;
+    const description = document.getElementById('account-form-description').value.trim();
+
+    if (!code || !name || !type) {
+        showToast('Code, Name, and Type are required.', 'error');
+        return;
+    }
+
+    const data = { code, name, type, description: description || null };
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${AppConfig.baseUrl}/api/accounting/accounts/${id}` : `${AppConfig.baseUrl}/api/accounting/accounts`;
+
+    try {
+        const res = await fetch(url, {
+            method: method,
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.status === 'success') {
+            showToast(id ? 'Account updated successfully' : 'Account created successfully', 'success');
+            document.getElementById('add-account-modal').classList.remove('active');
+            loadAccountsList();
+            loadAccountSelects();
+            loadAccountSelectsForBank();
+            loadBankAccountsForRowDropdowns();
+            loadBulkDestinationAccounts();
+        } else {
+            showToast('Error: ' + (result.error || 'Failed to save account'), 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+async function deleteAccount(accountId, accountName) {
+    // First check if account has transactions
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-transactions?account_id=${accountId}&page=1&per_page=1`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        const hasTransactions = data.total > 0;
+
+        let message = `Are you sure you want to delete account "${accountName}"?`;
+        if (hasTransactions) {
+            message = `Account "${accountName}" has ${data.total} posted transaction(s).\n\nDeleting this account will unpost all associated transactions.\n\nAre you sure you want to proceed?`;
+        }
+
+        if (!confirm(message)) {
+            return;
+        }
+
+        const deleteRes = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts/${accountId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const result = await deleteRes.json();
+        if (result.status === 'success') {
+            showToast(`Account "${accountName}" deleted successfully. ${result.unposted_count || 0} transaction(s) unposted.`, 'success');
+            loadAccountsList();
+            loadAccountSelects();
+            loadAccountSelectsForBank();
+            loadBankAccountsForRowDropdowns();
+            loadBulkDestinationAccounts();
+        } else {
+            showToast('Error: ' + (result.error || 'Failed to delete account'), 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
     }
 }
 

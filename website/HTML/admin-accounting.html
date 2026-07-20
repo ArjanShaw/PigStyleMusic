@@ -137,6 +137,12 @@
         .modal-body .debit { color: #28a745; }
         .modal-body .credit { color: #dc3545; }
         .modal-loading { text-align: center; padding: 30px; color: #666; }
+
+        .status-badge.asset { background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.liability { background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.equity { background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.revenue { background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.expense { background: #f8d7da; color: #721c24; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -161,6 +167,7 @@
                 <button class="sub-tab" data-subtab="adjustments"><i class="fas fa-pencil-alt"></i> Adjustments</button>
                 <button class="sub-tab" data-subtab="reconcile"><i class="fas fa-handshake"></i> Reconciliation</button>
                 <button class="sub-tab" data-subtab="bank"><i class="fas fa-university"></i> Bank</button>
+                <button class="sub-tab" data-subtab="accounts"><i class="fas fa-list"></i> Accounts</button>
                 <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
                 <button class="sub-tab" data-subtab="cash-flow"><i class="fas fa-money-bill-wave"></i> Cash Flow</button>
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
@@ -263,10 +270,10 @@
                 <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
 
-            <!-- BANK TAB - DEFAULT PLAID, NO CHECKBOXES, NO REFRESH, NO RESET -->
+            <!-- BANK TAB - WITH BULK DESTINATION -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown, select a <strong>Destination</strong> for each transaction, then click <strong>Apply</strong> to post all transactions with a destination selected.</p>
+                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown. Use the <strong>Bulk Destination</strong> to set the same destination for all filtered transactions, then click <strong>Apply</strong> to post them.</p>
                 <div style="margin-bottom:15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display:none;"><i class="fas fa-university"></i> Connect Bank Account</button>
                     <span id="bank-connection-status" class="text-muted"></span>
@@ -290,11 +297,17 @@
                         </div>
                     </div>
                 </div>
-                <!-- Filter bar - NO REFRESH, NO RESET -->
+                <!-- Filter bar with Bulk Destination -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
                     <div class="form-group" style="flex:2;">
                         <label>Filter by description</label>
                         <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Bulk Destination</label>
+                        <select id="bank-bulk-destination">
+                            <option value="">Set all to...</option>
+                        </select>
                     </div>
                     <div class="form-group" style="flex:0 0 auto;">
                         <label>&nbsp;</label>
@@ -325,6 +338,28 @@
                 </div>
                 <div style="margin-top:15px;">
                     <span id="bank-pagination-info">Showing 0 entries</span>
+                </div>
+            </div>
+
+            <!-- ACCOUNTS TAB -->
+            <div id="sub-accounts" class="sub-tab-content">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h4><i class="fas fa-list"></i> Chart of Accounts</h4>
+                    <button class="btn btn-primary" id="add-account-btn" onclick="showAddAccountModal()"><i class="fas fa-plus"></i> Add Account</button>
+                </div>
+                <div class="journal-table-container">
+                    <table class="journal-table" id="accounts-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Code</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="accounts-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Loading accounts...</td></tr></tbody>
+                    </table>
                 </div>
             </div>
 
@@ -394,7 +429,49 @@
         </div>
     </div>
 
-    <!-- MODAL -->
+    <!-- ADD ACCOUNT MODAL -->
+    <div class="modal-overlay" id="add-account-modal">
+        <div class="modal-box" style="max-width:500px;">
+            <div class="modal-header">
+                <h3 id="add-account-modal-title">Add New Account</h3>
+                <button class="modal-close" id="close-add-account-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-account-form">
+                    <input type="hidden" id="account-form-id">
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label>Account Code</label>
+                        <input type="text" id="account-form-code" placeholder="e.g. 1010" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label>Account Name</label>
+                        <input type="text" id="account-form-name" placeholder="e.g. Bluevine Bank" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label>Account Type</label>
+                        <select id="account-form-type" required>
+                            <option value="">Select Type</option>
+                            <option value="asset">Asset</option>
+                            <option value="liability">Liability</option>
+                            <option value="equity">Equity</option>
+                            <option value="revenue">Revenue</option>
+                            <option value="expense">Expense</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label>Description (optional)</label>
+                        <input type="text" id="account-form-description" placeholder="Brief description">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-header" style="border-top:1px solid #ddd; border-radius:0 0 8px 8px; justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="document.getElementById('add-account-modal').classList.remove('active')">Cancel</button>
+                <button class="btn btn-success" id="save-account-btn">Save Account</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MONTHLY TRANSACTIONS MODAL -->
     <div class="modal-overlay" id="monthly-tx-modal">
         <div class="modal-box">
             <div class="modal-header">
