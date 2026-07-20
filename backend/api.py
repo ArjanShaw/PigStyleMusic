@@ -8983,10 +8983,10 @@ def cash_flow():
 @role_required(['admin'])
 def cash_flow_detail():
     """Monthly cash flow breakdown by account: positive = inflow, negative = outflow.
-       Excludes order entries so only bank transactions appear.
+       Includes inventory purchases as cash outflows.
     """
-    start = request.args.get('start')  # YYYY-MM
-    end = request.args.get('end')      # YYYY-MM
+    start = request.args.get('start')
+    end = request.args.get('end')
     if not start or not end:
         return jsonify({'status': 'error', 'error': 'start and end months required'}), 400
 
@@ -9001,20 +9001,29 @@ def cash_flow_detail():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Get net credit amount per account per month: credit - debit
-    # For revenue accounts this is positive (inflow), for expenses it's negative (outflow)
+    # Include Inventory (1050) as a cash flow item
+    # For asset accounts, debit = cash out (negative), credit = cash in (positive)
     cursor.execute('''
         SELECT
             strftime('%Y-%m', je.transaction_date) as month,
             a.name,
             a.type,
-            COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as net_credit
+            COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as net_change
         FROM journal_lines jl
         JOIN journal_entries je ON je.id = jl.journal_entry_id
         JOIN accounts a ON a.id = jl.account_id
-        WHERE a.type IN ('revenue', 'expense')
-          AND je.transaction_date >= ? AND je.transaction_date <= ?
-          AND je.source_type != 'order'   -- <-- EXCLUDE ORDER ENTRIES
+        WHERE a.code IN (
+            -- Revenue accounts (cash inflows)
+            '4000', '4001', '4003', '4010',
+            -- Inventory (cash outflow when purchased)
+            '1050',
+            -- Cash accounts (show net cash position)
+            '1015', '1025',
+            -- Expense accounts (cash outflows)
+            '5000', '5010', '5020', '5040', '6010', '6020', '6080', '6090', '6100'
+        )
+        AND je.transaction_date >= ? AND je.transaction_date <= ?
+        AND je.source_type != 'order'
         GROUP BY month, a.id
         ORDER BY month, a.type DESC, a.name
     ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
@@ -9036,13 +9045,19 @@ def cash_flow_detail():
     for row in rows:
         month = row['month']
         if month in data:
-            data[month][row['name']] = row['net_credit']
+            # For asset accounts (Inventory, Cash), debit = cash out (negative)
+            # So we invert the sign to show outflows as negative
+            if row['type'] == 'asset':
+                data[month][row['name']] = -row['net_change']
+            else:
+                data[month][row['name']] = row['net_change']
 
     return jsonify({
         'status': 'success',
         'months': months,
         'account_breakdown': data
     })
+
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
