@@ -973,6 +973,7 @@ function renderBankTransactions(transactions) {
         const rowClass = processed ? 'bank-row-posted' : 'bank-row-unposted';
         
         // Destination dropdown - all accounts except cash accounts (exclude 1 and 21)
+        // This is the only dropdown - NO Source dropdown
         const targetOptions = bankAccounts.filter(acc => acc.id != 1 && acc.id != 21);
         let targetHtml = `<select class="tx-target-select" id="tx-target-${t.id}" data-processed="${processed}" data-tx-id="${t.id}" data-source-type="${t.source_type || 'plaid'}">`;
         targetHtml += `<option value="">Select Destination</option>`;
@@ -982,6 +983,7 @@ function renderBankTransactions(transactions) {
         });
         targetHtml += '</select>';
 
+        // IMPORTANT: Only 5 columns - NO Source column
         html += `<tr class="${rowClass}">
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
@@ -1001,18 +1003,16 @@ function renderBankTransactions(transactions) {
             const sourceType = this.dataset.sourceType || 'plaid';
             
             if (!destinationId) {
-                // If they selected empty, don't do anything
                 return;
             }
             
             // Get source from the filter dropdown
             const sourceFilter = document.getElementById('bank-source-filter')?.value || 'all';
-            // Map source filter to account ID
             let sourceAccountId = null;
             if (sourceFilter === 'plaid') {
-                sourceAccountId = 21; // FNBO Bank (default for Plaid)
+                sourceAccountId = 21; // FNBO Bank
             } else if (sourceFilter === 'historic') {
-                sourceAccountId = 1; // Bluevine Bank (default for historic)
+                sourceAccountId = 1; // Bluevine Bank
             } else {
                 // 'all' - use the transaction's source_type
                 sourceAccountId = (sourceType === 'plaid') ? 21 : 1;
@@ -1029,6 +1029,7 @@ function renderBankTransactions(transactions) {
         });
     });
 }
+
 
 function updateBankCounts(unprocessed, total) {
     const countEl = document.getElementById('bank-unprocessed-count');
