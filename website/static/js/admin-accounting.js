@@ -1709,7 +1709,7 @@ async function loadCashFlow() {
         return;
     }
 
-    // Display the date range
+    // Display the date range - THIS IS THE NEW CODE
     const dateRangeEl = document.getElementById('cash-flow-date-range');
     if (dateRangeEl) {
         const startDisplay = startInput.value || 'Start';
@@ -1749,6 +1749,7 @@ async function loadCashFlow() {
         container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
 }
+
 
 function renderCashFlowCharts(data) {
     console.log('[CASHFLOW] Rendering charts');
