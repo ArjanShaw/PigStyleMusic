@@ -9809,6 +9809,155 @@ def post_single_bank_transaction():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ==================== ACCOUNTING: CREATE/UPDATE ACCOUNT ====================
+
+@app.route('/api/accounting/accounts', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_create_account():
+    """Create a new account"""
+    try:
+        data = request.json
+        code = data.get('code')
+        name = data.get('name')
+        account_type = data.get('type')
+        description = data.get('description')
+        
+        if not code or not name or not account_type:
+            return jsonify({'status': 'error', 'error': 'code, name, and type required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if code already exists
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', (code,))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Account code {code} already exists'}), 400
+        
+        cursor.execute('''
+            INSERT INTO accounts (code, name, type, description)
+            VALUES (?, ?, ?, ?)
+        ''', (code, name, account_type, description))
+        
+        account_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Account created successfully',
+            'account_id': account_id
+        })
+    except Exception as e:
+        app.logger.error(f"Error creating account: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/accounting/accounts/<int:account_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def accounting_update_account(account_id):
+    """Update an existing account"""
+    try:
+        data = request.json
+        code = data.get('code')
+        name = data.get('name')
+        account_type = data.get('type')
+        description = data.get('description')
+        
+        if not code or not name or not account_type:
+            return jsonify({'status': 'error', 'error': 'code, name, and type required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if account exists
+        cursor.execute('SELECT id FROM accounts WHERE id = ?', (account_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+        
+        # Check if code conflicts with another account
+        cursor.execute('SELECT id FROM accounts WHERE code = ? AND id != ?', (code, account_id))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Account code {code} already exists'}), 400
+        
+        cursor.execute('''
+            UPDATE accounts SET code = ?, name = ?, type = ?, description = ?
+            WHERE id = ?
+        ''', (code, name, account_type, description, account_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Account updated successfully'
+        })
+    except Exception as e:
+        app.logger.error(f"Error updating account: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/accounting/accounts/<int:account_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def accounting_delete_account(account_id):
+    """Delete an account and unpost all its transactions"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if account exists
+        cursor.execute('SELECT id, code, name FROM accounts WHERE id = ?', (account_id,))
+        account = cursor.fetchone()
+        if not account:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+        
+        # Find all journal entries for this account
+        cursor.execute('''
+            SELECT DISTINCT je.id as entry_id, je.source_type, je.source_id
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.journal_entry_id = je.id
+            WHERE jl.account_id = ?
+        ''', (account_id,))
+        entries = cursor.fetchall()
+        
+        unposted_count = 0
+        
+        # Unpost each entry
+        for entry in entries:
+            source_type = entry['source_type']
+            source_id = entry['source_id']
+            
+            # If it's a bank transaction (plaid or historic), mark as unprocessed
+            if source_type in ['plaid', 'historic']:
+                if source_type == 'historic':
+                    cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(source_id),))
+                # For plaid, we just delete the journal entry (plaid transactions are not stored in bank_transactions)
+                unposted_count += 1
+            
+            # Delete the journal lines and entry
+            cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry['entry_id'],))
+            cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry['entry_id'],))
+        
+        # Delete the account
+        cursor.execute('DELETE FROM accounts WHERE id = ?', (account_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Account {account["code"]} - {account["name"]} deleted successfully',
+            'unposted_count': unposted_count
+        })
+    except Exception as e:
+        app.logger.error(f"Error deleting account: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
