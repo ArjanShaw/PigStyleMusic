@@ -1709,6 +1709,15 @@ async function loadCashFlow() {
         return;
     }
 
+    // Display the date range
+    const dateRangeEl = document.getElementById('cash-flow-date-range');
+    if (dateRangeEl) {
+        const startDisplay = startInput.value || 'Start';
+        const endDisplay = endInput.value || 'End';
+        dateRangeEl.textContent = `Showing cash flow from ${startDisplay} to ${endDisplay}`;
+        dateRangeEl.style.display = 'block';
+    }
+
     if (bankAccounts.length === 0) {
         console.log('[CASHFLOW] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
