@@ -23,6 +23,8 @@ let cashFlowExpanded = false;
 let expandedChartIndex = null;
 let cashFlowMonths = [];
 let cashFlowAccountBreakdown = {};
+let cashFlowContainer = null;
+let accountNameToId = {};
 
 // Register annotation plugin if available
 if (typeof ChartAnnotation !== 'undefined') {
@@ -366,6 +368,14 @@ async function loadBankAccountsForRowDropdowns() {
         const data = await res.json();
         if (data.status === 'success') {
             bankAccounts = data.accounts;
+            // Build accountNameToId mapping for cash flow
+            accountNameToId = {};
+            bankAccounts.forEach(acc => {
+                const trimmed = acc.name.trim();
+                const norm = trimmed.toLowerCase();
+                accountNameToId[norm] = acc.id;
+                accountNameToId[trimmed] = acc.id;
+            });
             console.log('[BANK] Loaded', bankAccounts.length, 'accounts for row dropdowns');
         }
         return data;
@@ -1648,7 +1658,7 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW (with expandable charts)
+// CASH FLOW (with expandable charts - IMPROVED)
 // ============================================================
 
 async function loadCashFlow() {
@@ -1670,6 +1680,7 @@ async function loadCashFlow() {
     }
 
     const container = document.getElementById('cash-flow-chart-grid');
+    cashFlowContainer = container;
     container.innerHTML = '<p class="monthly-loading">Loading...</p>';
 
     try {
@@ -1699,6 +1710,7 @@ function renderCashFlowCharts(data) {
     console.log('[CASHFLOW] Rendering charts');
     const { months, account_breakdown } = data;
     const container = document.getElementById('cash-flow-chart-grid');
+    cashFlowContainer = container;
     container.innerHTML = '';
 
     if (!months || months.length === 0) {
@@ -1715,13 +1727,15 @@ function renderCashFlowCharts(data) {
     const accountNames = Array.from(allAccounts).sort();
     console.log('[CASHFLOW] Accounts:', accountNames.length);
 
-    const accountNameToId = {};
-    bankAccounts.forEach(acc => {
-        const trimmed = acc.name.trim();
-        const norm = trimmed.toLowerCase();
-        accountNameToId[norm] = acc.id;
-        accountNameToId[trimmed] = acc.id;
-    });
+    // Build accountNameToId mapping if not already done
+    if (Object.keys(accountNameToId).length === 0) {
+        bankAccounts.forEach(acc => {
+            const trimmed = acc.name.trim();
+            const norm = trimmed.toLowerCase();
+            accountNameToId[norm] = acc.id;
+            accountNameToId[trimmed] = acc.id;
+        });
+    }
 
     let globalMax = 0;
     months.forEach(m => {
@@ -1775,7 +1789,6 @@ function renderCashFlowCharts(data) {
         // Click on card (not on canvas) = expand
         card.addEventListener('click', function(e) {
             console.log('[CASHFLOW] Card clicked, index:', idx, 'target:', e.target.tagName);
-            // If clicking on canvas or its children, let the chart handle it
             if (e.target.closest('canvas')) {
                 console.log('[CASHFLOW] Click was on canvas, ignoring for expansion');
                 return;
@@ -1895,7 +1908,8 @@ function expandChart(index) {
     }
 
     const container = document.getElementById('cash-flow-chart-grid');
-    const cards = container.querySelectorAll('.monthly-chart-card');
+    const gridWrapper = document.getElementById('cash-flow-grid-wrapper');
+    const cards = gridWrapper ? gridWrapper.querySelectorAll('.monthly-chart-card') : container.querySelectorAll('.monthly-chart-card');
     const card = cards[index];
     
     if (!card) {
@@ -1909,51 +1923,203 @@ function expandChart(index) {
     cashFlowExpanded = true;
     expandedChartIndex = index;
 
-    // Hide all cards
-    cards.forEach(c => {
-        c.style.display = 'none';
-    });
+    // Hide all cards and the grid wrapper
+    if (gridWrapper) {
+        gridWrapper.style.display = 'none';
+    } else {
+        cards.forEach(c => {
+            c.style.display = 'none';
+        });
+    }
 
-    // Show the expanded card
-    card.style.display = 'block';
-    card.style.position = 'fixed';
-    card.style.top = '80px';
-    card.style.left = '20px';
-    card.style.right = '20px';
-    card.style.bottom = '20px';
-    card.style.width = 'auto';
-    card.style.height = 'auto';
-    card.style.zIndex = '999';
-    card.style.boxShadow = '0 4px 30px rgba(0,0,0,0.3)';
-    card.style.background = 'white';
-    card.style.padding = '30px';
-    card.style.borderRadius = '8px';
-    card.style.overflow = 'auto';
-    card.style.cursor = 'default';
-
-    // Add close button to card
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'btn btn-secondary chart-close-btn';
-    closeBtn.style.cssText = 'position:absolute; top:10px; right:10px; padding:8px 16px; z-index:1000;';
-    closeBtn.innerHTML = '<i class="fas fa-times"></i> Close';
-    closeBtn.onclick = function(e) {
+    // Create expanded container
+    const expandedContainer = document.createElement('div');
+    expandedContainer.id = 'expanded-chart-container';
+    expandedContainer.style.cssText = `
+        position: fixed;
+        top: 80px;
+        left: 20px;
+        right: 20px;
+        bottom: 20px;
+        z-index: 999;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 40px rgba(0,0,0,0.4);
+        padding: 30px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    `;
+    
+    // Add header with title and close button
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        flex-shrink: 0;
+    `;
+    header.innerHTML = `
+        <h3 style="margin:0; font-size:24px; color:#333;">${card.dataset.month} - Cash Flow Detail</h3>
+        <button class="btn btn-secondary" style="padding:10px 24px; font-size:16px;">
+            <i class="fas fa-times"></i> Close
+        </button>
+    `;
+    header.querySelector('button').onclick = function(e) {
         console.log('[CASHFLOW] Close button clicked');
         e.stopPropagation();
         collapseChart();
     };
-    card.appendChild(closeBtn);
+    expandedContainer.appendChild(header);
 
-    // Resize the chart
-    const canvas = card.querySelector('canvas');
-    if (canvas) {
-        canvas.style.height = 'calc(100% - 60px)';
-        canvas.style.width = '100%';
-        const chart = window._cashFlowCharts[index];
-        if (chart) {
-            console.log('[CASHFLOW] Resizing chart');
-            chart.resize();
-        }
+    // Create canvas wrapper that takes remaining space
+    const canvasWrapper = document.createElement('div');
+    canvasWrapper.style.cssText = `
+        flex: 1;
+        position: relative;
+        min-height: 0;
+    `;
+    
+    // Clone the canvas
+    const oldCanvas = card.querySelector('canvas');
+    const newCanvas = document.createElement('canvas');
+    newCanvas.id = 'expanded-chart-canvas';
+    newCanvas.style.cssText = `
+        width: 100% !important;
+        height: 100% !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+    `;
+    canvasWrapper.appendChild(newCanvas);
+    expandedContainer.appendChild(canvasWrapper);
+    
+    document.body.appendChild(expandedContainer);
+
+    // Get the data from the existing chart
+    const oldChart = window._cashFlowCharts[index];
+    if (!oldChart) {
+        console.error('[CASHFLOW] No chart found at index:', index);
+        return;
     }
+
+    // Create new chart with larger font sizes
+    const ctx = newCanvas.getContext('2d');
+    
+    const newChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: oldChart.data.labels,
+            datasets: [{
+                label: 'Amount',
+                data: oldChart.data.datasets[0].data,
+                backgroundColor: oldChart.data.datasets[0].backgroundColor,
+                borderColor: oldChart.data.datasets[0].borderColor,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { 
+                    display: false 
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const val = ctx.raw;
+                            return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
+                        }
+                    },
+                    titleFont: { size: 16 },
+                    bodyFont: { size: 14 }
+                },
+                annotation: {
+                    annotations: {
+                        zeroLine: {
+                            type: 'line',
+                            yMin: 0,
+                            yMax: 0,
+                            borderColor: 'rgba(0, 0, 0, 0.5)',
+                            borderWidth: 3,
+                            borderDash: [5, 5],
+                            label: {
+                                content: '0',
+                                enabled: true,
+                                position: 'right',
+                                color: '#333',
+                                font: { size: 16, weight: 'bold' }
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: oldChart.options.scales.y.max,
+                    min: oldChart.options.scales.y.min,
+                    ticks: { 
+                        callback: (val) => '$' + val,
+                        font: { size: 16, weight: 'bold' }
+                    }
+                },
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        font: { size: 14, weight: 'bold' }
+                    }
+                }
+            },
+            onClick: function(e, elements) {
+                if (elements.length === 0) return;
+                const element = elements[0];
+                const idx = element.index;
+                const label = this.data.labels[idx];
+                const amount = this.data.datasets[0].data[idx];
+                if (Math.abs(amount) < 0.01) return;
+
+                const month = card.dataset.month;
+                if (label === 'Net') {
+                    showMonthlyTransactions(month, null, 'Net Cash Flow', true);
+                } else {
+                    const trimmed = label.trim();
+                    const norm = trimmed.toLowerCase();
+                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
+                    if (!accountId) {
+                        alert('Account not found: ' + label);
+                        return;
+                    }
+                    showMonthlyTransactions(month, accountId, label, true);
+                }
+            }
+        }
+    });
+
+    // Store reference to expanded chart for cleanup
+    window._expandedChart = newChart;
+    window._expandedContainer = expandedContainer;
+
+    // Handle resize
+    const resizeObserver = new ResizeObserver(() => {
+        if (newChart) {
+            newChart.resize();
+        }
+    });
+    resizeObserver.observe(canvasWrapper);
+    window._expandedResizeObserver = resizeObserver;
+
+    // Also resize on window resize
+    window._expandedResizeHandler = function() {
+        if (newChart) {
+            newChart.resize();
+        }
+    };
+    window.addEventListener('resize', window._expandedResizeHandler);
+
     console.log('[CASHFLOW] Expansion complete');
 }
 
@@ -1964,45 +2130,37 @@ function collapseChart() {
         return;
     }
 
+    // Clean up expanded chart
+    if (window._expandedChart) {
+        window._expandedChart.destroy();
+        window._expandedChart = null;
+    }
+
+    if (window._expandedContainer) {
+        window._expandedContainer.remove();
+        window._expandedContainer = null;
+    }
+
+    if (window._expandedResizeObserver) {
+        window._expandedResizeObserver.disconnect();
+        window._expandedResizeObserver = null;
+    }
+
+    if (window._expandedResizeHandler) {
+        window.removeEventListener('resize', window._expandedResizeHandler);
+        window._expandedResizeHandler = null;
+    }
+
     cashFlowExpanded = false;
     expandedChartIndex = null;
 
-    const container = document.getElementById('cash-flow-chart-grid');
-    const cards = container.querySelectorAll('.monthly-chart-card');
+    // Show the grid wrapper again
+    const gridWrapper = document.getElementById('cash-flow-grid-wrapper');
+    if (gridWrapper) {
+        gridWrapper.style.display = '';
+    }
 
-    // Reset all cards
-    cards.forEach(c => {
-        c.style.display = '';
-        c.style.position = '';
-        c.style.top = '';
-        c.style.left = '';
-        c.style.right = '';
-        c.style.bottom = '';
-        c.style.width = '';
-        c.style.height = '';
-        c.style.zIndex = '';
-        c.style.boxShadow = '';
-        c.style.background = '';
-        c.style.padding = '';
-        c.style.borderRadius = '';
-        c.style.overflow = '';
-        c.style.cursor = 'pointer';
-
-        // Remove close button if exists
-        const closeBtn = c.querySelector('.chart-close-btn');
-        if (closeBtn) {
-            closeBtn.remove();
-        }
-
-        // Reset canvas size
-        const canvas = c.querySelector('canvas');
-        if (canvas) {
-            canvas.style.height = '';
-            canvas.style.width = '';
-        }
-    });
-
-    // Re-render all charts to fix sizing
+    // Resize all original charts
     if (window._cashFlowCharts) {
         console.log('[CASHFLOW] Resizing all charts after collapse');
         window._cashFlowCharts.forEach((chart, idx) => {
