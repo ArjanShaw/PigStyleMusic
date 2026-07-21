@@ -9010,22 +9010,24 @@ def monthly_account_transactions():
 @login_required
 @role_required(['admin'])
 def monthly_pl():
-    """Monthly Profit & Loss - calculates COGS dynamically from batches or assumption rates."""
-    start = request.args.get('start')
-    end = request.args.get('end')
-    if not start or not end:
-        return jsonify({'status': 'error', 'error': 'start and end months required'}), 400
-
-    from datetime import datetime, timedelta
-    start_date = datetime.strptime(start + '-01', '%Y-%m-%d')
-    end_date = datetime.strptime(end + '-01', '%Y-%m-%d')
-    if end_date.month == 12:
-        end_date = end_date.replace(year=end_date.year+1, month=1, day=1) - timedelta(days=1)
-    else:
-        end_date = end_date.replace(month=end_date.month+1, day=1) - timedelta(days=1)
-
+    """Monthly Profit & Loss - returns ALL data without date filters."""
     conn = get_db()
     cursor = conn.cursor()
+
+    # Get earliest and latest transaction dates for the full range
+    cursor.execute('SELECT MIN(transaction_date) as min_date, MAX(transaction_date) as max_date FROM journal_entries')
+    date_range = cursor.fetchone()
+    
+    if not date_range or not date_range['min_date'] or not date_range['max_date']:
+        # Fallback: use last 24 months
+        start_date = datetime.now() - timedelta(days=730)
+        end_date = datetime.now()
+    else:
+        start_date = datetime.strptime(date_range['min_date'], '%Y-%m-%d')
+        end_date = datetime.strptime(date_range['max_date'], '%Y-%m-%d')
+    
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
 
     # Get revenue from journal entries
     cursor.execute('''
@@ -9041,7 +9043,7 @@ def monthly_pl():
           AND je.source_type != 'order'
         GROUP BY month, a.id
         ORDER BY month, a.code
-    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    ''', (start_str, end_str))
     revenue_rows = cursor.fetchall()
 
     # Get COGS from records
@@ -9068,16 +9070,13 @@ def monthly_pl():
                             ELSE 0.30
                         END
                 END
-            ), 0) as cogs,
-            COUNT(*) as records_sold,
-            SUM(CASE WHEN r.batch_id IS NOT NULL AND r.batch_id IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN 1 ELSE 0 END) as batch_linked,
-            SUM(CASE WHEN r.batch_id IS NULL OR r.batch_id NOT IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN 1 ELSE 0 END) as assumed_cogs
+            ), 0) as cogs
         FROM records r
         WHERE r.status_id = 3
           AND r.date_sold >= ? AND r.date_sold <= ?
         GROUP BY strftime('%Y-%m', r.date_sold)
         ORDER BY month
-    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    ''', (start_str, end_str))
     cogs_rows = cursor.fetchall()
     cogs_by_month = {row['month']: row['cogs'] for row in cogs_rows}
 
@@ -9095,14 +9094,14 @@ def monthly_pl():
           AND je.source_type != 'order'
         GROUP BY month, a.id
         ORDER BY month, a.code
-    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    ''', (start_str, end_str))
     expense_rows = cursor.fetchall()
 
     conn.close()
 
     # Build month list
     months = []
-    current = datetime.strptime(start + '-01', '%Y-%m-%d')
+    current = start_date
     while current <= end_date:
         months.append(current.strftime('%Y-%m'))
         if current.month == 12:
@@ -9149,31 +9148,27 @@ def monthly_pl():
         'account_breakdown': account_breakdown
     })
 
-
-# ==================== ACCOUNTING: CASH FLOW DETAIL (KEPT AS IS) ====================
-
 @app.route('/api/accounting/cash-flow-detail', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def cash_flow_detail():
-    """Monthly cash flow breakdown by account: positive = inflow, negative = outflow.
-       Includes inventory purchases as cash outflows.
-    """
-    start = request.args.get('start')
-    end = request.args.get('end')
-    if not start or not end:
-        return jsonify({'status': 'error', 'error': 'start and end months required'}), 400
-
-    from datetime import datetime, timedelta
-    start_date = datetime.strptime(start + '-01', '%Y-%m-%d')
-    end_date = datetime.strptime(end + '-01', '%Y-%m-%d')
-    if end_date.month == 12:
-        end_date = end_date.replace(year=end_date.year+1, month=1, day=1) - timedelta(days=1)
-    else:
-        end_date = end_date.replace(month=end_date.month+1, day=1) - timedelta(days=1)
-
+    """Monthly cash flow breakdown - returns ALL data without date filters."""
     conn = get_db()
     cursor = conn.cursor()
+
+    # Get earliest and latest transaction dates for the full range
+    cursor.execute('SELECT MIN(transaction_date) as min_date, MAX(transaction_date) as max_date FROM journal_entries')
+    date_range = cursor.fetchone()
+    
+    if not date_range or not date_range['min_date'] or not date_range['max_date']:
+        start_date = datetime.now() - timedelta(days=730)
+        end_date = datetime.now()
+    else:
+        start_date = datetime.strptime(date_range['min_date'], '%Y-%m-%d')
+        end_date = datetime.strptime(date_range['max_date'], '%Y-%m-%d')
+    
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
 
     cursor.execute('''
         SELECT
@@ -9182,7 +9177,7 @@ def cash_flow_detail():
             a.type,
             COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as net_change
         FROM journal_lines jl
-        JOIN journal_entries je ON je.id = jl.journal_entry_id
+        JOIN journal_entries je ON jl.journal_entry_id = je.id
         JOIN accounts a ON a.id = jl.account_id
         WHERE a.code IN (
             '4000', '4001', '4003', '4010',
@@ -9194,13 +9189,13 @@ def cash_flow_detail():
         AND je.source_type != 'order'
         GROUP BY month, a.id
         ORDER BY month, a.type DESC, a.name
-    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    ''', (start_str, end_str))
     rows = cursor.fetchall()
     conn.close()
 
     # Build month list
     months = []
-    current = datetime.strptime(start + '-01', '%Y-%m-%d')
+    current = start_date
     while current <= end_date:
         months.append(current.strftime('%Y-%m'))
         if current.month == 12:
@@ -9231,6 +9226,7 @@ def cash_flow_detail():
         'months': months,
         'account_breakdown': data
     })
+
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
