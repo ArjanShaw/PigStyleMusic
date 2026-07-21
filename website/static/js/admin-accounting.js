@@ -252,23 +252,23 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Bank view filter change
-    document.getElementById('bank-view-filter')?.addEventListener('change', function() {
-        console.log('[INIT] Bank view filter changed');
+    // ---- Bank Tab: Search button and Enter key - NO AUTO-TRIGGERS ----
+    // Search button
+    document.getElementById('bank-search-btn')?.addEventListener('click', function() {
+        console.log('[BANK] Search button clicked');
         loadBankTransactions();
     });
 
-    // Bank source filter change
-    document.getElementById('bank-source-filter')?.addEventListener('change', function() {
-        console.log('[INIT] Bank source filter changed');
-        loadBankTransactions();
+    // Enter key on search input
+    document.getElementById('bank-filter')?.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            console.log('[BANK] Enter key pressed in search');
+            loadBankTransactions();
+        }
     });
 
-    // Bank search filter - auto-search on input
-    document.getElementById('bank-filter')?.addEventListener('input', function() {
-        console.log('[INIT] Bank search filter changed');
-        loadBankTransactions();
-    });
+    // ---- NO AUTO-TRIGGERS - Removed all 'change' and 'input' listeners that auto-load ----
 
     // Accounts tab - add account form
     document.getElementById('add-account-btn')?.addEventListener('click', function() {
@@ -899,7 +899,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS – WITH BULK DESTINATION (UPDATED)
+// BANK TRANSACTIONS - UPDATED (NO AUTO-TRIGGERS)
 // ============================================================
 
 async function checkBankConnection() {
@@ -977,8 +977,12 @@ async function connectBank() {
     }
 }
 
+// ============================================================
+// loadBankTransactions - called ONLY by Search button, Enter key, or after Apply
+// ============================================================
+
 async function loadBankTransactions() {
-    console.log('[BANK] Loading bank transactions');
+    console.log('[BANK] Loading bank transactions (manual search)');
     const body = document.getElementById('bank-body');
     body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
@@ -1182,6 +1186,7 @@ async function applyAllSelections() {
         if (data.status === 'success') {
             console.log('[BANK] Applied', data.processed, 'transactions');
             showToast(`✅ ${data.processed} transaction(s) processed. ${data.updated || 0} updated, ${data.created || 0} new. ${skippedCount} skipped.`, 'success');
+            // Refresh the table after apply
             loadBankTransactions();
         } else {
             console.error('[BANK] Error:', data.error);
