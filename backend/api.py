@@ -9010,26 +9010,23 @@ def monthly_account_transactions():
 @login_required
 @role_required(['admin'])
 def monthly_pl():
-    """Monthly Profit & Loss - returns ALL data without date filters."""
-    conn = get_db()
-    cursor = conn.cursor()
+    """Monthly Profit & Loss - filters by account type (revenue and expense) instead of hardcoded codes."""
+    start = request.args.get('start')
+    end = request.args.get('end')
+    if not start or not end:
+        return jsonify({'status': 'error', 'error': 'start and end required'}), 400
 
-    # Get earliest and latest transaction dates for the full range
-    cursor.execute('SELECT MIN(transaction_date) as min_date, MAX(transaction_date) as max_date FROM journal_entries')
-    date_range = cursor.fetchone()
-    
-    if not date_range or not date_range['min_date'] or not date_range['max_date']:
-        # Fallback: use last 24 months
-        start_date = datetime.now() - timedelta(days=730)
-        end_date = datetime.now()
-    else:
-        start_date = datetime.strptime(date_range['min_date'], '%Y-%m-%d')
-        end_date = datetime.strptime(date_range['max_date'], '%Y-%m-%d')
+    from datetime import datetime, timedelta
+    start_date = datetime.strptime(start, '%Y-%m-%d')
+    end_date = datetime.strptime(end, '%Y-%m-%d')
     
     start_str = start_date.strftime('%Y-%m-%d')
     end_str = end_date.strftime('%Y-%m-%d')
 
-    # Get revenue from journal entries
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get revenue accounts (type = 'revenue')
     cursor.execute('''
         SELECT
             strftime('%Y-%m', je.transaction_date) as month,
@@ -9038,7 +9035,7 @@ def monthly_pl():
         FROM journal_lines jl
         JOIN journal_entries je ON jl.journal_entry_id = je.id
         JOIN accounts a ON jl.account_id = a.id
-        WHERE a.code IN ('4000', '4001', '4003', '4010')
+        WHERE a.type = 'revenue'
           AND je.transaction_date >= ? AND je.transaction_date <= ?
           AND je.source_type != 'order'
         GROUP BY month, a.id
@@ -9046,7 +9043,25 @@ def monthly_pl():
     ''', (start_str, end_str))
     revenue_rows = cursor.fetchall()
 
-    # Get COGS from records
+    # Get expense accounts (type = 'expense') - exclude COGS (handled separately)
+    cursor.execute('''
+        SELECT
+            strftime('%Y-%m', je.transaction_date) as month,
+            a.name,
+            COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as amount
+        FROM journal_lines jl
+        JOIN journal_entries je ON jl.journal_entry_id = je.id
+        JOIN accounts a ON jl.account_id = a.id
+        WHERE a.type = 'expense'
+          AND a.code != '5000'  -- Exclude COGS (handled separately)
+          AND je.transaction_date >= ? AND je.transaction_date <= ?
+          AND je.source_type != 'order'
+        GROUP BY month, a.id
+        ORDER BY month, a.code
+    ''', (start_str, end_str))
+    expense_rows = cursor.fetchall()
+
+    # Get COGS from records (calculated, not from journal)
     cursor.execute('''
         SELECT
             strftime('%Y-%m', r.date_sold) as month,
@@ -9080,23 +9095,6 @@ def monthly_pl():
     cogs_rows = cursor.fetchall()
     cogs_by_month = {row['month']: row['cogs'] for row in cogs_rows}
 
-    # Get other expenses
-    cursor.execute('''
-        SELECT
-            strftime('%Y-%m', je.transaction_date) as month,
-            a.name,
-            COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as amount
-        FROM journal_lines jl
-        JOIN journal_entries je ON jl.journal_entry_id = je.id
-        JOIN accounts a ON jl.account_id = a.id
-        WHERE a.code IN ('5010', '5020', '5040', '6010', '6020', '6080', '6090', '6100')
-          AND je.transaction_date >= ? AND je.transaction_date <= ?
-          AND je.source_type != 'order'
-        GROUP BY month, a.id
-        ORDER BY month, a.code
-    ''', (start_str, end_str))
-    expense_rows = cursor.fetchall()
-
     conn.close()
 
     # Build month list
@@ -9117,29 +9115,34 @@ def monthly_pl():
         month = row['month']
         if month not in account_breakdown:
             account_breakdown[month] = {}
-        account_breakdown[month][row['name']] = row['amount']
+        # Filter out near-zero values
+        if abs(row['amount']) > 0.01:
+            account_breakdown[month][row['name']] = row['amount']
 
-    # Add COGS
+    # Add COGS (negative)
     for month in months:
-        if month not in account_breakdown:
-            account_breakdown[month] = {}
         cogs = cogs_by_month.get(month, 0)
-        if cogs > 0:
+        if abs(cogs) > 0.01:
+            if month not in account_breakdown:
+                account_breakdown[month] = {}
             account_breakdown[month]['COGS'] = -cogs
 
-    # Add other expenses
+    # Add expenses (negative)
     for row in expense_rows:
         month = row['month']
         if month not in account_breakdown:
             account_breakdown[month] = {}
-        account_breakdown[month][row['name']] = -row['amount']
+        # Expenses are debits, so they show as negative
+        amount = -row['amount']
+        if abs(amount) > 0.01:
+            account_breakdown[month][row['name']] = amount
 
     # Add Net Income for each month
     for month in months:
         if month not in account_breakdown:
             account_breakdown[month] = {}
         total = sum(account_breakdown[month].values())
-        if total != 0:
+        if abs(total) > 0.01:
             account_breakdown[month]['Net Income'] = total
 
     return jsonify({
