@@ -303,7 +303,7 @@
             <!-- BANK TAB -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown. Use the <strong>Bulk Destination</strong> to set the same destination for all filtered transactions, then click <strong>Apply</strong> to post them.</p>
+                <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown. Use the <strong>Bulk Destination</strong> to set the same destination for all filtered transactions, then click <strong>Apply</strong> to post them. Click <strong>Search</strong> to refresh the list after changing filters.</p>
                 <div style="margin-bottom:15px;">
                     <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display:none;"><i class="fas fa-university"></i> Connect Bank Account</button>
                     <span id="bank-connection-status" class="text-muted"></span>
@@ -331,6 +331,10 @@
                     <div class="form-group" style="flex:2;">
                         <label>Filter by description</label>
                         <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM">
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-primary" id="bank-search-btn"><i class="fas fa-search"></i> Search</button>
                     </div>
                     <div class="form-group" style="flex:1;">
                         <label>Bulk Destination</label>
@@ -360,7 +364,7 @@
                                 <th>Destination</th>
                             </tr>
                         </thead>
-                        <tbody id="bank-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Loading transactions...</td></tr></tbody>
+                        <tbody id="bank-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Click Search to load transactions...</td></tr></tbody>
                     </table>
                 </div>
                 <div style="margin-top:15px;">
@@ -558,6 +562,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=12"></script>
+    <script src="/static/js/admin-accounting.js?v=15"></script>
 </body>
 </html>
