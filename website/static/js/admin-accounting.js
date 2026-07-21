@@ -116,7 +116,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const endInput = document.getElementById('cash-flow-end');
                 if (!endInput.value) endInput.value = endMonth;
 
-                // Ensure accountNameToId is populated
                 if (bankAccounts.length === 0) {
                     loadBankAccountsForRowDropdowns().then(() => {
                         loadCashFlow();
@@ -154,7 +153,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     startInput.value = startDate.toISOString().slice(0, 7);
                 }
 
-                // Ensure accountNameToId is populated
                 if (bankAccounts.length === 0) {
                     loadBankAccountsForRowDropdowns().then(() => {
                         loadMonthlyPL();
@@ -901,7 +899,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS – WITH BULK DESTINATION
+// BANK TRANSACTIONS – WITH BULK DESTINATION (UPDATED)
 // ============================================================
 
 async function checkBankConnection() {
@@ -1098,8 +1096,12 @@ function updateBankCounts(unprocessed, total) {
     }
 }
 
+// ============================================================
+// applyAllSelections - UPDATED to handle both unprocessed AND posted transactions
+// ============================================================
+
 async function applyAllSelections() {
-    console.log('[BANK] Applying all selections');
+    console.log('[BANK] Applying all selections (including posted transactions for reassignment)');
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'plaid';
     let sourceAccountId = null;
     if (sourceFilter === 'plaid') {
@@ -1116,6 +1118,8 @@ async function applyAllSelections() {
     const rows = document.querySelectorAll('#bank-body tr');
     const updates = [];
     let skippedCount = 0;
+    let processedCount = 0;
+    let unprocessedCount = 0;
 
     rows.forEach(row => {
         const targetSelect = row.querySelector('.tx-target-select');
@@ -1124,8 +1128,6 @@ async function applyAllSelections() {
         const txId = targetSelect.dataset.txId;
         const processed = targetSelect.dataset.processed === 'true';
         
-        if (processed) return;
-
         let destinationId = targetSelect.value;
         if (bulkDestinationId) {
             destinationId = bulkDestinationId;
@@ -1137,25 +1139,35 @@ async function applyAllSelections() {
             return;
         }
 
-        updates.push({
+        // Build update object - works for both unprocessed AND processed transactions
+        const update = {
             transaction_id: txId,
             source_account_id: sourceAccountId,
             target_account_id: parseInt(destinationId),
-            source_type: sourceFilter === 'plaid' ? 'plaid' : 'historic'
-        });
+            source_type: sourceFilter === 'plaid' ? 'plaid' : 'historic',
+            is_update: processed  // Flag to indicate if this is an update to an existing entry
+        };
+        
+        if (processed) {
+            processedCount++;
+        } else {
+            unprocessedCount++;
+        }
+        
+        updates.push(update);
     });
 
     if (updates.length === 0) {
         if (skippedCount > 0) {
             showToast(`No transactions with destinations selected. ${skippedCount} transaction(s) skipped.`, 'warning');
         } else {
-            showToast('No unprocessed transactions found.', 'warning');
+            showToast('No transactions found.', 'warning');
         }
         return;
     }
 
-    console.log('[BANK] Applying', updates.length, 'transactions, skipping', skippedCount);
-    if (!confirm(`Apply ${updates.length} transaction(s)? (${skippedCount} skipped - no destination selected)`)) {
+    const message = `Apply ${updates.length} transaction(s)?\n- ${unprocessedCount} new (unposted)\n- ${processedCount} updates (reassigning posted)\n${skippedCount} skipped (no destination selected)`;
+    if (!confirm(message)) {
         return;
     }
 
@@ -1169,7 +1181,7 @@ async function applyAllSelections() {
         const data = await res.json();
         if (data.status === 'success') {
             console.log('[BANK] Applied', data.processed, 'transactions');
-            showToast(`✅ ${data.processed} transaction(s) posted successfully. ${skippedCount} skipped.`, 'success');
+            showToast(`✅ ${data.processed} transaction(s) processed. ${data.updated || 0} updated, ${data.created || 0} new. ${skippedCount} skipped.`, 'success');
             loadBankTransactions();
         } else {
             console.error('[BANK] Error:', data.error);
@@ -1378,7 +1390,6 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     console.log('[MODAL] ==================================================');
     
     try {
-        // Check all required DOM elements exist
         const modal = document.getElementById('monthly-tx-modal');
         console.log('[MODAL] 1. Modal element:', modal ? 'FOUND' : 'MISSING', modal);
         
@@ -1431,7 +1442,6 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         console.log('[MODAL] 7. Modal classes after add:', modal.className);
         console.log('[MODAL] 8. Modal style.display:', modal.style.display);
         
-        // Build URL
         let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
         if (accountId) {
             url += `&account_id=${accountId}`;
@@ -1612,7 +1622,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     console.log('[MODAL] ==================================================');
 }
 
-
 async function unpostTransaction(entryId) {
     console.log('[MODAL] Unposting transaction:', entryId);
     
@@ -1630,7 +1639,6 @@ async function unpostTransaction(entryId) {
         if (data.status === 'success') {
             console.log('[MODAL] Unposted successfully');
             showToast(`✅ Journal entry #${entryId} unposted successfully.`, 'success');
-            // Reload the current modal content
             const modalBody = document.getElementById('modal-body');
             if (modalBody) {
                 modalBody.innerHTML = '<div class="modal-loading">Reloading...</div>';
@@ -1679,7 +1687,6 @@ function showCOGSCalculation(month) {
             return;
         }
         
-        // Format date range for title
         const [year, monthNum] = month.split('-');
         const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
         const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
@@ -1740,7 +1747,6 @@ function renderCOGSCalculation(data, dateRange) {
         <div class="summary-item"><strong>Total COGS:</strong> <span style="color:#dc3545;font-weight:bold;">$${total_cogs.toFixed(2)}</span></div>
     </div>`;
     
-    // Records section
     html += `<h4 style="margin:15px 0 10px 0; color:#333;">Records Sold</h4>`;
     if (records && records.length > 0) {
         html += `<table>
@@ -1772,7 +1778,6 @@ function renderCOGSCalculation(data, dateRange) {
         html += '<p class="text-muted">No records sold this month.</p>';
     }
     
-    // Batch allocations section
     html += `<h4 style="margin:15px 0 10px 0; color:#333;">Batch Allocations</h4>`;
     if (batch_allocations && batch_allocations.length > 0) {
         html += `<table>
@@ -1846,13 +1851,11 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             return;
         }
         
-        // Store current months for navigation
         currentBreakdownMonths = chartData.months || [];
         currentBreakdownMonthIndex = currentBreakdownMonths.indexOf(month);
         currentBreakdownChartType = chartType;
         currentBreakdownMonth = month;
         
-        // Format date range for title
         const [year, monthNum] = month.split('-');
         const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
         const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
@@ -1864,7 +1867,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
         
-        // Build navigation controls
         const totalMonths = currentBreakdownMonths.length;
         const navHtml = `
             <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px; justify-content:center; flex-wrap:wrap;">
@@ -1887,7 +1889,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         
         body.innerHTML = navHtml;
         
-        // Add navigation event listeners
         document.getElementById('breakdown-prev-month')?.addEventListener('click', function() {
             if (currentBreakdownMonthIndex > 0) {
                 const newMonth = currentBreakdownMonths[currentBreakdownMonthIndex - 1];
@@ -1904,11 +1905,9 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             }
         });
         
-        // Get data for this month
         const monthData = chartData.account_breakdown[month] || {};
         console.log('[BREAKDOWN] 6. Month data:', monthData);
         
-        // Separate Net Income and COGS
         const netLabel = Object.keys(monthData).find(name => 
             name === 'Net' || name === 'Net Income' || name === 'Net Cash'
         );
@@ -1916,7 +1915,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             name === 'COGS' || name === 'Cost of Goods Sold'
         );
         
-        // Build labels - put COGS near the end, Net last
         let labels = Object.keys(monthData).filter(name => 
             name !== netLabel && name !== cogsLabel
         ).sort();
@@ -1926,7 +1924,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         const values = labels.map(k => monthData[k] || 0);
         console.log('[BREAKDOWN] 7. Labels:', labels.length, 'Values:', values.length);
         
-        // Build labels with account IDs pre-mapped
         const labelsWithIds = labels.map((label, i) => {
             const trimmed = label.trim();
             const norm = trimmed.toLowerCase();
@@ -1949,7 +1946,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             };
         });
         
-        // Filter out near-zero values but keep COGS and Net if they exist
         const filtered = labelsWithIds.filter(item => 
             Math.abs(item.value) > 0.01 || item.isCOGS || item.label === netLabel
         );
@@ -1972,13 +1968,11 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         
         const ctx = canvas.getContext('2d');
         
-        // Destroy any existing chart
         if (window._breakdownChart) {
             window._breakdownChart.destroy();
             window._breakdownChart = null;
         }
         
-        // Build colors - COGS is RED, Net is Purple
         const barColors = filtered.map(item => {
             if (item.label === netLabel) {
                 return 'rgba(111, 66, 193, 0.85)';
@@ -2081,7 +2075,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                         console.log('[BREAKDOWN] Using account ID:', item.accountId);
                         showMonthlyTransactions(month, item.accountId, item.label, excludeOrders);
                     } else {
-                        // Try one more time to find account ID by name
                         const trimmed = item.label.trim();
                         const norm = trimmed.toLowerCase();
                         const accountId = accountNameToId[norm] || accountNameToId[trimmed];
@@ -2137,14 +2130,12 @@ function renderLineChart(canvasId, data, options = {}) {
         return null;
     }
 
-    // Destroy existing chart on this canvas
     const existingChart = Chart.getChart(canvas);
     if (existingChart) {
         console.log('[CHART] Destroying existing chart');
         existingChart.destroy();
     }
 
-    // Format month labels
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const labels = months.map(m => {
         const [year, month] = m.split('-');
@@ -2152,7 +2143,6 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART] Labels:', labels);
 
-    // Get all account names
     const allAccounts = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -2186,7 +2176,6 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART] Sorted accounts:', sortedAccounts);
 
-    // Build datasets with DISTINCT styles for every line
     const datasets = [];
     let revenueCount = 0;
     let expenseCount = 0;
@@ -2267,12 +2256,11 @@ function renderLineChart(canvasId, data, options = {}) {
             pointHoverRadius: 7,
             pointHoverBorderWidth: 2,
             fill: false,
-            tension: 0,  // STRAIGHT LINES
+            tension: 0,
             hidden: false
         });
     });
 
-    // Add Net Income / Net Cash
     if (netLabel) {
         const netValues = months.map(m => {
             const monthData = account_breakdown[m] || {};
@@ -2294,7 +2282,7 @@ function renderLineChart(canvasId, data, options = {}) {
                 pointBorderColor: 'white',
                 pointBorderWidth: 2,
                 fill: false,
-                tension: 0,  // STRAIGHT LINES
+                tension: 0,
                 hidden: false
             });
         }
@@ -2318,7 +2306,6 @@ function renderLineChart(canvasId, data, options = {}) {
     const isPL = options.type === 'pl';
     console.log('[CHART] Chart type:', isPL ? 'P&L' : 'Cash Flow');
 
-    // Store data for breakdown modal
     if (canvasId === 'pl-chart') {
         plChartData = data;
     } else if (canvasId === 'cash-flow-chart') {
@@ -2343,7 +2330,7 @@ function renderLineChart(canvasId, data, options = {}) {
                     position: 'bottom',
                     labels: {
                         usePointStyle: true,
-                        pointStyle: false,  // Use actual point style from dataset
+                        pointStyle: false,  // ← SHOW ACTUAL POINT STYLES IN LEGEND
                         padding: 20,
                         font: { size: 11 },
                         boxWidth: 14,
@@ -2403,7 +2390,6 @@ function renderLineChart(canvasId, data, options = {}) {
         cashFlowChartInstance = chart;
     }
 
-    // ---- X-AXIS CLICK HANDLER ----
     console.log('[CHART] Adding x-axis click handler');
     
     canvas.addEventListener('click', function(e) {
@@ -2426,8 +2412,6 @@ function renderLineChart(canvasId, data, options = {}) {
             }
             
             const chartHeight = chartArea.bottom - chartArea.top;
-            
-            // ONLY trigger if click is on x-axis labels (bottom 15% of chart)
             const yPos = (y - chartArea.top) / chartHeight;
             
             if (yPos < 0.8 || yPos > 1.1) {
@@ -2471,7 +2455,6 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART-X] Click handler attached');
 
-    // Double-click to expand - ONLY for Cash Flow
     if (canvasId === 'cash-flow-chart') {
         canvas.addEventListener('dblclick', function(e) {
             e.stopPropagation();

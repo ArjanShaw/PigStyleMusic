@@ -8090,6 +8090,10 @@ def accounting_get_bank_transactions():
 @login_required
 @role_required(['admin'])
 def apply_multiple():
+    """
+    Apply multiple transactions to accounts.
+    Handles both unprocessed (new) and processed (update/reassign) transactions.
+    """
     data = request.json
     updates = data.get('updates', [])
     if not updates:
@@ -8098,6 +8102,8 @@ def apply_multiple():
     conn = get_db()
     cursor = conn.cursor()
     processed = 0
+    created = 0
+    updated = 0
     errors = []
 
     # Pre-fetch Plaid transactions once
@@ -8108,9 +8114,11 @@ def apply_multiple():
 
     for item in updates:
         transaction_id = item.get('transaction_id')
-        source_account_id = item.get('source_account_id')  # new
-        target_account_id = item.get('target_account_id')  # renamed
+        source_account_id = item.get('source_account_id')
+        target_account_id = item.get('target_account_id')
         source_type = item.get('source_type', 'plaid')
+        is_update = item.get('is_update', False)  # Flag for already processed transactions
+        
         if not transaction_id or not source_account_id or not target_account_id:
             errors.append(f'Missing fields for {transaction_id}')
             continue
@@ -8118,11 +8126,11 @@ def apply_multiple():
         # Find the transaction
         tx = None
         if source_type == 'plaid':
-            tx = next((t for t in all_plaid_tx if t['id'] == transaction_id), None)
+            tx = next((t for t in all_plaid_tx if str(t['id']) == str(transaction_id)), None)
         else:
             conn2 = get_db()
             cur2 = conn2.cursor()
-            cur2.execute('SELECT id, transaction_date, amount, description FROM bank_transactions WHERE id = ?', (transaction_id,))
+            cur2.execute('SELECT id, transaction_date, amount, description FROM bank_transactions WHERE id = ?', (int(transaction_id),))
             row = cur2.fetchone()
             conn2.close()
             if row:
@@ -8142,26 +8150,53 @@ def apply_multiple():
         description = tx['description']
 
         date_str = parse_plaid_date(date_raw) or datetime.now().date().isoformat()
+        amount_cents = int(round(abs(amount) * 100))
+        is_expense = amount > 0   # Positive = expense
 
         # Check if already processed
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
                        (source_type, str(transaction_id)))
         existing = cursor.fetchone()
+
         if existing:
-            cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
-            entry_id = existing['id']
+            # If this is an update (reassignment), delete the old entry first
+            if is_update:
+                cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                cursor.execute('DELETE FROM journal_entries WHERE id = ?', (existing['id'],))
+                # Also mark bank_transaction as unprocessed if it's historic
+                if source_type == 'historic':
+                    cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(transaction_id),))
+                updated += 1
+                # Now create a new entry
+                cursor.execute('''
+                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
+                entry_id = cursor.lastrowid
+                created += 1
+            else:
+                # Entry exists but not marked as update - just use it
+                cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                entry_id = existing['id']
+                created += 1
         else:
+            # Create new entry
             cursor.execute('''
                 INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                 VALUES (?, ?, ?, ?)
             ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
             entry_id = cursor.lastrowid
+            created += 1
 
-        amount_cents = int(round(abs(amount) * 100))
-        is_expense = amount > 0   # Positive = expense
+        # Get cash account for this source type
+        cash_id = get_cash_account_id(source_type)
+        if not cash_id:
+            errors.append(f'No cash account for source {source_type}, tx {transaction_id}')
+            continue
 
+        # Insert the new lines
         if is_expense:
-            # Debit target, Credit source
+            # Withdrawal: Debit target (expense), Credit source (cash)
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
@@ -8171,7 +8206,7 @@ def apply_multiple():
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, source_account_id, 0, amount_cents))
         else:
-            # Debit source, Credit target
+            # Deposit: Debit source (cash), Credit target (revenue/liability)
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
@@ -8181,17 +8216,23 @@ def apply_multiple():
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, target_account_id, 0, amount_cents))
 
+        # Mark as processed in the appropriate table
+        if source_type == 'historic':
+            cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
+
         conn.commit()
         processed += 1
 
     conn.close()
+    
     return jsonify({
         'status': 'success',
         'processed': processed,
+        'created': created,
+        'updated': updated,
         'errors': errors if errors else None,
-        'message': f'Processed {processed} transactions' + (f', errors: {len(errors)}' if errors else '')
+        'message': f'Processed {processed} transactions ({created} new, {updated} updated)' + (f', errors: {len(errors)}' if errors else '')
     })
-
 
 @app.route('/api/accounting/bank/apply-filter-bulk', methods=['POST'])
 @login_required
@@ -10274,7 +10315,7 @@ def cogs_calculation():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-        
+
 
 
 if __name__ == '__main__': 
