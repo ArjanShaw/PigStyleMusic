@@ -115,7 +115,6 @@
         .monthly-controls .form-group { min-width: 150px; }
         .monthly-controls .form-group input[type="month"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
         
-        /* Single chart container */
         .chart-container-wrapper { background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; position: relative; min-height: 400px; }
         .chart-container-wrapper canvas { max-height: 400px; width: 100% !important; }
         .chart-container-wrapper .chart-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 15px; text-align: center; }
@@ -123,7 +122,6 @@
         .chart-container-wrapper .chart-date-range { font-size: 14px; color: #666; text-align: center; margin-bottom: 10px; }
         .chart-container-wrapper .chart-click-hint { font-size: 12px; color: #999; text-align: center; margin-top: 10px; font-style: italic; }
 
-        /* Expanded chart styles */
         #expanded-chart-container {
             position: fixed;
             top: 80px;
@@ -191,12 +189,10 @@
         .status-badge.revenue { background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
         .status-badge.expense { background: #f8d7da; color: #721c24; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
 
-        .chart-legend-toggle { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
-        .chart-legend-toggle .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; padding: 2px 8px; border-radius: 4px; border: 1px solid transparent; }
-        .chart-legend-toggle .legend-item:hover { background: #f0f0f0; }
-        .chart-legend-toggle .legend-item .color-box { width: 16px; height: 4px; border-radius: 2px; }
-        .chart-legend-toggle .legend-item.hidden { opacity: 0.4; text-decoration: line-through; }
-        .chart-legend-toggle .legend-item .legend-label { color: #333; }
+        /* Month Breakdown Modal */
+        #breakdown-chart-container { min-height: 400px; width: 100%; position: relative; }
+        #breakdown-chart-container canvas { width: 100% !important; height: 400px !important; }
+        .breakdown-bar-click-hint { font-size: 12px; color: #999; text-align: center; margin-top: 10px; font-style: italic; }
     </style>
 </head>
 <body>
@@ -441,7 +437,7 @@
             <!-- CASH FLOW -->
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
-                <p class="text-muted">Shows monthly cash inflows (positive) and outflows (negative) by account. <strong>Click any data point</strong> to see the underlying transactions. <strong>Double-click the chart</strong> to expand it full screen.</p>
+                <p class="text-muted">Shows monthly cash inflows (positive) and outflows (negative) by account. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions. <strong>Double-click the chart</strong> to expand it full screen.</p>
                 <div class="monthly-controls">
                     <div class="form-group"><label>Start Month</label><input type="month" id="cash-flow-start"></div>
                     <div class="form-group"><label>End Month</label><input type="month" id="cash-flow-end"></div>
@@ -451,7 +447,7 @@
                 <div id="cash-flow-chart-container" class="chart-container-wrapper">
                     <div class="chart-title">Cash Flow</div>
                     <div class="chart-subtitle">Monthly cash inflows and outflows by account</div>
-                    <div class="chart-click-hint">Click any data point to see transactions &bull; Double-click to expand</div>
+                    <div class="chart-click-hint">Click x-axis month for breakdown &bull; Double-click to expand</div>
                     <canvas id="cash-flow-chart"></canvas>
                 </div>
             </div>
@@ -459,7 +455,7 @@
             <!-- MONTHLY P&L -->
             <div id="sub-monthly-pl" class="sub-tab-content">
                 <h4><i class="fas fa-chart-line"></i> Monthly Profit & Loss</h4>
-                <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click any data point</strong> to see the underlying transactions. <strong>Double-click the chart</strong> to expand it full screen.</p>
+                <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions. <strong>Double-click the chart</strong> to expand it full screen.</p>
                 <div class="monthly-controls">
                     <div class="form-group"><label>Start Month</label><input type="month" id="pl-start"></div>
                     <div class="form-group"><label>End Month</label><input type="month" id="pl-end"></div>
@@ -469,7 +465,7 @@
                 <div id="pl-chart-container" class="chart-container-wrapper">
                     <div class="chart-title">Monthly Profit &amp; Loss</div>
                     <div class="chart-subtitle">Revenue, expenses, and net income by month</div>
-                    <div class="chart-click-hint">Click any data point to see transactions &bull; Double-click to expand</div>
+                    <div class="chart-click-hint">Click x-axis month for breakdown &bull; Double-click to expand</div>
                     <canvas id="pl-chart"></canvas>
                 </div>
             </div>
@@ -568,6 +564,22 @@
         </div>
     </div>
 
+    <!-- MONTH BREAKDOWN MODAL (Bar Chart) -->
+    <div class="modal-overlay" id="breakdown-modal">
+        <div class="modal-box" style="max-width: 950px;">
+            <div class="modal-header">
+                <h3 id="breakdown-modal-title">Month Breakdown</h3>
+                <button class="modal-close" onclick="document.getElementById('breakdown-modal').classList.remove('active')">&times;</button>
+            </div>
+            <div class="modal-body" id="breakdown-modal-body">
+                <div id="breakdown-chart-container">
+                    <div class="modal-loading">Loading chart...</div>
+                </div>
+                <div class="breakdown-bar-click-hint">Click any bar to see transactions</div>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/app-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -577,6 +589,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=6"></script>
+    <script src="/static/js/admin-accounting.js?v=7"></script>
 </body>
 </html>
