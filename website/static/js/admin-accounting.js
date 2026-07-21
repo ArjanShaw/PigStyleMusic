@@ -19,6 +19,10 @@ let isExpanded = false;
 // Chart data cache for breakdown modal
 let plChartData = null;
 let cashFlowChartData = null;
+let plMonths = [];
+let cashFlowMonths = [];
+let allPLData = null;
+let allCashFlowData = null;
 
 // Account name to ID mapping
 let accountNameToId = {};
@@ -28,6 +32,13 @@ let currentBreakdownChartType = 'pl';
 let currentBreakdownMonth = '';
 let currentBreakdownMonths = [];
 let currentBreakdownMonthIndex = -1;
+
+// Range selector state
+let plRangeStart = 0;
+let plRangeEnd = 0;
+let cashFlowRangeStart = 0;
+let cashFlowRangeEnd = 0;
+const DEFAULT_MONTHS = 6;
 
 // ============================================================
 // TOAST NOTIFICATION
@@ -74,6 +85,183 @@ if (!document.getElementById('toast-styles')) {
 }
 
 // ============================================================
+// RANGE SELECTOR - SCROLLBAR DATE RANGE
+// ============================================================
+
+function initRangeSelector(containerId, chartId, type) {
+    console.log('[RANGE] Initializing range selector for', type);
+    
+    // Check if range selector already exists
+    const existing = document.getElementById(`range-${type}`);
+    if (existing) {
+        console.log('[RANGE] Range selector already exists');
+        return;
+    }
+    
+    const container = document.getElementById(containerId);
+    if (!container) {
+        console.error('[RANGE] Container not found:', containerId);
+        return;
+    }
+    
+    // Create range selector
+    const rangeDiv = document.createElement('div');
+    rangeDiv.id = `range-${type}`;
+    rangeDiv.style.cssText = `
+        margin-bottom: 15px;
+        padding: 10px 15px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border: 1px solid #e9ecef;
+    `;
+    
+    rangeDiv.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:13px; color:#666; font-weight:500;">
+                <i class="fas fa-calendar-alt"></i> Date Range:
+                <span id="range-label-${type}" style="font-weight:600; color:#333;"></span>
+            </span>
+            <span style="font-size:12px; color:#999;">Drag to adjust range</span>
+        </div>
+        <div id="range-slider-wrapper-${type}" style="position:relative; padding:0 5px;">
+            <input type="range" id="range-slider-start-${type}" min="0" max="100" value="0" step="1" style="width:100%;">
+            <div style="display:flex; justify-content:space-between; font-size:10px; color:#999; margin-top:2px;">
+                <span id="range-start-label-${type}">Earliest</span>
+                <span id="range-end-label-${type}">Latest</span>
+            </div>
+        </div>
+    `;
+    
+    container.insertBefore(rangeDiv, container.firstChild);
+    
+    // Store range state
+    const startSlider = document.getElementById(`range-slider-start-${type}`);
+    const endSlider = document.createElement('input');
+    endSlider.type = 'range';
+    endSlider.id = `range-slider-end-${type}`;
+    endSlider.min = 0;
+    endSlider.max = 100;
+    endSlider.value = 100;
+    endSlider.step = 1;
+    endSlider.style.cssText = 'width:100%; margin-top:5px;';
+    document.getElementById(`range-slider-wrapper-${type}`).appendChild(endSlider);
+    
+    // Add event listeners
+    startSlider.addEventListener('input', function() {
+        updateRangeSelector(type);
+    });
+    endSlider.addEventListener('input', function() {
+        updateRangeSelector(type);
+    });
+    
+    // Store references
+    window[`rangeStart_${type}`] = startSlider;
+    window[`rangeEnd_${type}`] = endSlider;
+    
+    console.log('[RANGE] Range selector initialized for', type);
+}
+
+function updateRangeSelector(type) {
+    const startSlider = window[`rangeStart_${type}`];
+    const endSlider = window[`rangeEnd_${type}`];
+    if (!startSlider || !endSlider) return;
+    
+    const startVal = parseInt(startSlider.value);
+    const endVal = parseInt(endSlider.value);
+    
+    // Ensure start < end
+    if (startVal >= endVal) {
+        if (event && event.target === startSlider) {
+            endSlider.value = Math.min(100, startVal + 5);
+        } else {
+            startSlider.value = Math.max(0, endVal - 5);
+        }
+    }
+    
+    const finalStart = parseInt(startSlider.value);
+    const finalEnd = parseInt(endSlider.value);
+    
+    // Store for chart rendering
+    if (type === 'pl') {
+        plRangeStart = finalStart;
+        plRangeEnd = finalEnd;
+    } else if (type === 'cashflow') {
+        cashFlowRangeStart = finalStart;
+        cashFlowRangeEnd = finalEnd;
+    }
+    
+    updateRangeLabel(type);
+    renderFilteredChart(type);
+}
+
+function updateRangeLabel(type) {
+    const months = type === 'pl' ? plMonths : cashFlowMonths;
+    const labelEl = document.getElementById(`range-label-${type}`);
+    const startLabel = document.getElementById(`range-start-label-${type}`);
+    const endLabel = document.getElementById(`range-end-label-${type}`);
+    
+    if (!labelEl || !months || months.length === 0) return;
+    
+    const startIdx = Math.floor((plRangeStart / 100) * (months.length - 1));
+    const endIdx = Math.floor((plRangeEnd / 100) * (months.length - 1));
+    const clampedStart = Math.max(0, Math.min(months.length - 1, startIdx));
+    const clampedEnd = Math.max(0, Math.min(months.length - 1, endIdx));
+    
+    const formatMonth = (m) => {
+        const [year, month] = m.split('-');
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${monthNames[parseInt(month) - 1]} ${year}`;
+    };
+    
+    labelEl.textContent = `${formatMonth(months[clampedStart])} - ${formatMonth(months[clampedEnd])}`;
+    if (startLabel) startLabel.textContent = formatMonth(months[clampedStart]);
+    if (endLabel) endLabel.textContent = formatMonth(months[clampedEnd]);
+}
+
+function renderFilteredChart(type) {
+    const months = type === 'pl' ? plMonths : cashFlowMonths;
+    const data = type === 'pl' ? allPLData : allCashFlowData;
+    
+    if (!months || months.length === 0 || !data) {
+        console.log('[RANGE] No data to render filtered chart');
+        return;
+    }
+    
+    const startIdx = Math.floor((plRangeStart / 100) * (months.length - 1));
+    const endIdx = Math.floor((plRangeEnd / 100) * (months.length - 1));
+    const clampedStart = Math.max(0, Math.min(months.length - 1, startIdx));
+    const clampedEnd = Math.max(0, Math.min(months.length - 1, endIdx));
+    
+    const filteredMonths = months.slice(clampedStart, clampedEnd + 1);
+    const filteredData = {};
+    filteredMonths.forEach(m => {
+        filteredData[m] = data.account_breakdown[m] || {};
+    });
+    
+    const filteredChartData = {
+        months: filteredMonths,
+        account_breakdown: filteredData
+    };
+    
+    const canvasId = type === 'pl' ? 'pl-chart' : 'cash-flow-chart';
+    const chartType = type === 'pl' ? 'pl' : 'cashflow';
+    
+    // Update date range display
+    const dateRangeEl = document.getElementById(type === 'pl' ? 'pl-date-range' : 'cash-flow-date-range');
+    if (dateRangeEl) {
+        const formatMonth = (m) => {
+            const [year, month] = m.split('-');
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${monthNames[parseInt(month) - 1]} ${year}`;
+        };
+        dateRangeEl.textContent = `Showing ${formatMonth(filteredMonths[0])} to ${formatMonth(filteredMonths[filteredMonths.length - 1])}`;
+        dateRangeEl.style.display = 'block';
+    }
+    
+    renderLineChart(canvasId, filteredChartData, { type: chartType });
+}
+
+// ============================================================
 // INITIALIZATION
 // ============================================================
 
@@ -111,11 +299,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             else if (sub === 'cash-flow') {
                 console.log('[INIT] Cash Flow tab selected');
-                const now = new Date();
-                const endMonth = now.toISOString().slice(0, 7);
-                const endInput = document.getElementById('cash-flow-end');
-                if (!endInput.value) endInput.value = endMonth;
-
                 if (bankAccounts.length === 0) {
                     loadBankAccountsForRowDropdowns().then(() => {
                         loadCashFlow();
@@ -123,36 +306,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     loadCashFlow();
                 }
-
-                fetch(`${AppConfig.baseUrl}/api/accounting/earliest-transaction`, {
-                    credentials: 'include',
-                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'success' && data.earliest) {
-                        const earliestDate = new Date(data.earliest);
-                        const startMonth = earliestDate.toISOString().slice(0, 7);
-                        const startInput = document.getElementById('cash-flow-start');
-                        if (!startInput.value) startInput.value = startMonth;
-                    }
-                })
-                .catch(err => {
-                    console.error('[INIT] Failed to fetch earliest transaction:', err);
-                });
             }
             else if (sub === 'monthly-pl') {
                 console.log('[INIT] Monthly P&L tab selected');
-                const now = new Date();
-                const endMonth = now.toISOString().slice(0, 7);
-                const endInput = document.getElementById('pl-end');
-                if (!endInput.value) endInput.value = endMonth;
-                const startInput = document.getElementById('pl-start');
-                if (!startInput.value) {
-                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-                    startInput.value = startDate.toISOString().slice(0, 7);
-                }
-
                 if (bankAccounts.length === 0) {
                     loadBankAccountsForRowDropdowns().then(() => {
                         loadMonthlyPL();
@@ -253,13 +409,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ---- Bank Tab: Search button and Enter key - NO AUTO-TRIGGERS ----
-    // Search button
     document.getElementById('bank-search-btn')?.addEventListener('click', function() {
         console.log('[BANK] Search button clicked');
         loadBankTransactions();
     });
 
-    // Enter key on search input
     document.getElementById('bank-filter')?.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -267,8 +421,6 @@ document.addEventListener('DOMContentLoaded', function() {
             loadBankTransactions();
         }
     });
-
-    // ---- NO AUTO-TRIGGERS - Removed all 'change' and 'input' listeners that auto-load ----
 
     // Accounts tab - add account form
     document.getElementById('add-account-btn')?.addEventListener('click', function() {
@@ -369,18 +521,15 @@ async function loadBankAccountsForRowDropdowns() {
         const data = await res.json();
         if (data.status === 'success') {
             bankAccounts = data.accounts;
-            // Build accountNameToId mapping
             accountNameToId = {};
             bankAccounts.forEach(acc => {
                 const trimmed = acc.name.trim();
                 const norm = trimmed.toLowerCase();
                 accountNameToId[norm] = acc.id;
                 accountNameToId[trimmed] = acc.id;
-                // Also map by code
                 accountNameToId[acc.code] = acc.id;
             });
             console.log('[BANK] Loaded', bankAccounts.length, 'accounts for row dropdowns');
-            console.log('[BANK] accountNameToId keys:', Object.keys(accountNameToId).slice(0, 10));
         }
         return data;
     } catch (e) {
@@ -977,10 +1126,6 @@ async function connectBank() {
     }
 }
 
-// ============================================================
-// loadBankTransactions - called ONLY by Search button, Enter key, or after Apply
-// ============================================================
-
 async function loadBankTransactions() {
     console.log('[BANK] Loading bank transactions (manual search)');
     const body = document.getElementById('bank-body');
@@ -1056,7 +1201,6 @@ function renderBankTransactions(transactions) {
         
         const rowClass = processed ? 'bank-row-posted' : 'bank-row-unposted';
         
-        // Destination dropdown - all accounts except cash accounts (exclude 1 and 21)
         const targetOptions = bankAccounts.filter(acc => acc.id != 1 && acc.id != 21);
         let targetHtml = `<select class="tx-target-select" id="tx-target-${t.id}" data-tx-id="${t.id}" data-processed="${processed}">`;
         targetHtml += `<option value="">Select Destination</option>`;
@@ -1109,9 +1253,9 @@ async function applyAllSelections() {
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'plaid';
     let sourceAccountId = null;
     if (sourceFilter === 'plaid') {
-        sourceAccountId = 21; // FNBO Bank
+        sourceAccountId = 21;
     } else if (sourceFilter === 'historic') {
-        sourceAccountId = 1; // Bluevine Bank
+        sourceAccountId = 1;
     } else {
         showToast('Please select a specific source (Live Plaid or Historic CSV)', 'warning');
         return;
@@ -1143,13 +1287,12 @@ async function applyAllSelections() {
             return;
         }
 
-        // Build update object - works for both unprocessed AND processed transactions
         const update = {
             transaction_id: txId,
             source_account_id: sourceAccountId,
             target_account_id: parseInt(destinationId),
             source_type: sourceFilter === 'plaid' ? 'plaid' : 'historic',
-            is_update: processed  // Flag to indicate if this is an update to an existing entry
+            is_update: processed
         };
         
         if (processed) {
@@ -1186,7 +1329,6 @@ async function applyAllSelections() {
         if (data.status === 'success') {
             console.log('[BANK] Applied', data.processed, 'transactions');
             showToast(`✅ ${data.processed} transaction(s) processed. ${data.updated || 0} updated, ${data.created || 0} new. ${skippedCount} skipped.`, 'success');
-            // Refresh the table after apply
             loadBankTransactions();
         } else {
             console.error('[BANK] Error:', data.error);
@@ -1380,7 +1522,7 @@ async function deleteAccount(accountId, accountName) {
 }
 
 // ============================================================
-// MODAL FUNCTIONS WITH EXTENSIVE DEBUGGING
+// MODAL FUNCTIONS
 // ============================================================
 
 function closeMonthlyModal() {
@@ -1422,7 +1564,6 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
             return;
         }
         
-        // Format date range for title
         const [year, monthNum] = month.split('-');
         const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
         const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
@@ -1515,7 +1656,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         return;
     }
 
-    // Log all transaction details
     console.log('[MODAL] Transaction details:');
     transactions.forEach((tx, idx) => {
         console.log(`[MODAL]   ${idx}:`, {
@@ -1530,7 +1670,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         });
     });
 
-    // Group transactions by journal_entry_id
     const grouped = {};
     transactions.forEach(tx => {
         const key = tx.journal_entry_id || tx.source_id || tx.id;
@@ -1553,24 +1692,20 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     const groupedList = Object.values(grouped);
     console.log('[MODAL] Grouped into', groupedList.length, 'entries');
     
-    // Check if this is a revenue account (should show positive/green)
     const isRevenueAccount = accountName && 
         (accountName.toLowerCase().includes('revenue') || 
          accountName.toLowerCase().includes('sales') ||
          accountName.toLowerCase().includes('income'));
     console.log('[MODAL] isRevenueAccount:', isRevenueAccount);
     
-    // Calculate totals
     let total = 0;
     groupedList.forEach(g => {
         total += g.net;
     });
     
-    // For display, invert total if revenue account
     let displayTotal = isRevenueAccount ? -total : total;
     console.log('[MODAL] Total net amount:', total, 'displayTotal:', displayTotal);
     
-    // Build HTML
     let html = `<div class="modal-summary">
         <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}${accountId ? ` (ID: ${accountId})` : ''}</div>
         <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
@@ -1580,11 +1715,11 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     
     html += `<table>
         <thead><tr>
-            <th style="width:100px; min-width:90px;">Date</th>
+            <th style="width:90px; min-width:80px; white-space:nowrap;">Date</th>
             <th>Description</th>
             <th>Account</th>
-            <th style="text-align:right;">Amount</th>
-            <th style="width:90px;">Actions</th>
+            <th style="text-align:right; width:100px;">Amount</th>
+            <th style="width:90px; text-align:center;">Actions</th>
         </tr></thead>
         <tbody>`;
     
@@ -1592,7 +1727,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     groupedList.forEach(g => {
         rowCount++;
         
-        // For revenue accounts, invert the sign for display
         let displayAmount = g.net;
         if (isRevenueAccount) {
             displayAmount = -g.net;
@@ -1610,7 +1744,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
             <td>${g.description || ''}</td>
             <td>${g.account_name || ''}</td>
             <td style="text-align:right; font-weight:600;" class="${amountClass}">${sign}${displayAmountStr}</td>
-            <td>${entryId ? `<button class="btn btn-sm btn-warning" onclick="unpostTransaction(${typeof entryId === 'string' ? `'${entryId}'` : entryId})"><i class="fas fa-undo"></i> Unpost</button>` : ''}</td>
+            <td style="text-align:center;">${entryId ? `<button class="btn btn-sm btn-warning" onclick="unpostTransaction(${typeof entryId === 'string' ? `'${entryId}'` : entryId})"><i class="fas fa-undo"></i></button>` : ''}</td>
         </tr>`;
     });
     
@@ -2313,8 +2447,33 @@ function renderLineChart(canvasId, data, options = {}) {
 
     if (canvasId === 'pl-chart') {
         plChartData = data;
+        plMonths = months;
+        allPLData = data;
+        
+        // Initialize range selector if not already done
+        if (!document.getElementById('range-pl')) {
+            console.log('[CHART] Initializing range selector for P&L');
+            // Check if we have the container
+            const container = document.getElementById('pl-chart-container');
+            if (container) {
+                initRangeSelector('pl-chart-container', 'pl-chart', 'pl');
+            }
+        }
+        updateRangeLabel('pl');
+        
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartData = data;
+        cashFlowMonths = months;
+        allCashFlowData = data;
+        
+        if (!document.getElementById('range-cashflow')) {
+            console.log('[CHART] Initializing range selector for Cash Flow');
+            const container = document.getElementById('cash-flow-chart-container');
+            if (container) {
+                initRangeSelector('cash-flow-chart-container', 'cash-flow-chart', 'cashflow');
+            }
+        }
+        updateRangeLabel('cashflow');
     }
 
     const chart = new Chart(ctx, {
@@ -2335,7 +2494,7 @@ function renderLineChart(canvasId, data, options = {}) {
                     position: 'bottom',
                     labels: {
                         usePointStyle: true,
-                        pointStyle: false,  // ← SHOW ACTUAL POINT STYLES IN LEGEND
+                        pointStyle: false,
                         padding: 20,
                         font: { size: 11 },
                         boxWidth: 14,
@@ -2395,6 +2554,7 @@ function renderLineChart(canvasId, data, options = {}) {
         cashFlowChartInstance = chart;
     }
 
+    // X-axis click handler
     console.log('[CHART] Adding x-axis click handler');
     
     canvas.addEventListener('click', function(e) {
@@ -2625,25 +2785,16 @@ function collapseChart() {
 
 async function loadCashFlow() {
     console.log('[CASHFLOW] ===== LOAD CASH FLOW START =====');
-    const startInput = document.getElementById('cash-flow-start');
-    const endInput = document.getElementById('cash-flow-end');
-    const start = startInput.value;
-    const end = endInput.value;
-    console.log('[CASHFLOW] Start:', start, 'End:', end);
     
-    if (!start || !end) {
-        alert('Please select both start and end months.');
-        return;
-    }
-
     if (bankAccounts.length === 0) {
         console.log('[CASHFLOW] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
     }
 
+    // Get all available data from API (no date filters)
     try {
-        console.log('[CASHFLOW] Fetching data from API');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${start}&end=${end}`, {
+        console.log('[CASHFLOW] Fetching all data from API');
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
@@ -2653,11 +2804,32 @@ async function loadCashFlow() {
         
         if (data.status === 'success') {
             console.log('[CASHFLOW] Data loaded, months:', data.months ? data.months.length : 0);
-            const dateRangeEl = document.getElementById('cash-flow-date-range');
-            dateRangeEl.textContent = `Showing from ${start} to ${end}`;
-            dateRangeEl.style.display = 'block';
             
-            renderLineChart('cash-flow-chart', data, { type: 'cashflow' });
+            // Store full data
+            allCashFlowData = data;
+            cashFlowMonths = data.months || [];
+            
+            // Set range to show last 6 months by default
+            const totalMonths = cashFlowMonths.length;
+            const defaultStart = Math.max(0, totalMonths - DEFAULT_MONTHS);
+            cashFlowRangeStart = Math.round((defaultStart / Math.max(1, totalMonths - 1)) * 100);
+            cashFlowRangeEnd = 100;
+            
+            // Update range label and render
+            const dateRangeEl = document.getElementById('cash-flow-date-range');
+            if (dateRangeEl && cashFlowMonths.length > 0) {
+                const formatMonth = (m) => {
+                    const [year, month] = m.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[parseInt(month) - 1]} ${year}`;
+                };
+                const startIdx = Math.max(0, defaultStart);
+                const endIdx = cashFlowMonths.length - 1;
+                dateRangeEl.textContent = `Showing ${formatMonth(cashFlowMonths[startIdx])} to ${formatMonth(cashFlowMonths[endIdx])}`;
+                dateRangeEl.style.display = 'block';
+            }
+            
+            renderFilteredChart('cashflow');
         } else {
             console.error('[CASHFLOW] Error:', data.error);
             document.getElementById('cash-flow-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
@@ -2675,25 +2847,16 @@ async function loadCashFlow() {
 
 async function loadMonthlyPL() {
     console.log('[MONTHLY-PL] ===== LOAD MONTHLY P&L START =====');
-    const startInput = document.getElementById('pl-start');
-    const endInput = document.getElementById('pl-end');
-    const start = startInput.value;
-    const end = endInput.value;
-    console.log('[MONTHLY-PL] Start:', start, 'End:', end);
     
-    if (!start || !end) {
-        alert('Please select both start and end months.');
-        return;
-    }
-
     if (bankAccounts.length === 0) {
         console.log('[MONTHLY-PL] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
     }
 
+    // Get all available data from API (no date filters)
     try {
-        console.log('[MONTHLY-PL] Fetching data from API');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${start}&end=${end}`, {
+        console.log('[MONTHLY-PL] Fetching all data from API');
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
@@ -2703,11 +2866,32 @@ async function loadMonthlyPL() {
         
         if (data.status === 'success') {
             console.log('[MONTHLY-PL] Data loaded, months:', data.months ? data.months.length : 0);
-            const dateRangeEl = document.getElementById('pl-date-range');
-            dateRangeEl.textContent = `Showing from ${start} to ${end}`;
-            dateRangeEl.style.display = 'block';
             
-            renderLineChart('pl-chart', data, { type: 'pl' });
+            // Store full data
+            allPLData = data;
+            plMonths = data.months || [];
+            
+            // Set range to show last 6 months by default
+            const totalMonths = plMonths.length;
+            const defaultStart = Math.max(0, totalMonths - DEFAULT_MONTHS);
+            plRangeStart = Math.round((defaultStart / Math.max(1, totalMonths - 1)) * 100);
+            plRangeEnd = 100;
+            
+            // Update range label and render
+            const dateRangeEl = document.getElementById('pl-date-range');
+            if (dateRangeEl && plMonths.length > 0) {
+                const formatMonth = (m) => {
+                    const [year, month] = m.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[parseInt(month) - 1]} ${year}`;
+                };
+                const startIdx = Math.max(0, defaultStart);
+                const endIdx = plMonths.length - 1;
+                dateRangeEl.textContent = `Showing ${formatMonth(plMonths[startIdx])} to ${formatMonth(plMonths[endIdx])}`;
+                dateRangeEl.style.display = 'block';
+            }
+            
+            renderFilteredChart('pl');
         } else {
             console.error('[MONTHLY-PL] Error:', data.error);
             document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
