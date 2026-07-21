@@ -131,6 +131,30 @@ def get_account_id(code):
 
 # ==================== HELPER: GET CASH ACCOUNT BY SOURCE TYPE ====================
 
+def get_cogs_rates():
+    """Get COGS assumption rates from app_config. Raises error if not found."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT config_key, config_value FROM app_config WHERE config_key IN ('cogs_new_record_rate', 'cogs_used_record_rate')")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    new_rate = None
+    used_rate = None
+    
+    for row in rows:
+        if row['config_key'] == 'cogs_new_record_rate':
+            new_rate = float(row['config_value'])
+        elif row['config_key'] == 'cogs_used_record_rate':
+            used_rate = float(row['config_value'])
+    
+    if new_rate is None:
+        raise ValueError("cogs_new_record_rate not found in app_config")
+    if used_rate is None:
+        raise ValueError("cogs_used_record_rate not found in app_config")
+    
+    return new_rate, used_rate
+
 def get_cash_account_id(source_type):
     """
     Return the account_id for the cash account associated with the given source type.
@@ -6829,129 +6853,7 @@ def accounting_get_accounts():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== COGS ASSUMPTION RATE HELPER ====================
-
-def get_cogs_assumption_rate():
-    """Get the COGS assumption rate from app_config, default 0.3."""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'cogs_assumption_rate'")
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        try:
-            return float(row['config_value'])
-        except:
-            return 0.3
-    # If key doesn't exist, create it with default
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value, description) VALUES ('cogs_assumption_rate', '0.3', 'COGS assumption rate for records without actual COGS')")
-    conn.commit()
-    conn.close()
-    return 0.3
-
-# ==================== ACCOUNTING: DASHBOARD ====================
-@app.route('/api/accounting/dashboard', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def accounting_dashboard():
-    """Get dashboard stats: revenue, COGS, net profit, pending sync, unreconciled"""
-    try:
-        today = date.today()
-        month_start = today.replace(day=1).isoformat()
-        month_end = today.isoformat()
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Revenue for this month - using order_items and price_at_time
-        cursor.execute('''
-            SELECT COALESCE(SUM(oi.price_at_time), 0) as revenue
-            FROM order_items oi
-            JOIN orders o ON oi.order_id = o.id
-            WHERE o.created_at >= ? AND o.created_at <= ?
-              AND o.payment_status = 'paid'
-        ''', (month_start, month_end))
-        revenue = cursor.fetchone()['revenue'] or 0
-        
-        # COGS – use assumption for records with NULL cogs
-        rate = get_cogs_assumption_rate()
-        cursor.execute('''
-            SELECT oi.price_at_time, r.cogs
-            FROM order_items oi
-            JOIN records r ON oi.record_id = r.id
-            JOIN orders o ON oi.order_id = o.id
-            WHERE o.created_at >= ? AND o.created_at <= ?
-              AND o.payment_status = 'paid'
-        ''', (month_start, month_end))
-        rows = cursor.fetchall()
-        total_cogs = 0
-        for row in rows:
-            if row['cogs'] is not None:
-                total_cogs += row['cogs']
-            else:
-                total_cogs += row['price_at_time'] * rate
-        
-        net_profit = revenue - total_cogs
-        
-        # Pending sync: orders that are paid but not accounted
-        cursor.execute('''
-            SELECT COUNT(*) as pending
-            FROM orders
-            WHERE payment_status = 'paid' AND (is_accounted IS NULL OR is_accounted = 0)
-        ''')
-        pending_sync = cursor.fetchone()['pending'] or 0
-        
-        # Unreconciled: payments without a match (if table exists)
-        try:
-            cursor.execute('''
-                SELECT COUNT(*) as unreconciled
-                FROM payments p
-                LEFT JOIN reconciliation_matches rm ON rm.source_type = 'payment' AND rm.source_id = p.id
-                WHERE rm.id IS NULL
-            ''')
-            unreconciled = cursor.fetchone()['unreconciled'] or 0
-        except:
-            unreconciled = 0
-        
-        # Recent journal entries (last 5)
-        cursor.execute('''
-            SELECT je.id, je.transaction_date, je.description,
-                   COALESCE(SUM(jl.debit_amount), 0) as debit_total,
-                   COALESCE(SUM(jl.credit_amount), 0) as credit_total
-            FROM journal_entries je
-            LEFT JOIN journal_lines jl ON jl.journal_entry_id = je.id
-            GROUP BY je.id
-            ORDER BY je.transaction_date DESC, je.id DESC
-            LIMIT 5
-        ''')
-        recent = cursor.fetchall()
-        recent_entries = []
-        for row in recent:
-            recent_entries.append({
-                'id': row['id'],
-                'date': row['transaction_date'],
-                'description': row['description'],
-                'debit_total': row['debit_total'] / 100.0,
-                'credit_total': row['credit_total'] / 100.0
-            })
-        
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'revenue': float(revenue),
-            'cogs': float(total_cogs),
-            'net_profit': float(net_profit),
-            'pending_sync': pending_sync,
-            'unreconciled': unreconciled,
-            'recent_entries': recent_entries
-        })
-    except Exception as e:
-        app.logger.error(f"Dashboard error: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 # ==================== ACCOUNTING: JOURNAL ====================
 
 @app.route('/api/accounting/journal', methods=['GET'])
@@ -7525,8 +7427,7 @@ def accounting_auto_match():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== ACCOUNTING: REPORTS ====================
-
-
+ 
 @app.route('/api/accounting/reports', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -7541,7 +7442,7 @@ def accounting_reports():
         cursor = conn.cursor()
         
         if report_type == 'pll':
-            rate = get_cogs_assumption_rate()
+            new_rate, used_rate = get_cogs_rates()
             
             # 1. Revenue from order_items
             cursor.execute('''
@@ -7552,23 +7453,45 @@ def accounting_reports():
                   AND (? IS NULL OR o.created_at >= ?)
                   AND (? IS NULL OR o.created_at <= ?)
             ''', (date_from, date_from, date_to, date_to))
-            revenue = cursor.fetchone()['revenue']
+            revenue = cursor.fetchone()['revenue'] or 0
             
-            # 2. COGS (assumed for NULL cogs)
+            # 2. COGS - using new rates
             cursor.execute('''
-                SELECT COALESCE(SUM(
-                    CASE WHEN r.cogs IS NULL THEN oi.price_at_time * ? ELSE r.cogs END
-                ), 0) as cogs
+                SELECT 
+                    oi.price_at_time,
+                    r.batch_id,
+                    r.condition_sleeve_id,
+                    r.condition_disc_id
                 FROM order_items oi
-                JOIN records r ON oi.record_id = r.id
                 JOIN orders o ON oi.order_id = o.id
+                LEFT JOIN records r ON oi.record_id = r.id
                 WHERE o.payment_status = 'paid'
                   AND (? IS NULL OR o.created_at >= ?)
                   AND (? IS NULL OR o.created_at <= ?)
-            ''', (rate, date_from, date_from, date_to, date_to))
-            cogs = cursor.fetchone()['cogs']
+            ''', (date_from, date_from, date_to, date_to))
+            rows = cursor.fetchall()
             
-            # 3. Other expenses (from journal_lines, excluding COGS account 5000)
+            total_cogs = 0
+            for row in rows:
+                if row['batch_id']:
+                    # Calculate from batch
+                    cursor.execute('''
+                        SELECT 
+                            (SELECT COALESCE(SUM(store_price), 1) FROM records WHERE batch_id = ?) as total_store_price,
+                            (SELECT COALESCE(jl.debit_amount / 100.0, 0) FROM journal_lines jl 
+                             WHERE jl.journal_entry_id = ? AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')) as batch_cost
+                    ''', (row['batch_id'], row['batch_id']))
+                    batch = cursor.fetchone()
+                    if batch and batch['total_store_price'] and batch['total_store_price'] > 0 and batch['batch_cost']:
+                        total_cogs += row['price_at_time'] / batch['total_store_price'] * batch['batch_cost']
+                else:
+                    # Use assumption rate based on condition
+                    if row['condition_sleeve_id'] == 1 and row['condition_disc_id'] == 1:
+                        total_cogs += row['price_at_time'] * new_rate
+                    else:
+                        total_cogs += row['price_at_time'] * used_rate
+            
+            # 3. Other expenses (excluding COGS account 5000)
             cursor.execute('''
                 SELECT a.code, a.name,
                        COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
@@ -7576,7 +7499,7 @@ def accounting_reports():
                 JOIN journal_entries je ON jl.journal_entry_id = je.id
                 JOIN accounts a ON jl.account_id = a.id
                 WHERE a.type = 'expense'
-                  AND a.code != '5000'   -- exclude COGS account
+                  AND a.code != '5000'
                   AND (? IS NULL OR je.transaction_date >= ?)
                   AND (? IS NULL OR je.transaction_date <= ?)
                 GROUP BY a.id
@@ -7585,18 +7508,17 @@ def accounting_reports():
             expense_rows = cursor.fetchall()
             
             report_data = []
-            total_revenue = revenue
-            total_expense = cogs
+            total_expense = total_cogs
             
             # Add revenue line
             report_data.append({
                 'Account': 'Sales Revenue',
-                'Balance': revenue   # positive
+                'Balance': revenue
             })
             # Add COGS line
             report_data.append({
-                'Account': 'COGS (Assumed)',
-                'Balance': cogs      # positive
+                'Account': 'COGS',
+                'Balance': total_cogs
             })
             
             # Add other expense lines
@@ -7608,87 +7530,8 @@ def accounting_reports():
                 })
                 total_expense += balance
             
-            net_profit = total_revenue - total_expense
-            summary = f"Total Revenue: ${total_revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${net_profit:.2f}"
-            
-        elif report_type == 'batch-profit':
-            # Batch profitability: group records by batch
-            cursor.execute('''
-                SELECT 
-                    b.id as batch_id,
-                    b.seller_name,
-                    b.start_datetime as acquisition_date,
-                    b.total_cost,
-                    COUNT(r.id) as total_records,
-                    SUM(CASE WHEN r.status_id = 3 THEN r.store_price ELSE 0 END) as revenue,
-                    SUM(CASE WHEN r.status_id = 3 THEN r.cogs ELSE 0 END) as cogs
-                FROM batches b
-                LEFT JOIN records r ON r.batch_id = b.id
-                GROUP BY b.id
-                ORDER BY b.start_datetime DESC
-            ''')
-            rows = cursor.fetchall()
-            report_data = []
-            for row in rows:
-                revenue = row['revenue'] or 0
-                cogs = row['cogs'] or 0
-                profit = revenue - cogs
-                roi = (profit / row['total_cost'] * 100) if row['total_cost'] and row['total_cost'] > 0 else 0
-                report_data.append({
-                    'Batch ID': row['batch_id'],
-                    'Seller': row['seller_name'] or 'Unknown',
-                    'Acquired': row['acquisition_date'],
-                    'Total Cost': row['total_cost'] or 0,
-                    'Records': row['total_records'] or 0,
-                    'Revenue': revenue,
-                    'COGS': cogs,
-                    'Profit': profit,
-                    'ROI %': round(roi, 1)
-                })
-            summary = f"Total Batches: {len(report_data)}"
-            
-        elif report_type == 'order-economics':
-            # Per-order economics - using order_items and price_at_time
-            cursor.execute('''
-                SELECT 
-                    o.id as order_id,
-                    o.created_at as order_date,
-                    o.channel,
-                    o.total as order_total,
-                    COALESCE(SUM(oi.price_at_time), 0) as item_revenue,
-                    COALESCE(o.shipping_charged, 0) as shipping_charged,
-                    COALESCE(SUM(r.cogs), 0) as cogs,
-                    COALESCE(SUM(f.amount), 0) as fees,
-                    COALESCE(s.postage_cost, 0) as shipping_cost
-                FROM orders o
-                LEFT JOIN order_items oi ON oi.order_id = o.id
-                LEFT JOIN records r ON oi.record_id = r.id
-                LEFT JOIN fees f ON f.order_id = o.id
-                LEFT JOIN shipments s ON s.order_id = o.id
-                WHERE o.payment_status = 'paid'
-                  AND (? IS NULL OR o.created_at >= ?)
-                  AND (? IS NULL OR o.created_at <= ?)
-                GROUP BY o.id
-                ORDER BY o.created_at DESC
-            ''', (date_from, date_from, date_to, date_to))
-            rows = cursor.fetchall()
-            report_data = []
-            total_profit = 0
-            for row in rows:
-                profit = row['item_revenue'] + row['shipping_charged'] - row['cogs'] - row['fees'] - row['shipping_cost']
-                total_profit += profit
-                report_data.append({
-                    'Order ID': row['order_id'][:12] + '...' if row['order_id'] else '',
-                    'Date': row['order_date'],
-                    'Channel': row['channel'],
-                    'Revenue': row['item_revenue'],
-                    'Shipping Charged': row['shipping_charged'],
-                    'COGS': row['cogs'],
-                    'Fees': row['fees'],
-                    'Shipping Cost': row['shipping_cost'],
-                    'Net Profit': profit
-                })
-            summary = f"Total Orders: {len(report_data)} | Total Net Profit: ${total_profit:.2f}"
+            net_profit = revenue - total_expense
+            summary = f"Total Revenue: ${revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${net_profit:.2f}"
             
         elif report_type == 'balance-sheet':
             # Balance Sheet: assets, liabilities, equity
@@ -7726,6 +7569,127 @@ def accounting_reports():
                 else:
                     total_equity += balance
             summary = f"Total Assets: ${total_assets:.2f} | Total Liabilities: ${total_liabilities:.2f} | Total Equity: ${total_equity:.2f} | (Assets = Liabilities + Equity: {abs(total_assets - (total_liabilities + total_equity)) < 0.01})"
+            
+        elif report_type == 'batch-profit':
+            # Batch profitability
+            cursor.execute('''
+                SELECT 
+                    je.id as batch_id,
+                    je.description,
+                    je.transaction_date as purchase_date,
+                    jl.debit_amount / 100.0 as total_cost,
+                    COUNT(r.id) as total_records,
+                    SUM(CASE WHEN r.status_id = 3 THEN r.store_price ELSE 0 END) as revenue,
+                    SUM(CASE WHEN r.status_id = 3 THEN 
+                        r.store_price / (
+                            SELECT COALESCE(SUM(store_price), 1) FROM records WHERE batch_id = je.id
+                        ) * jl.debit_amount / 100.0
+                    ELSE 0 END) as cogs
+                FROM journal_entries je
+                JOIN journal_lines jl ON jl.journal_entry_id = je.id
+                LEFT JOIN records r ON r.batch_id = je.id
+                WHERE je.source_type = 'purchase'
+                  AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
+                  AND (? IS NULL OR je.transaction_date >= ?)
+                  AND (? IS NULL OR je.transaction_date <= ?)
+                GROUP BY je.id
+                ORDER BY je.transaction_date DESC
+            ''', (date_from, date_from, date_to, date_to))
+            rows = cursor.fetchall()
+            report_data = []
+            for row in rows:
+                revenue = row['revenue'] or 0
+                cogs = row['cogs'] or 0
+                profit = revenue - cogs
+                roi = (profit / row['total_cost'] * 100) if row['total_cost'] and row['total_cost'] > 0 else 0
+                report_data.append({
+                    'Batch ID': row['batch_id'],
+                    'Description': row['description'],
+                    'Acquired': row['purchase_date'],
+                    'Total Cost': row['total_cost'] or 0,
+                    'Records': row['total_records'] or 0,
+                    'Revenue': revenue,
+                    'COGS': cogs,
+                    'Profit': profit,
+                    'ROI %': round(roi, 1)
+                })
+            summary = f"Total Batches: {len(report_data)}"
+            
+        elif report_type == 'order-economics':
+            # Per-order economics
+            cursor.execute('''
+                SELECT 
+                    o.id as order_id,
+                    o.created_at as order_date,
+                    o.channel,
+                    o.total as order_total,
+                    COALESCE(SUM(oi.price_at_time), 0) as item_revenue,
+                    COALESCE(o.shipping_charged, 0) as shipping_charged,
+                    COALESCE(SUM(r.batch_id), 0) as has_batch,
+                    COALESCE(SUM(f.amount), 0) as fees,
+                    COALESCE(s.postage_cost, 0) as shipping_cost
+                FROM orders o
+                LEFT JOIN order_items oi ON oi.order_id = o.id
+                LEFT JOIN records r ON oi.record_id = r.id
+                LEFT JOIN fees f ON f.order_id = o.id
+                LEFT JOIN shipments s ON s.order_id = o.id
+                WHERE o.payment_status = 'paid'
+                  AND (? IS NULL OR o.created_at >= ?)
+                  AND (? IS NULL OR o.created_at <= ?)
+                GROUP BY o.id
+                ORDER BY o.created_at DESC
+            ''', (date_from, date_from, date_to, date_to))
+            rows = cursor.fetchall()
+            report_data = []
+            total_profit = 0
+            for row in rows:
+                # Calculate COGS for this order
+                cursor.execute('''
+                    SELECT 
+                        oi.price_at_time,
+                        r.batch_id,
+                        r.condition_sleeve_id,
+                        r.condition_disc_id
+                    FROM order_items oi
+                    LEFT JOIN records r ON oi.record_id = r.id
+                    WHERE oi.order_id = ?
+                ''', (row['order_id'],))
+                items = cursor.fetchall()
+                
+                new_rate, used_rate = get_cogs_rates()
+                order_cogs = 0
+                for item in items:
+                    if item['batch_id']:
+                        cursor.execute('''
+                            SELECT 
+                                (SELECT COALESCE(SUM(store_price), 1) FROM records WHERE batch_id = ?) as total_store_price,
+                                (SELECT COALESCE(jl.debit_amount / 100.0, 0) FROM journal_lines jl 
+                                 WHERE jl.journal_entry_id = ? AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')) as batch_cost
+                        ''', (item['batch_id'], item['batch_id']))
+                        batch = cursor.fetchone()
+                        if batch and batch['total_store_price'] and batch['total_store_price'] > 0 and batch['batch_cost']:
+                            order_cogs += item['price_at_time'] / batch['total_store_price'] * batch['batch_cost']
+                    else:
+                        if item['condition_sleeve_id'] == 1 and item['condition_disc_id'] == 1:
+                            order_cogs += item['price_at_time'] * new_rate
+                        else:
+                            order_cogs += item['price_at_time'] * used_rate
+                
+                profit = row['item_revenue'] + row['shipping_charged'] - order_cogs - row['fees'] - row['shipping_cost']
+                total_profit += profit
+                report_data.append({
+                    'Order ID': row['order_id'][:12] + '...' if row['order_id'] else '',
+                    'Date': row['order_date'],
+                    'Channel': row['channel'],
+                    'Revenue': row['item_revenue'],
+                    'Shipping Charged': row['shipping_charged'],
+                    'COGS': order_cogs,
+                    'Fees': row['fees'],
+                    'Shipping Cost': row['shipping_cost'],
+                    'Net Profit': profit
+                })
+            summary = f"Total Orders: {len(report_data)} | Total Net Profit: ${total_profit:.2f}"
+        
         else:
             return jsonify({'status': 'error', 'error': 'Invalid report type'}), 400
         
@@ -7741,7 +7705,6 @@ def accounting_reports():
         app.logger.error(f"Report error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 
 @app.route('/api/checkout/create-order', methods=['POST'])
@@ -9974,14 +9937,11 @@ def accounting_delete_account(account_id):
         app.logger.error(f"Error deleting account: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/accounting/monthly-pl', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def monthly_pl():
-    """Monthly Profit & Loss statement - shows revenue and expenses matched to the period.
-       Includes amortisation of prepaid rent and COGS as expenses.
-    """
+    """Monthly Profit & Loss - calculates COGS dynamically from batches or assumption rates."""
     start = request.args.get('start')
     end = request.args.get('end')
     if not start or not end:
@@ -9998,11 +9958,10 @@ def monthly_pl():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Get revenue (accounts 4000, 4001, 4003)
+    # Get revenue from journal entries
     cursor.execute('''
         SELECT
             strftime('%Y-%m', je.transaction_date) as month,
-            a.code,
             a.name,
             COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as amount
         FROM journal_lines jl
@@ -10016,17 +9975,57 @@ def monthly_pl():
     ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
     revenue_rows = cursor.fetchall()
 
-    # Get expenses (INCLUDING COGS 5000, Rent Expense 6010, etc.)
+    # Get COGS from records
+    # For records with batch_id: calculate from batch
+    # For records without batch_id: use assumption rate based on condition
+    cursor.execute('''
+        SELECT
+            strftime('%Y-%m', r.date_sold) as month,
+            COALESCE(SUM(
+                CASE 
+                    -- If batch_id exists, use batch allocation
+                    WHEN r.batch_id IS NOT NULL AND r.batch_id IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN
+                        r.store_price / (
+                            SELECT COALESCE(SUM(store_price), 1)
+                            FROM records r2
+                            WHERE r2.batch_id = r.batch_id
+                        ) * (
+                            SELECT COALESCE(jl.debit_amount / 100.0, 0)
+                            FROM journal_lines jl
+                            WHERE jl.journal_entry_id = r.batch_id
+                              AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
+                        )
+                    -- If no batch_id, use assumption rate based on condition
+                    ELSE
+                        r.store_price * 
+                        CASE 
+                            WHEN r.condition_sleeve_id = 1 AND r.condition_disc_id = 1 THEN 0.55
+                            ELSE 0.30
+                        END
+                END
+            ), 0) as cogs,
+            COUNT(*) as records_sold,
+            SUM(CASE WHEN r.batch_id IS NOT NULL AND r.batch_id IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN 1 ELSE 0 END) as batch_linked,
+            SUM(CASE WHEN r.batch_id IS NULL OR r.batch_id NOT IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN 1 ELSE 0 END) as assumed_cogs
+        FROM records r
+        WHERE r.status_id = 3  -- Sold
+          AND r.date_sold >= ? AND r.date_sold <= ?
+        GROUP BY strftime('%Y-%m', r.date_sold)
+        ORDER BY month
+    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    cogs_rows = cursor.fetchall()
+    cogs_by_month = {row['month']: row['cogs'] for row in cogs_rows}
+
+    # Get other expenses
     cursor.execute('''
         SELECT
             strftime('%Y-%m', je.transaction_date) as month,
-            a.code,
             a.name,
             COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as amount
         FROM journal_lines jl
         JOIN journal_entries je ON jl.journal_entry_id = je.id
         JOIN accounts a ON jl.account_id = a.id
-        WHERE a.code IN ('5000', '5010', '5020', '5040', '6010', '6020', '6080', '6090', '6100')
+        WHERE a.code IN ('5010', '5020', '5040', '6010', '6020', '6080', '6090', '6100')
           AND je.transaction_date >= ? AND je.transaction_date <= ?
           AND je.source_type != 'order'
         GROUP BY month, a.id
@@ -10048,39 +10047,46 @@ def monthly_pl():
 
     # Build data structure
     account_breakdown = {}
-    all_accounts = set()
 
+    # Add revenue
     for row in revenue_rows:
         month = row['month']
         if month not in account_breakdown:
             account_breakdown[month] = {}
-        # Revenue is positive - use just the name without code
         account_breakdown[month][row['name']] = row['amount']
-        all_accounts.add(row['name'])
 
+    # Add COGS
+    for month in months:
+        if month not in account_breakdown:
+            account_breakdown[month] = {}
+        cogs = cogs_by_month.get(month, 0)
+        if cogs > 0:
+            account_breakdown[month]['COGS'] = -cogs
+
+    # Add other expenses
     for row in expense_rows:
         month = row['month']
         if month not in account_breakdown:
             account_breakdown[month] = {}
-        # Expenses are negative - use just the name without code
         account_breakdown[month][row['name']] = -row['amount']
-        all_accounts.add(row['name'])
 
-    # Add a "Net Income" bar for each month
+    # Add Net Income for each month
     for month in months:
         if month not in account_breakdown:
             account_breakdown[month] = {}
         total = sum(account_breakdown[month].values())
-        # Only show net if there are transactions
         if total != 0:
             account_breakdown[month]['Net Income'] = total
-            all_accounts.add('Net Income')
 
     return jsonify({
         'status': 'success',
         'months': months,
         'account_breakdown': account_breakdown
     })
+
+    
+
+
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
