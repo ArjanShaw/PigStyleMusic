@@ -528,25 +528,27 @@
     </div>
 
     <div id="dashboard-content" class="dashboard-main" style="display: none;">
+        
         <!-- Stats Row -->
-        <div class="stats-row">
-            <div class="stat-card">
-                <div class="stat-value" id="total-records">0</div>
-                <div class="stat-label">Total Records</div>
+        <div class="stats-grid" style="margin: 20px 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+            <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center;">
+                <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Spent</h3>
+                <p class="stat-number" id="total-purchases-spent" style="font-size: 28px; font-weight: bold; color: #dc3545; margin: 0;">$0.00</p>
             </div>
-            <div class="stat-card">
-                <div class="stat-value" id="commission-rate">20.0%</div>
-                <div class="stat-label">Commission Rate</div>
+            <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center;">
+                <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">This Month</h3>
+                <p class="stat-number" id="month-purchases-spent" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">$0.00</p>
             </div>
-            <div class="stat-card">
-                <div class="stat-value credit-positive" id="user-credit">$0.00</div>
-                <div class="stat-label">Store Credit</div>
+            <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center;">
+                <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Purchases</h3>
+                <p class="stat-number" id="total-purchases-count" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
             </div>
-            <div class="stat-card">
-                <div class="stat-value" id="last-added">--</div>
-                <div class="stat-label">Last Added</div>
+            <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center;">
+                <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">This Month</h3>
+                <p class="stat-number" id="month-purchases-count" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
             </div>
         </div>
+
 
         <!-- Filters Section -->
         <div class="filters-section" id="filters-section">
