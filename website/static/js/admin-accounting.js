@@ -1504,6 +1504,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     console.log('[MODAL] Transaction details:');
     transactions.forEach((tx, idx) => {
         console.log(`[MODAL]   ${idx}:`, {
+            journal_entry_id: tx.journal_entry_id,
             date: tx.transaction_date,
             description: tx.description,
             account: tx.account_name,
@@ -1514,11 +1515,11 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         });
     });
 
-    // Group transactions by journal_entry_id or source_id to show one row per entry
+    // Group transactions by journal_entry_id
     const grouped = {};
     transactions.forEach(tx => {
         const key = tx.journal_entry_id || tx.source_id || tx.id;
-        console.log('[MODAL] Grouping tx with key:', key, 'description:', tx.description);
+        console.log('[MODAL] Grouping tx with key:', key, 'journal_entry_id:', tx.journal_entry_id);
         if (!grouped[key]) {
             grouped[key] = {
                 transaction_date: tx.transaction_date,
@@ -1526,7 +1527,8 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
                 account_name: tx.account_name || '',
                 net: 0,
                 entries: [],
-                source_id: key
+                journal_entry_id: tx.journal_entry_id || null,
+                source_id: tx.source_id || null
             };
         }
         grouped[key].net += (tx.debit_amount || 0) - (tx.credit_amount || 0);
@@ -1535,31 +1537,30 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
 
     const groupedList = Object.values(grouped);
     console.log('[MODAL] Grouped into', groupedList.length, 'entries');
-    console.log('[MODAL] Grouped entries:');
-    groupedList.forEach((g, idx) => {
-        console.log(`[MODAL]   ${idx}:`, {
-            date: g.transaction_date,
-            description: g.description,
-            account: g.account_name,
-            net: g.net,
-            entries_count: g.entries.length,
-            source_id: g.source_id
-        });
-    });
+    
+    // Check if this is a revenue account (should show positive/green)
+    const isRevenueAccount = accountName && 
+        (accountName.toLowerCase().includes('revenue') || 
+         accountName.toLowerCase().includes('sales') ||
+         accountName.toLowerCase().includes('income'));
+    console.log('[MODAL] isRevenueAccount:', isRevenueAccount);
     
     // Calculate totals
     let total = 0;
     groupedList.forEach(g => {
         total += g.net;
     });
-    console.log('[MODAL] Total net amount:', total);
+    
+    // For display, invert total if revenue account
+    let displayTotal = isRevenueAccount ? -total : total;
+    console.log('[MODAL] Total net amount:', total, 'displayTotal:', displayTotal);
     
     // Build HTML
     let html = `<div class="modal-summary">
         <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}${accountId ? ` (ID: ${accountId})` : ''}</div>
         <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
         <div class="summary-item"><strong>Transactions:</strong> ${groupedList.length}</div>
-        <div class="summary-item"><strong>Total:</strong> <span style="font-weight:bold;color:${total >= 0 ? '#28a745' : '#dc3545'};">$${total.toFixed(2)}</span></div>
+        <div class="summary-item"><strong>Total:</strong> <span style="font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}$${displayTotal.toFixed(2)}</span></div>
     </div>`;
     
     html += `<table>
@@ -1575,21 +1576,26 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     let rowCount = 0;
     groupedList.forEach(g => {
         rowCount++;
-        const amount = g.net;
-        const isIncome = amount > 0;
-        const amountClass = isIncome ? 'debit' : (amount < 0 ? 'credit' : '');
-        const displayAmount = amount !== 0 ? '$' + Math.abs(amount).toFixed(2) : '';
-        const sign = amount > 0 ? '+' : (amount < 0 ? '-' : '');
         
-        const firstEntry = g.entries[0];
-        const entryId = firstEntry.journal_entry_id || firstEntry.source_id || firstEntry.id;
+        // For revenue accounts, invert the sign for display
+        let displayAmount = g.net;
+        if (isRevenueAccount) {
+            displayAmount = -g.net;
+        }
+        const isPositive = displayAmount > 0;
+        const amountClass = isPositive ? 'debit' : (displayAmount < 0 ? 'credit' : '');
+        const displayAmountStr = displayAmount !== 0 ? '$' + Math.abs(displayAmount).toFixed(2) : '';
+        const sign = displayAmount > 0 ? '+' : (displayAmount < 0 ? '-' : '');
+        
+        const entryId = g.journal_entry_id || g.source_id;
+        console.log('[MODAL] Row entryId:', entryId, 'journal_entry_id:', g.journal_entry_id, 'source_id:', g.source_id);
         
         html += `<tr>
             <td style="white-space:nowrap;">${g.transaction_date}</td>
             <td>${g.description || ''}</td>
             <td>${g.account_name || ''}</td>
-            <td style="text-align:right; font-weight:600;" class="${amountClass}">${sign}${displayAmount}</td>
-            <td><button class="btn btn-sm btn-warning" onclick="unpostTransaction('${entryId}')"><i class="fas fa-undo"></i> Unpost</button></td>
+            <td style="text-align:right; font-weight:600;" class="${amountClass}">${sign}${displayAmountStr}</td>
+            <td>${entryId ? `<button class="btn btn-sm btn-warning" onclick="unpostTransaction(${typeof entryId === 'string' ? `'${entryId}'` : entryId})"><i class="fas fa-undo"></i> Unpost</button>` : ''}</td>
         </tr>`;
     });
     
@@ -1597,7 +1603,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     
     html += `<tr class="total-row">
         <td colspan="3"><strong>Total</strong></td>
-        <td style="text-align:right; font-weight:bold;color:${total >= 0 ? '#28a745' : '#dc3545'};">${total !== 0 ? '$' + total.toFixed(2) : ''}</td>
+        <td style="text-align:right; font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}${displayTotal !== 0 ? '$' + displayTotal.toFixed(2) : ''}</td>
         <td></td>
     </tr>`;
     html += '</tbody></table>';
@@ -1605,6 +1611,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     console.log('[MODAL] Render complete - HTML length:', html.length);
     console.log('[MODAL] ==================================================');
 }
+
 
 async function unpostTransaction(entryId) {
     console.log('[MODAL] Unposting transaction:', entryId);
