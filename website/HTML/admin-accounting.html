@@ -189,11 +189,9 @@
         #breakdown-chart-container canvas { width: 100% !important; height: 450px !important; }
         .breakdown-bar-click-hint { font-size: 13px; color: #666; text-align: center; margin-top: 12px; font-style: italic; }
 
-        /* Remove Account Transactions tab */
         #sub-account-transactions { display: none !important; }
         .sub-tab[data-subtab="account-transactions"] { display: none !important; }
 
-        /* Z-index fixes */
         #monthly-tx-modal { z-index: 10000; }
         #breakdown-modal { z-index: 9999; }
         #monthly-tx-modal .modal-box { z-index: 10001; position: relative; }
@@ -426,7 +424,7 @@
             <!-- MONTHLY P&L -->
             <div id="sub-monthly-pl" class="sub-tab-content">
                 <h4><i class="fas fa-chart-line"></i> Monthly Profit & Loss</h4>
-                <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability. <strong>Double-click the chart</strong> to expand it full screen.</p>
+                <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability.</p>
                 <div class="monthly-controls">
                     <div class="form-group"><label>Start Month</label><input type="month" id="pl-start"></div>
                     <div class="form-group"><label>End Month</label><input type="month" id="pl-end"></div>
@@ -436,7 +434,7 @@
                 <div id="pl-chart-container" class="chart-container-wrapper">
                     <div class="chart-title">Monthly Profit &amp; Loss</div>
                     <div class="chart-subtitle">Revenue, expenses, and net income by month</div>
-                    <div class="chart-click-hint">Click x-axis month for breakdown &bull; Double-click to expand</div>
+                    <div class="chart-click-hint">Click x-axis month for breakdown</div>
                     <canvas id="pl-chart"></canvas>
                 </div>
             </div>
@@ -560,6 +558,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=9"></script>
+    <script src="/static/js/admin-accounting.js?v=10"></script>
 </body>
 </html>

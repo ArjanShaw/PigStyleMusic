@@ -1407,18 +1407,20 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         modal.classList.add('active');
         console.log('[MODAL] 7. Active class added, modal should be visible');
         
-        // Build URL
-        let url;
+        // Build URL - use the same endpoint with account_id filter
+        let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
+        
         if (isCOGS) {
-            url = `${AppConfig.baseUrl}/api/accounting/cogs-transactions?month=${month}`;
-        } else {
-            url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
-            if (accountId) {
-                url += `&account_id=${accountId}`;
-            }
-            if (excludeOrders) {
-                url += '&exclude_orders=true';
-            }
+            // For COGS, we need to find the COGS account ID by name
+            // Instead of a special endpoint, we'll filter by account name on the backend
+            // Pass account_name=cogs to the endpoint
+            url += `&account_name=COGS`;
+        } else if (accountId) {
+            url += `&account_id=${accountId}`;
+        }
+        
+        if (excludeOrders) {
+            url += '&exclude_orders=true';
         }
         console.log('[MODAL] 9. Fetching URL:', url);
 
@@ -1805,8 +1807,21 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                     
                     document.getElementById('monthly-tx-modal')?.classList.remove('active');
                     
+                    // For COGS, we need to find the account ID by name
                     if (label === 'COGS' || label === 'Cost of Goods Sold') {
-                        showMonthlyTransactions(month, null, label, true, true);
+                        // Find the COGS account ID
+                        let cogsId = null;
+                        for (const key in accountNameToId) {
+                            if (key.toLowerCase().includes('cogs')) {
+                                cogsId = accountNameToId[key];
+                                break;
+                            }
+                        }
+                        if (cogsId) {
+                            showMonthlyTransactions(month, cogsId, 'COGS', true, false);
+                        } else {
+                            showMonthlyTransactions(month, null, 'COGS', true, true);
+                        }
                         return;
                     }
                     
@@ -1996,7 +2011,7 @@ function renderLineChart(canvasId, data, options = {}) {
             pointHoverRadius: 7,
             pointHoverBorderWidth: 2,
             fill: false,
-            tension: 0,  // STRAIGHT LINES - NO CURVES
+            tension: 0,  // STRAIGHT LINES
             hidden: false
         });
     });
@@ -2072,7 +2087,7 @@ function renderLineChart(canvasId, data, options = {}) {
                     position: 'bottom',
                     labels: {
                         usePointStyle: true,
-                        pointStyle: 'circle',  // All legends show as circles for consistency
+                        pointStyle: false,  // Use actual point style from dataset
                         padding: 20,
                         font: { size: 11 },
                         boxWidth: 14,
@@ -2121,8 +2136,8 @@ function renderLineChart(canvasId, data, options = {}) {
                         drawBorder: true
                     }
                 }
-            },
-            // REMOVED onClick - datapoint clicks do nothing
+            }
+            // NO onClick for datapoints - x-axis only
         }
     });
     console.log('[CHART] Chart instance created');
@@ -2133,7 +2148,7 @@ function renderLineChart(canvasId, data, options = {}) {
         cashFlowChartInstance = chart;
     }
 
-    // ---- X-AXIS CLICK HANDLER ONLY ----
+    // ---- X-AXIS CLICK HANDLER (both charts) ----
     console.log('[CHART] Adding x-axis click handler');
     
     canvas.addEventListener('click', function(e) {
@@ -2185,6 +2200,7 @@ function renderLineChart(canvasId, data, options = {}) {
                 
                 document.getElementById('monthly-tx-modal')?.classList.remove('active');
                 
+                // Use the chart data for the breakdown
                 const dataToUse = canvasId === 'pl-chart' ? plChartData : cashFlowChartData;
                 if (dataToUse) {
                     console.log('[CHART-X] Showing breakdown for month:', month);
@@ -2202,23 +2218,31 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART-X] Click handler attached');
 
-    // Double-click to expand
-    canvas.addEventListener('dblclick', function(e) {
-        e.stopPropagation();
-        console.log('[CHART] Double-click detected, expanding');
-        expandChart(canvasId);
-    });
+    // Double-click to expand - ONLY for Cash Flow, not P&L
+    if (canvasId === 'cash-flow-chart') {
+        canvas.addEventListener('dblclick', function(e) {
+            e.stopPropagation();
+            console.log('[CHART] Double-click detected, expanding');
+            expandChart(canvasId);
+        });
+    }
 
     console.log('[CHART] ===== RENDER LINE CHART END =====');
     return chart;
 }
 
 // ============================================================
-// EXPAND CHART (Full Screen)
+// EXPAND CHART (Full Screen) - Cash Flow only
 // ============================================================
 
 function expandChart(canvasId) {
     console.log('[EXPAND] Expanding chart:', canvasId);
+    
+    // Only allow expansion for cash flow chart
+    if (canvasId !== 'cash-flow-chart') {
+        console.log('[EXPAND] Only Cash Flow chart can be expanded');
+        return;
+    }
     
     if (isExpanded) {
         collapseChart();
@@ -2242,11 +2266,9 @@ function expandChart(canvasId) {
     const container = document.createElement('div');
     container.id = 'expanded-chart-container';
     
-    const chartTitle = canvasId === 'pl-chart' ? 'Monthly P&L - Expanded' : 'Cash Flow - Expanded';
-    
     container.innerHTML = `
         <div class="chart-header">
-            <h3>${chartTitle}</h3>
+            <h3>Cash Flow - Expanded</h3>
             <button class="btn btn-secondary" onclick="collapseChart()">
                 <i class="fas fa-times"></i> Close
             </button>
@@ -2274,7 +2296,7 @@ function expandChart(canvasId) {
                     position: 'bottom',
                     labels: {
                         usePointStyle: true,
-                        pointStyle: 'circle',
+                        pointStyle: false,
                         padding: 25,
                         font: { size: 14, weight: 'bold' },
                         boxWidth: 16,
@@ -2350,9 +2372,6 @@ function collapseChart() {
         container.remove();
     }
     
-    if (plChartInstance) {
-        try { plChartInstance.resize(); } catch(e) {}
-    }
     if (cashFlowChartInstance) {
         try { cashFlowChartInstance.resize(); } catch(e) {}
     }
