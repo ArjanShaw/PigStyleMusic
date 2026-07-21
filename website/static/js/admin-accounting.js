@@ -389,7 +389,7 @@ async function loadBulkDestinationAccounts() {
             data.accounts.forEach(acc => {
                 const opt = document.createElement('option');
                 opt.value = acc.id;
-                opt.textContent = acc.code + ' - ' + acc.name;
+                opt.textContent = acc.code + ' - ' + acc.name';
                 select.appendChild(opt);
             });
             select.value = currentVal;
@@ -2074,13 +2074,17 @@ function showMonthBreakdownModal(month, chartData, chartType) {
 }
 
 // ============================================================
-// SHARED LINE CHART RENDERER
+// SHARED LINE CHART RENDERER - WITH EXTENSIVE DEBUGGING
 // ============================================================
 
 function renderLineChart(canvasId, data, options = {}) {
-    console.log('[CHART] ===== RENDER LINE CHART START =====');
+    console.log('[CHART] ==================================================');
+    console.log('[CHART] RENDER LINE CHART START');
     console.log('[CHART] Canvas ID:', canvasId);
     console.log('[CHART] Options:', options);
+    console.log('[CHART] Data status:', data.status);
+    console.log('[CHART] Months count:', data.months ? data.months.length : 0);
+    console.log('[CHART] Account breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown).length : 0);
     
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
@@ -2099,6 +2103,17 @@ function renderLineChart(canvasId, data, options = {}) {
         return null;
     }
 
+    // Log all months
+    console.log('[CHART] Months list:', months);
+    
+    // Log all accounts in the data
+    const allAccountNames = new Set();
+    months.forEach(m => {
+        const monthData = account_breakdown[m] || {};
+        Object.keys(monthData).forEach(acc => allAccountNames.add(acc));
+    });
+    console.log('[CHART] All account names in data:', Array.from(allAccountNames).sort());
+
     const existingChart = Chart.getChart(canvas);
     if (existingChart) {
         console.log('[CHART] Destroying existing chart');
@@ -2112,19 +2127,14 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART] Labels:', labels);
 
-    const allAccounts = new Set();
-    months.forEach(m => {
-        const monthData = account_breakdown[m] || {};
-        Object.keys(monthData).forEach(acc => allAccounts.add(acc));
-    });
-    
-    const accountNames = Array.from(allAccounts).sort();
-    console.log('[CHART] All accounts:', accountNames);
+    const accountNames = Array.from(allAccountNames).sort();
+    console.log('[CHART] All accounts (sorted):', accountNames);
     
     const netLabel = accountNames.find(name => name === 'Net' || name === 'Net Income' || name === 'Net Cash');
     console.log('[CHART] Net label:', netLabel);
     
     const regularAccounts = accountNames.filter(name => name !== netLabel);
+    console.log('[CHART] Regular accounts (non-Net):', regularAccounts);
     
     const revenueKeywords = ['revenue', 'sales', 'income', 'shipping', 'fees', 'gift'];
     const expenseKeywords = ['cogs', 'expense', 'cost', 'postage', 'rent', 'utilities', 'payroll', 'amortization', 'insurance', 'supplies'];
@@ -2143,7 +2153,7 @@ function renderLineChart(canvasId, data, options = {}) {
         if (!aIsExpense && bIsExpense) return -1;
         return a.localeCompare(b);
     });
-    console.log('[CHART] Sorted accounts:', sortedAccounts);
+    console.log('[CHART] Sorted accounts (revenue first, then expenses):', sortedAccounts);
 
     const datasets = [];
     let revenueCount = 0;
@@ -2165,20 +2175,27 @@ function renderLineChart(canvasId, data, options = {}) {
     
     const pointStyles = ['circle', 'rect', 'triangle', 'diamond', 'cross', 'crossRot', 'star', 'line', 'dash'];
 
+    console.log('[CHART] Building datasets for', sortedAccounts.length, 'accounts');
+
     sortedAccounts.forEach((accountName, idx) => {
         const values = months.map(m => {
             const monthData = account_breakdown[m] || {};
             return monthData[accountName] || 0;
         });
         
+        console.log(`[CHART] Account "${accountName}" values:`, values);
+        
         if (values.every(v => Math.abs(v) < 0.01)) {
-            console.log('[CHART] Skipping zero account:', accountName);
+            console.log(`[CHART] Skipping zero account: "${accountName}" (all values < 0.01)`);
             return;
         }
+        
+        console.log(`[CHART] Processing account with values: "${accountName}" ->`, values);
         
         const aLower = accountName.toLowerCase();
         const isRevenue = revenueKeywords.some(k => aLower.includes(k));
         const isExpense = expenseKeywords.some(k => aLower.includes(k));
+        console.log(`[CHART] Account "${accountName}" - isRevenue: ${isRevenue}, isExpense: ${isExpense}`);
         
         let borderColor, backgroundColor, borderDash, borderWidth, pointStyle, pointRadius;
         
@@ -2195,6 +2212,7 @@ function renderLineChart(canvasId, data, options = {}) {
             pointStyle = pointStyles[styleIdx % pointStyles.length];
             pointRadius = 4;
             revenueCount++;
+            console.log(`[CHART] Account "${accountName}" classified as REVENUE, color: ${borderColor}`);
         } else if (isExpense) {
             borderColor = expenseColors[colorIdx];
             backgroundColor = borderColor + '40';
@@ -2203,6 +2221,7 @@ function renderLineChart(canvasId, data, options = {}) {
             pointStyle = pointStyles[(styleIdx + 3) % pointStyles.length];
             pointRadius = 4;
             expenseCount++;
+            console.log(`[CHART] Account "${accountName}" classified as EXPENSE, color: ${borderColor}`);
         } else {
             borderColor = otherColors[colorIdx % otherColors.length];
             backgroundColor = borderColor + '40';
@@ -2211,6 +2230,7 @@ function renderLineChart(canvasId, data, options = {}) {
             pointStyle = pointStyles[(styleIdx + 5) % pointStyles.length];
             pointRadius = 4;
             otherCount++;
+            console.log(`[CHART] Account "${accountName}" classified as OTHER, color: ${borderColor}`);
         }
         
         datasets.push({
@@ -2235,6 +2255,7 @@ function renderLineChart(canvasId, data, options = {}) {
             const monthData = account_breakdown[m] || {};
             return monthData[netLabel] || 0;
         });
+        console.log(`[CHART] Net "${netLabel}" values:`, netValues);
         
         if (!netValues.every(v => Math.abs(v) < 0.01)) {
             datasets.push({
@@ -2254,6 +2275,7 @@ function renderLineChart(canvasId, data, options = {}) {
                 tension: 0,
                 hidden: false
             });
+            console.log(`[CHART] Added Net dataset: "${netLabel}"`);
         }
     }
 
@@ -2261,7 +2283,8 @@ function renderLineChart(canvasId, data, options = {}) {
         console.log('[CHART] No data to display after filtering');
         return null;
     }
-    console.log('[CHART] Total datasets:', datasets.length);
+    console.log('[CHART] Total datasets built:', datasets.length);
+    console.log('[CHART] Dataset labels:', datasets.map(d => d.label));
 
     let maxVal = 0;
     datasets.forEach(ds => {
@@ -2279,13 +2302,17 @@ function renderLineChart(canvasId, data, options = {}) {
         plChartData = data;
         plMonths = months;
         allPLData = data;
+        console.log('[CHART] Stored plChartData');
         
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartData = data;
         cashFlowMonths = months;
         allCashFlowData = data;
+        console.log('[CHART] Stored cashFlowChartData');
     }
 
+    console.log('[CHART] Creating Chart.js instance...');
+    
     const chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -2356,12 +2383,15 @@ function renderLineChart(canvasId, data, options = {}) {
             }
         }
     });
-    console.log('[CHART] Chart instance created');
+    console.log('[CHART] Chart.js instance created');
+    console.log('[CHART] Chart data datasets:', chart.data.datasets.length);
 
     if (canvasId === 'pl-chart') {
         plChartInstance = chart;
+        console.log('[CHART] Set plChartInstance');
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartInstance = chart;
+        console.log('[CHART] Set cashFlowChartInstance');
     }
 
     // X-axis click handler
@@ -2436,9 +2466,11 @@ function renderLineChart(canvasId, data, options = {}) {
             console.log('[CHART] Double-click detected, expanding');
             expandChart(canvasId);
         });
+        console.log('[CHART] Double-click expand attached for cash flow');
     }
 
-    console.log('[CHART] ===== RENDER LINE CHART END =====');
+    console.log('[CHART] ==================================================');
+    console.log('[CHART] RENDER LINE CHART END');
     return chart;
 }
 
@@ -2590,7 +2622,7 @@ function collapseChart() {
 }
 
 // ============================================================
-// CASH FLOW - FIXED DATE HANDLING
+// CASH FLOW
 // ============================================================
 
 async function loadCashFlow() {
@@ -2658,16 +2690,19 @@ async function loadCashFlow() {
 }
 
 // ============================================================
-// MONTHLY P&L - FIXED DATE HANDLING
+// MONTHLY P&L - WITH DEBUGGING
 // ============================================================
 
 async function loadMonthlyPL() {
-    console.log('[MONTHLY-PL] ===== LOAD MONTHLY P&L START =====');
+    console.log('[MONTHLY-PL] ==================================================');
+    console.log('[MONTHLY-PL] LOAD MONTHLY P&L START');
     
     const startInput = document.getElementById('pl-start');
     const endInput = document.getElementById('pl-end');
     const start = startInput.value;
     const end = endInput.value;
+    console.log('[MONTHLY-PL] Start month:', start);
+    console.log('[MONTHLY-PL] End month:', end);
     
     if (!start || !end) {
         alert('Please select both start and end months.');
@@ -2694,13 +2729,23 @@ async function loadMonthlyPL() {
         });
         if (!res.ok) throw new Error('Failed to fetch P&L data');
         const data = await res.json();
-        console.log('[MONTHLY-PL] API response:', data);
+        console.log('[MONTHLY-PL] API response status:', data.status);
+        console.log('[MONTHLY-PL] API response months:', data.months ? data.months.length : 0);
+        console.log('[MONTHLY-PL] API response account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
+        
+        // Log July data specifically if it exists
+        if (data.account_breakdown && data.account_breakdown['2026-07']) {
+            console.log('[MONTHLY-PL] July 2026 data:', data.account_breakdown['2026-07']);
+        } else {
+            console.log('[MONTHLY-PL] July 2026 data: NOT FOUND in API response');
+        }
         
         if (data.status === 'success') {
-            console.log('[MONTHLY-PL] Data loaded, months:', data.months ? data.months.length : 0);
+            console.log('[MONTHLY-PL] Data loaded successfully');
             
             allPLData = data;
             plMonths = data.months || [];
+            console.log('[MONTHLY-PL] Months:', plMonths);
             
             const dateRangeEl = document.getElementById('pl-date-range');
             if (dateRangeEl && plMonths.length > 0) {
@@ -2713,6 +2758,7 @@ async function loadMonthlyPL() {
                 dateRangeEl.style.display = 'block';
             }
             
+            console.log('[MONTHLY-PL] Calling renderLineChart with data');
             renderLineChart('pl-chart', data, { type: 'pl' });
         } else {
             console.error('[MONTHLY-PL] Error:', data.error);
