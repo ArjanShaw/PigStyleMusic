@@ -872,7 +872,7 @@ function renderReport(data, type) {
     });
     html += '</tbody></table>';
     if (data.summary) {
-        html += `<div style="margin-top:15px; background:#f0f0f0; padding:10px; border-radius:4px; color:#333;" class="summary-text">
+        html += `<div style="margin-top:15px; background:#f0f0f0; padding:10px; border-radius:4px; color:#000;" class="summary-text">
             <strong>Summary:</strong> ${data.summary}
         </div>`;
     }
@@ -1739,7 +1739,7 @@ function renderCOGSCalculation(data, dateRange) {
         <div class="summary-item"><strong>Total COGS:</strong> <span style="color:#dc3545;font-weight:bold;">$${total_cogs.toFixed(2)}</span></div>
     </div>`;
     
-    html += `<h4 style="margin:15px 0 10px 0; color:#333;">Records Sold</h4>`;
+    html += `<h4 style="margin:15px 0 10px 0; color:#000;">Records Sold</h4>`;
     if (records && records.length > 0) {
         html += `<table>
             <thead><tr>
@@ -1770,7 +1770,7 @@ function renderCOGSCalculation(data, dateRange) {
         html += '<p class="text-muted">No records sold this month.</p>';
     }
     
-    html += `<h4 style="margin:15px 0 10px 0; color:#333;">Batch Allocations</h4>`;
+    html += `<h4 style="margin:15px 0 10px 0; color:#000;">Batch Allocations</h4>`;
     if (batch_allocations && batch_allocations.length > 0) {
         html += `<table>
             <thead><tr>
@@ -1865,8 +1865,8 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 <button class="btn btn-sm btn-secondary" id="breakdown-prev-month" ${currentBreakdownMonthIndex <= 0 ? 'disabled' : ''}>
                     <i class="fas fa-chevron-left"></i> Prev
                 </button>
-                <span style="font-size:16px; font-weight:600; color:#333;">${dateRange}</span>
-                <span style="font-size:14px; color:#666;">(${currentBreakdownMonthIndex + 1} of ${totalMonths})</span>
+                <span style="font-size:16px; font-weight:600; color:#000;">${dateRange}</span>
+                <span style="font-size:14px; color:#333;">(${currentBreakdownMonthIndex + 1} of ${totalMonths})</span>
                 <button class="btn btn-sm btn-secondary" id="breakdown-next-month" ${currentBreakdownMonthIndex >= totalMonths - 1 ? 'disabled' : ''}>
                     Next <i class="fas fa-chevron-right"></i>
                 </button>
@@ -1874,7 +1874,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             <div id="breakdown-chart-container" style="min-height: 450px; width: 100%; position: relative; background: white; border-radius: 8px; padding: 10px;">
                 <canvas id="breakdown-chart-canvas"></canvas>
             </div>
-            <div class="breakdown-bar-click-hint" style="font-size: 13px; color: #666; text-align: center; margin-top: 12px; font-style: italic;">
+            <div class="breakdown-bar-click-hint" style="font-size: 13px; color: #555; text-align: center; margin-top: 12px; font-style: italic;">
                 Click any bar to see transactions
             </div>
         `;
@@ -1945,7 +1945,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         console.log('[BREAKDOWN] Filtered items:', filtered.map(f => ({ label: f.label, accountId: f.accountId, isCOGS: f.isCOGS, value: f.value })));
         
         if (filtered.length === 0) {
-            document.getElementById('breakdown-chart-container').innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data for this month.</p>';
+            document.getElementById('breakdown-chart-container').innerHTML = '<p style="text-align:center; padding:40px; color:#333;">No data for this month.</p>';
             return;
         }
         
@@ -2231,27 +2231,27 @@ function renderLineChart(canvasId, data, options = {}) {
             borderColor = revenueColors[colorIdx];
             backgroundColor = borderColor + '40';
             borderDash = lineDashStyles[styleIdx % lineDashStyles.length];
-            borderWidth = 2;
+            borderWidth = 3;
             pointStyle = pointStyles[styleIdx % pointStyles.length];
-            pointRadius = 4;
+            pointRadius = 5;
             revenueCount++;
             console.log(`[CHART] Account "${accountName}" classified as REVENUE, color: ${borderColor}`);
         } else if (isExpense) {
             borderColor = expenseColors[colorIdx];
             backgroundColor = borderColor + '40';
             borderDash = lineDashStyles[(styleIdx + 2) % lineDashStyles.length];
-            borderWidth = 2;
+            borderWidth = 3;
             pointStyle = pointStyles[(styleIdx + 3) % pointStyles.length];
-            pointRadius = 4;
+            pointRadius = 5;
             expenseCount++;
             console.log(`[CHART] Account "${accountName}" classified as EXPENSE, color: ${borderColor}`);
         } else {
             borderColor = otherColors[colorIdx % otherColors.length];
             backgroundColor = borderColor + '40';
             borderDash = lineDashStyles[(styleIdx + 1) % lineDashStyles.length];
-            borderWidth = 2;
+            borderWidth = 3;
             pointStyle = pointStyles[(styleIdx + 5) % pointStyles.length];
-            pointRadius = 4;
+            pointRadius = 5;
             otherCount++;
             console.log(`[CHART] Account "${accountName}" classified as OTHER, color: ${borderColor}`);
         }
@@ -2265,8 +2265,8 @@ function renderLineChart(canvasId, data, options = {}) {
             borderWidth: borderWidth,
             pointStyle: pointStyle,
             pointRadius: pointRadius,
-            pointHoverRadius: 7,
-            pointHoverBorderWidth: 2,
+            pointHoverRadius: 8,
+            pointHoverBorderWidth: 3,
             fill: false,
             tension: 0,
             hidden: false
@@ -2287,13 +2287,13 @@ function renderLineChart(canvasId, data, options = {}) {
                 borderColor: '#6f42c1',
                 backgroundColor: '#6f42c130',
                 borderDash: [],
-                borderWidth: 4,
+                borderWidth: 5,
                 pointStyle: 'diamond',
-                pointRadius: 6,
-                pointHoverRadius: 10,
+                pointRadius: 7,
+                pointHoverRadius: 11,
                 pointBackgroundColor: '#6f42c1',
                 pointBorderColor: 'white',
-                pointBorderWidth: 2,
+                pointBorderWidth: 3,
                 fill: false,
                 tension: 0,
                 hidden: false
@@ -2360,9 +2360,10 @@ function renderLineChart(canvasId, data, options = {}) {
                         usePointStyle: true,
                         pointStyle: false,
                         padding: 20,
-                        font: { size: 11 },
-                        boxWidth: 14,
-                        boxHeight: 14
+                        font: { size: 13, weight: 'bold' },
+                        color: '#000000',
+                        boxWidth: 16,
+                        boxHeight: 16
                     }
                 },
                 tooltip: {
@@ -2376,8 +2377,8 @@ function renderLineChart(canvasId, data, options = {}) {
                             return `${label}${dashInfo}: ${sign}$${Math.abs(val).toFixed(2)}`;
                         }
                     },
-                    titleFont: { size: 13, weight: 'bold' },
-                    bodyFont: { size: 12 }
+                    titleFont: { size: 14, weight: 'bold' },
+                    bodyFont: { size: 13 }
                 }
             },
             scales: {
@@ -2385,11 +2386,13 @@ function renderLineChart(canvasId, data, options = {}) {
                     ticks: {
                         maxRotation: 45,
                         minRotation: 45,
-                        font: { size: 11 }
+                        font: { size: 13, weight: 'bold' },
+                        color: '#000000'
                     },
                     grid: {
                         display: true,
-                        drawBorder: true
+                        drawBorder: true,
+                        color: 'rgba(0,0,0,0.2)'
                     }
                 },
                 y: {
@@ -2400,10 +2403,11 @@ function renderLineChart(canvasId, data, options = {}) {
                         callback: function(value) {
                             return '$' + value;
                         },
-                        font: { size: 11 }
+                        font: { size: 13, weight: 'bold' },
+                        color: '#000000'
                     },
                     grid: {
-                        color: 'rgba(0,0,0,0.08)',
+                        color: 'rgba(0,0,0,0.15)',
                         drawBorder: true
                     }
                 }
@@ -2572,9 +2576,10 @@ function expandChart(canvasId) {
                         usePointStyle: true,
                         pointStyle: false,
                         padding: 25,
-                        font: { size: 14, weight: 'bold' },
-                        boxWidth: 16,
-                        boxHeight: 16
+                        font: { size: 15, weight: 'bold' },
+                        color: '#000000',
+                        boxWidth: 18,
+                        boxHeight: 18
                     }
                 },
                 tooltip: {
@@ -2589,7 +2594,7 @@ function expandChart(canvasId) {
                         }
                     },
                     titleFont: { size: 16, weight: 'bold' },
-                    bodyFont: { size: 14 }
+                    bodyFont: { size: 15 }
                 }
             },
             scales: {
@@ -2597,7 +2602,11 @@ function expandChart(canvasId) {
                     ticks: {
                         maxRotation: 45,
                         minRotation: 45,
-                        font: { size: 14, weight: 'bold' }
+                        font: { size: 15, weight: 'bold' },
+                        color: '#000000'
+                    },
+                    grid: {
+                        color: 'rgba(0,0,0,0.2)'
                     }
                 },
                 y: {
@@ -2606,7 +2615,11 @@ function expandChart(canvasId) {
                         callback: function(value) {
                             return '$' + value;
                         },
-                        font: { size: 14, weight: 'bold' }
+                        font: { size: 15, weight: 'bold' },
+                        color: '#000000'
+                    },
+                    grid: {
+                        color: 'rgba(0,0,0,0.15)'
                     }
                 }
             }
