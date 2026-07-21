@@ -19,8 +19,6 @@ let isExpanded = false;
 // Chart data cache for breakdown modal
 let plChartData = null;
 let cashFlowChartData = null;
-let plMonths = [];
-let cashFlowMonths = [];
 let allPLData = null;
 let allCashFlowData = null;
 
@@ -32,13 +30,6 @@ let currentBreakdownChartType = 'pl';
 let currentBreakdownMonth = '';
 let currentBreakdownMonths = [];
 let currentBreakdownMonthIndex = -1;
-
-// Range selector state
-let plRangeStart = 0;
-let plRangeEnd = 0;
-let cashFlowRangeStart = 0;
-let cashFlowRangeEnd = 0;
-const DEFAULT_WINDOW_SIZE = 6;
 
 // ============================================================
 // TOAST NOTIFICATION
@@ -85,191 +76,6 @@ if (!document.getElementById('toast-styles')) {
 }
 
 // ============================================================
-// SIMPLIFIED RANGE SELECTOR - SINGLE SCROLLBAR
-// ============================================================
-
-function initRangeSelector(containerId, chartId, type) {
-    console.log('[RANGE] Initializing range selector for', type);
-    
-    const existing = document.getElementById(`range-${type}`);
-    if (existing) {
-        console.log('[RANGE] Range selector already exists');
-        return;
-    }
-    
-    const container = document.getElementById(containerId);
-    if (!container) {
-        console.error('[RANGE] Container not found:', containerId);
-        return;
-    }
-    
-    const months = type === 'pl' ? plMonths : cashFlowMonths;
-    const totalMonths = months.length;
-    const windowSize = DEFAULT_WINDOW_SIZE;
-    const defaultPosition = Math.max(0, totalMonths - windowSize);
-    
-    const rangeDiv = document.createElement('div');
-    rangeDiv.id = `range-${type}`;
-    rangeDiv.style.cssText = `
-        margin-top: 15px;
-        padding: 8px 5px 2px 5px;
-        background: #f8f9fa;
-        border-radius: 4px;
-        border: 1px solid #e9ecef;
-        position: relative;
-    `;
-    
-    rangeDiv.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <span style="font-size:12px; color:#666;">
-                <i class="fas fa-calendar-alt"></i> 
-                <span id="range-label-${type}" style="font-weight:600; color:#333;"></span>
-            </span>
-            <span style="font-size:11px; color:#999;">← scroll →</span>
-        </div>
-        <div style="position:relative;">
-            <input type="range" id="range-slider-${type}" 
-                   min="0" max="${Math.max(0, totalMonths - windowSize)}" 
-                   value="${defaultPosition}" step="1"
-                   style="width:100%; margin:0; cursor:pointer;">
-            <div style="display:flex; justify-content:space-between; font-size:9px; color:#aaa; margin-top:1px;">
-                <span>Earliest</span>
-                <span>Latest</span>
-            </div>
-        </div>
-    `;
-    
-    container.appendChild(rangeDiv);
-    
-    const slider = document.getElementById(`range-slider-${type}`);
-    window[`rangeSlider_${type}`] = slider;
-    
-    slider.addEventListener('input', function() {
-        updateRangeSelector(type);
-    });
-    
-    updateRangeSelector(type);
-    
-    console.log('[RANGE] Range selector initialized for', type);
-}
-
-function updateRangeSelector(type) {
-    const slider = window[`rangeSlider_${type}`];
-    if (!slider) return;
-    
-    const months = type === 'pl' ? plMonths : cashFlowMonths;
-    const totalMonths = months.length;
-    const windowSize = DEFAULT_WINDOW_SIZE;
-    const position = parseInt(slider.value);
-    
-    const maxPos = Math.max(0, totalMonths - windowSize);
-    const clampedPos = Math.max(0, Math.min(maxPos, position));
-    
-    if (clampedPos !== position) {
-        slider.value = clampedPos;
-    }
-    
-    const startIdx = clampedPos;
-    const endIdx = Math.min(startIdx + windowSize - 1, totalMonths - 1);
-    
-    if (type === 'pl') {
-        plRangeStart = (startIdx / Math.max(1, totalMonths - 1)) * 100;
-        plRangeEnd = (endIdx / Math.max(1, totalMonths - 1)) * 100;
-    } else if (type === 'cashflow') {
-        cashFlowRangeStart = (startIdx / Math.max(1, totalMonths - 1)) * 100;
-        cashFlowRangeEnd = (endIdx / Math.max(1, totalMonths - 1)) * 100;
-    }
-    
-    updateRangeLabel(type);
-    renderFilteredChart(type);
-}
-
-function updateRangeLabel(type) {
-    const months = type === 'pl' ? plMonths : cashFlowMonths;
-    const labelEl = document.getElementById(`range-label-${type}`);
-    const slider = window[`rangeSlider_${type}`];
-    
-    if (!labelEl || !months || months.length === 0 || !slider) return;
-    
-    const windowSize = DEFAULT_WINDOW_SIZE;
-    const position = parseInt(slider.value);
-    const totalMonths = months.length;
-    const maxPos = Math.max(0, totalMonths - windowSize);
-    const clampedPos = Math.max(0, Math.min(maxPos, position));
-    
-    const startIdx = clampedPos;
-    const endIdx = Math.min(startIdx + windowSize - 1, totalMonths - 1);
-    
-    const formatMonth = (m) => {
-        if (!m) return '';
-        const [year, month] = m.split('-');
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        return `${monthNames[parseInt(month) - 1]} ${year}`;
-    };
-    
-    const startMonth = formatMonth(months[startIdx]);
-    const endMonth = formatMonth(months[endIdx]);
-    labelEl.textContent = `${startMonth} - ${endMonth}`;
-}
-
-function renderFilteredChart(type) {
-    const months = type === 'pl' ? plMonths : cashFlowMonths;
-    const data = type === 'pl' ? allPLData : allCashFlowData;
-    
-    if (!months || months.length === 0 || !data) {
-        console.log('[RANGE] No data to render filtered chart');
-        return;
-    }
-    
-    const windowSize = DEFAULT_WINDOW_SIZE;
-    const slider = window[`rangeSlider_${type}`];
-    if (!slider) {
-        const canvasId = type === 'pl' ? 'pl-chart' : 'cash-flow-chart';
-        const chartType = type === 'pl' ? 'pl' : 'cashflow';
-        renderLineChart(canvasId, data, { type: chartType });
-        return;
-    }
-    
-    const position = parseInt(slider.value);
-    const totalMonths = months.length;
-    const maxPos = Math.max(0, totalMonths - windowSize);
-    const clampedPos = Math.max(0, Math.min(maxPos, position));
-    
-    const startIdx = clampedPos;
-    const endIdx = Math.min(startIdx + windowSize - 1, totalMonths - 1);
-    
-    console.log('[RANGE] Filtering months:', startIdx, 'to', endIdx);
-    
-    const filteredMonths = months.slice(startIdx, endIdx + 1);
-    const filteredData = {};
-    filteredMonths.forEach(m => {
-        filteredData[m] = data.account_breakdown[m] || {};
-    });
-    
-    const filteredChartData = {
-        months: filteredMonths,
-        account_breakdown: filteredData
-    };
-    
-    const canvasId = type === 'pl' ? 'pl-chart' : 'cash-flow-chart';
-    const chartType = type === 'pl' ? 'pl' : 'cashflow';
-    
-    const dateRangeEl = document.getElementById(type === 'pl' ? 'pl-date-range' : 'cash-flow-date-range');
-    if (dateRangeEl) {
-        const formatMonth = (m) => {
-            if (!m) return '';
-            const [year, month] = m.split('-');
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            return `${monthNames[parseInt(month) - 1]} ${year}`;
-        };
-        dateRangeEl.textContent = `Showing ${formatMonth(filteredMonths[0])} to ${formatMonth(filteredMonths[filteredMonths.length - 1])}`;
-        dateRangeEl.style.display = 'block';
-    }
-    
-    renderLineChart(canvasId, filteredChartData, { type: chartType });
-}
-
-// ============================================================
 // INITIALIZATION
 // ============================================================
 
@@ -282,6 +88,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     console.log('[INIT] Accounting container found');
 
+    // Sub-tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
@@ -306,6 +113,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             else if (sub === 'cash-flow') {
                 console.log('[INIT] Cash Flow tab selected');
+                // Set default month pickers if empty
+                const now = new Date();
+                const endInput = document.getElementById('cash-flow-end');
+                if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
+                const startInput = document.getElementById('cash-flow-start');
+                if (!startInput.value) {
+                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                    startInput.value = startDate.toISOString().slice(0, 7);
+                }
                 if (bankAccounts.length === 0) {
                     loadBankAccountsForRowDropdowns().then(() => {
                         loadCashFlow();
@@ -316,6 +132,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             else if (sub === 'monthly-pl') {
                 console.log('[INIT] Monthly P&L tab selected');
+                const now = new Date();
+                const endInput = document.getElementById('pl-end');
+                if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
+                const startInput = document.getElementById('pl-start');
+                if (!startInput.value) {
+                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                    startInput.value = startDate.toISOString().slice(0, 7);
+                }
                 if (bankAccounts.length === 0) {
                     loadBankAccountsForRowDropdowns().then(() => {
                         loadMonthlyPL();
@@ -336,6 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Bank upload drag & drop
     const uploadArea = document.getElementById('bank-upload-area');
     const fileInput = document.getElementById('bank-file-input');
     if (uploadArea && fileInput) {
@@ -358,6 +183,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Pagination for journal
     document.getElementById('journal-prev')?.addEventListener('click', () => {
         if (journalCurrentPage > 1) { journalCurrentPage--; loadJournalEntries(); }
     });
@@ -366,22 +192,27 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
+    // Manual entry – auto‑balance check
     document.addEventListener('input', function(e) {
         if (e.target.closest('.manual-entry-row')) {
             updateManualBalance();
         }
     });
 
+    // Load accounts into dropdowns
     loadAccountSelects();
 
+    // Load default date range for reports
     const today = new Date().toISOString().split('T')[0];
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     document.getElementById('report-date-from').value = firstDay;
     document.getElementById('report-date-to').value = today;
     document.getElementById('manual-date').value = today;
 
+    // Load journal by default
     loadJournalEntries();
 
+    // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
     const publicToken = urlParams.get('public_token');
     if (publicToken) {
@@ -408,6 +239,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // ---- Bank Tab: Search button and Enter key - NO AUTO-TRIGGERS ----
     document.getElementById('bank-search-btn')?.addEventListener('click', function() {
         console.log('[BANK] Search button clicked');
         loadBankTransactions();
@@ -421,6 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Accounts tab - add account form
     document.getElementById('add-account-btn')?.addEventListener('click', function() {
         console.log('[INIT] Add account button clicked');
         document.getElementById('add-account-modal').classList.add('active');
@@ -436,6 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
         saveAccount();
     });
 
+    // Close modal on overlay - only if clicking the backdrop itself
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -518,6 +352,7 @@ async function loadBankAccountsForRowDropdowns() {
         const data = await res.json();
         if (data.status === 'success') {
             bankAccounts = data.accounts;
+            // Build accountNameToId mapping
             accountNameToId = {};
             bankAccounts.forEach(acc => {
                 const trimmed = acc.name.trim();
@@ -2443,28 +2278,10 @@ function renderLineChart(canvasId, data, options = {}) {
         plMonths = months;
         allPLData = data;
         
-        if (!document.getElementById('range-pl')) {
-            console.log('[CHART] Initializing range selector for P&L');
-            const container = document.getElementById('pl-chart-container');
-            if (container) {
-                initRangeSelector('pl-chart-container', 'pl-chart', 'pl');
-            }
-        }
-        updateRangeLabel('pl');
-        
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartData = data;
         cashFlowMonths = months;
         allCashFlowData = data;
-        
-        if (!document.getElementById('range-cashflow')) {
-            console.log('[CHART] Initializing range selector for Cash Flow');
-            const container = document.getElementById('cash-flow-chart-container');
-            if (container) {
-                initRangeSelector('cash-flow-chart-container', 'cash-flow-chart', 'cashflow');
-            }
-        }
-        updateRangeLabel('cashflow');
     }
 
     const chart = new Chart(ctx, {
@@ -2777,14 +2594,24 @@ function collapseChart() {
 async function loadCashFlow() {
     console.log('[CASHFLOW] ===== LOAD CASH FLOW START =====');
     
+    const startInput = document.getElementById('cash-flow-start');
+    const endInput = document.getElementById('cash-flow-end');
+    const start = startInput.value;
+    const end = endInput.value;
+    
+    if (!start || !end) {
+        alert('Please select both start and end months.');
+        return;
+    }
+    
     if (bankAccounts.length === 0) {
         console.log('[CASHFLOW] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
     }
 
     try {
-        console.log('[CASHFLOW] Fetching all data from API');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail`, {
+        console.log('[CASHFLOW] Fetching data from API with start:', start, 'end:', end);
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${start}-01&end=${end}-01`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
@@ -2798,23 +2625,18 @@ async function loadCashFlow() {
             allCashFlowData = data;
             cashFlowMonths = data.months || [];
             
-            const container = document.getElementById('cash-flow-chart-container');
-            if (container) {
-                if (!document.getElementById('range-cashflow')) {
-                    initRangeSelector('cash-flow-chart-container', 'cash-flow-chart', 'cashflow');
-                } else {
-                    const slider = document.getElementById('range-slider-cashflow');
-                    if (slider) {
-                        const totalMonths = cashFlowMonths.length;
-                        slider.max = Math.max(0, totalMonths - DEFAULT_WINDOW_SIZE);
-                        const defaultPos = Math.max(0, totalMonths - DEFAULT_WINDOW_SIZE);
-                        slider.value = defaultPos;
-                        updateRangeSelector('cashflow');
-                    }
-                }
+            const dateRangeEl = document.getElementById('cash-flow-date-range');
+            if (dateRangeEl && cashFlowMonths.length > 0) {
+                const formatMonth = (m) => {
+                    const [year, month] = m.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[parseInt(month) - 1]} ${year}`;
+                };
+                dateRangeEl.textContent = `Showing ${formatMonth(cashFlowMonths[0])} to ${formatMonth(cashFlowMonths[cashFlowMonths.length - 1])}`;
+                dateRangeEl.style.display = 'block';
             }
             
-            renderFilteredChart('cashflow');
+            renderLineChart('cash-flow-chart', data, { type: 'cashflow' });
         } else {
             console.error('[CASHFLOW] Error:', data.error);
             document.getElementById('cash-flow-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
@@ -2833,14 +2655,24 @@ async function loadCashFlow() {
 async function loadMonthlyPL() {
     console.log('[MONTHLY-PL] ===== LOAD MONTHLY P&L START =====');
     
+    const startInput = document.getElementById('pl-start');
+    const endInput = document.getElementById('pl-end');
+    const start = startInput.value;
+    const end = endInput.value;
+    
+    if (!start || !end) {
+        alert('Please select both start and end months.');
+        return;
+    }
+    
     if (bankAccounts.length === 0) {
         console.log('[MONTHLY-PL] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
     }
 
     try {
-        console.log('[MONTHLY-PL] Fetching all data from API');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl`, {
+        console.log('[MONTHLY-PL] Fetching data from API with start:', start, 'end:', end);
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${start}-01&end=${end}-01`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
@@ -2854,23 +2686,18 @@ async function loadMonthlyPL() {
             allPLData = data;
             plMonths = data.months || [];
             
-            const container = document.getElementById('pl-chart-container');
-            if (container) {
-                if (!document.getElementById('range-pl')) {
-                    initRangeSelector('pl-chart-container', 'pl-chart', 'pl');
-                } else {
-                    const slider = document.getElementById('range-slider-pl');
-                    if (slider) {
-                        const totalMonths = plMonths.length;
-                        slider.max = Math.max(0, totalMonths - DEFAULT_WINDOW_SIZE);
-                        const defaultPos = Math.max(0, totalMonths - DEFAULT_WINDOW_SIZE);
-                        slider.value = defaultPos;
-                        updateRangeSelector('pl');
-                    }
-                }
+            const dateRangeEl = document.getElementById('pl-date-range');
+            if (dateRangeEl && plMonths.length > 0) {
+                const formatMonth = (m) => {
+                    const [year, month] = m.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[parseInt(month) - 1]} ${year}`;
+                };
+                dateRangeEl.textContent = `Showing ${formatMonth(plMonths[0])} to ${formatMonth(plMonths[plMonths.length - 1])}`;
+                dateRangeEl.style.display = 'block';
             }
             
-            renderFilteredChart('pl');
+            renderLineChart('pl-chart', data, { type: 'pl' });
         } else {
             console.error('[MONTHLY-PL] Error:', data.error);
             document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
