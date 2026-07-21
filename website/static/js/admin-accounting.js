@@ -26,6 +26,11 @@ let accountNameToId = {};
 // Track which chart type is currently open for breakdown
 let currentBreakdownChartType = 'pl';
 let currentBreakdownMonth = '';
+let currentBreakdownMonths = [];
+let currentBreakdownMonthIndex = -1;
+
+// COGS accounts to exclude from regular transaction view
+const COGS_ACCOUNT_NAMES = ['COGS', 'Cost of Goods Sold'];
 
 // ============================================================
 // TOAST NOTIFICATION
@@ -1351,9 +1356,9 @@ function closeMonthlyModal() {
     document.getElementById('monthly-tx-modal').classList.remove('active');
 }
 
-function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false) {
+function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false, isCOGS = false) {
     console.log('[MODAL] ===== SHOW MONTHLY TRANSACTIONS START =====');
-    console.log('[MODAL] 1. Called with:', { month, accountId, accountName, excludeOrders });
+    console.log('[MODAL] 1. Called with:', { month, accountId, accountName, excludeOrders, isCOGS });
     
     try {
         const modal = document.getElementById('monthly-tx-modal');
@@ -1395,7 +1400,9 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
         
-        title.textContent = `${accountName} - ${dateRange}`;
+        // If COGS, add special indicator
+        const displayName = isCOGS ? `COGS (Calculated) - ${dateRange}` : `${accountName} - ${dateRange}`;
+        title.textContent = displayName;
         console.log('[MODAL] 5. Title set to:', title.textContent);
         
         body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
@@ -1405,13 +1412,18 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         console.log('[MODAL] 7. Active class added, modal should be visible');
         console.log('[MODAL] 8. Modal classes:', modal.className);
         
-        // Build URL
-        let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
-        if (accountId) {
-            url += `&account_id=${accountId}`;
-        }
-        if (excludeOrders) {
-            url += '&exclude_orders=true';
+        // Build URL - for COGS, we need a different endpoint
+        let url;
+        if (isCOGS) {
+            url = `${AppConfig.baseUrl}/api/accounting/cogs-transactions?month=${month}`;
+        } else {
+            url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
+            if (accountId) {
+                url += `&account_id=${accountId}`;
+            }
+            if (excludeOrders) {
+                url += '&exclude_orders=true';
+            }
         }
         console.log('[MODAL] 9. Fetching URL:', url);
 
@@ -1427,7 +1439,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
             console.log('[MODAL] 11. Data received:', data);
             if (data.status === 'success' && data.transactions) {
                 console.log('[MODAL] 12. Loaded', data.transactions.length, 'transactions');
-                renderModalTransactions(data.transactions, accountName, dateRange);
+                renderModalTransactions(data.transactions, accountName, dateRange, isCOGS);
             } else {
                 console.error('[MODAL] ❌ Error in response:', data.error);
                 body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load transactions'}</p>`;
@@ -1446,7 +1458,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     }
 }
 
-function renderModalTransactions(transactions, accountName, dateRange) {
+function renderModalTransactions(transactions, accountName, dateRange, isCOGS = false) {
     console.log('[MODAL] Rendering', transactions.length, 'transactions');
     const body = document.getElementById('modal-body');
     if (!body) {
@@ -1463,13 +1475,13 @@ function renderModalTransactions(transactions, accountName, dateRange) {
     let totalDebit = 0;
     let totalCredit = 0;
     
+    const displayName = isCOGS ? 'COGS (Calculated)' : (accountName || 'All Accounts');
+    
     let html = `<div class="modal-summary">
-        <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}</div>
+        <div class="summary-item"><strong>Account:</strong> ${displayName}</div>
         <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
         <div class="summary-item"><strong>Transactions:</strong> ${transactions.length}</div>
-        <div class="summary-item" style="margin-left:auto;">
-            <button class="btn btn-sm btn-danger" onclick="unpostAllTransactions(this)" data-account="${accountName}" data-month="${dateRange}" style="display:none;">Unpost All</button>
-        </div>
+        ${isCOGS ? `<div class="summary-item" style="color:#6f42c1;font-weight:bold;">⚠️ COGS is a calculated value - showing underlying purchase and sales transactions</div>` : ''}
     </div>`;
     
     html += `<table>
@@ -1548,9 +1560,10 @@ async function unpostTransaction(entryId) {
                         const match = dateRange.match(/(\d{2})\/(\d{2})\/(\d{2})/);
                         if (match) {
                             const month = `20${match[3]}-${match[1]}`;
+                            const isCOGS = accountName.includes('COGS');
                             // We need to re-fetch with the same account
                             const accountId = accountNameToId[accountName.toLowerCase()] || null;
-                            showMonthlyTransactions(month, accountId, accountName);
+                            showMonthlyTransactions(month, accountId, accountName, true, isCOGS);
                         }
                     }
                 }
@@ -1566,7 +1579,7 @@ async function unpostTransaction(entryId) {
 }
 
 // ============================================================
-// MONTH BREAKDOWN MODAL (Bar Chart)
+// MONTH BREAKDOWN MODAL (Bar Chart) with Navigation
 // ============================================================
 
 function showMonthBreakdownModal(month, chartData, chartType) {
@@ -1601,6 +1614,12 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             return;
         }
         
+        // Store current months for navigation
+        currentBreakdownMonths = chartData.months || [];
+        currentBreakdownMonthIndex = currentBreakdownMonths.indexOf(month);
+        currentBreakdownChartType = chartType;
+        currentBreakdownMonth = month;
+        
         // Format date range for title
         const [year, monthNum] = month.split('-');
         const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
@@ -1613,14 +1632,46 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
         
-        title.textContent = dateRange;
-        title.style.color = '#000';
-        title.style.fontWeight = 'bold';
-        console.log('[BREAKDOWN] 5. Title set to:', title.textContent);
+        // Build navigation controls
+        const totalMonths = currentBreakdownMonths.length;
+        const navHtml = `
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px; justify-content:center; flex-wrap:wrap;">
+                <button class="btn btn-sm btn-secondary" id="breakdown-prev-month" ${currentBreakdownMonthIndex <= 0 ? 'disabled' : ''}>
+                    <i class="fas fa-chevron-left"></i> Prev
+                </button>
+                <span style="font-size:16px; font-weight:600; color:#333;">${dateRange}</span>
+                <span style="font-size:14px; color:#666;">(${currentBreakdownMonthIndex + 1} of ${totalMonths})</span>
+                <button class="btn btn-sm btn-secondary" id="breakdown-next-month" ${currentBreakdownMonthIndex >= totalMonths - 1 ? 'disabled' : ''}>
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            <div id="breakdown-chart-container" style="min-height: 450px; width: 100%; position: relative; background: white; border-radius: 8px; padding: 10px;">
+                <canvas id="breakdown-chart-canvas"></canvas>
+            </div>
+            <div class="breakdown-bar-click-hint" style="font-size: 13px; color: #666; text-align: center; margin-top: 12px; font-style: italic;">
+                Click any bar to see transactions
+            </div>
+        `;
         
-        // Store current context for bar clicks
-        currentBreakdownChartType = chartType;
-        currentBreakdownMonth = month;
+        body.innerHTML = navHtml;
+        
+        // Add navigation event listeners
+        document.getElementById('breakdown-prev-month')?.addEventListener('click', function() {
+            if (currentBreakdownMonthIndex > 0) {
+                const newMonth = currentBreakdownMonths[currentBreakdownMonthIndex - 1];
+                // Close the transactions modal if open
+                document.getElementById('monthly-tx-modal')?.classList.remove('active');
+                showMonthBreakdownModal(newMonth, chartData, chartType);
+            }
+        });
+        
+        document.getElementById('breakdown-next-month')?.addEventListener('click', function() {
+            if (currentBreakdownMonthIndex < currentBreakdownMonths.length - 1) {
+                const newMonth = currentBreakdownMonths[currentBreakdownMonthIndex + 1];
+                document.getElementById('monthly-tx-modal')?.classList.remove('active');
+                showMonthBreakdownModal(newMonth, chartData, chartType);
+            }
+        });
         
         // Get data for this month
         const monthData = chartData.account_breakdown[month] || {};
@@ -1630,42 +1681,37 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         const netLabel = Object.keys(monthData).find(name => 
             name === 'Net' || name === 'Net Income' || name === 'Net Cash'
         );
+        // Separate COGS
+        const cogsLabel = Object.keys(monthData).find(name => 
+            name === 'COGS' || name === 'Cost of Goods Sold'
+        );
         
-        // Build labels - put Net Income last
-        let labels = Object.keys(monthData).filter(name => name !== netLabel).sort();
-        if (netLabel) {
-            labels.push(netLabel);
-        }
+        // Build labels - put COGS near the end, Net last
+        let labels = Object.keys(monthData).filter(name => 
+            name !== netLabel && name !== cogsLabel
+        ).sort();
+        if (cogsLabel) labels.push(cogsLabel);
+        if (netLabel) labels.push(netLabel);
+        
         const values = labels.map(k => monthData[k] || 0);
         console.log('[BREAKDOWN] 7. Labels:', labels.length, 'Values:', values.length);
         
-        // Filter out near-zero values but keep Net if it exists
+        // Filter out near-zero values but keep COGS and Net if they exist
         const filtered = labels.map((label, i) => ({ label, value: values[i] }))
-            .filter(item => Math.abs(item.value) > 0.01 || item.label === netLabel);
+            .filter(item => Math.abs(item.value) > 0.01 || item.label === netLabel || item.label === cogsLabel);
         console.log('[BREAKDOWN] 8. Filtered to', filtered.length, 'items');
         
         if (filtered.length === 0) {
-            body.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data for this month.</p>';
+            document.getElementById('breakdown-chart-container').innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data for this month.</p>';
             return;
         }
         
-        // Build container for chart - larger with better styling
-        body.innerHTML = `
-            <div id="breakdown-chart-container" style="min-height: 450px; width: 100%; position: relative; background: white; border-radius: 8px; padding: 10px;">
-                <canvas id="breakdown-chart-canvas"></canvas>
-            </div>
-            <div class="breakdown-bar-click-hint" style="font-size: 13px; color: #666; text-align: center; margin-top: 12px; font-style: italic;">
-                Click any bar to see transactions
-            </div>
-        `;
-        
-        const container = document.getElementById('breakdown-chart-container');
         const canvas = document.getElementById('breakdown-chart-canvas');
         console.log('[BREAKDOWN] 9. Canvas element:', canvas);
         
         if (!canvas) {
             console.error('[BREAKDOWN] ❌ Canvas not found!');
-            body.innerHTML = '<p style="text-align:center; padding:40px; color:#dc3545;">Error: Canvas not found</p>';
+            document.getElementById('breakdown-chart-container').innerHTML = '<p style="text-align:center; padding:40px; color:#dc3545;">Error: Canvas not found</p>';
             return;
         }
         
@@ -1677,10 +1723,13 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             window._breakdownChart = null;
         }
         
-        // Build colors - green for positive, red for negative, purple for Net
+        // Build colors - green for positive, red for negative, purple for Net, orange for COGS
         const barColors = filtered.map(item => {
             if (item.label === netLabel) {
                 return 'rgba(111, 66, 193, 0.85)';
+            }
+            if (item.label === cogsLabel) {
+                return 'rgba(255, 165, 0, 0.85)';
             }
             return item.value >= 0 ? 'rgba(40, 167, 69, 0.75)' : 'rgba(220, 53, 69, 0.75)';
         });
@@ -1688,10 +1737,18 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             if (item.label === netLabel) {
                 return '#6f42c1';
             }
+            if (item.label === cogsLabel) {
+                return '#ff8c00';
+            }
             return item.value >= 0 ? '#28a745' : '#dc3545';
         });
         
         console.log('[BREAKDOWN] 10. Creating bar chart with', filtered.length, 'bars');
+        
+        // Store data for bar click handler
+        const chartDataRef = chartData;
+        const chartTypeRef = chartType;
+        const currentMonth = month;
         
         const chart = new Chart(ctx, {
             type: 'bar',
@@ -1764,6 +1821,13 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                     // Close any open modals first
                     document.getElementById('monthly-tx-modal')?.classList.remove('active');
                     
+                    // Check if this is COGS - special handling
+                    if (label === 'COGS' || label === 'Cost of Goods Sold') {
+                        // Show COGS transactions with special flag
+                        showMonthlyTransactions(currentMonth, null, label, true, true);
+                        return;
+                    }
+                    
                     // Get account ID
                     const trimmed = label.trim();
                     const norm = trimmed.toLowerCase();
@@ -1771,13 +1835,13 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                     console.log('[BREAKDOWN] Account ID:', accountId);
                     
                     // Determine if we should exclude orders (for P&L)
-                    const excludeOrders = chartType === 'pl';
+                    const excludeOrders = chartTypeRef === 'pl';
                     
                     // Show transactions for this account and month
                     if (accountId) {
-                        showMonthlyTransactions(month, accountId, label, excludeOrders);
+                        showMonthlyTransactions(currentMonth, accountId, label, excludeOrders, false);
                     } else {
-                        showMonthlyTransactions(month, null, label, excludeOrders);
+                        showMonthlyTransactions(currentMonth, null, label, excludeOrders, false);
                     }
                 }
             }
@@ -1899,7 +1963,6 @@ function renderLineChart(canvasId, data, options = {}) {
     // Point style variations
     const pointStyles = ['circle', 'rect', 'triangle', 'diamond', 'cross', 'crossRot', 'star', 'line', 'dash'];
 
-    // Build datasets with unique combinations
     sortedAccounts.forEach((accountName, idx) => {
         const values = months.map(m => {
             const monthData = account_breakdown[m] || {};
@@ -2054,7 +2117,6 @@ function renderLineChart(canvasId, data, options = {}) {
                             const val = context.raw;
                             const label = context.dataset.label || '';
                             const sign = val >= 0 ? '+' : '';
-                            // Show line style in tooltip
                             const ds = context.dataset;
                             const dashInfo = ds.borderDash && ds.borderDash.length > 0 ? ' [dashed]' : '';
                             return `${label}${dashInfo}: ${sign}$${Math.abs(val).toFixed(2)}`;
@@ -2106,10 +2168,6 @@ function renderLineChart(canvasId, data, options = {}) {
     // ---- ADD X-AXIS CLICK HANDLER ----
     console.log('[CHART] Adding x-axis click handler');
     
-    // Get the chart data for the breakdown modal
-    const chartDataRef = data;
-    const chartTypeRef = options.type || 'pl';
-    
     // Add click handler directly on the canvas
     canvas.addEventListener('click', function(e) {
         console.log('[CHART-X] Canvas click detected');
@@ -2135,48 +2193,53 @@ function renderLineChart(canvasId, data, options = {}) {
             }
             
             const chartHeight = chartArea.bottom - chartArea.top;
-            const xAxisClickZone = chartArea.bottom - (chartHeight * 0.1); // Only clicks very close to x-axis
             
             console.log('[CHART-X] Chart area:', { top: chartArea.top, bottom: chartArea.bottom, height: chartHeight });
-            console.log('[CHART-X] Click zone threshold:', xAxisClickZone);
             
-            // Only process if click is near the x-axis
+            // Only process if click is near the x-axis (bottom 30%)
             if (y < chartArea.top || y > chartArea.bottom + 30) {
                 console.log('[CHART-X] Click not in chart area');
                 return;
             }
             
-            // Get x scale
-            const xScale = chartInstance.scales.x;
-            if (!xScale) {
-                console.log('[CHART-X] No x scale found');
-                return;
-            }
-            
-            // Find nearest tick
-            const pixelsPerTick = (xScale.right - xScale.left) / (months.length || 1);
-            const clickedIndex = Math.round((x - xScale.left) / pixelsPerTick);
-            
-            console.log('[CHART-X] Clicked index:', clickedIndex, 'months length:', months.length);
-            
-            if (clickedIndex >= 0 && clickedIndex < months.length) {
-                const month = months[clickedIndex];
-                console.log('[CHART-X] ✅ Month detected:', month);
+            // Check if click is near the x-axis labels (bottom portion)
+            const yPos = (y - chartArea.top) / chartHeight;
+            if (yPos > 0.8) {
+                console.log('[CHART-X] Click near x-axis');
+                // Get x scale
+                const xScale = chartInstance.scales.x;
+                if (!xScale) {
+                    console.log('[CHART-X] No x scale found');
+                    return;
+                }
                 
-                // Close any open modals first
-                document.getElementById('monthly-tx-modal')?.classList.remove('active');
+                // Find nearest tick
+                const pixelsPerTick = (xScale.right - xScale.left) / (months.length || 1);
+                const clickedIndex = Math.round((x - xScale.left) / pixelsPerTick);
                 
-                // Show breakdown modal
-                const dataToUse = canvasId === 'pl-chart' ? plChartData : cashFlowChartData;
-                if (dataToUse) {
-                    console.log('[CHART-X] Showing breakdown for month:', month);
-                    showMonthBreakdownModal(month, dataToUse, chartTypeRef);
+                console.log('[CHART-X] Clicked index:', clickedIndex, 'months length:', months.length);
+                
+                if (clickedIndex >= 0 && clickedIndex < months.length) {
+                    const month = months[clickedIndex];
+                    console.log('[CHART-X] ✅ Month detected:', month);
+                    
+                    // Close any open modals first
+                    document.getElementById('monthly-tx-modal')?.classList.remove('active');
+                    
+                    // Show breakdown modal
+                    const dataToUse = canvasId === 'pl-chart' ? plChartData : cashFlowChartData;
+                    if (dataToUse) {
+                        console.log('[CHART-X] Showing breakdown for month:', month);
+                        showMonthBreakdownModal(month, dataToUse, options.type || 'pl');
+                    } else {
+                        console.warn('[CHART-X] No chart data available for breakdown');
+                        showToast('No data available for this month', 'warning');
+                    }
                 } else {
-                    console.warn('[CHART-X] No chart data available for breakdown');
-                    showToast('No data available for this month', 'warning');
+                    console.log('[CHART-X] Index out of range:', clickedIndex);
                 }
             } else {
-                console.log('[CHART-X] Index out of range:', clickedIndex);
+                console.log('[CHART-X] Click not near x-axis');
             }
         } catch (err) {
             console.error('[CHART-X] Error in click handler:', err);
