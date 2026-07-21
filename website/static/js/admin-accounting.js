@@ -120,8 +120,9 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'cash-flow') {
                 console.log('[INIT] Cash Flow tab selected');
                 const now = new Date();
+                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
                 const endInput = document.getElementById('cash-flow-end');
-                if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
+                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
                 const startInput = document.getElementById('cash-flow-start');
                 if (!startInput.value) {
                     const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
@@ -138,8 +139,9 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'monthly-pl') {
                 console.log('[INIT] Monthly P&L tab selected');
                 const now = new Date();
+                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
                 const endInput = document.getElementById('pl-end');
-                if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
+                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
                 const startInput = document.getElementById('pl-start');
                 if (!startInput.value) {
                     const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
@@ -156,8 +158,9 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'balance-sheet') {
                 console.log('[INIT] Balance Sheet tab selected');
                 const now = new Date();
+                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
                 const endInput = document.getElementById('bs-end');
-                if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
+                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
                 const startInput = document.getElementById('bs-start');
                 if (!startInput.value) {
                     const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
