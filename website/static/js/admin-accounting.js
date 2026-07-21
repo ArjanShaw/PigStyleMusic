@@ -19,6 +19,8 @@ let isExpanded = false;
 // Chart data cache for breakdown modal
 let plChartData = null;
 let cashFlowChartData = null;
+let plMonths = [];
+let cashFlowMonths = [];
 let allPLData = null;
 let allCashFlowData = null;
 
@@ -2588,7 +2590,7 @@ function collapseChart() {
 }
 
 // ============================================================
-// CASH FLOW
+// CASH FLOW - FIXED DATE HANDLING
 // ============================================================
 
 async function loadCashFlow() {
@@ -2610,8 +2612,15 @@ async function loadCashFlow() {
     }
 
     try {
-        console.log('[CASHFLOW] Fetching data from API with start:', start, 'end:', end);
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${start}-01&end=${end}-01`, {
+        // Convert month to first and last day of the month
+        const startDate = new Date(start + '-01');
+        const endDate = new Date(end + '-01');
+        const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
+        const startStr = startDate.toISOString().slice(0, 10);
+        const endStr = lastDay.toISOString().slice(0, 10);
+        
+        console.log('[CASHFLOW] Fetching data from API with start:', startStr, 'end:', endStr);
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${startStr}&end=${endStr}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
@@ -2649,7 +2658,7 @@ async function loadCashFlow() {
 }
 
 // ============================================================
-// MONTHLY P&L
+// MONTHLY P&L - FIXED DATE HANDLING
 // ============================================================
 
 async function loadMonthlyPL() {
@@ -2671,8 +2680,15 @@ async function loadMonthlyPL() {
     }
 
     try {
-        console.log('[MONTHLY-PL] Fetching data from API with start:', start, 'end:', end);
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${start}-01&end=${end}-01`, {
+        // Convert month to first and last day of the month
+        const startDate = new Date(start + '-01');
+        const endDate = new Date(end + '-01');
+        const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
+        const startStr = startDate.toISOString().slice(0, 10);
+        const endStr = lastDay.toISOString().slice(0, 10);
+        
+        console.log('[MONTHLY-PL] Fetching data from API with start:', startStr, 'end:', endStr);
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${startStr}&end=${endStr}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
