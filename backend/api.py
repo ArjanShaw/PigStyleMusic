@@ -10315,7 +10315,155 @@ def cogs_calculation():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+# ==================== ACCOUNTING: BALANCE SHEET ====================
 
+@app.route('/api/accounting/balance-sheet', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def balance_sheet():
+    """
+    Returns balance sheet data - cumulative balances for asset, liability, and equity accounts over time.
+    Each month shows the running balance up to that point in time.
+    """
+    start = request.args.get('start')
+    end = request.args.get('end')
+    if not start or not end:
+        return jsonify({'status': 'error', 'error': 'start and end required'}), 400
+
+    try:
+        from datetime import datetime, timedelta
+        
+        # Parse start and end dates
+        start_date = datetime.strptime(start, '%Y-%m-%d')
+        end_date = datetime.strptime(end, '%Y-%m-%d')
+        
+        # Build month list
+        months = []
+        current = start_date
+        while current <= end_date:
+            months.append(current.strftime('%Y-%m'))
+            if current.month == 12:
+                current = current.replace(year=current.year+1, month=1, day=1)
+            else:
+                current = current.replace(month=current.month+1, day=1)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all asset, liability, and equity accounts
+        cursor.execute('''
+            SELECT id, code, name, type 
+            FROM accounts 
+            WHERE type IN ('asset', 'liability', 'equity')
+            ORDER BY type, code
+        ''')
+        accounts = cursor.fetchall()
+        
+        # For each account, get the running balance at the end of each month
+        account_breakdown = {}
+        
+        for account in accounts:
+            account_id = account['id']
+            account_name = account['name']
+            account_type = account['type']
+            
+            running_balance = 0
+            
+            for month in months:
+                # Get the last day of this month
+                month_date = datetime.strptime(month + '-01', '%Y-%m-%d')
+                if month_date.month == 12:
+                    last_day = month_date.replace(year=month_date.year+1, month=1, day=1) - timedelta(days=1)
+                else:
+                    last_day = month_date.replace(month=month_date.month+1, day=1) - timedelta(days=1)
+                last_day_str = last_day.strftime('%Y-%m-%d')
+                
+                # Get all transactions up to this point
+                cursor.execute('''
+                    SELECT 
+                        COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
+                    FROM journal_lines jl
+                    JOIN journal_entries je ON jl.journal_entry_id = je.id
+                    WHERE jl.account_id = ?
+                      AND je.transaction_date <= ?
+                ''', (account_id, last_day_str))
+                
+                row = cursor.fetchone()
+                balance = row['balance'] / 100.0 if row and row['balance'] else 0
+                
+                # For liability accounts, invert the sign (liabilities are credit balances)
+                if account_type == 'liability':
+                    balance = -balance
+                
+                running_balance = balance
+                
+                # Only store if non-zero or if it's the first month
+                if abs(balance) > 0.01 or month == months[0]:
+                    if month not in account_breakdown:
+                        account_breakdown[month] = {}
+                    account_breakdown[month][account_name] = balance
+        
+        conn.close()
+        
+        # Ensure every month has an entry
+        for month in months:
+            if month not in account_breakdown:
+                account_breakdown[month] = {}
+        
+        # Calculate Net Assets (Total Assets - Total Liabilities) for each month
+        # Also add account type totals
+        for month in months:
+            if month in account_breakdown:
+                month_data = account_breakdown[month]
+                
+                # Calculate totals by type
+                total_assets = 0
+                total_liabilities = 0
+                total_equity = 0
+                net_assets = 0
+                
+                # We need account types, so re-query accounts
+                conn2 = get_db()
+                cur2 = conn2.cursor()
+                cur2.execute('SELECT id, code, name, type FROM accounts WHERE type IN ("asset", "liability", "equity")')
+                all_accounts = cur2.fetchall()
+                conn2.close()
+                
+                account_type_map = {}
+                for acc in all_accounts:
+                    account_type_map[acc['name']] = acc['type']
+                
+                for account_name, balance in month_data.items():
+                    acc_type = account_type_map.get(account_name, 'unknown')
+                    if acc_type == 'asset':
+                        total_assets += balance
+                    elif acc_type == 'liability':
+                        total_liabilities += balance
+                    elif acc_type == 'equity':
+                        total_equity += balance
+                
+                net_assets = total_assets + total_liabilities + total_equity
+                
+                # Add total rows
+                if abs(total_assets) > 0.01:
+                    month_data['Total Assets'] = total_assets
+                if abs(total_liabilities) > 0.01:
+                    month_data['Total Liabilities'] = total_liabilities
+                if abs(total_equity) > 0.01:
+                    month_data['Total Equity'] = total_equity
+                if abs(net_assets) > 0.01:
+                    month_data['Net Assets (A - L + E)'] = net_assets
+        
+        return jsonify({
+            'status': 'success',
+            'months': months,
+            'account_breakdown': account_breakdown
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Balance sheet error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
