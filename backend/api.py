@@ -9979,7 +9979,7 @@ def accounting_delete_account(account_id):
 @role_required(['admin'])
 def monthly_pl():
     """Monthly Profit & Loss statement - shows revenue and expenses matched to the period.
-       Includes amortisation of prepaid rent as an expense.
+       Includes amortisation of prepaid rent and COGS as expenses.
     """
     start = request.args.get('start')
     end = request.args.get('end')
@@ -9997,7 +9997,7 @@ def monthly_pl():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Get revenue
+    # Get revenue (accounts 4000, 4001, 4003)
     cursor.execute('''
         SELECT
             strftime('%Y-%m', je.transaction_date) as month,
@@ -10007,7 +10007,7 @@ def monthly_pl():
         FROM journal_lines jl
         JOIN journal_entries je ON jl.journal_entry_id = je.id
         JOIN accounts a ON jl.account_id = a.id
-        WHERE a.type = 'revenue'
+        WHERE a.code IN ('4000', '4001', '4003', '4010')
           AND je.transaction_date >= ? AND je.transaction_date <= ?
           AND je.source_type != 'order'
         GROUP BY month, a.id
@@ -10015,7 +10015,7 @@ def monthly_pl():
     ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
     revenue_rows = cursor.fetchall()
 
-    # Get expenses (including amortisation)
+    # Get expenses (including COGS 5000, Rent Expense 6010, etc.)
     cursor.execute('''
         SELECT
             strftime('%Y-%m', je.transaction_date) as month,
@@ -10025,7 +10025,7 @@ def monthly_pl():
         FROM journal_lines jl
         JOIN journal_entries je ON jl.journal_entry_id = je.id
         JOIN accounts a ON jl.account_id = a.id
-        WHERE a.type = 'expense'
+        WHERE a.code IN ('5000', '5010', '5020', '5040', '6010', '6020', '6080', '6090', '6100')
           AND je.transaction_date >= ? AND je.transaction_date <= ?
           AND je.source_type != 'order'
         GROUP BY month, a.id
