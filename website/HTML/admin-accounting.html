@@ -112,8 +112,8 @@
         .monthly-controls .form-group input[type="month"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
         .monthly-controls .form-group label { font-weight: 500; font-size: 13px; color: #333; }
         
-        .chart-container-wrapper { background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; position: relative; min-height: 400px; }
-        .chart-container-wrapper canvas { max-height: 400px; width: 100% !important; }
+        .chart-container-wrapper { background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; position: relative; min-height: 500px; }
+        .chart-container-wrapper canvas { max-height: 500px; width: 100% !important; }
         .chart-container-wrapper .chart-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 15px; text-align: center; }
         .chart-container-wrapper .chart-subtitle { font-size: 14px; color: #666; text-align: center; margin-bottom: 15px; }
         .chart-container-wrapper .chart-date-range { font-size: 14px; color: #666; text-align: center; margin-bottom: 10px; }
@@ -197,6 +197,14 @@
         #breakdown-modal { z-index: 9999; }
         #monthly-tx-modal .modal-box { z-index: 10001; position: relative; }
         #breakdown-modal .modal-box { z-index: 10000; position: relative; }
+
+        /* One-row controls */
+        .controls-row { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; }
+        .controls-row .form-group { min-width: 140px; flex: 0 1 auto; }
+        .controls-row .form-group label { font-weight: 500; font-size: 13px; color: #333; white-space: nowrap; }
+        .controls-row .form-group input[type="month"] { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .controls-row .btn { margin-top: 0; padding: 8px 20px; }
+        .controls-row .spacer { flex: 1; }
     </style>
 </head>
 <body>
@@ -412,11 +420,21 @@
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
                 <p class="text-muted">Shows monthly cash inflows (positive) and outflows (negative) by account. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability. <strong>Double-click the chart</strong> to expand it full screen.</p>
-                <div class="monthly-controls">
-                    <div class="form-group"><label>Start Month</label><input type="month" id="cash-flow-start"></div>
-                    <div class="form-group"><label>End Month</label><input type="month" id="cash-flow-end"></div>
+                
+                <!-- ONE-ROW CONTROLS -->
+                <div class="controls-row">
+                    <div class="form-group">
+                        <label>Start Month</label>
+                        <input type="month" id="cash-flow-start">
+                    </div>
+                    <div class="form-group">
+                        <label>End Month</label>
+                        <input type="month" id="cash-flow-end">
+                    </div>
                     <button class="btn btn-primary" onclick="loadCashFlow()"><i class="fas fa-sync-alt"></i> Generate</button>
+                    <div class="spacer"></div>
                 </div>
+
                 <div id="cash-flow-chart-container" class="chart-container-wrapper">
                     <div class="chart-title">Cash Flow</div>
                     <div class="chart-subtitle">Monthly cash inflows and outflows by account</div>
@@ -430,11 +448,21 @@
             <div id="sub-monthly-pl" class="sub-tab-content">
                 <h4><i class="fas fa-chart-line"></i> Monthly Profit & Loss</h4>
                 <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability.</p>
-                <div class="monthly-controls">
-                    <div class="form-group"><label>Start Month</label><input type="month" id="pl-start"></div>
-                    <div class="form-group"><label>End Month</label><input type="month" id="pl-end"></div>
+                
+                <!-- ONE-ROW CONTROLS -->
+                <div class="controls-row">
+                    <div class="form-group">
+                        <label>Start Month</label>
+                        <input type="month" id="pl-start">
+                    </div>
+                    <div class="form-group">
+                        <label>End Month</label>
+                        <input type="month" id="pl-end">
+                    </div>
                     <button class="btn btn-primary" onclick="loadMonthlyPL()"><i class="fas fa-sync-alt"></i> Generate</button>
+                    <div class="spacer"></div>
                 </div>
+
                 <div id="pl-chart-container" class="chart-container-wrapper">
                     <div class="chart-title">Monthly Profit &amp; Loss</div>
                     <div class="chart-subtitle">Revenue, expenses, and net income by month</div>
@@ -563,6 +591,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=19"></script>
+    <script src="/static/js/admin-accounting.js?v=20"></script>
 </body>
 </html>
