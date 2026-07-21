@@ -18,7 +18,7 @@ let bankAccounts = [];
 // Monthly charts
 let monthlyChartsData = [];
 
-// Cash flow expansion state
+// Cash flow expansion state - keeping for backward compatibility
 let cashFlowExpanded = false;
 let expandedChartIndex = null;
 let cashFlowMonths = [];
@@ -30,6 +30,8 @@ let accountNameToId = {};
 let barChartExpanded = false;
 let expandedBarChartIndex = null;
 let expandedBarChartContainerId = null;
+let barChartData = null;
+let barChartContainerId = null;
 
 // Register annotation plugin if available
 if (typeof ChartAnnotation !== 'undefined') {
@@ -1713,12 +1715,6 @@ function renderModalTransactions(transactions) {
 // ============================================================
 // SHARED BAR CHART RENDERER
 // ============================================================
-
-let barChartExpanded = false;
-let expandedBarChartIndex = null;
-let expandedBarChartContainerId = null;
-let barChartData = null;
-let barChartContainerId = null;
 
 function renderBarCharts(containerId, data, options = {}) {
     console.log('[CHARTS] Rendering bar charts in container:', containerId);
