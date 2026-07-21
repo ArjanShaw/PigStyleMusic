@@ -116,6 +116,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 const endInput = document.getElementById('cash-flow-end');
                 if (!endInput.value) endInput.value = endMonth;
 
+                // Ensure accountNameToId is populated
+                if (bankAccounts.length === 0) {
+                    loadBankAccountsForRowDropdowns().then(() => {
+                        loadCashFlow();
+                    });
+                } else {
+                    loadCashFlow();
+                }
+
                 fetch(`${AppConfig.baseUrl}/api/accounting/earliest-transaction`, {
                     credentials: 'include',
                     headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
@@ -128,11 +137,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         const startInput = document.getElementById('cash-flow-start');
                         if (!startInput.value) startInput.value = startMonth;
                     }
-                    loadCashFlow();
                 })
                 .catch(err => {
                     console.error('[INIT] Failed to fetch earliest transaction:', err);
-                    loadCashFlow();
                 });
             }
             else if (sub === 'monthly-pl') {
@@ -146,7 +153,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
                     startInput.value = startDate.toISOString().slice(0, 7);
                 }
-                loadMonthlyPL();
+
+                // Ensure accountNameToId is populated
+                if (bankAccounts.length === 0) {
+                    loadBankAccountsForRowDropdowns().then(() => {
+                        loadMonthlyPL();
+                    });
+                } else {
+                    loadMonthlyPL();
+                }
             }
             else if (sub === 'orders') {
                 if (typeof window.loadOrders === 'function') {
@@ -363,8 +378,11 @@ async function loadBankAccountsForRowDropdowns() {
                 const norm = trimmed.toLowerCase();
                 accountNameToId[norm] = acc.id;
                 accountNameToId[trimmed] = acc.id;
+                // Also map by code
+                accountNameToId[acc.code] = acc.id;
             });
             console.log('[BANK] Loaded', bankAccounts.length, 'accounts for row dropdowns');
+            console.log('[BANK] accountNameToId keys:', Object.keys(accountNameToId).slice(0, 10));
         }
         return data;
     } catch (e) {
@@ -1353,9 +1371,9 @@ function closeMonthlyModal() {
     document.getElementById('monthly-tx-modal').classList.remove('active');
 }
 
-function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false, isCOGS = false) {
+function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false, accountCode = null) {
     console.log('[MODAL] ===== SHOW MONTHLY TRANSACTIONS START =====');
-    console.log('[MODAL] 1. Called with:', { month, accountId, accountName, excludeOrders, isCOGS });
+    console.log('[MODAL] 1. Called with:', { month, accountId, accountName, excludeOrders, accountCode });
     
     try {
         const modal = document.getElementById('monthly-tx-modal');
@@ -1397,7 +1415,9 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
         
-        const displayName = isCOGS ? `COGS (Calculated) - ${dateRange}` : `${accountName} - ${dateRange}`;
+        // Add account ID to title for debugging
+        const idDisplay = accountId ? ` (ID: ${accountId})` : (accountCode ? ` (Code: ${accountCode})` : '');
+        const displayName = `${accountName}${idDisplay} - ${dateRange}`;
         title.textContent = displayName;
         console.log('[MODAL] 5. Title set to:', title.textContent);
         
@@ -1407,18 +1427,11 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         modal.classList.add('active');
         console.log('[MODAL] 7. Active class added, modal should be visible');
         
-        // Build URL - use the same endpoint with account_id filter
+        // Build URL - use account_id if available
         let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
-        
-        if (isCOGS) {
-            // For COGS, we need to find the COGS account ID by name
-            // Instead of a special endpoint, we'll filter by account name on the backend
-            // Pass account_name=cogs to the endpoint
-            url += `&account_name=COGS`;
-        } else if (accountId) {
+        if (accountId) {
             url += `&account_id=${accountId}`;
         }
-        
         if (excludeOrders) {
             url += '&exclude_orders=true';
         }
@@ -1436,7 +1449,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
             console.log('[MODAL] 11. Data received:', data);
             if (data.status === 'success' && data.transactions) {
                 console.log('[MODAL] 12. Loaded', data.transactions.length, 'transactions');
-                renderModalTransactions(data.transactions, accountName, dateRange, isCOGS);
+                renderModalTransactions(data.transactions, accountName, dateRange, accountId);
             } else {
                 console.error('[MODAL] ❌ Error in response:', data.error);
                 body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load transactions'}</p>`;
@@ -1455,7 +1468,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     }
 }
 
-function renderModalTransactions(transactions, accountName, dateRange, isCOGS = false) {
+function renderModalTransactions(transactions, accountName, dateRange, accountId = null) {
     console.log('[MODAL] Rendering', transactions.length, 'transactions');
     const body = document.getElementById('modal-body');
     if (!body) {
@@ -1469,55 +1482,70 @@ function renderModalTransactions(transactions, accountName, dateRange, isCOGS = 
     }
 
     let total = 0;
-    let totalDebit = 0;
-    let totalCredit = 0;
     
-    const displayName = isCOGS ? 'COGS (Calculated)' : (accountName || 'All Accounts');
+    // Group transactions by journal_entry_id to show one row per entry
+    const grouped = {};
+    transactions.forEach(tx => {
+        const key = tx.journal_entry_id || tx.id;
+        if (!grouped[key]) {
+            grouped[key] = {
+                transaction_date: tx.transaction_date,
+                description: tx.description || '',
+                account_name: tx.account_name || '',
+                net: 0,
+                entries: []
+            };
+        }
+        grouped[key].net += (tx.debit_amount || 0) - (tx.credit_amount || 0);
+        grouped[key].entries.push(tx);
+    });
+
+    const groupedList = Object.values(grouped);
+    
+    // Calculate totals from grouped data
+    groupedList.forEach(g => {
+        total += g.net;
+    });
     
     let html = `<div class="modal-summary">
-        <div class="summary-item"><strong>Account:</strong> ${displayName}</div>
+        <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}${accountId ? ` (ID: ${accountId})` : ''}</div>
         <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
-        <div class="summary-item"><strong>Transactions:</strong> ${transactions.length}</div>
-        ${isCOGS ? `<div class="summary-item" style="color:#6f42c1;font-weight:bold;">⚠️ COGS is a calculated value - showing underlying purchase and sales transactions</div>` : ''}
+        <div class="summary-item"><strong>Transactions:</strong> ${groupedList.length}</div>
     </div>`;
     
     html += `<table>
         <thead><tr>
-            <th>Date</th>
+            <th style="width:100px; min-width:90px;">Date</th>
             <th>Description</th>
             <th>Account</th>
-            <th>Debit</th>
-            <th>Credit</th>
-            <th>Net</th>
-            <th>Actions</th>
+            <th style="text-align:right;">Amount</th>
+            <th style="width:90px;">Actions</th>
         </tr></thead>
         <tbody>`;
     
-    transactions.forEach(tx => {
-        const debit = tx.debit_amount || 0;
-        const credit = tx.credit_amount || 0;
-        const net = debit - credit;
-        total += net;
-        totalDebit += debit;
-        totalCredit += credit;
+    groupedList.forEach(g => {
+        const amount = g.net;
+        const isIncome = amount > 0;
+        const amountClass = isIncome ? 'debit' : (amount < 0 ? 'credit' : '');
+        const displayAmount = amount !== 0 ? '$' + Math.abs(amount).toFixed(2) : '';
+        const sign = amount > 0 ? '+' : (amount < 0 ? '-' : '');
         
-        const netClass = net > 0 ? 'debit' : (net < 0 ? 'credit' : '');
+        // Get first entry for the journal_entry_id
+        const firstEntry = g.entries[0];
+        const entryId = firstEntry.journal_entry_id || firstEntry.id;
+        
         html += `<tr>
-            <td>${tx.transaction_date}</td>
-            <td>${tx.description || ''}</td>
-            <td>${tx.account_name || ''}</td>
-            <td class="debit">${debit ? '$' + debit.toFixed(2) : ''}</td>
-            <td class="credit">${credit ? '$' + credit.toFixed(2) : ''}</td>
-            <td class="${netClass}">${net !== 0 ? '$' + net.toFixed(2) : ''}</td>
-            <td><button class="btn btn-sm btn-warning" onclick="unpostTransaction(${tx.journal_entry_id || tx.id})"><i class="fas fa-undo"></i> Unpost</button></td>
+            <td style="white-space:nowrap;">${g.transaction_date}</td>
+            <td>${g.description || ''}</td>
+            <td>${g.account_name || ''}</td>
+            <td style="text-align:right; font-weight:600;" class="${amountClass}">${sign}${displayAmount}</td>
+            <td><button class="btn btn-sm btn-warning" onclick="unpostTransaction(${entryId})"><i class="fas fa-undo"></i> Unpost</button></td>
         </tr>`;
     });
     
     html += `<tr class="total-row">
-        <td colspan="3"><strong>Totals</strong></td>
-        <td class="debit"><strong>$${totalDebit.toFixed(2)}</strong></td>
-        <td class="credit"><strong>$${totalCredit.toFixed(2)}</strong></td>
-        <td><strong>$${total.toFixed(2)}</strong></td>
+        <td colspan="3"><strong>Total</strong></td>
+        <td style="text-align:right; font-weight:bold;">${total !== 0 ? '$' + total.toFixed(2) : ''}</td>
         <td></td>
     </tr>`;
     html += '</tbody></table>';
@@ -1548,16 +1576,17 @@ async function unpostTransaction(entryId) {
                 modalBody.innerHTML = '<div class="modal-loading">Reloading...</div>';
                 const title = document.getElementById('modal-title');
                 if (title) {
-                    const titleParts = title.textContent.split(' - ');
-                    if (titleParts.length === 2) {
-                        const accountName = titleParts[0];
-                        const dateRange = titleParts[1];
-                        const match = dateRange.match(/(\d{2})\/(\d{2})\/(\d{2})/);
-                        if (match) {
-                            const month = `20${match[3]}-${match[1]}`;
-                            const isCOGS = accountName.includes('COGS');
-                            const accountId = accountNameToId[accountName.toLowerCase()] || null;
-                            showMonthlyTransactions(month, accountId, accountName, true, isCOGS);
+                    const titleText = title.textContent;
+                    // Parse the title to get account name and date range
+                    const match = titleText.match(/^(.+?)\s*\(ID:\s*(\d+)\)?\s*-\s*(.+)$/);
+                    if (match) {
+                        const accountName = match[1].trim();
+                        const accountId = match[2] ? parseInt(match[2]) : null;
+                        const dateRange = match[3].trim();
+                        const dateMatch = dateRange.match(/(\d{2})\/(\d{2})\/(\d{2})/);
+                        if (dateMatch) {
+                            const month = `20${dateMatch[3]}-${dateMatch[1]}`;
+                            showMonthlyTransactions(month, accountId, accountName, true);
                         }
                     }
                 }
@@ -1570,6 +1599,158 @@ async function unpostTransaction(entryId) {
         console.error('[MODAL] Error:', e);
         showToast('❌ Error: ' + e.message, 'error');
     }
+}
+
+// ============================================================
+// COGS CALCULATION MODAL
+// ============================================================
+
+function showCOGSCalculation(month) {
+    console.log('[COGS] ===== SHOW COGS CALCULATION START =====');
+    console.log('[COGS] Month:', month);
+    
+    try {
+        const modal = document.getElementById('monthly-tx-modal');
+        const body = document.getElementById('modal-body');
+        const title = document.getElementById('modal-title');
+        
+        if (!modal || !body || !title) {
+            console.error('[COGS] Modal elements not found');
+            showToast('Error: Modal elements not found', 'error');
+            return;
+        }
+        
+        // Format date range for title
+        const [year, monthNum] = month.split('-');
+        const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+        const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
+        const formatDate = (d) => {
+            const y = String(d.getFullYear()).slice(2);
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${m}/${day}/${y}`;
+        };
+        const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
+        
+        title.textContent = `COGS Calculation - ${dateRange}`;
+        body.innerHTML = '<div class="modal-loading">Loading COGS calculation...</div>';
+        modal.classList.add('active');
+        
+        // Fetch COGS calculation from backend
+        const url = `${AppConfig.baseUrl}/api/accounting/cogs-calculation?month=${month}`;
+        console.log('[COGS] Fetching URL:', url);
+        
+        fetch(url, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        })
+        .then(res => {
+            console.log('[COGS] Fetch response status:', res.status);
+            return res.json();
+        })
+        .then(data => {
+            console.log('[COGS] Data received:', data);
+            if (data.status === 'success') {
+                renderCOGSCalculation(data, dateRange);
+            } else {
+                console.error('[COGS] Error:', data.error);
+                body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load COGS calculation'}</p>`;
+            }
+        })
+        .catch(err => {
+            console.error('[COGS] Fetch error:', err);
+            body.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+        });
+        
+        console.log('[COGS] ===== SHOW COGS CALCULATION END =====');
+    } catch (err) {
+        console.error('[COGS] CRITICAL ERROR:', err);
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+function renderCOGSCalculation(data, dateRange) {
+    console.log('[COGS] Rendering COGS calculation');
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    
+    const { total_cogs, records, batch_allocations } = data;
+    
+    let html = `<div class="modal-summary">
+        <div class="summary-item"><strong>COGS Calculation</strong></div>
+        <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
+        <div class="summary-item"><strong>Total COGS:</strong> <span style="color:#dc3545;font-weight:bold;">$${total_cogs.toFixed(2)}</span></div>
+    </div>`;
+    
+    // Records section
+    html += `<h4 style="margin:15px 0 10px 0; color:#333;">Records Sold</h4>`;
+    if (records && records.length > 0) {
+        html += `<table>
+            <thead><tr>
+                <th>ID</th>
+                <th>Artist</th>
+                <th>Title</th>
+                <th style="text-align:right;">Sale Price</th>
+                <th style="text-align:right;">COGS</th>
+            </tr></thead>
+            <tbody>`;
+        let recordTotal = 0;
+        records.forEach(r => {
+            recordTotal += r.cogs || 0;
+            html += `<tr>
+                <td>${r.id}</td>
+                <td>${r.artist || ''}</td>
+                <td>${r.title || ''}</td>
+                <td style="text-align:right;">$${(r.sale_price || 0).toFixed(2)}</td>
+                <td style="text-align:right; color:#dc3545;">$${(r.cogs || 0).toFixed(2)}</td>
+            </tr>`;
+        });
+        html += `<tr class="total-row">
+            <td colspan="4" style="text-align:right;"><strong>Total Records COGS</strong></td>
+            <td style="text-align:right; color:#dc3545;"><strong>$${recordTotal.toFixed(2)}</strong></td>
+        </tr>`;
+        html += '</tbody></table>';
+    } else {
+        html += '<p class="text-muted">No records sold this month.</p>';
+    }
+    
+    // Batch allocations section
+    html += `<h4 style="margin:15px 0 10px 0; color:#333;">Batch Allocations</h4>`;
+    if (batch_allocations && batch_allocations.length > 0) {
+        html += `<table>
+            <thead><tr>
+                <th>Batch ID</th>
+                <th>Total Cost</th>
+                <th style="text-align:right;">Allocated COGS</th>
+            </tr></thead>
+            <tbody>`;
+        let batchTotal = 0;
+        batch_allocations.forEach(b => {
+            batchTotal += b.allocated || 0;
+            html += `<tr>
+                <td>${b.batch_id}</td>
+                <td>$${(b.total_cost || 0).toFixed(2)}</td>
+                <td style="text-align:right; color:#dc3545;">$${(b.allocated || 0).toFixed(2)}</td>
+            </tr>`;
+        });
+        html += `<tr class="total-row">
+            <td colspan="2" style="text-align:right;"><strong>Total Batch COGS</strong></td>
+            <td style="text-align:right; color:#dc3545;"><strong>$${batchTotal.toFixed(2)}</strong></td>
+        </tr>`;
+        html += '</tbody></table>';
+    } else {
+        html += '<p class="text-muted">No batch allocations this month.</p>';
+    }
+    
+    // Assumption-based COGS
+    const assumedTotal = total_cogs - (records?.reduce((sum, r) => sum + (r.cogs || 0), 0) || 0) - (batch_allocations?.reduce((sum, b) => sum + (b.allocated || 0), 0) || 0);
+    if (assumedTotal > 0.01) {
+        html += `<div style="margin-top:15px; padding:10px; background:#fff3cd; border-radius:4px; color:#856404;">
+            <strong>⚠️ Assumption-based COGS:</strong> $${assumedTotal.toFixed(2)} (records without batch allocation used assumption rates)
+        </div>`;
+    }
+    
+    body.innerHTML = html;
 }
 
 // ============================================================
@@ -1688,9 +1869,34 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         const values = labels.map(k => monthData[k] || 0);
         console.log('[BREAKDOWN] 7. Labels:', labels.length, 'Values:', values.length);
         
+        // Build labels with account IDs pre-mapped
+        const labelsWithIds = labels.map((label, i) => {
+            const trimmed = label.trim();
+            const norm = trimmed.toLowerCase();
+            // Try to find account ID by name or code
+            let accountId = accountNameToId[norm] || accountNameToId[trimmed] || null;
+            
+            // Also try to find by exact match
+            if (!accountId) {
+                const found = bankAccounts.find(a => a.name === trimmed);
+                if (found) accountId = found.id;
+            }
+            
+            // Check if it's COGS (no real account)
+            const isCOGS = label === 'COGS' || label === 'Cost of Goods Sold';
+            
+            return {
+                label: label,
+                value: values[i] || 0,
+                accountId: isCOGS ? null : accountId,
+                isCOGS: isCOGS
+            };
+        });
+        
         // Filter out near-zero values but keep COGS and Net if they exist
-        const filtered = labels.map((label, i) => ({ label, value: values[i] }))
-            .filter(item => Math.abs(item.value) > 0.01 || item.label === netLabel || item.label === cogsLabel);
+        const filtered = labelsWithIds.filter(item => 
+            Math.abs(item.value) > 0.01 || item.isCOGS || item.label === netLabel
+        );
         console.log('[BREAKDOWN] 8. Filtered to', filtered.length, 'items');
         
         if (filtered.length === 0) {
@@ -1715,13 +1921,13 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             window._breakdownChart = null;
         }
         
-        // Build colors
+        // Build colors - COGS is RED, Net is Purple
         const barColors = filtered.map(item => {
             if (item.label === netLabel) {
                 return 'rgba(111, 66, 193, 0.85)';
             }
-            if (item.label === cogsLabel) {
-                return 'rgba(255, 165, 0, 0.85)';
+            if (item.isCOGS) {
+                return 'rgba(220, 53, 69, 0.85)';  // RED for COGS
             }
             return item.value >= 0 ? 'rgba(40, 167, 69, 0.75)' : 'rgba(220, 53, 69, 0.75)';
         });
@@ -1729,13 +1935,14 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             if (item.label === netLabel) {
                 return '#6f42c1';
             }
-            if (item.label === cogsLabel) {
-                return '#ff8c00';
+            if (item.isCOGS) {
+                return '#dc3545';  // RED for COGS
             }
             return item.value >= 0 ? '#28a745' : '#dc3545';
         });
         
         console.log('[BREAKDOWN] 10. Creating bar chart with', filtered.length, 'bars');
+        console.log('[BREAKDOWN] Labels with IDs:', filtered.map(f => ({ label: f.label, accountId: f.accountId, isCOGS: f.isCOGS })));
         
         const chart = new Chart(ctx, {
             type: 'bar',
@@ -1795,47 +2002,37 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                     
                     const element = elements[0];
                     const index = element.index;
-                    const label = this.data.labels[index];
-                    const value = this.data.datasets[0].data[index];
+                    const item = filtered[index];
                     
-                    console.log('[BREAKDOWN] Bar clicked:', label, value);
+                    console.log('[BREAKDOWN] Bar clicked:', item.label, item.value, 'accountId:', item.accountId, 'isCOGS:', item.isCOGS);
                     
-                    if (Math.abs(value) < 0.01) {
+                    if (Math.abs(item.value) < 0.01) {
                         console.log('[BREAKDOWN] Value too small, ignoring');
                         return;
                     }
                     
                     document.getElementById('monthly-tx-modal')?.classList.remove('active');
                     
-                    // For COGS, we need to find the account ID by name
-                    if (label === 'COGS' || label === 'Cost of Goods Sold') {
-                        // Find the COGS account ID
-                        let cogsId = null;
-                        for (const key in accountNameToId) {
-                            if (key.toLowerCase().includes('cogs')) {
-                                cogsId = accountNameToId[key];
-                                break;
-                            }
-                        }
-                        if (cogsId) {
-                            showMonthlyTransactions(month, cogsId, 'COGS', true, false);
-                        } else {
-                            showMonthlyTransactions(month, null, 'COGS', true, true);
-                        }
+                    // Special case: COGS
+                    if (item.isCOGS) {
+                        showCOGSCalculation(month);
                         return;
                     }
                     
-                    const trimmed = label.trim();
-                    const norm = trimmed.toLowerCase();
-                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
-                    console.log('[BREAKDOWN] Account ID:', accountId);
-                    
                     const excludeOrders = chartType === 'pl';
                     
-                    if (accountId) {
-                        showMonthlyTransactions(month, accountId, label, excludeOrders, false);
+                    if (item.accountId) {
+                        showMonthlyTransactions(month, item.accountId, item.label, excludeOrders);
                     } else {
-                        showMonthlyTransactions(month, null, label, excludeOrders, false);
+                        // Try one more time to find account ID by name
+                        const trimmed = item.label.trim();
+                        const norm = trimmed.toLowerCase();
+                        const accountId = accountNameToId[norm] || accountNameToId[trimmed];
+                        if (accountId) {
+                            showMonthlyTransactions(month, accountId, item.label, excludeOrders);
+                        } else {
+                            showMonthlyTransactions(month, null, item.label, excludeOrders);
+                        }
                     }
                 }
             }
@@ -2148,7 +2345,7 @@ function renderLineChart(canvasId, data, options = {}) {
         cashFlowChartInstance = chart;
     }
 
-    // ---- X-AXIS CLICK HANDLER (both charts) ----
+    // ---- X-AXIS CLICK HANDLER ----
     console.log('[CHART] Adding x-axis click handler');
     
     canvas.addEventListener('click', function(e) {
@@ -2175,7 +2372,6 @@ function renderLineChart(canvasId, data, options = {}) {
             // ONLY trigger if click is on x-axis labels (bottom 15% of chart)
             const yPos = (y - chartArea.top) / chartHeight;
             
-            // Must be near the bottom of the chart (x-axis area)
             if (yPos < 0.8 || yPos > 1.1) {
                 console.log('[CHART-X] Click not on x-axis (yPos:', yPos, ')');
                 return;
@@ -2218,7 +2414,7 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART-X] Click handler attached');
 
-    // Double-click to expand - ONLY for Cash Flow, not P&L
+    // Double-click to expand - ONLY for Cash Flow
     if (canvasId === 'cash-flow-chart') {
         canvas.addEventListener('dblclick', function(e) {
             e.stopPropagation();
@@ -2238,7 +2434,6 @@ function renderLineChart(canvasId, data, options = {}) {
 function expandChart(canvasId) {
     console.log('[EXPAND] Expanding chart:', canvasId);
     
-    // Only allow expansion for cash flow chart
     if (canvasId !== 'cash-flow-chart') {
         console.log('[EXPAND] Only Cash Flow chart can be expanded');
         return;
@@ -2444,6 +2639,11 @@ async function loadMonthlyPL() {
     if (!start || !end) {
         alert('Please select both start and end months.');
         return;
+    }
+
+    if (bankAccounts.length === 0) {
+        console.log('[MONTHLY-PL] Loading bank accounts');
+        await loadBankAccountsForRowDropdowns();
     }
 
     try {
