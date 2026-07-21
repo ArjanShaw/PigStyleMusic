@@ -9974,6 +9974,7 @@ def accounting_delete_account(account_id):
         app.logger.error(f"Error deleting account: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/accounting/monthly-pl', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -10015,7 +10016,7 @@ def monthly_pl():
     ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
     revenue_rows = cursor.fetchall()
 
-    # Get expenses (including COGS 5000, Rent Expense 6010, etc.)
+    # Get expenses (INCLUDING COGS 5000, Rent Expense 6010, etc.)
     cursor.execute('''
         SELECT
             strftime('%Y-%m', je.transaction_date) as month,
@@ -10053,17 +10054,17 @@ def monthly_pl():
         month = row['month']
         if month not in account_breakdown:
             account_breakdown[month] = {}
-        # Revenue is positive
-        account_breakdown[month][f"{row['code']} - {row['name']}"] = row['amount']
-        all_accounts.add(f"{row['code']} - {row['name']}")
+        # Revenue is positive - use just the name without code
+        account_breakdown[month][row['name']] = row['amount']
+        all_accounts.add(row['name'])
 
     for row in expense_rows:
         month = row['month']
         if month not in account_breakdown:
             account_breakdown[month] = {}
-        # Expenses are negative
-        account_breakdown[month][f"{row['code']} - {row['name']}"] = -row['amount']
-        all_accounts.add(f"{row['code']} - {row['name']}")
+        # Expenses are negative - use just the name without code
+        account_breakdown[month][row['name']] = -row['amount']
+        all_accounts.add(row['name'])
 
     # Add a "Net Income" bar for each month
     for month in months:
@@ -10080,7 +10081,6 @@ def monthly_pl():
         'months': months,
         'account_breakdown': account_breakdown
     })
-
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

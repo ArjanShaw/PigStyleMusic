@@ -1719,6 +1719,10 @@ function renderModalTransactions(transactions) {
 // SHARED BAR CHART RENDERER
 // ============================================================
 
+// ============================================================
+// SHARED BAR CHART RENDERER
+// ============================================================
+
 function renderBarCharts(containerId, data, options = {}) {
     console.log('[CHARTS] Rendering bar charts in container:', containerId);
     const { months, account_breakdown } = data;
@@ -1790,9 +1794,6 @@ function renderBarCharts(containerId, data, options = {}) {
         const norm = trimmed.toLowerCase();
         accountNameToId[norm] = acc.id;
         accountNameToId[trimmed] = acc.id;
-        // Also add with code prefix if it exists in the label
-        const label = `${acc.code} - ${acc.name}`;
-        accountNameToId[label.toLowerCase()] = acc.id;
     });
 
     months.forEach((month, idx) => {
@@ -1841,7 +1842,7 @@ function renderBarCharts(containerId, data, options = {}) {
         card.dataset.month = month;
         card.dataset.index = idx;
         card.style.cursor = 'pointer';
-        card.innerHTML = `<h4>${dateRange}</h4><canvas id="bar-chart-${containerId}-${idx}"></canvas>`;
+        card.innerHTML = `<h4 style="font-size:16px;">${dateRange}</h4><canvas id="bar-chart-${containerId}-${idx}"></canvas>`;
         container.appendChild(card);
 
         // Click on card (not on canvas) = expand
@@ -1898,7 +1899,7 @@ function renderBarCharts(containerId, data, options = {}) {
                                     enabled: true,
                                     position: 'right',
                                     color: '#333',
-                                    font: { size: 10 }
+                                    font: { size: 12 }
                                 }
                             }
                         }
@@ -1909,13 +1910,16 @@ function renderBarCharts(containerId, data, options = {}) {
                         beginAtZero: true,
                         max: yMax,
                         min: -yMax,
-                        ticks: { callback: (val) => '$' + val }
+                        ticks: { 
+                            callback: (val) => '$' + val,
+                            font: { size: 12 }
+                        }
                     },
                     x: {
                         ticks: {
                             maxRotation: 45,
                             minRotation: 45,
-                            font: { size: 10 }
+                            font: { size: 11 }
                         }
                     }
                 },
@@ -1933,19 +1937,7 @@ function renderBarCharts(containerId, data, options = {}) {
                     // Try to find the account ID
                     const trimmed = label.trim();
                     const norm = trimmed.toLowerCase();
-                    let accountId = null;
-                    
-                    // First try direct match on the full label
-                    if (accountNameToId[trimmed] || accountNameToId[norm]) {
-                        accountId = accountNameToId[trimmed] || accountNameToId[norm];
-                    } else {
-                        // Try to extract just the account name (after the code)
-                        const parts = trimmed.split(' - ');
-                        if (parts.length > 1) {
-                            const nameOnly = parts[1].trim().toLowerCase();
-                            accountId = accountNameToId[nameOnly];
-                        }
-                    }
+                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
                     
                     // For Net Income, show all transactions
                     if (label === 'Net' || label === 'Net Income') {
@@ -1965,8 +1957,8 @@ function renderBarCharts(containerId, data, options = {}) {
         window._barCharts.push(chart);
     });
     console.log('[CHARTS] Rendering complete');
-} 
-
+}
+ 
 function expandBarChart(index, containerId) {
     console.log('[CHARTS] expandBarChart called, index:', index, 'container:', containerId);
     
@@ -2030,7 +2022,7 @@ function expandBarChart(index, containerId) {
         flex-shrink: 0;
     `;
     header.innerHTML = `
-        <h3 style="margin:0; font-size:28px; color:#333;">${card.dataset.month} - Detail</h3>
+        <h3 style="margin:0; font-size:32px; color:#333;">${card.dataset.month} - Detail</h3>
         <button class="btn btn-secondary" style="padding:12px 28px; font-size:18px;">
             <i class="fas fa-times"></i> Close
         </button>
@@ -2102,8 +2094,8 @@ function expandBarChart(index, containerId) {
                             return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
                         }
                     },
-                    titleFont: { size: 20, weight: 'bold' },
-                    bodyFont: { size: 18 }
+                    titleFont: { size: 22, weight: 'bold' },
+                    bodyFont: { size: 20 }
                 },
                 annotation: {
                     annotations: {
@@ -2119,7 +2111,7 @@ function expandBarChart(index, containerId) {
                                 enabled: true,
                                 position: 'right',
                                 color: '#333',
-                                font: { size: 20, weight: 'bold' }
+                                font: { size: 22, weight: 'bold' }
                             }
                         }
                     }
@@ -2132,14 +2124,14 @@ function expandBarChart(index, containerId) {
                     min: oldChart.options.scales.y.min,
                     ticks: { 
                         callback: (val) => '$' + val,
-                        font: { size: 18, weight: 'bold' }
+                        font: { size: 20, weight: 'bold' }
                     }
                 },
                 x: {
                     ticks: {
                         maxRotation: 45,
                         minRotation: 45,
-                        font: { size: 16, weight: 'bold' }
+                        font: { size: 18, weight: 'bold' }
                     }
                 }
             },
