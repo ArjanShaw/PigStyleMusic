@@ -3177,18 +3177,25 @@ def redeem_store_credit():
         'new_balance': get_store_credit_balance(user_id)   # we can reuse the existing helper
     })
 
+
 @app.route('/api/inventory-purchases/upload-bill', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def upload_bill_of_sale():
     """Upload a bill of sale image for an inventory purchase"""
     try:
+        # Log what's being received
+        app.logger.info(f"Files in request: {request.files}")
+        app.logger.info(f"Form data: {request.form}")
+        
         if 'bill_image' not in request.files:
+            app.logger.error("No 'bill_image' in request.files")
             return jsonify({'status': 'error', 'error': 'No image file provided'}), 400
         
         file = request.files['bill_image']
         
         if file.filename == '':
+            app.logger.error("Empty filename")
             return jsonify({'status': 'error', 'error': 'No file selected'}), 400
         
         # Check file extension
@@ -3204,11 +3211,15 @@ def upload_bill_of_sale():
         unique_id = uuid.uuid4().hex[:8]
         filename = f"bill_{timestamp}_{unique_id}.{file_ext}"
         
+        # Make sure the directory exists
+        os.makedirs(BILLS_UPLOAD_FOLDER, exist_ok=True)
+        
         filepath = os.path.join(BILLS_UPLOAD_FOLDER, filename)
         file.save(filepath)
         
         # Return the relative URL path
         file_url = f"/static/uploads/bills/{filename}"
+        app.logger.info(f"File saved to: {filepath}")
         
         return jsonify({
             'status': 'success',
@@ -3219,8 +3230,8 @@ def upload_bill_of_sale():
         
     except Exception as e:
         app.logger.error(f"Error uploading bill of sale: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/inventory-purchases/<int:purchase_id>', methods=['GET'])
 @login_required
@@ -10084,7 +10095,7 @@ def monthly_pl():
         'account_breakdown': account_breakdown
     })
 
-    
+
 
 
 
