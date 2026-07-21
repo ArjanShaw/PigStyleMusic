@@ -7,11 +7,6 @@ const journalPageSize = 20;
 let journalTotalEntries = 0;
 let currentReportData = null;
 
-// Account Transactions pagination
-let accountTxCurrentPage = 1;
-const accountTxPageSize = 20;
-let accountTxTotalEntries = 0;
-
 // Global list of accounts for bank dropdowns
 let bankAccounts = [];
 
@@ -101,9 +96,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (target) target.classList.add('active');
             
             if (sub === 'journal') loadJournalEntries();
-            else if (sub === 'account-transactions') {
-                loadAccountTransactionsSelect();
-            }
             else if (sub === 'reconcile') loadReconciliationStatus();
             else if (sub === 'bank') {
                 loadBankTransactions();
@@ -166,17 +158,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // AUTO‑LOAD when dropdown changes
-    document.getElementById('account-transactions-select')?.addEventListener('change', function() {
-        accountTxCurrentPage = 1;
-        const accountId = this.value;
-        if (accountId) {
-            updateAccountDateRange(accountId);
-        } else {
-            loadAccountTransactions();
-        }
-    });
-
     // Bank upload drag & drop
     const uploadArea = document.getElementById('bank-upload-area');
     const fileInput = document.getElementById('bank-file-input');
@@ -209,15 +190,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
-    // Pagination for account transactions
-    document.getElementById('account-tx-prev')?.addEventListener('click', () => {
-        if (accountTxCurrentPage > 1) { accountTxCurrentPage--; loadAccountTransactions(); }
-    });
-    document.getElementById('account-tx-next')?.addEventListener('click', () => {
-        const totalPages = Math.ceil(accountTxTotalEntries / accountTxPageSize);
-        if (accountTxCurrentPage < totalPages) { accountTxCurrentPage++; loadAccountTransactions(); }
-    });
-
     // Manual entry – auto‑balance check
     document.addEventListener('input', function(e) {
         if (e.target.closest('.manual-entry-row')) {
@@ -228,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load accounts into dropdowns
     loadAccountSelects();
 
-    // Load default date range for reports and account transactions
+    // Load default date range for reports
     const today = new Date().toISOString().split('T')[0];
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     document.getElementById('report-date-from').value = firstDay;
@@ -299,7 +271,7 @@ document.addEventListener('DOMContentLoaded', function() {
         saveAccount();
     });
 
-    // Close modal on overlay click - only if clicking the backdrop itself
+    // Close modal on overlay - only if clicking the backdrop itself
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -382,7 +354,7 @@ async function loadBankAccountsForRowDropdowns() {
         const data = await res.json();
         if (data.status === 'success') {
             bankAccounts = data.accounts;
-            // Build accountNameToId mapping for cash flow
+            // Build accountNameToId mapping
             accountNameToId = {};
             bankAccounts.forEach(acc => {
                 const trimmed = acc.name.trim();
@@ -424,69 +396,6 @@ async function loadBulkDestinationAccounts() {
     } catch (e) {
         console.error('[BANK] Failed to load bulk destination accounts:', e);
     }
-}
-
-// ============================================================
-// ACCOUNT TRANSACTIONS – with dynamic date range
-// ============================================================
-
-async function loadAccountTransactionsSelect() {
-    console.log('[ACCOUNT-TX] Loading account transactions select');
-    const select = document.getElementById('account-transactions-select');
-    if (!select) return;
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            console.log('[ACCOUNT-TX] Loaded', data.accounts.length, 'accounts');
-            select.innerHTML = '<option value="">-- Select an account --</option>';
-            data.accounts.forEach(acc => {
-                const opt = document.createElement('option');
-                opt.value = acc.id;
-                opt.textContent = acc.code + ' - ' + acc.name;
-                select.appendChild(opt);
-            });
-            if (data.accounts.length > 0) {
-                const firstAccount = data.accounts[0];
-                select.value = firstAccount.id;
-                await updateAccountDateRange(firstAccount.id);
-            }
-        }
-    } catch (e) {
-        console.error('[ACCOUNT-TX] Failed to load accounts for account transactions:', e);
-    }
-}
-
-async function updateAccountDateRange(accountId) {
-    console.log('[ACCOUNT-TX] Updating date range for account:', accountId);
-    const fromInput = document.getElementById('account-tx-date-from');
-    const toInput = document.getElementById('account-tx-date-to');
-    const today = new Date().toISOString().split('T')[0];
-
-    try {
-        const res = await fetch(
-            `${AppConfig.baseUrl}/api/accounting/account-date-range?account_id=${accountId}`,
-            { credentials: 'include', headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {} }
-        );
-        const data = await res.json();
-        if (data.status === 'success' && data.min_date && data.max_date) {
-            console.log('[ACCOUNT-TX] Date range:', data.min_date, 'to', data.max_date);
-            fromInput.value = data.min_date;
-            toInput.value = data.max_date;
-        } else {
-            console.log('[ACCOUNT-TX] No transactions found, using fallback dates');
-            fromInput.value = '2026-02-01';
-            toInput.value = today;
-        }
-    } catch (e) {
-        console.error('[ACCOUNT-TX] Failed to fetch account date range:', e);
-        fromInput.value = '2026-02-01';
-        toInput.value = today;
-    }
-    await loadAccountTransactions();
 }
 
 // ============================================================
@@ -1434,193 +1343,6 @@ async function deleteAccount(accountId, accountName) {
 }
 
 // ============================================================
-// ACCOUNT TRANSACTIONS - UPDATED
-// ============================================================
-
-async function loadAccountTransactions() {
-    console.log('[ACCOUNT-TX] Loading account transactions');
-    const body = document.getElementById('account-tx-body');
-    const accountId = document.getElementById('account-transactions-select').value;
-
-    if (!accountId) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Please select an account.</td></tr>';
-        return;
-    }
-
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
-
-    const params = new URLSearchParams();
-    params.append('page', accountTxCurrentPage);
-    params.append('per_page', accountTxPageSize);
-    params.append('account_id', accountId);
-    const from = document.getElementById('account-tx-date-from').value;
-    const to = document.getElementById('account-tx-date-to').value;
-    if (from) params.append('date_from', from);
-    if (to) params.append('date_to', to);
-
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to load account transactions');
-        const data = await res.json();
-        if (data.status === 'success') {
-            console.log('[ACCOUNT-TX] Loaded', data.entries.length, 'entries, total:', data.total);
-            accountTxTotalEntries = data.total;
-            renderAccountTransactions(data.entries);
-            updateAccountTxPagination();
-            updateAccountBalance(accountId);
-        } else {
-            console.error('[ACCOUNT-TX] Error:', data.error);
-            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading transactions') + '</td></tr>';
-        }
-    } catch (err) {
-        console.error('[ACCOUNT-TX] Error:', err);
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
-    }
-}
-
-function renderAccountTransactions(entries) {
-    console.log('[ACCOUNT-TX] Rendering', entries.length, 'entries');
-    const body = document.getElementById('account-tx-body');
-    if (!entries || entries.length === 0) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No transactions found for this account.</td></tr>';
-        return;
-    }
-    let html = '';
-    entries.forEach(e => {
-        const debit = e.debit_amount ? '$' + parseFloat(e.debit_amount).toFixed(2) : '';
-        const credit = e.credit_amount ? '$' + parseFloat(e.credit_amount).toFixed(2) : '';
-        const source = e.source_type && e.source_id ? `${e.source_type}: ${e.source_id}` : '';
-        html += `<tr>
-            <td>${e.id}</td>
-            <td>${e.transaction_date}</td>
-            <td>${e.description || ''}</td>
-            <td class="debit">${debit}</td>
-            <td class="credit">${credit}</td>
-            <td>${source}</td>
-            <td><button class="btn btn-sm btn-warning" onclick="unpostTransaction(${e.id})"><i class="fas fa-undo"></i> Unpost</button></td>
-        </tr>`;
-    });
-    body.innerHTML = html;
-}
-
-async function unpostTransaction(entryId) {
-    console.log('[ACCOUNT-TX] Unposting transaction:', entryId);
-    
-    if (!confirm(`Are you sure you want to unpost journal entry #${entryId}?\n\nThis will delete the journal entry and, if it was a bank transaction, mark it as unprocessed.`)) {
-        return;
-    }
-
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal/${entryId}`, {
-            method: 'DELETE',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            console.log('[ACCOUNT-TX] Unposted successfully');
-            showToast(`✅ Journal entry #${entryId} unposted successfully. ${data.unposted_count || 0} transaction(s) restored.`, 'success');
-            loadAccountTransactions();
-            const accountId = document.getElementById('account-transactions-select').value;
-            if (accountId) {
-                updateAccountBalance(accountId);
-            }
-        } else {
-            console.error('[ACCOUNT-TX] Error unposting:', data.error);
-            showToast('❌ Error: ' + (data.error || 'Failed to unpost'), 'error');
-        }
-    } catch (e) {
-        console.error('[ACCOUNT-TX] Error:', e);
-        showToast('❌ Error: ' + e.message, 'error');
-    }
-}
-
-function updateAccountTxPagination() {
-    const totalPages = Math.ceil(accountTxTotalEntries / accountTxPageSize);
-    document.getElementById('account-tx-pagination-info').textContent = `Showing ${accountTxTotalEntries} entries (Page ${accountTxCurrentPage} of ${totalPages || 1})`;
-    document.getElementById('account-tx-prev').disabled = accountTxCurrentPage <= 1;
-    document.getElementById('account-tx-next').disabled = accountTxCurrentPage >= totalPages || totalPages === 0;
-    document.getElementById('account-tx-page-info').textContent = `Page ${accountTxCurrentPage}`;
-}
-
-async function updateAccountBalance(accountId) {
-    console.log('[ACCOUNT-TX] Updating balance for account:', accountId);
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-balance?account_id=${accountId}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            const balance = data.balance || 0;
-            console.log('[ACCOUNT-TX] Balance:', balance);
-            const display = document.getElementById('account-balance-display');
-            const span = display.querySelector('span') || display;
-            const cls = balance > 0 ? 'balance-positive' : (balance < 0 ? 'balance-negative' : 'balance-zero');
-            span.className = cls;
-            span.textContent = (balance >= 0 ? '' : '-') + '$' + Math.abs(balance).toFixed(2);
-        }
-    } catch (e) {
-        console.error('[ACCOUNT-TX] Failed to fetch account balance:', e);
-    }
-}
-
-function resetAccountTxFilters() {
-    console.log('[ACCOUNT-TX] Resetting filters');
-    const accountId = document.getElementById('account-transactions-select').value;
-    if (accountId) {
-        updateAccountDateRange(accountId);
-    } else {
-        document.getElementById('account-tx-date-from').value = '';
-        document.getElementById('account-tx-date-to').value = '';
-        accountTxCurrentPage = 1;
-        loadAccountTransactions();
-    }
-}
-
-function exportAccountTransactionsCSV() {
-    const accountId = document.getElementById('account-transactions-select').value;
-    if (!accountId) {
-        alert('Please select an account first.');
-        return;
-    }
-    console.log('[ACCOUNT-TX] Exporting CSV for account:', accountId);
-    const params = new URLSearchParams();
-    params.append('page', 1);
-    params.append('per_page', 9999);
-    params.append('account_id', accountId);
-    const from = document.getElementById('account-tx-date-from').value;
-    const to = document.getElementById('account-tx-date-to').value;
-    if (from) params.append('date_from', from);
-    if (to) params.append('date_to', to);
-
-    fetch(`${AppConfig.baseUrl}/api/accounting/journal?${params.toString()}`, {
-        credentials: 'include',
-        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'success' && data.entries) {
-            console.log('[ACCOUNT-TX] Exporting', data.entries.length, 'entries');
-            let csv = 'ID,Date,Description,Debit, Credit,Source\n';
-            data.entries.forEach(e => {
-                csv += `${e.id},${e.transaction_date},"${(e.description||'').replace(/"/g,'""')}",${e.debit_amount||0},${e.credit_amount||0},${e.source_type}:${e.source_id}\n`;
-            });
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `account_${accountId}_transactions.csv`;
-            a.click();
-            window.URL.revokeObjectURL(url);
-        }
-    }).catch(console.error);
-}
-
-// ============================================================
 // MODAL FUNCTIONS
 // ============================================================
 
@@ -1661,7 +1383,19 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
             return;
         }
         
-        title.textContent = `${accountName} - ${month}`;
+        // Format date range for title
+        const [year, monthNum] = month.split('-');
+        const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+        const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
+        const formatDate = (d) => {
+            const y = String(d.getFullYear()).slice(2);
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${m}/${day}/${y}`;
+        };
+        const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
+        
+        title.textContent = `${accountName} - ${dateRange}`;
         console.log('[MODAL] 5. Title set to:', title.textContent);
         
         body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
@@ -1670,7 +1404,6 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         modal.classList.add('active');
         console.log('[MODAL] 7. Active class added, modal should be visible');
         console.log('[MODAL] 8. Modal classes:', modal.className);
-        console.log('[MODAL] 9. Modal style display:', modal.style.display);
         
         // Build URL
         let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
@@ -1680,21 +1413,21 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         if (excludeOrders) {
             url += '&exclude_orders=true';
         }
-        console.log('[MODAL] 10. Fetching URL:', url);
+        console.log('[MODAL] 9. Fetching URL:', url);
 
         fetch(url, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         })
         .then(res => {
-            console.log('[MODAL] 11. Fetch response status:', res.status);
+            console.log('[MODAL] 10. Fetch response status:', res.status);
             return res.json();
         })
         .then(data => {
-            console.log('[MODAL] 12. Data received:', data);
+            console.log('[MODAL] 11. Data received:', data);
             if (data.status === 'success' && data.transactions) {
-                console.log('[MODAL] 13. Loaded', data.transactions.length, 'transactions');
-                renderModalTransactions(data.transactions, accountName, month);
+                console.log('[MODAL] 12. Loaded', data.transactions.length, 'transactions');
+                renderModalTransactions(data.transactions, accountName, dateRange);
             } else {
                 console.error('[MODAL] ❌ Error in response:', data.error);
                 body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load transactions'}</p>`;
@@ -1713,7 +1446,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     }
 }
 
-function renderModalTransactions(transactions, accountName, month) {
+function renderModalTransactions(transactions, accountName, dateRange) {
     console.log('[MODAL] Rendering', transactions.length, 'transactions');
     const body = document.getElementById('modal-body');
     if (!body) {
@@ -1732,8 +1465,11 @@ function renderModalTransactions(transactions, accountName, month) {
     
     let html = `<div class="modal-summary">
         <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}</div>
-        <div class="summary-item"><strong>Month:</strong> ${month}</div>
+        <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
         <div class="summary-item"><strong>Transactions:</strong> ${transactions.length}</div>
+        <div class="summary-item" style="margin-left:auto;">
+            <button class="btn btn-sm btn-danger" onclick="unpostAllTransactions(this)" data-account="${accountName}" data-month="${dateRange}" style="display:none;">Unpost All</button>
+        </div>
     </div>`;
     
     html += `<table>
@@ -1744,6 +1480,7 @@ function renderModalTransactions(transactions, accountName, month) {
             <th>Debit</th>
             <th>Credit</th>
             <th>Net</th>
+            <th>Actions</th>
         </tr></thead>
         <tbody>`;
     
@@ -1763,6 +1500,7 @@ function renderModalTransactions(transactions, accountName, month) {
             <td class="debit">${debit ? '$' + debit.toFixed(2) : ''}</td>
             <td class="credit">${credit ? '$' + credit.toFixed(2) : ''}</td>
             <td class="${netClass}">${net !== 0 ? '$' + net.toFixed(2) : ''}</td>
+            <td><button class="btn btn-sm btn-warning" onclick="unpostTransaction(${tx.journal_entry_id || tx.id})"><i class="fas fa-undo"></i> Unpost</button></td>
         </tr>`;
     });
     
@@ -1771,10 +1509,60 @@ function renderModalTransactions(transactions, accountName, month) {
         <td class="debit"><strong>$${totalDebit.toFixed(2)}</strong></td>
         <td class="credit"><strong>$${totalCredit.toFixed(2)}</strong></td>
         <td><strong>$${total.toFixed(2)}</strong></td>
+        <td></td>
     </tr>`;
     html += '</tbody></table>';
     body.innerHTML = html;
     console.log('[MODAL] Render complete');
+}
+
+async function unpostTransaction(entryId) {
+    console.log('[MODAL] Unposting transaction:', entryId);
+    
+    if (!confirm(`Are you sure you want to unpost journal entry #${entryId}?\n\nThis will delete the journal entry and, if it was a bank transaction, mark it as unprocessed.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal/${entryId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            console.log('[MODAL] Unposted successfully');
+            showToast(`✅ Journal entry #${entryId} unposted successfully.`, 'success');
+            // Reload the current modal content
+            const modalBody = document.getElementById('modal-body');
+            if (modalBody) {
+                modalBody.innerHTML = '<div class="modal-loading">Reloading...</div>';
+                // Re-fetch the current view - we need to know what month/account we're on
+                const title = document.getElementById('modal-title');
+                if (title) {
+                    const titleParts = title.textContent.split(' - ');
+                    if (titleParts.length === 2) {
+                        const accountName = titleParts[0];
+                        const dateRange = titleParts[1];
+                        // Try to extract month from dateRange
+                        const match = dateRange.match(/(\d{2})\/(\d{2})\/(\d{2})/);
+                        if (match) {
+                            const month = `20${match[3]}-${match[1]}`;
+                            // We need to re-fetch with the same account
+                            const accountId = accountNameToId[accountName.toLowerCase()] || null;
+                            showMonthlyTransactions(month, accountId, accountName);
+                        }
+                    }
+                }
+            }
+        } else {
+            console.error('[MODAL] Error unposting:', data.error);
+            showToast('❌ Error: ' + (data.error || 'Failed to unpost'), 'error');
+        }
+    } catch (e) {
+        console.error('[MODAL] Error:', e);
+        showToast('❌ Error: ' + e.message, 'error');
+    }
 }
 
 // ============================================================
@@ -1813,8 +1601,21 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             return;
         }
         
-        const chartTypeLabel = chartType === 'pl' ? 'P&L' : 'Cash Flow';
-        title.textContent = `${chartTypeLabel} - ${month}`;
+        // Format date range for title
+        const [year, monthNum] = month.split('-');
+        const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+        const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
+        const formatDate = (d) => {
+            const y = String(d.getFullYear()).slice(2);
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${m}/${day}/${y}`;
+        };
+        const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
+        
+        title.textContent = dateRange;
+        title.style.color = '#000';
+        title.style.fontWeight = 'bold';
         console.log('[BREAKDOWN] 5. Title set to:', title.textContent);
         
         // Store current context for bar clicks
@@ -1825,13 +1626,22 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         const monthData = chartData.account_breakdown[month] || {};
         console.log('[BREAKDOWN] 6. Month data:', monthData);
         
-        const labels = Object.keys(monthData).sort();
-        const values = labels.map(k => monthData[k]);
+        // Separate Net Income from other accounts
+        const netLabel = Object.keys(monthData).find(name => 
+            name === 'Net' || name === 'Net Income' || name === 'Net Cash'
+        );
+        
+        // Build labels - put Net Income last
+        let labels = Object.keys(monthData).filter(name => name !== netLabel).sort();
+        if (netLabel) {
+            labels.push(netLabel);
+        }
+        const values = labels.map(k => monthData[k] || 0);
         console.log('[BREAKDOWN] 7. Labels:', labels.length, 'Values:', values.length);
         
-        // Filter out near-zero values
+        // Filter out near-zero values but keep Net if it exists
         const filtered = labels.map((label, i) => ({ label, value: values[i] }))
-            .filter(item => Math.abs(item.value) > 0.01);
+            .filter(item => Math.abs(item.value) > 0.01 || item.label === netLabel);
         console.log('[BREAKDOWN] 8. Filtered to', filtered.length, 'items');
         
         if (filtered.length === 0) {
@@ -1839,12 +1649,14 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             return;
         }
         
-        // Build container for chart
+        // Build container for chart - larger with better styling
         body.innerHTML = `
-            <div id="breakdown-chart-container">
+            <div id="breakdown-chart-container" style="min-height: 450px; width: 100%; position: relative; background: white; border-radius: 8px; padding: 10px;">
                 <canvas id="breakdown-chart-canvas"></canvas>
             </div>
-            <div class="breakdown-bar-click-hint">Click any bar to see transactions</div>
+            <div class="breakdown-bar-click-hint" style="font-size: 13px; color: #666; text-align: center; margin-top: 12px; font-style: italic;">
+                Click any bar to see transactions
+            </div>
         `;
         
         const container = document.getElementById('breakdown-chart-container');
@@ -1865,12 +1677,19 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             window._breakdownChart = null;
         }
         
-        const barColors = filtered.map(item => 
-            item.value >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)'
-        );
-        const borderColors = filtered.map(item => 
-            item.value >= 0 ? '#28a745' : '#dc3545'
-        );
+        // Build colors - green for positive, red for negative, purple for Net
+        const barColors = filtered.map(item => {
+            if (item.label === netLabel) {
+                return 'rgba(111, 66, 193, 0.85)';
+            }
+            return item.value >= 0 ? 'rgba(40, 167, 69, 0.75)' : 'rgba(220, 53, 69, 0.75)';
+        });
+        const borderColors = filtered.map(item => {
+            if (item.label === netLabel) {
+                return '#6f42c1';
+            }
+            return item.value >= 0 ? '#28a745' : '#dc3545';
+        });
         
         console.log('[BREAKDOWN] 10. Creating bar chart with', filtered.length, 'bars');
         
@@ -1897,7 +1716,9 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                                 const val = ctx.raw;
                                 return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
                             }
-                        }
+                        },
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 }
                     }
                 },
                 scales: {
@@ -1906,14 +1727,21 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                         ticks: {
                             callback: function(value) {
                                 return '$' + value;
-                            }
+                            },
+                            font: { size: 13, weight: 'bold' }
+                        },
+                        grid: {
+                            color: 'rgba(0,0,0,0.08)'
                         }
                     },
                     x: {
                         ticks: {
                             maxRotation: 45,
                             minRotation: 45,
-                            font: { size: 10 }
+                            font: { size: 13, weight: 'bold' }
+                        },
+                        grid: {
+                            display: false
                         }
                     }
                 },
@@ -1932,6 +1760,9 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                         console.log('[BREAKDOWN] Value too small, ignoring');
                         return;
                     }
+                    
+                    // Close any open modals first
+                    document.getElementById('monthly-tx-modal')?.classList.remove('active');
                     
                     // Get account ID
                     const trimmed = label.trim();
@@ -2044,18 +1875,32 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART] Sorted accounts:', sortedAccounts);
 
-    // Build datasets with distinct styles
+    // Build datasets with DISTINCT styles for every line
     const datasets = [];
     let revenueCount = 0;
     let expenseCount = 0;
     let otherCount = 0;
     
-    // Color palettes for each type
-    const revenueColors = ['#28a745', '#20c997', '#34ce57', '#5cb85c', '#8bc34a'];
-    const expenseColors = ['#dc3545', '#e74c3c', '#ff6b6b', '#c0392b', '#e74c3c'];
-    const otherColors = ['#007bff', '#17a2b8', '#6f42c1', '#fd7e14', '#e83e8c', '#6c757d'];
+    // Color palettes - expanded for more variety
+    const revenueColors = ['#28a745', '#20c997', '#8bc34a', '#4caf50', '#009688'];
+    const expenseColors = ['#dc3545', '#e74c3c', '#ff6b6b', '#c0392b', '#e67e22'];
+    const otherColors = ['#007bff', '#17a2b8', '#6f42c1', '#fd7e14', '#e83e8c', '#6c757d', '#0dcaf0', '#d63384'];
+    
+    // Line style variations
+    const lineDashStyles = [
+        [],           // solid
+        [5, 5],       // dashed
+        [2, 4],       // dotted
+        [10, 5, 2, 5], // dash-dot
+        [8, 4, 2, 4], // dash-dot-dot
+        [3, 3],       // short dash
+    ];
+    
+    // Point style variations
+    const pointStyles = ['circle', 'rect', 'triangle', 'diamond', 'cross', 'crossRot', 'star', 'line', 'dash'];
 
-    sortedAccounts.forEach((accountName) => {
+    // Build datasets with unique combinations
+    sortedAccounts.forEach((accountName, idx) => {
         const values = months.map(m => {
             const monthData = account_breakdown[m] || {};
             return monthData[accountName] || 0;
@@ -2073,32 +1918,35 @@ function renderLineChart(canvasId, data, options = {}) {
         
         let borderColor, backgroundColor, borderDash, borderWidth, pointStyle, pointRadius;
         
+        // Use different styles for each line based on type and index
+        const styleIdx = idx % 6;
+        const colorIdx = isRevenue ? revenueCount % revenueColors.length : 
+                         isExpense ? expenseCount % expenseColors.length : 
+                         otherCount % otherColors.length;
+        
         if (isRevenue) {
-            const color = revenueColors[revenueCount % revenueColors.length];
-            borderColor = color;
-            backgroundColor = color + '40';
-            borderDash = [];
+            borderColor = revenueColors[colorIdx];
+            backgroundColor = borderColor + '40';
+            borderDash = lineDashStyles[styleIdx % lineDashStyles.length];
             borderWidth = 2;
-            pointStyle = 'circle';
-            pointRadius = 3;
+            pointStyle = pointStyles[styleIdx % pointStyles.length];
+            pointRadius = 4;
             revenueCount++;
         } else if (isExpense) {
-            const color = expenseColors[expenseCount % expenseColors.length];
-            borderColor = color;
-            backgroundColor = color + '40';
-            borderDash = [5, 5];
+            borderColor = expenseColors[colorIdx];
+            backgroundColor = borderColor + '40';
+            borderDash = lineDashStyles[(styleIdx + 2) % lineDashStyles.length];
             borderWidth = 2;
-            pointStyle = 'rect';
-            pointRadius = 3;
+            pointStyle = pointStyles[(styleIdx + 3) % pointStyles.length];
+            pointRadius = 4;
             expenseCount++;
         } else {
-            const color = otherColors[otherCount % otherColors.length];
-            borderColor = color;
-            backgroundColor = color + '40';
-            borderDash = [2, 4];
-            borderWidth = 1.5;
-            pointStyle = 'triangle';
-            pointRadius = 3;
+            borderColor = otherColors[colorIdx % otherColors.length];
+            backgroundColor = borderColor + '40';
+            borderDash = lineDashStyles[(styleIdx + 1) % lineDashStyles.length];
+            borderWidth = 2;
+            pointStyle = pointStyles[(styleIdx + 5) % pointStyles.length];
+            pointRadius = 4;
             otherCount++;
         }
         
@@ -2111,7 +1959,8 @@ function renderLineChart(canvasId, data, options = {}) {
             borderWidth: borderWidth,
             pointStyle: pointStyle,
             pointRadius: pointRadius,
-            pointHoverRadius: 6,
+            pointHoverRadius: 7,
+            pointHoverBorderWidth: 2,
             fill: false,
             tension: 0.15,
             hidden: false
@@ -2134,8 +1983,8 @@ function renderLineChart(canvasId, data, options = {}) {
                 borderDash: [],
                 borderWidth: 4,
                 pointStyle: 'diamond',
-                pointRadius: 5,
-                pointHoverRadius: 9,
+                pointRadius: 6,
+                pointHoverRadius: 10,
                 pointBackgroundColor: '#6f42c1',
                 pointBorderColor: 'white',
                 pointBorderWidth: 2,
@@ -2165,7 +2014,6 @@ function renderLineChart(canvasId, data, options = {}) {
 
     // Determine if this is P&L or Cash Flow
     const isPL = options.type === 'pl';
-    const chartTitle = isPL ? 'Monthly Profit & Loss' : 'Monthly Cash Flow';
     console.log('[CHART] Chart type:', isPL ? 'P&L' : 'Cash Flow');
 
     // Store data for breakdown modal
@@ -2196,8 +2044,8 @@ function renderLineChart(canvasId, data, options = {}) {
                         pointStyle: 'circle',
                         padding: 20,
                         font: { size: 11 },
-                        boxWidth: 12,
-                        boxHeight: 12
+                        boxWidth: 14,
+                        boxHeight: 14
                     }
                 },
                 tooltip: {
@@ -2206,9 +2054,14 @@ function renderLineChart(canvasId, data, options = {}) {
                             const val = context.raw;
                             const label = context.dataset.label || '';
                             const sign = val >= 0 ? '+' : '';
-                            return `${label}: ${sign}$${Math.abs(val).toFixed(2)}`;
+                            // Show line style in tooltip
+                            const ds = context.dataset;
+                            const dashInfo = ds.borderDash && ds.borderDash.length > 0 ? ' [dashed]' : '';
+                            return `${label}${dashInfo}: ${sign}$${Math.abs(val).toFixed(2)}`;
                         }
-                    }
+                    },
+                    titleFont: { size: 13, weight: 'bold' },
+                    bodyFont: { size: 12 }
                 }
             },
             scales: {
@@ -2281,16 +2134,14 @@ function renderLineChart(canvasId, data, options = {}) {
                 return;
             }
             
-            const yAxisBottom = chartArea.bottom;
-            const yAxisTop = chartArea.top;
-            const chartHeight = yAxisBottom - yAxisTop;
-            const xAxisClickZone = chartArea.bottom - (chartHeight * 0.05); // Only clicks very close to x-axis
+            const chartHeight = chartArea.bottom - chartArea.top;
+            const xAxisClickZone = chartArea.bottom - (chartHeight * 0.1); // Only clicks very close to x-axis
             
             console.log('[CHART-X] Chart area:', { top: chartArea.top, bottom: chartArea.bottom, height: chartHeight });
             console.log('[CHART-X] Click zone threshold:', xAxisClickZone);
             
             // Only process if click is near the x-axis
-            if (y < chartArea.top || y > chartArea.bottom + 20) {
+            if (y < chartArea.top || y > chartArea.bottom + 30) {
                 console.log('[CHART-X] Click not in chart area');
                 return;
             }
@@ -2420,7 +2271,9 @@ function expandChart(canvasId) {
                             const val = context.raw;
                             const label = context.dataset.label || '';
                             const sign = val >= 0 ? '+' : '';
-                            return `${label}: ${sign}$${Math.abs(val).toFixed(2)}`;
+                            const ds = context.dataset;
+                            const dashInfo = ds.borderDash && ds.borderDash.length > 0 ? ' [dashed]' : '';
+                            return `${label}${dashInfo}: ${sign}$${Math.abs(val).toFixed(2)}`;
                         }
                     },
                     titleFont: { size: 16, weight: 'bold' },
