@@ -136,26 +136,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('[INIT] Monthly P&L tab selected');
                 const now = new Date();
                 const endInput = document.getElementById('pl-end');
-                if (!endInput.value) {
-                    endInput.value = now.toISOString().slice(0, 7);
-                    console.log('[INIT] Set end date default to:', endInput.value);
-                }
+                if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
                 const startInput = document.getElementById('pl-start');
                 if (!startInput.value) {
                     const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
                     startInput.value = startDate.toISOString().slice(0, 7);
-                    console.log('[INIT] Set start date default to:', startInput.value);
                 }
-                console.log('[INIT] Start value:', startInput.value, 'End value:', endInput.value);
-                
                 if (bankAccounts.length === 0) {
-                    console.log('[INIT] Loading bank accounts before P&L');
                     loadBankAccountsForRowDropdowns().then(() => {
-                        console.log('[INIT] Bank accounts loaded, calling loadMonthlyPL');
                         loadMonthlyPL();
                     });
                 } else {
-                    console.log('[INIT] Bank accounts already loaded, calling loadMonthlyPL');
                     loadMonthlyPL();
                 }
             }
@@ -2083,7 +2074,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
 }
 
 // ============================================================
-// SHARED LINE CHART RENDERER - WITH EXTENSIVE DEBUGGING
+// SHARED LINE CHART RENDERER
 // ============================================================
 
 function renderLineChart(canvasId, data, options = {}) {
@@ -2641,6 +2632,8 @@ async function loadCashFlow() {
     const endInput = document.getElementById('cash-flow-end');
     const start = startInput.value;
     const end = endInput.value;
+    console.log('[CASHFLOW] Start month:', start);
+    console.log('[CASHFLOW] End month:', end);
     
     if (!start || !end) {
         alert('Please select both start and end months.');
@@ -2699,11 +2692,7 @@ async function loadCashFlow() {
 }
 
 // ============================================================
-// MONTHLY P&L - WITH DEBUGGING
-// ============================================================
-
-// ============================================================
-// MONTHLY P&L - WITH EXTENSIVE CONSOLE DEBUGGING
+// MONTHLY P&L
 // ============================================================
 
 async function loadMonthlyPL() {
