@@ -15,28 +15,30 @@ let accountTxTotalEntries = 0;
 // Global list of accounts for bank dropdowns
 let bankAccounts = [];
 
-// Monthly charts
-let monthlyChartsData = [];
+// Chart instances
+let plChartInstance = null;
+let cashFlowChartInstance = null;
+let expandedChartInstance = null;
+let isExpanded = false;
 
-// Cash flow expansion state - keeping for backward compatibility
-let cashFlowExpanded = false;
-let expandedChartIndex = null;
-let cashFlowMonths = [];
-let cashFlowAccountBreakdown = {};
-let cashFlowContainer = null;
+// Chart data cache
+let plChartData = null;
+let cashFlowChartData = null;
+
+// Account name to ID mapping
 let accountNameToId = {};
 
-// Shared chart state
-let barChartExpanded = false;
-let expandedBarChartIndex = null;
-let expandedBarChartContainerId = null;
-let barChartData = null;
-let barChartContainerId = null;
-
-// Register annotation plugin if available
-if (typeof ChartAnnotation !== 'undefined') {
-    Chart.register(ChartAnnotation);
-}
+// Color palette for charts
+const COLORS = {
+    revenue: 'rgba(40, 167, 69, 0.8)',
+    revenueBorder: '#28a745',
+    expense: 'rgba(220, 53, 69, 0.8)',
+    expenseBorder: '#dc3545',
+    netIncome: 'rgba(111, 66, 193, 0.9)',
+    netIncomeBorder: '#6f42c1',
+    other: 'rgba(0, 123, 255, 0.7)',
+    otherBorder: '#007bff',
+};
 
 // ============================================================
 // TOAST NOTIFICATION
@@ -1177,7 +1179,6 @@ function updateBankCounts(unprocessed, total) {
 
 async function applyAllSelections() {
     console.log('[BANK] Applying all selections');
-    // Get source from filter dropdown - default to plaid
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'plaid';
     let sourceAccountId = null;
     if (sourceFilter === 'plaid') {
@@ -1189,10 +1190,8 @@ async function applyAllSelections() {
         return;
     }
 
-    // Get bulk destination from dropdown
     const bulkDestinationId = document.getElementById('bank-bulk-destination')?.value || null;
 
-    // Get all rows
     const rows = document.querySelectorAll('#bank-body tr');
     const updates = [];
     let skippedCount = 0;
@@ -1204,18 +1203,14 @@ async function applyAllSelections() {
         const txId = targetSelect.dataset.txId;
         const processed = targetSelect.dataset.processed === 'true';
         
-        // Skip if already processed
         if (processed) return;
 
-        // If bulk destination is set, use it
         let destinationId = targetSelect.value;
         if (bulkDestinationId) {
             destinationId = bulkDestinationId;
-            // Update the dropdown visually
             targetSelect.value = bulkDestinationId;
         }
         
-        // Skip if no destination selected (after applying bulk)
         if (!destinationId) {
             skippedCount++;
             return;
@@ -1404,7 +1399,6 @@ async function saveAccount() {
 
 async function deleteAccount(accountId, accountName) {
     console.log('[ACCOUNTS] Deleting account:', accountId, accountName);
-    // First check if account has transactions
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-transactions?account_id=${accountId}&page=1&per_page=1`, {
             credentials: 'include',
@@ -1448,7 +1442,7 @@ async function deleteAccount(accountId, accountName) {
 }
 
 // ============================================================
-// ACCOUNT TRANSACTIONS - UPDATED (no eye button, added unpost)
+// ACCOUNT TRANSACTIONS - UPDATED
 // ============================================================
 
 async function loadAccountTransactions() {
@@ -1537,9 +1531,7 @@ async function unpostTransaction(entryId) {
         if (data.status === 'success') {
             console.log('[ACCOUNT-TX] Unposted successfully');
             showToast(`✅ Journal entry #${entryId} unposted successfully. ${data.unposted_count || 0} transaction(s) restored.`, 'success');
-            // Reload the transactions
             loadAccountTransactions();
-            // Also reload the account balance
             const accountId = document.getElementById('account-transactions-select').value;
             if (accountId) {
                 updateAccountBalance(accountId);
@@ -1670,7 +1662,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     .then(data => {
         if (data.status === 'success' && data.transactions) {
             console.log('[MODAL] Loaded', data.transactions.length, 'transactions');
-            renderModalTransactions(data.transactions);
+            renderModalTransactions(data.transactions, accountName, month);
         } else {
             console.error('[MODAL] Error:', data.error);
             body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load transactions'}</p>`;
@@ -1682,64 +1674,96 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     });
 }
 
-function renderModalTransactions(transactions) {
+function renderModalTransactions(transactions, accountName, month) {
     console.log('[MODAL] Rendering', transactions.length, 'transactions');
     const body = document.getElementById('modal-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<p>No transactions found.</p>';
+        body.innerHTML = '<p>No transactions found for this period.</p>';
         return;
     }
 
     let total = 0;
-    let html = `<table>
-        <thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Amount</th></tr></thead>
+    let totalDebit = 0;
+    let totalCredit = 0;
+    
+    let html = `<div class="modal-summary">
+        <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}</div>
+        <div class="summary-item"><strong>Month:</strong> ${month}</div>
+        <div class="summary-item"><strong>Transactions:</strong> ${transactions.length}</div>
+    </div>`;
+    
+    html += `<table>
+        <thead><tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Account</th>
+            <th>Debit</th>
+            <th>Credit</th>
+            <th>Net</th>
+        </tr></thead>
         <tbody>`;
+    
     transactions.forEach(tx => {
         const debit = tx.debit_amount || 0;
         const credit = tx.credit_amount || 0;
         const net = debit - credit;
         total += net;
+        totalDebit += debit;
+        totalCredit += credit;
+        
+        const netClass = net > 0 ? 'debit' : (net < 0 ? 'credit' : '');
         html += `<tr>
             <td>${tx.transaction_date}</td>
-            <td>${tx.description}</td>
+            <td>${tx.description || ''}</td>
+            <td>${tx.account_name || ''}</td>
             <td class="debit">${debit ? '$' + debit.toFixed(2) : ''}</td>
             <td class="credit">${credit ? '$' + credit.toFixed(2) : ''}</td>
-            <td>${net !== 0 ? '$' + net.toFixed(2) : ''}</td>
+            <td class="${netClass}">${net !== 0 ? '$' + net.toFixed(2) : ''}</td>
         </tr>`;
     });
-    html += `<tr class="total-row"><td colspan="4">Total</td><td>$${total.toFixed(2)}</td></tr>`;
+    
+    html += `<tr class="total-row">
+        <td colspan="3"><strong>Totals</strong></td>
+        <td class="debit"><strong>$${totalDebit.toFixed(2)}</strong></td>
+        <td class="credit"><strong>$${totalCredit.toFixed(2)}</strong></td>
+        <td><strong>$${total.toFixed(2)}</strong></td>
+    </tr>`;
     html += '</tbody></table>';
     body.innerHTML = html;
 }
 
 // ============================================================
-// SHARED BAR CHART RENDERER
-// ============================================================
-// ============================================================
-// SHARED BAR CHART RENDERER
+// SHARED LINE CHART RENDERER
 // ============================================================
 
-// ============================================================
-// SHARED BAR CHART RENDERER
-// ============================================================
+function renderLineChart(canvasId, data, options = {}) {
+    console.log('[CHART] Rendering line chart:', canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+        console.error('[CHART] Canvas not found:', canvasId);
+        return null;
+    }
 
-function renderBarCharts(containerId, data, options = {}) {
-    console.log('[CHARTS] Rendering bar charts in container:', containerId);
+    const ctx = canvas.getContext('2d');
     const { months, account_breakdown } = data;
-    const container = document.getElementById(containerId);
     
-    if (!container) {
-        console.error('[CHARTS] Container not found:', containerId);
-        return;
-    }
-
-    // Clear existing content
-    container.innerHTML = '';
-
     if (!months || months.length === 0) {
-        container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
-        return;
+        console.log('[CHART] No data to display');
+        return null;
     }
+
+    // Destroy existing chart on this canvas
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) {
+        existingChart.destroy();
+    }
+
+    // Format month labels
+    const labels = months.map(m => {
+        const [year, month] = m.split('-');
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${monthNames[parseInt(month) - 1]} ${year}`;
+    });
 
     // Get all account names
     const allAccounts = new Set();
@@ -1747,479 +1771,372 @@ function renderBarCharts(containerId, data, options = {}) {
         const monthData = account_breakdown[m] || {};
         Object.keys(monthData).forEach(acc => allAccounts.add(acc));
     });
+    
     const accountNames = Array.from(allAccounts).sort();
+    const netLabel = accountNames.find(name => name === 'Net' || name === 'Net Income' || name === 'Net Cash');
     
-    // Filter out "Net" or "Net Income" if we want to handle it specially
-    const regularAccounts = accountNames.filter(name => name !== 'Net' && name !== 'Net Income');
-    const netLabel = accountNames.find(name => name === 'Net' || name === 'Net Income');
+    // Separate net from regular accounts
+    const regularAccounts = accountNames.filter(name => name !== netLabel);
+    
+    // Build datasets
+    const datasets = [];
+    const colorPalette = [
+        '#28a745', '#dc3545', '#007bff', '#ffc107', '#17a2b8', 
+        '#6f42c1', '#fd7e14', '#20c997', '#e83e8c', '#6c757d',
+        '#198754', '#0d6efd', '#d63384', '#6610f2', '#0dcaf0'
+    ];
 
-    // Calculate max for Y axis
-    let globalMax = 0;
-    months.forEach(m => {
-        const monthData = account_breakdown[m] || {};
-        regularAccounts.forEach(acc => {
-            const val = monthData[acc] || 0;
-            if (Math.abs(val) > globalMax) globalMax = Math.abs(val);
-        });
-        if (netLabel) {
-            const net = monthData[netLabel] || 0;
-            if (Math.abs(net) > globalMax) globalMax = Math.abs(net);
-        }
-    });
-    const yMax = Math.ceil(globalMax / 500) * 500 || 500;
-
-    // Store charts for cleanup
-    if (window._barCharts) {
-        window._barCharts.forEach(chart => chart.destroy());
-    }
-    window._barCharts = [];
-
-    // Store data for expansion
-    barChartData = data;
-    barChartContainerId = containerId;
-
-    // Create date range display
-    const dateRangeEl = document.getElementById(options.dateRangeId || null);
-    if (dateRangeEl) {
-        const startDisplay = options.start || 'Start';
-        const endDisplay = options.end || 'End';
-        dateRangeEl.textContent = `Showing from ${startDisplay} to ${endDisplay}`;
-        dateRangeEl.style.display = 'block';
-    }
-
-    // Build account name to ID mapping for click handler
-    const accountNameToId = {};
-    bankAccounts.forEach(acc => {
-        const trimmed = acc.name.trim();
-        const norm = trimmed.toLowerCase();
-        accountNameToId[norm] = acc.id;
-        accountNameToId[trimmed] = acc.id;
-    });
-
-    months.forEach((month, idx) => {
-        const monthData = account_breakdown[month] || {};
+    // Determine which accounts are revenue vs expense based on typical naming
+    const revenueKeywords = ['revenue', 'sales', 'income', 'shipping', 'fees'];
+    const expenseKeywords = ['cogs', 'expense', 'cost', 'postage', 'rent', 'utilities', 'payroll', 'amortization'];
+    
+    // Sort accounts: revenue first, then expenses, then others
+    const sortedAccounts = [...regularAccounts].sort((a, b) => {
+        const aLower = a.toLowerCase();
+        const bLower = b.toLowerCase();
+        const aIsRevenue = revenueKeywords.some(k => aLower.includes(k));
+        const bIsRevenue = revenueKeywords.some(k => bLower.includes(k));
+        const aIsExpense = expenseKeywords.some(k => aLower.includes(k));
+        const bIsExpense = expenseKeywords.some(k => bLower.includes(k));
         
-        // Get values for all accounts
-        const values = regularAccounts.map(acc => monthData[acc] || 0);
-        const labels = regularAccounts.slice();
+        if (aIsRevenue && !bIsRevenue) return -1;
+        if (!aIsRevenue && bIsRevenue) return 1;
+        if (aIsExpense && !bIsExpense) return 1;
+        if (!aIsExpense && bIsExpense) return -1;
+        return a.localeCompare(b);
+    });
+
+    // Build datasets for regular accounts
+    sortedAccounts.forEach((accountName, idx) => {
+        const values = months.map(m => {
+            const monthData = account_breakdown[m] || {};
+            return monthData[accountName] || 0;
+        });
         
-        // Add Net as the last bar if it exists
-        if (netLabel && monthData[netLabel] !== undefined) {
-            labels.push(netLabel);
-            values.push(monthData[netLabel] || 0);
+        // Skip accounts with all zeros
+        if (values.every(v => Math.abs(v) < 0.01)) return;
+        
+        const colorIdx = idx % colorPalette.length;
+        const baseColor = colorPalette[colorIdx];
+        
+        // Determine if this is revenue or expense for color coding
+        const aLower = accountName.toLowerCase();
+        const isRevenue = revenueKeywords.some(k => aLower.includes(k));
+        const isExpense = expenseKeywords.some(k => aLower.includes(k));
+        
+        let borderColor = baseColor;
+        if (isRevenue) borderColor = COLORS.revenueBorder;
+        else if (isExpense) borderColor = COLORS.expenseBorder;
+        
+        let backgroundColor = borderColor + '40'; // 25% opacity
+        
+        datasets.push({
+            label: accountName,
+            data: values,
+            borderColor: borderColor,
+            backgroundColor: backgroundColor,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            fill: false,
+            tension: 0.1,
+            hidden: values.every(v => Math.abs(v) < 0.01)
+        });
+    });
+
+    // Add Net Income / Net Cash as a separate dataset with distinct styling
+    if (netLabel) {
+        const netValues = months.map(m => {
+            const monthData = account_breakdown[m] || {};
+            return monthData[netLabel] || 0;
+        });
+        
+        if (!netValues.every(v => Math.abs(v) < 0.01)) {
+            datasets.push({
+                label: netLabel,
+                data: netValues,
+                borderColor: COLORS.netIncomeBorder,
+                backgroundColor: COLORS.netIncomeBorder + '30',
+                borderWidth: 3,
+                pointRadius: 6,
+                pointHoverRadius: 9,
+                pointBackgroundColor: COLORS.netIncomeBorder,
+                pointBorderColor: 'white',
+                pointBorderWidth: 2,
+                fill: false,
+                tension: 0.1,
+                borderDash: [6, 3]
+            });
         }
+    }
 
-        // Bar colors: green for positive, red for negative, purple for net
-        const barColors = values.map((v, i) => {
-            const label = labels[i];
-            if (label === 'Net' || label === 'Net Income') {
-                return 'rgba(111, 66, 193, 0.8)';
-            }
-            return v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)';
+    // If no datasets have data, show message
+    if (datasets.length === 0) {
+        console.log('[CHART] No data to display after filtering');
+        return null;
+    }
+
+    // Calculate y-axis max with some padding
+    let maxVal = 0;
+    datasets.forEach(ds => {
+        ds.data.forEach(v => {
+            if (Math.abs(v) > maxVal) maxVal = Math.abs(v);
         });
-        const borderColors = values.map((v, i) => {
-            const label = labels[i];
-            if (label === 'Net' || label === 'Net Income') {
-                return '#6f42c1';
-            }
-            return v >= 0 ? '#28a745' : '#dc3545';
-        });
-
-        // Get first and last day of month for title
-        const [year, monthNum] = month.split('-').map(Number);
-        const firstDay = new Date(year, monthNum - 1, 1);
-        const lastDay = new Date(year, monthNum, 0);
-        const formatDate = (d) => {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-        };
-        const dateRange = `${formatDate(firstDay)} to ${formatDate(lastDay)}`;
-
-        const card = document.createElement('div');
-        card.className = 'monthly-chart-card';
-        card.dataset.month = month;
-        card.dataset.index = idx;
-        card.style.cursor = 'pointer';
-        card.innerHTML = `<h4 style="font-size:16px;">${dateRange}</h4><canvas id="bar-chart-${containerId}-${idx}"></canvas>`;
-        container.appendChild(card);
-
-        // Click on card (not on canvas) = expand
-        card.addEventListener('click', function(e) {
-            if (e.target.closest('canvas')) return;
-            expandBarChart(idx, containerId);
-        });
-
-        // Double click on canvas = expand
-        const canvas = card.querySelector('canvas');
-        canvas.addEventListener('dblclick', function(e) {
-            e.stopPropagation();
-            expandBarChart(idx, containerId);
-        });
-
-        const ctx = canvas.getContext('2d');
-
-        const chart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Amount',
-                    data: values,
-                    backgroundColor: barColors,
-                    borderColor: borderColors,
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => {
-                                const val = ctx.raw;
-                                return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
-                            }
-                        }
-                    },
-                    annotation: {
-                        annotations: {
-                            zeroLine: {
-                                type: 'line',
-                                yMin: 0,
-                                yMax: 0,
-                                borderColor: 'rgba(0, 0, 0, 0.3)',
-                                borderWidth: 2,
-                                borderDash: [5, 5],
-                                label: {
-                                    content: '0',
-                                    enabled: true,
-                                    position: 'right',
-                                    color: '#333',
-                                    font: { size: 12 }
-                                }
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: yMax,
-                        min: -yMax,
-                        ticks: { 
-                            callback: (val) => '$' + val,
-                            font: { size: 12 }
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45,
-                            font: { size: 11 }
-                        }
-                    }
-                },
-                onClick: function(e, elements) {
-                    console.log('[CHARTS] Bar clicked, elements:', elements.length);
-                    if (elements.length === 0) return;
-                    const element = elements[0];
-                    const index = element.index;
-                    const label = this.data.labels[index];
-                    const amount = this.data.datasets[0].data[index];
-                    if (Math.abs(amount) < 0.01) return;
-
-                    console.log('[CHARTS] Bar clicked:', label, amount);
-                    
-                    // Try to find the account ID
-                    const trimmed = label.trim();
-                    const norm = trimmed.toLowerCase();
-                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
-                    
-                    // For Net Income, show all transactions
-                    if (label === 'Net' || label === 'Net Income') {
-                        showMonthlyTransactions(month, null, 'Net Income', true);
-                        return;
-                    }
-                    
-                    if (accountId) {
-                        showMonthlyTransactions(month, accountId, label, true);
-                    } else {
-                        // If account not found, show all transactions for the month
-                        showMonthlyTransactions(month, null, label, true);
-                    }
-                }
-            }
-        });
-        window._barCharts.push(chart);
     });
-    console.log('[CHARTS] Rendering complete');
-}
- 
-function expandBarChart(index, containerId) {
-    console.log('[CHARTS] expandBarChart called, index:', index, 'container:', containerId);
-    
-    if (barChartExpanded && expandedBarChartIndex === index && expandedBarChartContainerId === containerId) {
-        console.log('[CHARTS] Chart already expanded, collapsing');
-        collapseBarChart();
-        return;
-    }
+    const yMax = Math.ceil((maxVal * 1.2) / 100) * 100 || 100;
 
-    const container = document.getElementById(containerId);
-    if (!container) {
-        console.error('[CHARTS] Container not found:', containerId);
-        return;
-    }
+    // Determine if this is P&L or Cash Flow based on options
+    const isPL = options.type === 'pl';
+    const chartTitle = isPL ? 'Monthly Profit & Loss' : 'Monthly Cash Flow';
 
-    const cards = container.querySelectorAll('.monthly-chart-card');
-    const card = cards[index];
-    
-    if (!card) {
-        console.error('[CHARTS] Card not found for index:', index);
-        return;
-    }
-
-    console.log('[CHARTS] Expanding card', index);
-
-    barChartExpanded = true;
-    expandedBarChartIndex = index;
-    expandedBarChartContainerId = containerId;
-
-    // Hide all cards
-    cards.forEach(c => {
-        c.style.display = 'none';
-    });
-
-    // Create expanded container
-    const expandedContainer = document.createElement('div');
-    expandedContainer.id = 'expanded-chart-container';
-    expandedContainer.style.cssText = `
-        position: fixed;
-        top: 80px;
-        left: 20px;
-        right: 20px;
-        bottom: 20px;
-        z-index: 999;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 40px rgba(0,0,0,0.4);
-        padding: 30px;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    `;
-    
-    // Add header with title and close button
-    const header = document.createElement('div');
-    header.style.cssText = `
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        flex-shrink: 0;
-    `;
-    header.innerHTML = `
-        <h3 style="margin:0; font-size:32px; color:#333;">${card.dataset.month} - Detail</h3>
-        <button class="btn btn-secondary" style="padding:12px 28px; font-size:18px;">
-            <i class="fas fa-times"></i> Close
-        </button>
-    `;
-    header.querySelector('button').onclick = function(e) {
-        console.log('[CHARTS] Close button clicked');
-        e.stopPropagation();
-        collapseBarChart();
-    };
-    expandedContainer.appendChild(header);
-
-    // Create canvas wrapper that takes remaining space
-    const canvasWrapper = document.createElement('div');
-    canvasWrapper.style.cssText = `
-        flex: 1;
-        position: relative;
-        min-height: 0;
-    `;
-    
-    // Clone the canvas
-    const oldCanvas = card.querySelector('canvas');
-    const newCanvas = document.createElement('canvas');
-    newCanvas.id = 'expanded-chart-canvas';
-    newCanvas.style.cssText = `
-        width: 100% !important;
-        height: 100% !important;
-        position: absolute;
-        top: 0;
-        left: 0;
-    `;
-    canvasWrapper.appendChild(newCanvas);
-    expandedContainer.appendChild(canvasWrapper);
-    
-    document.body.appendChild(expandedContainer);
-
-    // Get the data from the existing chart
-    const oldChart = window._barCharts[index];
-    if (!oldChart) {
-        console.error('[CHARTS] No chart found at index:', index);
-        return;
-    }
-
-    // Create new chart with much larger font sizes
-    const ctx = newCanvas.getContext('2d');
-    
-    const newChart = new Chart(ctx, {
-        type: 'bar',
+    const chart = new Chart(ctx, {
+        type: 'line',
         data: {
-            labels: oldChart.data.labels,
-            datasets: [{
-                label: 'Amount',
-                data: oldChart.data.datasets[0].data,
-                backgroundColor: oldChart.data.datasets[0].backgroundColor,
-                borderColor: oldChart.data.datasets[0].borderColor,
-                borderWidth: 2
-            }]
+            labels: labels,
+            datasets: datasets
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
             plugins: {
-                legend: { 
-                    display: false 
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 20,
+                        font: { size: 11 }
+                    }
                 },
                 tooltip: {
                     callbacks: {
-                        label: (ctx) => {
-                            const val = ctx.raw;
-                            return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
-                        }
-                    },
-                    titleFont: { size: 22, weight: 'bold' },
-                    bodyFont: { size: 20 }
-                },
-                annotation: {
-                    annotations: {
-                        zeroLine: {
-                            type: 'line',
-                            yMin: 0,
-                            yMax: 0,
-                            borderColor: 'rgba(0, 0, 0, 0.5)',
-                            borderWidth: 3,
-                            borderDash: [5, 5],
-                            label: {
-                                content: '0',
-                                enabled: true,
-                                position: 'right',
-                                color: '#333',
-                                font: { size: 22, weight: 'bold' }
-                            }
+                        label: function(context) {
+                            const val = context.raw;
+                            const label = context.dataset.label || '';
+                            const sign = val >= 0 ? '+' : '';
+                            return `${label}: ${sign}$${Math.abs(val).toFixed(2)}`;
                         }
                     }
                 }
             },
             scales: {
-                y: {
-                    beginAtZero: true,
-                    max: oldChart.options.scales.y.max,
-                    min: oldChart.options.scales.y.min,
-                    ticks: { 
-                        callback: (val) => '$' + val,
-                        font: { size: 20, weight: 'bold' }
-                    }
-                },
                 x: {
                     ticks: {
                         maxRotation: 45,
                         minRotation: 45,
-                        font: { size: 18, weight: 'bold' }
+                        font: { size: 11 }
+                    },
+                    grid: {
+                        display: true,
+                        drawBorder: true
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    max: yMax,
+                    min: -yMax,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value;
+                        },
+                        font: { size: 11 }
+                    },
+                    grid: {
+                        color: 'rgba(0,0,0,0.08)',
+                        drawBorder: true
                     }
                 }
             },
             onClick: function(e, elements) {
-                // Pass through to original chart's onClick
-                if (oldChart.options.onClick) {
-                    oldChart.options.onClick.call(this, e, elements);
+                console.log('[CHART] Click on chart, elements:', elements.length);
+                if (elements.length === 0) return;
+                
+                const element = elements[0];
+                const datasetIndex = element.datasetIndex;
+                const dataIndex = element.index;
+                const dataset = this.data.datasets[datasetIndex];
+                const accountName = dataset.label;
+                const month = months[dataIndex];
+                const value = dataset.data[dataIndex];
+                
+                if (Math.abs(value) < 0.01) return;
+                
+                console.log('[CHART] Clicked:', accountName, month, value);
+                
+                // Get account ID
+                const trimmed = accountName.trim();
+                const norm = trimmed.toLowerCase();
+                let accountId = accountNameToId[norm] || accountNameToId[trimmed];
+                
+                // For Net Income/Net Cash, show all transactions (excluding orders for P&L)
+                if (accountName === 'Net Income' || accountName === 'Net Cash' || accountName === netLabel) {
+                    showMonthlyTransactions(month, null, accountName, isPL);
+                    return;
+                }
+                
+                if (accountId) {
+                    showMonthlyTransactions(month, accountId, accountName, isPL);
+                } else {
+                    // If account not found, show all transactions for the account name
+                    showMonthlyTransactions(month, null, accountName, isPL);
                 }
             }
         }
     });
 
-    // Store reference to expanded chart for cleanup
-    window._expandedBarChart = newChart;
-    window._expandedBarContainer = expandedContainer;
+    // Store chart reference
+    if (canvasId === 'pl-chart') {
+        plChartInstance = chart;
+        plChartData = data;
+    } else if (canvasId === 'cash-flow-chart') {
+        cashFlowChartInstance = chart;
+        cashFlowChartData = data;
+    }
 
-    // Handle resize
-    const resizeObserver = new ResizeObserver(() => {
-        if (newChart) {
-            newChart.resize();
-        }
+    // Add double-click to expand
+    canvas.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        expandChart(canvasId);
     });
-    resizeObserver.observe(canvasWrapper);
-    window._expandedBarResizeObserver = resizeObserver;
 
-    // Also resize on window resize
-    window._expandedBarResizeHandler = function() {
-        if (newChart) {
-            newChart.resize();
-        }
-    };
-    window.addEventListener('resize', window._expandedBarResizeHandler);
-
-    console.log('[CHARTS] Expansion complete');
+    console.log('[CHART] Chart rendered successfully');
+    return chart;
 }
 
-function collapseBarChart() {
-    console.log('[CHARTS] collapseBarChart called');
-    if (!barChartExpanded) {
-        console.log('[CHARTS] Not expanded, nothing to collapse');
+// ============================================================
+// EXPAND CHART (Full Screen)
+// ============================================================
+
+function expandChart(canvasId) {
+    console.log('[CHART] Expanding chart:', canvasId);
+    
+    if (isExpanded) {
+        collapseChart();
         return;
     }
 
-    // Clean up expanded chart
-    if (window._expandedBarChart) {
-        window._expandedBarChart.destroy();
-        window._expandedBarChart = null;
-    }
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
 
-    if (window._expandedBarContainer) {
-        window._expandedBarContainer.remove();
-        window._expandedBarContainer = null;
-    }
+    // Get the chart instance
+    const chart = Chart.getChart(canvas);
+    if (!chart) return;
 
-    if (window._expandedBarResizeObserver) {
-        window._expandedBarResizeObserver.disconnect();
-        window._expandedBarResizeObserver = null;
-    }
+    isExpanded = true;
+    expandedChartInstance = chart;
 
-    if (window._expandedBarResizeHandler) {
-        window.removeEventListener('resize', window._expandedBarResizeHandler);
-        window._expandedBarResizeHandler = null;
-    }
+    // Create expanded container
+    const container = document.createElement('div');
+    container.id = 'expanded-chart-container';
+    
+    container.innerHTML = `
+        <div class="chart-header">
+            <h3>${chart.options?.plugins?.legend?.labels?.font?.size ? 'Expanded View' : 'Expanded View'}</h3>
+            <button class="btn btn-secondary" onclick="collapseChart()">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
+        <div class="chart-body">
+            <canvas id="expanded-chart-canvas"></canvas>
+        </div>
+    `;
+    
+    document.body.appendChild(container);
 
-    barChartExpanded = false;
-    expandedBarChartIndex = null;
-    expandedBarChartContainerId = null;
-
-    // Show all cards again
-    const containerId = barChartContainerId;
-    if (containerId) {
-        const container = document.getElementById(containerId);
-        if (container) {
-            const cards = container.querySelectorAll('.monthly-chart-card');
-            cards.forEach(c => {
-                c.style.display = '';
-            });
+    // Create new chart on the expanded canvas
+    const newCanvas = document.getElementById('expanded-chart-canvas');
+    const newCtx = newCanvas.getContext('2d');
+    
+    const expandedChart = new Chart(newCtx, {
+        type: 'line',
+        data: chart.data,
+        options: {
+            ...chart.options,
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                ...chart.options.plugins,
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 25,
+                        font: { size: 14, weight: 'bold' }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const val = context.raw;
+                            const label = context.dataset.label || '';
+                            const sign = val >= 0 ? '+' : '';
+                            return `${label}: ${sign}$${Math.abs(val).toFixed(2)}`;
+                        }
+                    },
+                    titleFont: { size: 16, weight: 'bold' },
+                    bodyFont: { size: 14 }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        font: { size: 14, weight: 'bold' }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value;
+                        },
+                        font: { size: 14, weight: 'bold' }
+                    }
+                }
+            },
+            onClick: chart.options.onClick
         }
-    }
+    });
 
-    // Resize all original charts
-    if (window._barCharts) {
-        console.log('[CHARTS] Resizing all charts after collapse');
-        window._barCharts.forEach((chart, idx) => {
-            chart.resize();
-        });
+    // Store expanded chart reference
+    window._expandedChart = expandedChart;
+    
+    // Handle resize
+    const resizeObserver = new ResizeObserver(() => {
+        if (expandedChart) expandedChart.resize();
+    });
+    resizeObserver.observe(container.querySelector('.chart-body'));
+    window._expandedResizeObserver = resizeObserver;
+}
+
+function collapseChart() {
+    console.log('[CHART] Collapsing chart');
+    isExpanded = false;
+    
+    if (window._expandedChart) {
+        window._expandedChart.destroy();
+        window._expandedChart = null;
     }
-    console.log('[CHARTS] Collapse complete');
+    
+    if (window._expandedResizeObserver) {
+        window._expandedResizeObserver.disconnect();
+        window._expandedResizeObserver = null;
+    }
+    
+    const container = document.getElementById('expanded-chart-container');
+    if (container) {
+        container.remove();
+    }
+    
+    // Resize original charts
+    if (plChartInstance) plChartInstance.resize();
+    if (cashFlowChartInstance) cashFlowChartInstance.resize();
 }
 
 // ============================================================
@@ -2254,18 +2171,19 @@ async function loadCashFlow() {
         const data = await res.json();
         if (data.status === 'success') {
             console.log('[CASHFLOW] Data loaded, months:', data.months.length);
-            renderBarCharts('cash-flow-chart-grid', data, {
-                dateRangeId: 'cash-flow-date-range',
-                start: start,
-                end: end
-            });
+            const dateRangeEl = document.getElementById('cash-flow-date-range');
+            dateRangeEl.textContent = `Showing from ${start} to ${end}`;
+            dateRangeEl.style.display = 'block';
+            
+            // Render line chart
+            renderLineChart('cash-flow-chart', data, { type: 'cashflow' });
         } else {
             console.error('[CASHFLOW] Error:', data.error);
-            document.getElementById('cash-flow-chart-grid').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
+            document.getElementById('cash-flow-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
         }
     } catch (err) {
         console.error('[CASHFLOW] Error:', err);
-        document.getElementById('cash-flow-chart-grid').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+        document.getElementById('cash-flow-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
 }
 
@@ -2294,17 +2212,18 @@ async function loadMonthlyPL() {
         const data = await res.json();
         if (data.status === 'success') {
             console.log('[MONTHLY-PL] Data loaded, months:', data.months.length);
-            renderBarCharts('pl-chart-grid', data, {
-                dateRangeId: 'pl-date-range',
-                start: start,
-                end: end
-            });
+            const dateRangeEl = document.getElementById('pl-date-range');
+            dateRangeEl.textContent = `Showing from ${start} to ${end}`;
+            dateRangeEl.style.display = 'block';
+            
+            // Render line chart
+            renderLineChart('pl-chart', data, { type: 'pl' });
         } else {
             console.error('[MONTHLY-PL] Error:', data.error);
-            document.getElementById('pl-chart-grid').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
+            document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
         }
     } catch (err) {
         console.error('[MONTHLY-PL] Error:', err);
-        document.getElementById('pl-chart-grid').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+        document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
 }
