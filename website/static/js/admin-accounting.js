@@ -38,7 +38,7 @@ let plRangeStart = 0;
 let plRangeEnd = 0;
 let cashFlowRangeStart = 0;
 let cashFlowRangeEnd = 0;
-const DEFAULT_MONTHS = 6;
+const DEFAULT_WINDOW_SIZE = 6;
 
 // ============================================================
 // TOAST NOTIFICATION
@@ -85,13 +85,12 @@ if (!document.getElementById('toast-styles')) {
 }
 
 // ============================================================
-// RANGE SELECTOR - SCROLLBAR DATE RANGE
+// SIMPLIFIED RANGE SELECTOR - SINGLE SCROLLBAR
 // ============================================================
 
 function initRangeSelector(containerId, chartId, type) {
     console.log('[RANGE] Initializing range selector for', type);
     
-    // Check if range selector already exists
     const existing = document.getElementById(`range-${type}`);
     if (existing) {
         console.log('[RANGE] Range selector already exists');
@@ -104,90 +103,81 @@ function initRangeSelector(containerId, chartId, type) {
         return;
     }
     
-    // Create range selector
+    const months = type === 'pl' ? plMonths : cashFlowMonths;
+    const totalMonths = months.length;
+    const windowSize = DEFAULT_WINDOW_SIZE;
+    const defaultPosition = Math.max(0, totalMonths - windowSize);
+    
     const rangeDiv = document.createElement('div');
     rangeDiv.id = `range-${type}`;
     rangeDiv.style.cssText = `
-        margin-bottom: 15px;
-        padding: 10px 15px;
+        margin-top: 15px;
+        padding: 8px 5px 2px 5px;
         background: #f8f9fa;
-        border-radius: 6px;
+        border-radius: 4px;
         border: 1px solid #e9ecef;
+        position: relative;
     `;
     
     rangeDiv.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <span style="font-size:13px; color:#666; font-weight:500;">
-                <i class="fas fa-calendar-alt"></i> Date Range:
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span style="font-size:12px; color:#666;">
+                <i class="fas fa-calendar-alt"></i> 
                 <span id="range-label-${type}" style="font-weight:600; color:#333;"></span>
             </span>
-            <span style="font-size:12px; color:#999;">Drag to adjust range</span>
+            <span style="font-size:11px; color:#999;">← scroll →</span>
         </div>
-        <div id="range-slider-wrapper-${type}" style="position:relative; padding:0 5px;">
-            <input type="range" id="range-slider-start-${type}" min="0" max="100" value="0" step="1" style="width:100%;">
-            <div style="display:flex; justify-content:space-between; font-size:10px; color:#999; margin-top:2px;">
-                <span id="range-start-label-${type}">Earliest</span>
-                <span id="range-end-label-${type}">Latest</span>
+        <div style="position:relative;">
+            <input type="range" id="range-slider-${type}" 
+                   min="0" max="${Math.max(0, totalMonths - windowSize)}" 
+                   value="${defaultPosition}" step="1"
+                   style="width:100%; margin:0; cursor:pointer;">
+            <div style="display:flex; justify-content:space-between; font-size:9px; color:#aaa; margin-top:1px;">
+                <span>Earliest</span>
+                <span>Latest</span>
             </div>
         </div>
     `;
     
-    container.insertBefore(rangeDiv, container.firstChild);
+    container.appendChild(rangeDiv);
     
-    // Store range state
-    const startSlider = document.getElementById(`range-slider-start-${type}`);
-    const endSlider = document.createElement('input');
-    endSlider.type = 'range';
-    endSlider.id = `range-slider-end-${type}`;
-    endSlider.min = 0;
-    endSlider.max = 100;
-    endSlider.value = 100;
-    endSlider.step = 1;
-    endSlider.style.cssText = 'width:100%; margin-top:5px;';
-    document.getElementById(`range-slider-wrapper-${type}`).appendChild(endSlider);
+    const slider = document.getElementById(`range-slider-${type}`);
+    window[`rangeSlider_${type}`] = slider;
     
-    // Add event listeners
-    startSlider.addEventListener('input', function() {
-        updateRangeSelector(type);
-    });
-    endSlider.addEventListener('input', function() {
+    slider.addEventListener('input', function() {
         updateRangeSelector(type);
     });
     
-    // Store references
-    window[`rangeStart_${type}`] = startSlider;
-    window[`rangeEnd_${type}`] = endSlider;
+    updateRangeSelector(type);
     
     console.log('[RANGE] Range selector initialized for', type);
 }
 
 function updateRangeSelector(type) {
-    const startSlider = window[`rangeStart_${type}`];
-    const endSlider = window[`rangeEnd_${type}`];
-    if (!startSlider || !endSlider) return;
+    const slider = window[`rangeSlider_${type}`];
+    if (!slider) return;
     
-    const startVal = parseInt(startSlider.value);
-    const endVal = parseInt(endSlider.value);
+    const months = type === 'pl' ? plMonths : cashFlowMonths;
+    const totalMonths = months.length;
+    const windowSize = DEFAULT_WINDOW_SIZE;
+    const position = parseInt(slider.value);
     
-    // Ensure start < end
-    if (startVal >= endVal) {
-        if (event && event.target === startSlider) {
-            endSlider.value = Math.min(100, startVal + 5);
-        } else {
-            startSlider.value = Math.max(0, endVal - 5);
-        }
+    const maxPos = Math.max(0, totalMonths - windowSize);
+    const clampedPos = Math.max(0, Math.min(maxPos, position));
+    
+    if (clampedPos !== position) {
+        slider.value = clampedPos;
     }
     
-    const finalStart = parseInt(startSlider.value);
-    const finalEnd = parseInt(endSlider.value);
+    const startIdx = clampedPos;
+    const endIdx = Math.min(startIdx + windowSize - 1, totalMonths - 1);
     
-    // Store for chart rendering
     if (type === 'pl') {
-        plRangeStart = finalStart;
-        plRangeEnd = finalEnd;
+        plRangeStart = (startIdx / Math.max(1, totalMonths - 1)) * 100;
+        plRangeEnd = (endIdx / Math.max(1, totalMonths - 1)) * 100;
     } else if (type === 'cashflow') {
-        cashFlowRangeStart = finalStart;
-        cashFlowRangeEnd = finalEnd;
+        cashFlowRangeStart = (startIdx / Math.max(1, totalMonths - 1)) * 100;
+        cashFlowRangeEnd = (endIdx / Math.max(1, totalMonths - 1)) * 100;
     }
     
     updateRangeLabel(type);
@@ -197,25 +187,29 @@ function updateRangeSelector(type) {
 function updateRangeLabel(type) {
     const months = type === 'pl' ? plMonths : cashFlowMonths;
     const labelEl = document.getElementById(`range-label-${type}`);
-    const startLabel = document.getElementById(`range-start-label-${type}`);
-    const endLabel = document.getElementById(`range-end-label-${type}`);
+    const slider = window[`rangeSlider_${type}`];
     
-    if (!labelEl || !months || months.length === 0) return;
+    if (!labelEl || !months || months.length === 0 || !slider) return;
     
-    const startIdx = Math.floor((plRangeStart / 100) * (months.length - 1));
-    const endIdx = Math.floor((plRangeEnd / 100) * (months.length - 1));
-    const clampedStart = Math.max(0, Math.min(months.length - 1, startIdx));
-    const clampedEnd = Math.max(0, Math.min(months.length - 1, endIdx));
+    const windowSize = DEFAULT_WINDOW_SIZE;
+    const position = parseInt(slider.value);
+    const totalMonths = months.length;
+    const maxPos = Math.max(0, totalMonths - windowSize);
+    const clampedPos = Math.max(0, Math.min(maxPos, position));
+    
+    const startIdx = clampedPos;
+    const endIdx = Math.min(startIdx + windowSize - 1, totalMonths - 1);
     
     const formatMonth = (m) => {
+        if (!m) return '';
         const [year, month] = m.split('-');
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         return `${monthNames[parseInt(month) - 1]} ${year}`;
     };
     
-    labelEl.textContent = `${formatMonth(months[clampedStart])} - ${formatMonth(months[clampedEnd])}`;
-    if (startLabel) startLabel.textContent = formatMonth(months[clampedStart]);
-    if (endLabel) endLabel.textContent = formatMonth(months[clampedEnd]);
+    const startMonth = formatMonth(months[startIdx]);
+    const endMonth = formatMonth(months[endIdx]);
+    labelEl.textContent = `${startMonth} - ${endMonth}`;
 }
 
 function renderFilteredChart(type) {
@@ -227,12 +221,26 @@ function renderFilteredChart(type) {
         return;
     }
     
-    const startIdx = Math.floor((plRangeStart / 100) * (months.length - 1));
-    const endIdx = Math.floor((plRangeEnd / 100) * (months.length - 1));
-    const clampedStart = Math.max(0, Math.min(months.length - 1, startIdx));
-    const clampedEnd = Math.max(0, Math.min(months.length - 1, endIdx));
+    const windowSize = DEFAULT_WINDOW_SIZE;
+    const slider = window[`rangeSlider_${type}`];
+    if (!slider) {
+        const canvasId = type === 'pl' ? 'pl-chart' : 'cash-flow-chart';
+        const chartType = type === 'pl' ? 'pl' : 'cashflow';
+        renderLineChart(canvasId, data, { type: chartType });
+        return;
+    }
     
-    const filteredMonths = months.slice(clampedStart, clampedEnd + 1);
+    const position = parseInt(slider.value);
+    const totalMonths = months.length;
+    const maxPos = Math.max(0, totalMonths - windowSize);
+    const clampedPos = Math.max(0, Math.min(maxPos, position));
+    
+    const startIdx = clampedPos;
+    const endIdx = Math.min(startIdx + windowSize - 1, totalMonths - 1);
+    
+    console.log('[RANGE] Filtering months:', startIdx, 'to', endIdx);
+    
+    const filteredMonths = months.slice(startIdx, endIdx + 1);
     const filteredData = {};
     filteredMonths.forEach(m => {
         filteredData[m] = data.account_breakdown[m] || {};
@@ -246,10 +254,10 @@ function renderFilteredChart(type) {
     const canvasId = type === 'pl' ? 'pl-chart' : 'cash-flow-chart';
     const chartType = type === 'pl' ? 'pl' : 'cashflow';
     
-    // Update date range display
     const dateRangeEl = document.getElementById(type === 'pl' ? 'pl-date-range' : 'cash-flow-date-range');
     if (dateRangeEl) {
         const formatMonth = (m) => {
+            if (!m) return '';
             const [year, month] = m.split('-');
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             return `${monthNames[parseInt(month) - 1]} ${year}`;
@@ -274,7 +282,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     console.log('[INIT] Accounting container found');
 
-    // Sub-tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
@@ -324,12 +331,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             else if (sub === 'reports') {
-                // nothing to auto-load, user must click generate
+                // nothing to auto-load
             }
         });
     });
 
-    // Bank upload drag & drop
     const uploadArea = document.getElementById('bank-upload-area');
     const fileInput = document.getElementById('bank-file-input');
     if (uploadArea && fileInput) {
@@ -352,7 +358,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Pagination for journal
     document.getElementById('journal-prev')?.addEventListener('click', () => {
         if (journalCurrentPage > 1) { journalCurrentPage--; loadJournalEntries(); }
     });
@@ -361,27 +366,22 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
-    // Manual entry – auto‑balance check
     document.addEventListener('input', function(e) {
         if (e.target.closest('.manual-entry-row')) {
             updateManualBalance();
         }
     });
 
-    // Load accounts into dropdowns
     loadAccountSelects();
 
-    // Load default date range for reports
     const today = new Date().toISOString().split('T')[0];
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     document.getElementById('report-date-from').value = firstDay;
     document.getElementById('report-date-to').value = today;
     document.getElementById('manual-date').value = today;
 
-    // Load journal by default
     loadJournalEntries();
 
-    // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
     const publicToken = urlParams.get('public_token');
     if (publicToken) {
@@ -408,7 +408,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ---- Bank Tab: Search button and Enter key - NO AUTO-TRIGGERS ----
     document.getElementById('bank-search-btn')?.addEventListener('click', function() {
         console.log('[BANK] Search button clicked');
         loadBankTransactions();
@@ -422,7 +421,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Accounts tab - add account form
     document.getElementById('add-account-btn')?.addEventListener('click', function() {
         console.log('[INIT] Add account button clicked');
         document.getElementById('add-account-modal').classList.add('active');
@@ -438,7 +436,6 @@ document.addEventListener('DOMContentLoaded', function() {
         saveAccount();
     });
 
-    // Close modal on overlay - only if clicking the backdrop itself
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -1048,7 +1045,7 @@ function exportReportCSV() {
 }
 
 // ============================================================
-// BANK TRANSACTIONS - UPDATED (NO AUTO-TRIGGERS)
+// BANK TRANSACTIONS
 // ============================================================
 
 async function checkBankConnection() {
@@ -1244,12 +1241,8 @@ function updateBankCounts(unprocessed, total) {
     }
 }
 
-// ============================================================
-// applyAllSelections - UPDATED to handle both unprocessed AND posted transactions
-// ============================================================
-
 async function applyAllSelections() {
-    console.log('[BANK] Applying all selections (including posted transactions for reassignment)');
+    console.log('[BANK] Applying all selections');
     const sourceFilter = document.getElementById('bank-source-filter')?.value || 'plaid';
     let sourceAccountId = null;
     if (sourceFilter === 'plaid') {
@@ -2450,10 +2443,8 @@ function renderLineChart(canvasId, data, options = {}) {
         plMonths = months;
         allPLData = data;
         
-        // Initialize range selector if not already done
         if (!document.getElementById('range-pl')) {
             console.log('[CHART] Initializing range selector for P&L');
-            // Check if we have the container
             const container = document.getElementById('pl-chart-container');
             if (container) {
                 initRangeSelector('pl-chart-container', 'pl-chart', 'pl');
@@ -2791,7 +2782,6 @@ async function loadCashFlow() {
         await loadBankAccountsForRowDropdowns();
     }
 
-    // Get all available data from API (no date filters)
     try {
         console.log('[CASHFLOW] Fetching all data from API');
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail`, {
@@ -2805,28 +2795,23 @@ async function loadCashFlow() {
         if (data.status === 'success') {
             console.log('[CASHFLOW] Data loaded, months:', data.months ? data.months.length : 0);
             
-            // Store full data
             allCashFlowData = data;
             cashFlowMonths = data.months || [];
             
-            // Set range to show last 6 months by default
-            const totalMonths = cashFlowMonths.length;
-            const defaultStart = Math.max(0, totalMonths - DEFAULT_MONTHS);
-            cashFlowRangeStart = Math.round((defaultStart / Math.max(1, totalMonths - 1)) * 100);
-            cashFlowRangeEnd = 100;
-            
-            // Update range label and render
-            const dateRangeEl = document.getElementById('cash-flow-date-range');
-            if (dateRangeEl && cashFlowMonths.length > 0) {
-                const formatMonth = (m) => {
-                    const [year, month] = m.split('-');
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    return `${monthNames[parseInt(month) - 1]} ${year}`;
-                };
-                const startIdx = Math.max(0, defaultStart);
-                const endIdx = cashFlowMonths.length - 1;
-                dateRangeEl.textContent = `Showing ${formatMonth(cashFlowMonths[startIdx])} to ${formatMonth(cashFlowMonths[endIdx])}`;
-                dateRangeEl.style.display = 'block';
+            const container = document.getElementById('cash-flow-chart-container');
+            if (container) {
+                if (!document.getElementById('range-cashflow')) {
+                    initRangeSelector('cash-flow-chart-container', 'cash-flow-chart', 'cashflow');
+                } else {
+                    const slider = document.getElementById('range-slider-cashflow');
+                    if (slider) {
+                        const totalMonths = cashFlowMonths.length;
+                        slider.max = Math.max(0, totalMonths - DEFAULT_WINDOW_SIZE);
+                        const defaultPos = Math.max(0, totalMonths - DEFAULT_WINDOW_SIZE);
+                        slider.value = defaultPos;
+                        updateRangeSelector('cashflow');
+                    }
+                }
             }
             
             renderFilteredChart('cashflow');
@@ -2853,7 +2838,6 @@ async function loadMonthlyPL() {
         await loadBankAccountsForRowDropdowns();
     }
 
-    // Get all available data from API (no date filters)
     try {
         console.log('[MONTHLY-PL] Fetching all data from API');
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl`, {
@@ -2867,28 +2851,23 @@ async function loadMonthlyPL() {
         if (data.status === 'success') {
             console.log('[MONTHLY-PL] Data loaded, months:', data.months ? data.months.length : 0);
             
-            // Store full data
             allPLData = data;
             plMonths = data.months || [];
             
-            // Set range to show last 6 months by default
-            const totalMonths = plMonths.length;
-            const defaultStart = Math.max(0, totalMonths - DEFAULT_MONTHS);
-            plRangeStart = Math.round((defaultStart / Math.max(1, totalMonths - 1)) * 100);
-            plRangeEnd = 100;
-            
-            // Update range label and render
-            const dateRangeEl = document.getElementById('pl-date-range');
-            if (dateRangeEl && plMonths.length > 0) {
-                const formatMonth = (m) => {
-                    const [year, month] = m.split('-');
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    return `${monthNames[parseInt(month) - 1]} ${year}`;
-                };
-                const startIdx = Math.max(0, defaultStart);
-                const endIdx = plMonths.length - 1;
-                dateRangeEl.textContent = `Showing ${formatMonth(plMonths[startIdx])} to ${formatMonth(plMonths[endIdx])}`;
-                dateRangeEl.style.display = 'block';
+            const container = document.getElementById('pl-chart-container');
+            if (container) {
+                if (!document.getElementById('range-pl')) {
+                    initRangeSelector('pl-chart-container', 'pl-chart', 'pl');
+                } else {
+                    const slider = document.getElementById('range-slider-pl');
+                    if (slider) {
+                        const totalMonths = plMonths.length;
+                        slider.max = Math.max(0, totalMonths - DEFAULT_WINDOW_SIZE);
+                        const defaultPos = Math.max(0, totalMonths - DEFAULT_WINDOW_SIZE);
+                        slider.value = defaultPos;
+                        updateRangeSelector('pl');
+                    }
+                }
             }
             
             renderFilteredChart('pl');
