@@ -26,6 +26,11 @@ let cashFlowAccountBreakdown = {};
 let cashFlowContainer = null;
 let accountNameToId = {};
 
+// Shared chart state
+let barChartExpanded = false;
+let expandedBarChartIndex = null;
+let expandedBarChartContainerId = null;
+
 // Register annotation plugin if available
 if (typeof ChartAnnotation !== 'undefined') {
     Chart.register(ChartAnnotation);
@@ -1706,145 +1711,109 @@ function renderModalTransactions(transactions) {
 }
 
 // ============================================================
-// CASH FLOW (with expandable charts)
+// SHARED BAR CHART RENDERER
 // ============================================================
 
-async function loadCashFlow() {
-    console.log('[CASHFLOW] Loading cash flow');
-    const startInput = document.getElementById('cash-flow-start');
-    const endInput = document.getElementById('cash-flow-end');
-    const start = startInput.value;
-    const end = endInput.value;
-    console.log('[CASHFLOW] Start:', start, 'End:', end);
+let barChartExpanded = false;
+let expandedBarChartIndex = null;
+let expandedBarChartContainerId = null;
+let barChartData = null;
+let barChartContainerId = null;
+
+function renderBarCharts(containerId, data, options = {}) {
+    console.log('[CHARTS] Rendering bar charts in container:', containerId);
+    const { months, account_breakdown } = data;
+    const container = document.getElementById(containerId);
     
-    if (!start || !end) {
-        alert('Please select both start and end months.');
+    if (!container) {
+        console.error('[CHARTS] Container not found:', containerId);
         return;
     }
 
-    // Display the date range
-    const dateRangeEl = document.getElementById('cash-flow-date-range');
-    if (dateRangeEl) {
-        const startDisplay = startInput.value || 'Start';
-        const endDisplay = endInput.value || 'End';
-        dateRangeEl.textContent = `Showing cash flow from ${startDisplay} to ${endDisplay}`;
-        dateRangeEl.style.display = 'block';
-        console.log('[CASHFLOW] Date range displayed:', dateRangeEl.textContent);
-    } else {
-        console.log('[CASHFLOW] cash-flow-date-range element not found!');
-    }
-
-    if (bankAccounts.length === 0) {
-        console.log('[CASHFLOW] Loading bank accounts');
-        await loadBankAccountsForRowDropdowns();
-    }
-
-    const container = document.getElementById('cash-flow-chart-grid');
-    cashFlowContainer = container;
-    container.innerHTML = '<p class="monthly-loading">Loading...</p>';
-
-    try {
-        console.log('[CASHFLOW] Fetching data from API');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${start}&end=${end}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (!res.ok) throw new Error('Failed to fetch cash flow data');
-        const data = await res.json();
-        if (data.status === 'success') {
-            console.log('[CASHFLOW] Data loaded, months:', data.months.length);
-            cashFlowMonths = data.months;
-            cashFlowAccountBreakdown = data.account_breakdown;
-            renderCashFlowCharts(data);
-        } else {
-            console.error('[CASHFLOW] Error:', data.error);
-            container.innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
-        }
-    } catch (err) {
-        console.error('[CASHFLOW] Error:', err);
-        container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
-    }
-}
-
-function renderCashFlowCharts(data) {
-    console.log('[CASHFLOW] Rendering charts');
-    const { months, account_breakdown } = data;
-    const container = document.getElementById('cash-flow-chart-grid');
-    cashFlowContainer = container;
+    // Clear existing content
     container.innerHTML = '';
 
     if (!months || months.length === 0) {
-        console.log('[CASHFLOW] No months data');
         container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
         return;
     }
 
+    // Get all account names
     const allAccounts = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
         Object.keys(monthData).forEach(acc => allAccounts.add(acc));
     });
     const accountNames = Array.from(allAccounts).sort();
-    console.log('[CASHFLOW] Accounts:', accountNames.length);
+    
+    // Filter out "Net" or "Net Income" if we want to handle it specially
+    const regularAccounts = accountNames.filter(name => name !== 'Net' && name !== 'Net Income');
+    const netLabel = accountNames.find(name => name === 'Net' || name === 'Net Income');
 
-    // Build accountNameToId mapping if not already done
-    if (Object.keys(accountNameToId).length === 0) {
-        bankAccounts.forEach(acc => {
-            const trimmed = acc.name.trim();
-            const norm = trimmed.toLowerCase();
-            accountNameToId[norm] = acc.id;
-            accountNameToId[trimmed] = acc.id;
-        });
-    }
-
+    // Calculate max for Y axis
     let globalMax = 0;
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
-        accountNames.forEach(acc => {
+        regularAccounts.forEach(acc => {
             const val = monthData[acc] || 0;
             if (Math.abs(val) > globalMax) globalMax = Math.abs(val);
         });
-        let net = 0;
-        accountNames.forEach(acc => {
-            net += monthData[acc] || 0;
-        });
-        if (Math.abs(net) > globalMax) globalMax = Math.abs(net);
+        if (netLabel) {
+            const net = monthData[netLabel] || 0;
+            if (Math.abs(net) > globalMax) globalMax = Math.abs(net);
+        }
     });
-    const yMax = Math.ceil(globalMax / 500) * 500 || 100;
-    console.log('[CASHFLOW] YMax:', yMax);
+    const yMax = Math.ceil(globalMax / 500) * 500 || 500;
 
-    if (window._cashFlowCharts) {
-        window._cashFlowCharts.forEach(chart => chart.destroy());
+    // Store charts for cleanup
+    if (window._barCharts) {
+        window._barCharts.forEach(chart => chart.destroy());
     }
-    window._cashFlowCharts = [];
+    window._barCharts = [];
 
-    cashFlowMonths = months;
-    cashFlowAccountBreakdown = account_breakdown;
+    // Store data for expansion
+    barChartData = data;
+    barChartContainerId = containerId;
+
+    // Create date range display
+    const dateRangeEl = document.getElementById(options.dateRangeId || null);
+    if (dateRangeEl) {
+        const startDisplay = options.start || 'Start';
+        const endDisplay = options.end || 'End';
+        dateRangeEl.textContent = `Showing from ${startDisplay} to ${endDisplay}`;
+        dateRangeEl.style.display = 'block';
+    }
 
     months.forEach((month, idx) => {
         const monthData = account_breakdown[month] || {};
-        const values = accountNames.map(acc => monthData[acc] || 0);
-        const labels = accountNames.slice();
-        const net = values.reduce((sum, v) => sum + v, 0);
-        labels.push('Net');
-        values.push(net);
+        
+        // Get values for all accounts
+        const values = regularAccounts.map(acc => monthData[acc] || 0);
+        const labels = regularAccounts.slice();
+        
+        // Add Net as the last bar if it exists
+        if (netLabel && monthData[netLabel] !== undefined) {
+            labels.push(netLabel);
+            values.push(monthData[netLabel] || 0);
+        }
 
+        // Bar colors: green for positive, red for negative, purple for net
         const barColors = values.map((v, i) => {
-            if (i === values.length - 1) return 'rgba(111, 66, 193, 0.8)';
+            const label = labels[i];
+            if (label === 'Net' || label === 'Net Income') {
+                return 'rgba(111, 66, 193, 0.8)';
+            }
             return v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)';
         });
         const borderColors = values.map((v, i) => {
-            if (i === values.length - 1) return '#6f42c1';
+            const label = labels[i];
+            if (label === 'Net' || label === 'Net Income') {
+                return '#6f42c1';
+            }
             return v >= 0 ? '#28a745' : '#dc3545';
         });
 
-        const card = document.createElement('div');
-        card.className = 'monthly-chart-card';
-        card.dataset.month = month;
-        card.dataset.index = idx;
-        card.style.cursor = 'pointer';
-        
-        // Get the first and last day of the month for the title
+        // Get first and last day of month for title
         const [year, monthNum] = month.split('-').map(Number);
         const firstDay = new Date(year, monthNum - 1, 1);
         const lastDay = new Date(year, monthNum, 0);
@@ -1855,27 +1824,26 @@ function renderCashFlowCharts(data) {
             return `${y}-${m}-${day}`;
         };
         const dateRange = `${formatDate(firstDay)} to ${formatDate(lastDay)}`;
-        
-        card.innerHTML = `<h4>${dateRange}</h4><canvas id="cash-flow-chart-${idx}"></canvas>`;
+
+        const card = document.createElement('div');
+        card.className = 'monthly-chart-card';
+        card.dataset.month = month;
+        card.dataset.index = idx;
+        card.style.cursor = 'pointer';
+        card.innerHTML = `<h4>${dateRange}</h4><canvas id="bar-chart-${containerId}-${idx}"></canvas>`;
         container.appendChild(card);
 
         // Click on card (not on canvas) = expand
         card.addEventListener('click', function(e) {
-            console.log('[CASHFLOW] Card clicked, index:', idx, 'target:', e.target.tagName);
-            if (e.target.closest('canvas')) {
-                console.log('[CASHFLOW] Click was on canvas, ignoring for expansion');
-                return;
-            }
-            console.log('[CASHFLOW] Expanding chart', idx);
-            expandChart(idx);
+            if (e.target.closest('canvas')) return;
+            expandBarChart(idx, containerId);
         });
 
         // Double click on canvas = expand
         const canvas = card.querySelector('canvas');
         canvas.addEventListener('dblclick', function(e) {
-            console.log('[CASHFLOW] Canvas double-clicked, expanding chart', idx);
             e.stopPropagation();
-            expandChart(idx);
+            expandBarChart(idx, containerId);
         });
 
         const ctx = canvas.getContext('2d');
@@ -1939,61 +1907,42 @@ function renderCashFlowCharts(data) {
                             font: { size: 10 }
                         }
                     }
-                },
-                onClick: function(e, elements) {
-                    console.log('[CASHFLOW] Chart bar clicked, elements:', elements.length);
-                    if (elements.length === 0) return;
-                    const element = elements[0];
-                    const index = element.index;
-                    const label = this.data.labels[index];
-                    const amount = this.data.datasets[0].data[index];
-                    if (Math.abs(amount) < 0.01) return;
-
-                    console.log('[CASHFLOW] Bar clicked:', label, amount);
-                    if (label === 'Net') {
-                        showMonthlyTransactions(month, null, 'Net Cash Flow', true);
-                    } else {
-                        const trimmed = label.trim();
-                        const norm = trimmed.toLowerCase();
-                        let accountId = accountNameToId[norm] || accountNameToId[trimmed];
-                        if (!accountId) {
-                            alert('Account not found: ' + label);
-                            return;
-                        }
-                        showMonthlyTransactions(month, accountId, label, true);
-                    }
                 }
             }
         });
-        window._cashFlowCharts.push(chart);
-        console.log('[CASHFLOW] Chart', idx, 'created');
+        window._barCharts.push(chart);
     });
-    console.log('[CASHFLOW] Rendering complete');
+    console.log('[CHARTS] Rendering complete');
 }
 
-function expandChart(index) {
-    console.log('[CASHFLOW] expandChart called with index:', index, 'current expanded:', cashFlowExpanded, 'expandedIndex:', expandedChartIndex);
+function expandBarChart(index, containerId) {
+    console.log('[CHARTS] expandBarChart called, index:', index, 'container:', containerId);
     
-    if (cashFlowExpanded && expandedChartIndex === index) {
-        console.log('[CASHFLOW] Chart already expanded, collapsing');
-        collapseChart();
+    if (barChartExpanded && expandedBarChartIndex === index && expandedBarChartContainerId === containerId) {
+        console.log('[CHARTS] Chart already expanded, collapsing');
+        collapseBarChart();
         return;
     }
 
-    const container = document.getElementById('cash-flow-chart-grid');
+    const container = document.getElementById(containerId);
+    if (!container) {
+        console.error('[CHARTS] Container not found:', containerId);
+        return;
+    }
+
     const cards = container.querySelectorAll('.monthly-chart-card');
     const card = cards[index];
     
     if (!card) {
-        console.error('[CASHFLOW] Card not found for index:', index);
+        console.error('[CHARTS] Card not found for index:', index);
         return;
     }
 
-    console.log('[CASHFLOW] Expanding card', index);
+    console.log('[CHARTS] Expanding card', index);
 
-    // Store the current state
-    cashFlowExpanded = true;
-    expandedChartIndex = index;
+    barChartExpanded = true;
+    expandedBarChartIndex = index;
+    expandedBarChartContainerId = containerId;
 
     // Hide all cards
     cards.forEach(c => {
@@ -2029,15 +1978,15 @@ function expandChart(index) {
         flex-shrink: 0;
     `;
     header.innerHTML = `
-        <h3 style="margin:0; font-size:24px; color:#333;">${card.dataset.month} - Cash Flow Detail</h3>
+        <h3 style="margin:0; font-size:24px; color:#333;">${card.dataset.month} - Detail</h3>
         <button class="btn btn-secondary" style="padding:10px 24px; font-size:16px;">
             <i class="fas fa-times"></i> Close
         </button>
     `;
     header.querySelector('button').onclick = function(e) {
-        console.log('[CASHFLOW] Close button clicked');
+        console.log('[CHARTS] Close button clicked');
         e.stopPropagation();
-        collapseChart();
+        collapseBarChart();
     };
     expandedContainer.appendChild(header);
 
@@ -2066,9 +2015,9 @@ function expandChart(index) {
     document.body.appendChild(expandedContainer);
 
     // Get the data from the existing chart
-    const oldChart = window._cashFlowCharts[index];
+    const oldChart = window._barCharts[index];
     if (!oldChart) {
-        console.error('[CASHFLOW] No chart found at index:', index);
+        console.error('[CHARTS] No chart found at index:', index);
         return;
     }
 
@@ -2141,35 +2090,13 @@ function expandChart(index) {
                         font: { size: 14, weight: 'bold' }
                     }
                 }
-            },
-            onClick: function(e, elements) {
-                if (elements.length === 0) return;
-                const element = elements[0];
-                const idx = element.index;
-                const label = this.data.labels[idx];
-                const amount = this.data.datasets[0].data[idx];
-                if (Math.abs(amount) < 0.01) return;
-
-                const month = card.dataset.month;
-                if (label === 'Net') {
-                    showMonthlyTransactions(month, null, 'Net Cash Flow', true);
-                } else {
-                    const trimmed = label.trim();
-                    const norm = trimmed.toLowerCase();
-                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
-                    if (!accountId) {
-                        alert('Account not found: ' + label);
-                        return;
-                    }
-                    showMonthlyTransactions(month, accountId, label, true);
-                }
             }
         }
     });
 
     // Store reference to expanded chart for cleanup
-    window._expandedChart = newChart;
-    window._expandedContainer = expandedContainer;
+    window._expandedBarChart = newChart;
+    window._expandedBarContainer = expandedContainer;
 
     // Handle resize
     const resizeObserver = new ResizeObserver(() => {
@@ -2178,72 +2105,123 @@ function expandChart(index) {
         }
     });
     resizeObserver.observe(canvasWrapper);
-    window._expandedResizeObserver = resizeObserver;
+    window._expandedBarResizeObserver = resizeObserver;
 
     // Also resize on window resize
-    window._expandedResizeHandler = function() {
+    window._expandedBarResizeHandler = function() {
         if (newChart) {
             newChart.resize();
         }
     };
-    window.addEventListener('resize', window._expandedResizeHandler);
+    window.addEventListener('resize', window._expandedBarResizeHandler);
 
-    console.log('[CASHFLOW] Expansion complete');
+    console.log('[CHARTS] Expansion complete');
 }
 
-function collapseChart() {
-    console.log('[CASHFLOW] collapseChart called');
-    if (!cashFlowExpanded) {
-        console.log('[CASHFLOW] Not expanded, nothing to collapse');
+function collapseBarChart() {
+    console.log('[CHARTS] collapseBarChart called');
+    if (!barChartExpanded) {
+        console.log('[CHARTS] Not expanded, nothing to collapse');
         return;
     }
 
     // Clean up expanded chart
-    if (window._expandedChart) {
-        window._expandedChart.destroy();
-        window._expandedChart = null;
+    if (window._expandedBarChart) {
+        window._expandedBarChart.destroy();
+        window._expandedBarChart = null;
     }
 
-    if (window._expandedContainer) {
-        window._expandedContainer.remove();
-        window._expandedContainer = null;
+    if (window._expandedBarContainer) {
+        window._expandedBarContainer.remove();
+        window._expandedBarContainer = null;
     }
 
-    if (window._expandedResizeObserver) {
-        window._expandedResizeObserver.disconnect();
-        window._expandedResizeObserver = null;
+    if (window._expandedBarResizeObserver) {
+        window._expandedBarResizeObserver.disconnect();
+        window._expandedBarResizeObserver = null;
     }
 
-    if (window._expandedResizeHandler) {
-        window.removeEventListener('resize', window._expandedResizeHandler);
-        window._expandedResizeHandler = null;
+    if (window._expandedBarResizeHandler) {
+        window.removeEventListener('resize', window._expandedBarResizeHandler);
+        window._expandedBarResizeHandler = null;
     }
 
-    cashFlowExpanded = false;
-    expandedChartIndex = null;
+    barChartExpanded = false;
+    expandedBarChartIndex = null;
+    expandedBarChartContainerId = null;
 
     // Show all cards again
-    const container = document.getElementById('cash-flow-chart-grid');
-    const cards = container.querySelectorAll('.monthly-chart-card');
-    cards.forEach(c => {
-        c.style.display = '';
-    });
+    const containerId = barChartContainerId;
+    if (containerId) {
+        const container = document.getElementById(containerId);
+        if (container) {
+            const cards = container.querySelectorAll('.monthly-chart-card');
+            cards.forEach(c => {
+                c.style.display = '';
+            });
+        }
+    }
 
     // Resize all original charts
-    if (window._cashFlowCharts) {
-        console.log('[CASHFLOW] Resizing all charts after collapse');
-        window._cashFlowCharts.forEach((chart, idx) => {
+    if (window._barCharts) {
+        console.log('[CHARTS] Resizing all charts after collapse');
+        window._barCharts.forEach((chart, idx) => {
             chart.resize();
         });
     }
-    console.log('[CASHFLOW] Collapse complete');
+    console.log('[CHARTS] Collapse complete');
+}
+
+// ============================================================
+// CASH FLOW
+// ============================================================
+
+async function loadCashFlow() {
+    console.log('[CASHFLOW] Loading cash flow');
+    const startInput = document.getElementById('cash-flow-start');
+    const endInput = document.getElementById('cash-flow-end');
+    const start = startInput.value;
+    const end = endInput.value;
+    console.log('[CASHFLOW] Start:', start, 'End:', end);
+    
+    if (!start || !end) {
+        alert('Please select both start and end months.');
+        return;
+    }
+
+    if (bankAccounts.length === 0) {
+        console.log('[CASHFLOW] Loading bank accounts');
+        await loadBankAccountsForRowDropdowns();
+    }
+
+    try {
+        console.log('[CASHFLOW] Fetching data from API');
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${start}&end=${end}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to fetch cash flow data');
+        const data = await res.json();
+        if (data.status === 'success') {
+            console.log('[CASHFLOW] Data loaded, months:', data.months.length);
+            renderBarCharts('cash-flow-chart-grid', data, {
+                dateRangeId: 'cash-flow-date-range',
+                start: start,
+                end: end
+            });
+        } else {
+            console.error('[CASHFLOW] Error:', data.error);
+            document.getElementById('cash-flow-chart-grid').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
+        }
+    } catch (err) {
+        console.error('[CASHFLOW] Error:', err);
+        document.getElementById('cash-flow-chart-grid').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+    }
 }
 
 // ============================================================
 // MONTHLY P&L
 // ============================================================
-
-let monthlyPLCharts = [];
 
 async function loadMonthlyPL() {
     console.log('[MONTHLY-PL] Loading monthly P&L');
@@ -2257,19 +2235,6 @@ async function loadMonthlyPL() {
         return;
     }
 
-    // Display the date range
-    const dateRangeEl = document.getElementById('pl-date-range');
-    if (dateRangeEl) {
-        const startDisplay = startInput.value || 'Start';
-        const endDisplay = endInput.value || 'End';
-        dateRangeEl.textContent = `Showing P&L from ${startDisplay} to ${endDisplay}`;
-        dateRangeEl.style.display = 'block';
-        console.log('[MONTHLY-PL] Date range displayed:', dateRangeEl.textContent);
-    }
-
-    const container = document.getElementById('pl-chart-grid');
-    container.innerHTML = '<p class="monthly-loading">Loading...</p>';
-
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${start}&end=${end}`, {
             credentials: 'include',
@@ -2279,150 +2244,17 @@ async function loadMonthlyPL() {
         const data = await res.json();
         if (data.status === 'success') {
             console.log('[MONTHLY-PL] Data loaded, months:', data.months.length);
-            renderMonthlyPL(data);
+            renderBarCharts('pl-chart-grid', data, {
+                dateRangeId: 'pl-date-range',
+                start: start,
+                end: end
+            });
         } else {
-            container.innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
+            console.error('[MONTHLY-PL] Error:', data.error);
+            document.getElementById('pl-chart-grid').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
         }
     } catch (err) {
-        container.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
-        console.error('Monthly P&L error:', err);
+        console.error('[MONTHLY-PL] Error:', err);
+        document.getElementById('pl-chart-grid').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
-}
-
-function renderMonthlyPL(data) {
-    console.log('[MONTHLY-PL] Rendering charts');
-    const { months, account_breakdown } = data;
-    const container = document.getElementById('pl-chart-grid');
-    container.innerHTML = '';
-
-    if (!months || months.length === 0) {
-        container.innerHTML = '<p class="monthly-loading">No data for the selected range.</p>';
-        return;
-    }
-
-    // Get all account names
-    const allAccounts = new Set();
-    months.forEach(m => {
-        const monthData = account_breakdown[m] || {};
-        Object.keys(monthData).forEach(acc => allAccounts.add(acc));
-    });
-    const accountNames = Array.from(allAccounts).sort();
-    
-    // Remove "Net Income" from the list to handle it specially
-    const revenueExpenseAccounts = accountNames.filter(name => name !== 'Net Income');
-
-    // Calculate max for Y axis
-    let globalMax = 0;
-    months.forEach(m => {
-        const monthData = account_breakdown[m] || {};
-        revenueExpenseAccounts.forEach(acc => {
-            const val = monthData[acc] || 0;
-            if (Math.abs(val) > globalMax) globalMax = Math.abs(val);
-        });
-        // Also check net income
-        const net = monthData['Net Income'] || 0;
-        if (Math.abs(net) > globalMax) globalMax = Math.abs(net);
-    });
-    const yMax = Math.ceil(globalMax / 500) * 500 || 500;
-
-    if (window._monthlyPLCharts) {
-        window._monthlyPLCharts.forEach(chart => chart.destroy());
-    }
-    window._monthlyPLCharts = [];
-
-    months.forEach((month, idx) => {
-        const monthData = account_breakdown[month] || {};
-        
-        // Get values for all accounts
-        const values = revenueExpenseAccounts.map(acc => monthData[acc] || 0);
-        const labels = revenueExpenseAccounts.slice();
-        
-        // Add Net Income as the last bar
-        const netIncome = monthData['Net Income'] || 0;
-        labels.push('Net Income');
-        values.push(netIncome);
-
-        // Bar colors: green for positive, red for negative, purple for net income
-        const barColors = values.map((v, i) => {
-            if (i === values.length - 1) return 'rgba(111, 66, 193, 0.8)'; // Net Income
-            return v >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)';
-        });
-        const borderColors = values.map((v, i) => {
-            if (i === values.length - 1) return '#6f42c1';
-            return v >= 0 ? '#28a745' : '#dc3545';
-        });
-
-        const card = document.createElement('div');
-        card.className = 'monthly-chart-card';
-        card.innerHTML = `<h4>${month}</h4><canvas id="pl-chart-${idx}"></canvas>`;
-        container.appendChild(card);
-
-        const canvas = card.querySelector('canvas');
-        const ctx = canvas.getContext('2d');
-
-        const chart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Amount',
-                    data: values,
-                    backgroundColor: barColors,
-                    borderColor: borderColors,
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => {
-                                const val = ctx.raw;
-                                return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
-                            }
-                        }
-                    },
-                    annotation: {
-                        annotations: {
-                            zeroLine: {
-                                type: 'line',
-                                yMin: 0,
-                                yMax: 0,
-                                borderColor: 'rgba(0, 0, 0, 0.3)',
-                                borderWidth: 2,
-                                borderDash: [5, 5],
-                                label: {
-                                    content: '0',
-                                    enabled: true,
-                                    position: 'right',
-                                    color: '#333',
-                                    font: { size: 10 }
-                                }
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: yMax,
-                        min: -yMax,
-                        ticks: { callback: (val) => '$' + val }
-                    },
-                    x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45,
-                            font: { size: 10 }
-                        }
-                    }
-                }
-            }
-        });
-        window._monthlyPLCharts.push(chart);
-    });
-    console.log('[MONTHLY-PL] Rendering complete');
 }
