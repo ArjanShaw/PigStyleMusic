@@ -136,17 +136,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('[INIT] Monthly P&L tab selected');
                 const now = new Date();
                 const endInput = document.getElementById('pl-end');
-                if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
+                if (!endInput.value) {
+                    endInput.value = now.toISOString().slice(0, 7);
+                    console.log('[INIT] Set end date default to:', endInput.value);
+                }
                 const startInput = document.getElementById('pl-start');
                 if (!startInput.value) {
                     const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
                     startInput.value = startDate.toISOString().slice(0, 7);
+                    console.log('[INIT] Set start date default to:', startInput.value);
                 }
+                console.log('[INIT] Start value:', startInput.value, 'End value:', endInput.value);
+                
                 if (bankAccounts.length === 0) {
+                    console.log('[INIT] Loading bank accounts before P&L');
                     loadBankAccountsForRowDropdowns().then(() => {
+                        console.log('[INIT] Bank accounts loaded, calling loadMonthlyPL');
                         loadMonthlyPL();
                     });
                 } else {
+                    console.log('[INIT] Bank accounts already loaded, calling loadMonthlyPL');
                     loadMonthlyPL();
                 }
             }
@@ -2693,18 +2702,31 @@ async function loadCashFlow() {
 // MONTHLY P&L - WITH DEBUGGING
 // ============================================================
 
+// ============================================================
+// MONTHLY P&L - WITH EXTENSIVE CONSOLE DEBUGGING
+// ============================================================
+
 async function loadMonthlyPL() {
     console.log('[MONTHLY-PL] ==================================================');
     console.log('[MONTHLY-PL] LOAD MONTHLY P&L START');
+    console.log('[MONTHLY-PL] Timestamp:', new Date().toISOString());
     
     const startInput = document.getElementById('pl-start');
     const endInput = document.getElementById('pl-end');
-    const start = startInput.value;
-    const end = endInput.value;
+    
+    console.log('[MONTHLY-PL] Start input element:', startInput);
+    console.log('[MONTHLY-PL] End input element:', endInput);
+    console.log('[MONTHLY-PL] Start input value:', startInput ? startInput.value : 'NULL');
+    console.log('[MONTHLY-PL] End input value:', endInput ? endInput.value : 'NULL');
+    
+    const start = startInput ? startInput.value : '';
+    const end = endInput ? endInput.value : '';
+    
     console.log('[MONTHLY-PL] Start month:', start);
     console.log('[MONTHLY-PL] End month:', end);
     
     if (!start || !end) {
+        console.log('[MONTHLY-PL] ❌ Missing start or end month. Start:', start, 'End:', end);
         alert('Please select both start and end months.');
         return;
     }
@@ -2712,40 +2734,65 @@ async function loadMonthlyPL() {
     if (bankAccounts.length === 0) {
         console.log('[MONTHLY-PL] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
+        console.log('[MONTHLY-PL] Bank accounts loaded, count:', bankAccounts.length);
     }
 
     try {
         // Convert month to first and last day of the month
+        console.log('[MONTHLY-PL] Converting months to dates...');
         const startDate = new Date(start + '-01');
         const endDate = new Date(end + '-01');
         const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
+        
+        console.log('[MONTHLY-PL] startDate:', startDate.toISOString());
+        console.log('[MONTHLY-PL] endDate:', endDate.toISOString());
+        console.log('[MONTHLY-PL] lastDay:', lastDay.toISOString());
+        
         const startStr = startDate.toISOString().slice(0, 10);
         const endStr = lastDay.toISOString().slice(0, 10);
         
-        console.log('[MONTHLY-PL] Fetching data from API with start:', startStr, 'end:', endStr);
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${startStr}&end=${endStr}`, {
+        console.log('[MONTHLY-PL] ✅ Calculated start date:', startStr);
+        console.log('[MONTHLY-PL] ✅ Calculated end date:', endStr);
+        
+        const url = `${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${startStr}&end=${endStr}`;
+        console.log('[MONTHLY-PL] 🔗 Fetching URL:', url);
+        
+        const res = await fetch(url, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
-        if (!res.ok) throw new Error('Failed to fetch P&L data');
+        
+        console.log('[MONTHLY-PL] 📡 Fetch response status:', res.status);
+        console.log('[MONTHLY-PL] 📡 Fetch response ok:', res.ok);
+        
+        if (!res.ok) {
+            console.error('[MONTHLY-PL] ❌ Fetch failed with status:', res.status);
+            throw new Error('Failed to fetch P&L data');
+        }
+        
         const data = await res.json();
-        console.log('[MONTHLY-PL] API response status:', data.status);
-        console.log('[MONTHLY-PL] API response months:', data.months ? data.months.length : 0);
-        console.log('[MONTHLY-PL] API response account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
+        console.log('[MONTHLY-PL] 📦 Data received:');
+        console.log('[MONTHLY-PL]   - status:', data.status);
+        console.log('[MONTHLY-PL]   - months count:', data.months ? data.months.length : 0);
+        console.log('[MONTHLY-PL]   - months:', data.months ? JSON.stringify(data.months) : 'none');
+        console.log('[MONTHLY-PL]   - account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
         
         // Log July data specifically if it exists
         if (data.account_breakdown && data.account_breakdown['2026-07']) {
-            console.log('[MONTHLY-PL] July 2026 data:', data.account_breakdown['2026-07']);
+            console.log('[MONTHLY-PL] ✅ July 2026 data found:');
+            console.log('[MONTHLY-PL]   - July accounts:', Object.keys(data.account_breakdown['2026-07']));
+            console.log('[MONTHLY-PL]   - July values:', JSON.stringify(data.account_breakdown['2026-07'], null, 2));
         } else {
-            console.log('[MONTHLY-PL] July 2026 data: NOT FOUND in API response');
+            console.log('[MONTHLY-PL] ❌ July 2026 data NOT FOUND in API response');
+            console.log('[MONTHLY-PL] Available months:', data.months ? data.months.join(', ') : 'none');
         }
         
         if (data.status === 'success') {
-            console.log('[MONTHLY-PL] Data loaded successfully');
+            console.log('[MONTHLY-PL] ✅ Data loaded successfully');
             
             allPLData = data;
             plMonths = data.months || [];
-            console.log('[MONTHLY-PL] Months:', plMonths);
+            console.log('[MONTHLY-PL] Stored plMonths:', plMonths);
             
             const dateRangeEl = document.getElementById('pl-date-range');
             if (dateRangeEl && plMonths.length > 0) {
@@ -2754,18 +2801,26 @@ async function loadMonthlyPL() {
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                     return `${monthNames[parseInt(month) - 1]} ${year}`;
                 };
-                dateRangeEl.textContent = `Showing ${formatMonth(plMonths[0])} to ${formatMonth(plMonths[plMonths.length - 1])}`;
+                const displayText = `Showing ${formatMonth(plMonths[0])} to ${formatMonth(plMonths[plMonths.length - 1])}`;
+                dateRangeEl.textContent = displayText;
                 dateRangeEl.style.display = 'block';
+                console.log('[MONTHLY-PL] Date range label set to:', displayText);
+            } else {
+                console.log('[MONTHLY-PL] ⚠️ No months to display in date range label');
             }
             
-            console.log('[MONTHLY-PL] Calling renderLineChart with data');
+            console.log('[MONTHLY-PL] 📊 Calling renderLineChart with data');
+            console.log('[MONTHLY-PL] Data months count:', data.months ? data.months.length : 0);
             renderLineChart('pl-chart', data, { type: 'pl' });
+            console.log('[MONTHLY-PL] renderLineChart called successfully');
+            
         } else {
-            console.error('[MONTHLY-PL] Error:', data.error);
+            console.error('[MONTHLY-PL] ❌ API returned error status:', data.error);
             document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
         }
     } catch (err) {
-        console.error('[MONTHLY-PL] Error:', err);
+        console.error('[MONTHLY-PL] ❌ CRITICAL ERROR:', err);
+        console.error('[MONTHLY-PL] Error stack:', err.stack);
         document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
     console.log('[MONTHLY-PL] ===== LOAD MONTHLY P&L END =====');
