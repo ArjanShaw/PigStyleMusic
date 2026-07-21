@@ -1363,7 +1363,7 @@ async function deleteAccount(accountId, accountName) {
 }
 
 // ============================================================
-// MODAL FUNCTIONS
+// MODAL FUNCTIONS WITH EXTENSIVE DEBUGGING
 // ============================================================
 
 function closeMonthlyModal() {
@@ -1372,12 +1372,15 @@ function closeMonthlyModal() {
 }
 
 function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false, accountCode = null) {
-    console.log('[MODAL] ===== SHOW MONTHLY TRANSACTIONS START =====');
-    console.log('[MODAL] 1. Called with:', { month, accountId, accountName, excludeOrders, accountCode });
+    console.log('[MODAL] ==================================================');
+    console.log('[MODAL] SHOW MONTHLY TRANSACTIONS CALLED');
+    console.log('[MODAL] Parameters:', { month, accountId, accountName, excludeOrders, accountCode });
+    console.log('[MODAL] ==================================================');
     
     try {
+        // Check all required DOM elements exist
         const modal = document.getElementById('monthly-tx-modal');
-        console.log('[MODAL] 2. Modal element:', modal);
+        console.log('[MODAL] 1. Modal element:', modal ? 'FOUND' : 'MISSING', modal);
         
         if (!modal) {
             console.error('[MODAL] ❌ Modal element not found!');
@@ -1386,7 +1389,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         }
         
         const body = document.getElementById('modal-body');
-        console.log('[MODAL] 3. Body element:', body);
+        console.log('[MODAL] 2. Body element:', body ? 'FOUND' : 'MISSING', body);
         
         if (!body) {
             console.error('[MODAL] ❌ Body element not found!');
@@ -1395,7 +1398,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         }
         
         const title = document.getElementById('modal-title');
-        console.log('[MODAL] 4. Title element:', title);
+        console.log('[MODAL] 3. Title element:', title ? 'FOUND' : 'MISSING', title);
         
         if (!title) {
             console.error('[MODAL] ❌ Title element not found!');
@@ -1415,19 +1418,20 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
         
-        // Add account ID to title for debugging
         const idDisplay = accountId ? ` (ID: ${accountId})` : (accountCode ? ` (Code: ${accountCode})` : '');
         const displayName = `${accountName}${idDisplay} - ${dateRange}`;
         title.textContent = displayName;
-        console.log('[MODAL] 5. Title set to:', title.textContent);
+        console.log('[MODAL] 4. Title set to:', title.textContent);
         
         body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
-        console.log('[MODAL] 6. Body set to loading state');
+        console.log('[MODAL] 5. Body set to loading state');
         
         modal.classList.add('active');
-        console.log('[MODAL] 7. Active class added, modal should be visible');
+        console.log('[MODAL] 6. Active class added, modal should be visible');
+        console.log('[MODAL] 7. Modal classes after add:', modal.className);
+        console.log('[MODAL] 8. Modal style.display:', modal.style.display);
         
-        // Build URL - use account_id if available
+        // Build URL
         let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
         if (accountId) {
             url += `&account_id=${accountId}`;
@@ -1443,20 +1447,26 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         })
         .then(res => {
             console.log('[MODAL] 10. Fetch response status:', res.status);
+            console.log('[MODAL] 10a. Fetch response ok:', res.ok);
             return res.json();
         })
         .then(data => {
-            console.log('[MODAL] 11. Data received:', data);
+            console.log('[MODAL] 11. Data received from API:');
+            console.log('[MODAL] 11a. Data status:', data.status);
+            console.log('[MODAL] 11b. Data transactions count:', data.transactions ? data.transactions.length : 0);
+            console.log('[MODAL] 11c. Full data sample (first 2):', data.transactions ? data.transactions.slice(0, 2) : 'none');
+            
             if (data.status === 'success' && data.transactions) {
-                console.log('[MODAL] 12. Loaded', data.transactions.length, 'transactions');
+                console.log('[MODAL] 12. Success! Loading', data.transactions.length, 'transactions');
                 renderModalTransactions(data.transactions, accountName, dateRange, accountId);
             } else {
-                console.error('[MODAL] ❌ Error in response:', data.error);
+                console.error('[MODAL] ❌ Error in response:', data.error || 'Unknown error');
                 body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load transactions'}</p>`;
             }
         })
         .catch(err => {
             console.error('[MODAL] ❌ Fetch error:', err);
+            console.error('[MODAL] Error stack:', err.stack);
             body.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
         });
         
@@ -1469,31 +1479,54 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
 }
 
 function renderModalTransactions(transactions, accountName, dateRange, accountId = null) {
-    console.log('[MODAL] Rendering', transactions.length, 'transactions');
+    console.log('[MODAL] ==================================================');
+    console.log('[MODAL] RENDER MODAL TRANSACTIONS CALLED');
+    console.log('[MODAL] Input transactions count:', transactions ? transactions.length : 0);
+    console.log('[MODAL] accountName:', accountName);
+    console.log('[MODAL] dateRange:', dateRange);
+    console.log('[MODAL] accountId:', accountId);
+    console.log('[MODAL] ==================================================');
+    
     const body = document.getElementById('modal-body');
     if (!body) {
-        console.error('[MODAL] ❌ Body not found for rendering');
+        console.error('[MODAL] ❌ Body not found for rendering!');
         return;
     }
+    console.log('[MODAL] Body element found');
     
     if (!transactions || transactions.length === 0) {
+        console.log('[MODAL] No transactions to render');
         body.innerHTML = '<p>No transactions found for this period.</p>';
         return;
     }
 
-    let total = 0;
-    
-    // Group transactions by journal_entry_id to show one row per entry
+    // Log all transaction details
+    console.log('[MODAL] Transaction details:');
+    transactions.forEach((tx, idx) => {
+        console.log(`[MODAL]   ${idx}:`, {
+            date: tx.transaction_date,
+            description: tx.description,
+            account: tx.account_name,
+            debit: tx.debit_amount,
+            credit: tx.credit_amount,
+            source_id: tx.source_id,
+            source_type: tx.source_type
+        });
+    });
+
+    // Group transactions by journal_entry_id or source_id to show one row per entry
     const grouped = {};
     transactions.forEach(tx => {
-        const key = tx.journal_entry_id || tx.id;
+        const key = tx.journal_entry_id || tx.source_id || tx.id;
+        console.log('[MODAL] Grouping tx with key:', key, 'description:', tx.description);
         if (!grouped[key]) {
             grouped[key] = {
                 transaction_date: tx.transaction_date,
                 description: tx.description || '',
                 account_name: tx.account_name || '',
                 net: 0,
-                entries: []
+                entries: [],
+                source_id: key
             };
         }
         grouped[key].net += (tx.debit_amount || 0) - (tx.credit_amount || 0);
@@ -1501,16 +1534,32 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     });
 
     const groupedList = Object.values(grouped);
+    console.log('[MODAL] Grouped into', groupedList.length, 'entries');
+    console.log('[MODAL] Grouped entries:');
+    groupedList.forEach((g, idx) => {
+        console.log(`[MODAL]   ${idx}:`, {
+            date: g.transaction_date,
+            description: g.description,
+            account: g.account_name,
+            net: g.net,
+            entries_count: g.entries.length,
+            source_id: g.source_id
+        });
+    });
     
-    // Calculate totals from grouped data
+    // Calculate totals
+    let total = 0;
     groupedList.forEach(g => {
         total += g.net;
     });
+    console.log('[MODAL] Total net amount:', total);
     
+    // Build HTML
     let html = `<div class="modal-summary">
         <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}${accountId ? ` (ID: ${accountId})` : ''}</div>
         <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
         <div class="summary-item"><strong>Transactions:</strong> ${groupedList.length}</div>
+        <div class="summary-item"><strong>Total:</strong> <span style="font-weight:bold;color:${total >= 0 ? '#28a745' : '#dc3545'};">$${total.toFixed(2)}</span></div>
     </div>`;
     
     html += `<table>
@@ -1523,34 +1572,38 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         </tr></thead>
         <tbody>`;
     
+    let rowCount = 0;
     groupedList.forEach(g => {
+        rowCount++;
         const amount = g.net;
         const isIncome = amount > 0;
         const amountClass = isIncome ? 'debit' : (amount < 0 ? 'credit' : '');
         const displayAmount = amount !== 0 ? '$' + Math.abs(amount).toFixed(2) : '';
         const sign = amount > 0 ? '+' : (amount < 0 ? '-' : '');
         
-        // Get first entry for the journal_entry_id
         const firstEntry = g.entries[0];
-        const entryId = firstEntry.journal_entry_id || firstEntry.id;
+        const entryId = firstEntry.journal_entry_id || firstEntry.source_id || firstEntry.id;
         
         html += `<tr>
             <td style="white-space:nowrap;">${g.transaction_date}</td>
             <td>${g.description || ''}</td>
             <td>${g.account_name || ''}</td>
             <td style="text-align:right; font-weight:600;" class="${amountClass}">${sign}${displayAmount}</td>
-            <td><button class="btn btn-sm btn-warning" onclick="unpostTransaction(${entryId})"><i class="fas fa-undo"></i> Unpost</button></td>
+            <td><button class="btn btn-sm btn-warning" onclick="unpostTransaction('${entryId}')"><i class="fas fa-undo"></i> Unpost</button></td>
         </tr>`;
     });
     
+    console.log('[MODAL] Rendered', rowCount, 'rows in the table');
+    
     html += `<tr class="total-row">
         <td colspan="3"><strong>Total</strong></td>
-        <td style="text-align:right; font-weight:bold;">${total !== 0 ? '$' + total.toFixed(2) : ''}</td>
+        <td style="text-align:right; font-weight:bold;color:${total >= 0 ? '#28a745' : '#dc3545'};">${total !== 0 ? '$' + total.toFixed(2) : ''}</td>
         <td></td>
     </tr>`;
     html += '</tbody></table>';
     body.innerHTML = html;
-    console.log('[MODAL] Render complete');
+    console.log('[MODAL] Render complete - HTML length:', html.length);
+    console.log('[MODAL] ==================================================');
 }
 
 async function unpostTransaction(entryId) {
@@ -1577,7 +1630,6 @@ async function unpostTransaction(entryId) {
                 const title = document.getElementById('modal-title');
                 if (title) {
                     const titleText = title.textContent;
-                    // Parse the title to get account name and date range
                     const match = titleText.match(/^(.+?)\s*\(ID:\s*(\d+)\)?\s*-\s*(.+)$/);
                     if (match) {
                         const accountName = match[1].trim();
@@ -1636,7 +1688,6 @@ function showCOGSCalculation(month) {
         body.innerHTML = '<div class="modal-loading">Loading COGS calculation...</div>';
         modal.classList.add('active');
         
-        // Fetch COGS calculation from backend
         const url = `${AppConfig.baseUrl}/api/accounting/cogs-calculation?month=${month}`;
         console.log('[COGS] Fetching URL:', url);
         
@@ -1742,7 +1793,6 @@ function renderCOGSCalculation(data, dateRange) {
         html += '<p class="text-muted">No batch allocations this month.</p>';
     }
     
-    // Assumption-based COGS
     const assumedTotal = total_cogs - (records?.reduce((sum, r) => sum + (r.cogs || 0), 0) || 0) - (batch_allocations?.reduce((sum, b) => sum + (b.allocated || 0), 0) || 0);
     if (assumedTotal > 0.01) {
         html += `<div style="margin-top:15px; padding:10px; background:#fff3cd; border-radius:4px; color:#856404;">
@@ -1873,17 +1923,16 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         const labelsWithIds = labels.map((label, i) => {
             const trimmed = label.trim();
             const norm = trimmed.toLowerCase();
-            // Try to find account ID by name or code
             let accountId = accountNameToId[norm] || accountNameToId[trimmed] || null;
             
-            // Also try to find by exact match
             if (!accountId) {
                 const found = bankAccounts.find(a => a.name === trimmed);
                 if (found) accountId = found.id;
             }
             
-            // Check if it's COGS (no real account)
             const isCOGS = label === 'COGS' || label === 'Cost of Goods Sold';
+            
+            console.log('[BREAKDOWN] Mapping label:', label, '-> accountId:', accountId, 'isCOGS:', isCOGS);
             
             return {
                 label: label,
@@ -1898,6 +1947,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             Math.abs(item.value) > 0.01 || item.isCOGS || item.label === netLabel
         );
         console.log('[BREAKDOWN] 8. Filtered to', filtered.length, 'items');
+        console.log('[BREAKDOWN] Filtered items:', filtered.map(f => ({ label: f.label, accountId: f.accountId, isCOGS: f.isCOGS, value: f.value })));
         
         if (filtered.length === 0) {
             document.getElementById('breakdown-chart-container').innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data for this month.</p>';
@@ -1927,7 +1977,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 return 'rgba(111, 66, 193, 0.85)';
             }
             if (item.isCOGS) {
-                return 'rgba(220, 53, 69, 0.85)';  // RED for COGS
+                return 'rgba(220, 53, 69, 0.85)';
             }
             return item.value >= 0 ? 'rgba(40, 167, 69, 0.75)' : 'rgba(220, 53, 69, 0.75)';
         });
@@ -1936,13 +1986,12 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 return '#6f42c1';
             }
             if (item.isCOGS) {
-                return '#dc3545';  // RED for COGS
+                return '#dc3545';
             }
             return item.value >= 0 ? '#28a745' : '#dc3545';
         });
         
         console.log('[BREAKDOWN] 10. Creating bar chart with', filtered.length, 'bars');
-        console.log('[BREAKDOWN] Labels with IDs:', filtered.map(f => ({ label: f.label, accountId: f.accountId, isCOGS: f.isCOGS })));
         
         const chart = new Chart(ctx, {
             type: 'bar',
@@ -2004,7 +2053,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                     const index = element.index;
                     const item = filtered[index];
                     
-                    console.log('[BREAKDOWN] Bar clicked:', item.label, item.value, 'accountId:', item.accountId, 'isCOGS:', item.isCOGS);
+                    console.log('[BREAKDOWN] Bar clicked:', item.label, 'value:', item.value, 'accountId:', item.accountId, 'isCOGS:', item.isCOGS);
                     
                     if (Math.abs(item.value) < 0.01) {
                         console.log('[BREAKDOWN] Value too small, ignoring');
@@ -2013,8 +2062,8 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                     
                     document.getElementById('monthly-tx-modal')?.classList.remove('active');
                     
-                    // Special case: COGS
                     if (item.isCOGS) {
+                        console.log('[BREAKDOWN] COGS bar clicked - showing COGS calculation');
                         showCOGSCalculation(month);
                         return;
                     }
@@ -2022,6 +2071,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                     const excludeOrders = chartType === 'pl';
                     
                     if (item.accountId) {
+                        console.log('[BREAKDOWN] Using account ID:', item.accountId);
                         showMonthlyTransactions(month, item.accountId, item.label, excludeOrders);
                     } else {
                         // Try one more time to find account ID by name
@@ -2029,8 +2079,10 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                         const norm = trimmed.toLowerCase();
                         const accountId = accountNameToId[norm] || accountNameToId[trimmed];
                         if (accountId) {
+                            console.log('[BREAKDOWN] Found account ID by name:', accountId);
                             showMonthlyTransactions(month, accountId, item.label, excludeOrders);
                         } else {
+                            console.log('[BREAKDOWN] No account ID found - showing all transactions');
                             showMonthlyTransactions(month, null, item.label, excludeOrders);
                         }
                     }
@@ -2334,7 +2386,6 @@ function renderLineChart(canvasId, data, options = {}) {
                     }
                 }
             }
-            // NO onClick for datapoints - x-axis only
         }
     });
     console.log('[CHART] Chart instance created');
@@ -2396,7 +2447,6 @@ function renderLineChart(canvasId, data, options = {}) {
                 
                 document.getElementById('monthly-tx-modal')?.classList.remove('active');
                 
-                // Use the chart data for the breakdown
                 const dataToUse = canvasId === 'pl-chart' ? plChartData : cashFlowChartData;
                 if (dataToUse) {
                     console.log('[CHART-X] Showing breakdown for month:', month);
