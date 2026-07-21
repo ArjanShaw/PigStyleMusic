@@ -107,7 +107,10 @@
         .bank-row-posted:hover td { background-color: #c3e6cb !important; }
         .bank-row-unposted:hover td { background-color: #f5c6cb !important; }
 
-        .monthly-controls { display: none !important; }
+        .monthly-controls { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; }
+        .monthly-controls .form-group { min-width: 150px; }
+        .monthly-controls .form-group input[type="month"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .monthly-controls .form-group label { font-weight: 500; font-size: 13px; color: #333; }
         
         .chart-container-wrapper { background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; position: relative; min-height: 400px; }
         .chart-container-wrapper canvas { max-height: 400px; width: 100% !important; }
@@ -194,15 +197,6 @@
         #breakdown-modal { z-index: 9999; }
         #monthly-tx-modal .modal-box { z-index: 10001; position: relative; }
         #breakdown-modal .modal-box { z-index: 10000; position: relative; }
-
-        /* Range selector styles */
-        .range-selector { margin-top: 15px; padding: 8px 5px 2px 5px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e9ecef; position: relative; }
-        .range-selector .range-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-        .range-selector .range-header span { font-size: 12px; color: #666; }
-        .range-selector .range-header .range-label { font-weight: 600; color: #333; }
-        .range-selector .range-header .range-hint { font-size: 11px; color: #999; }
-        .range-selector input[type="range"] { width: 100%; margin: 0; cursor: pointer; }
-        .range-selector .range-labels { display: flex; justify-content: space-between; font-size: 9px; color: #aaa; margin-top: 1px; }
     </style>
 </head>
 <body>
@@ -418,6 +412,11 @@
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
                 <p class="text-muted">Shows monthly cash inflows (positive) and outflows (negative) by account. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability. <strong>Double-click the chart</strong> to expand it full screen.</p>
+                <div class="monthly-controls">
+                    <div class="form-group"><label>Start Month</label><input type="month" id="cash-flow-start"></div>
+                    <div class="form-group"><label>End Month</label><input type="month" id="cash-flow-end"></div>
+                    <button class="btn btn-primary" onclick="loadCashFlow()"><i class="fas fa-sync-alt"></i> Generate</button>
+                </div>
                 <div id="cash-flow-chart-container" class="chart-container-wrapper">
                     <div class="chart-title">Cash Flow</div>
                     <div class="chart-subtitle">Monthly cash inflows and outflows by account</div>
@@ -431,6 +430,11 @@
             <div id="sub-monthly-pl" class="sub-tab-content">
                 <h4><i class="fas fa-chart-line"></i> Monthly Profit & Loss</h4>
                 <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability.</p>
+                <div class="monthly-controls">
+                    <div class="form-group"><label>Start Month</label><input type="month" id="pl-start"></div>
+                    <div class="form-group"><label>End Month</label><input type="month" id="pl-end"></div>
+                    <button class="btn btn-primary" onclick="loadMonthlyPL()"><i class="fas fa-sync-alt"></i> Generate</button>
+                </div>
                 <div id="pl-chart-container" class="chart-container-wrapper">
                     <div class="chart-title">Monthly Profit &amp; Loss</div>
                     <div class="chart-subtitle">Revenue, expenses, and net income by month</div>
@@ -559,6 +563,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=17"></script>
+    <script src="/static/js/admin-accounting.js?v=18"></script>
 </body>
 </html>
