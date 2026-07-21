@@ -389,7 +389,7 @@ async function loadBulkDestinationAccounts() {
             data.accounts.forEach(acc => {
                 const opt = document.createElement('option');
                 opt.value = acc.id;
-                opt.textContent = acc.code + ' - ' + acc.name';
+                opt.textContent = acc.code + ' - ' + acc.name;
                 select.appendChild(opt);
             });
             select.value = currentVal;
