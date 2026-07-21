@@ -415,24 +415,24 @@
                 </div>
                 <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
             </div>
-
+ 
             <!-- CASH FLOW -->
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
                 <p class="text-muted">Shows monthly cash inflows (positive) and outflows (negative) by account. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability. <strong>Double-click the chart</strong> to expand it full screen.</p>
                 
                 <!-- ONE-ROW CONTROLS -->
-                <div class="controls-row">
-                    <div class="form-group">
-                        <label>Start Month</label>
-                        <input type="month" id="cash-flow-start">
+                <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px; padding:15px; background:#f8f9fa; border-radius:8px;">
+                    <div style="min-width:140px;">
+                        <label style="font-weight:500; font-size:13px; color:#333; display:block; margin-bottom:4px;">Start Month</label>
+                        <input type="month" id="cash-flow-start" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:4px;">
                     </div>
-                    <div class="form-group">
-                        <label>End Month</label>
-                        <input type="month" id="cash-flow-end">
+                    <div style="min-width:140px;">
+                        <label style="font-weight:500; font-size:13px; color:#333; display:block; margin-bottom:4px;">End Month</label>
+                        <input type="month" id="cash-flow-end" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:4px;">
                     </div>
-                    <button class="btn btn-primary" onclick="loadCashFlow()"><i class="fas fa-sync-alt"></i> Generate</button>
-                    <div class="spacer"></div>
+                    <button class="btn btn-primary" onclick="loadCashFlow()" style="padding:8px 20px;"><i class="fas fa-sync-alt"></i> Generate</button>
+                    <div style="flex:1;"></div>
                 </div>
 
                 <div id="cash-flow-chart-container" class="chart-container-wrapper">
@@ -450,17 +450,17 @@
                 <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability.</p>
                 
                 <!-- ONE-ROW CONTROLS -->
-                <div class="controls-row">
-                    <div class="form-group">
-                        <label>Start Month</label>
-                        <input type="month" id="pl-start">
+                <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px; padding:15px; background:#f8f9fa; border-radius:8px;">
+                    <div style="min-width:140px;">
+                        <label style="font-weight:500; font-size:13px; color:#333; display:block; margin-bottom:4px;">Start Month</label>
+                        <input type="month" id="pl-start" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:4px;">
                     </div>
-                    <div class="form-group">
-                        <label>End Month</label>
-                        <input type="month" id="pl-end">
+                    <div style="min-width:140px;">
+                        <label style="font-weight:500; font-size:13px; color:#333; display:block; margin-bottom:4px;">End Month</label>
+                        <input type="month" id="pl-end" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:4px;">
                     </div>
-                    <button class="btn btn-primary" onclick="loadMonthlyPL()"><i class="fas fa-sync-alt"></i> Generate</button>
-                    <div class="spacer"></div>
+                    <button class="btn btn-primary" onclick="loadMonthlyPL()" style="padding:8px 20px;"><i class="fas fa-sync-alt"></i> Generate</button>
+                    <div style="flex:1;"></div>
                 </div>
 
                 <div id="pl-chart-container" class="chart-container-wrapper">
