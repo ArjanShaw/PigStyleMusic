@@ -1715,6 +1715,9 @@ function renderModalTransactions(transactions) {
 // ============================================================
 // SHARED BAR CHART RENDERER
 // ============================================================
+// ============================================================
+// SHARED BAR CHART RENDERER
+// ============================================================
 
 function renderBarCharts(containerId, data, options = {}) {
     console.log('[CHARTS] Rendering bar charts in container:', containerId);
@@ -1779,6 +1782,18 @@ function renderBarCharts(containerId, data, options = {}) {
         dateRangeEl.textContent = `Showing from ${startDisplay} to ${endDisplay}`;
         dateRangeEl.style.display = 'block';
     }
+
+    // Build account name to ID mapping for click handler
+    const accountNameToId = {};
+    bankAccounts.forEach(acc => {
+        const trimmed = acc.name.trim();
+        const norm = trimmed.toLowerCase();
+        accountNameToId[norm] = acc.id;
+        accountNameToId[trimmed] = acc.id;
+        // Also add with code prefix if it exists in the label
+        const label = `${acc.code} - ${acc.name}`;
+        accountNameToId[label.toLowerCase()] = acc.id;
+    });
 
     months.forEach((month, idx) => {
         const monthData = account_breakdown[month] || {};
@@ -1903,13 +1918,54 @@ function renderBarCharts(containerId, data, options = {}) {
                             font: { size: 10 }
                         }
                     }
+                },
+                onClick: function(e, elements) {
+                    console.log('[CHARTS] Bar clicked, elements:', elements.length);
+                    if (elements.length === 0) return;
+                    const element = elements[0];
+                    const index = element.index;
+                    const label = this.data.labels[index];
+                    const amount = this.data.datasets[0].data[index];
+                    if (Math.abs(amount) < 0.01) return;
+
+                    console.log('[CHARTS] Bar clicked:', label, amount);
+                    
+                    // Try to find the account ID
+                    const trimmed = label.trim();
+                    const norm = trimmed.toLowerCase();
+                    let accountId = null;
+                    
+                    // First try direct match on the full label
+                    if (accountNameToId[trimmed] || accountNameToId[norm]) {
+                        accountId = accountNameToId[trimmed] || accountNameToId[norm];
+                    } else {
+                        // Try to extract just the account name (after the code)
+                        const parts = trimmed.split(' - ');
+                        if (parts.length > 1) {
+                            const nameOnly = parts[1].trim().toLowerCase();
+                            accountId = accountNameToId[nameOnly];
+                        }
+                    }
+                    
+                    // For Net Income, show all transactions
+                    if (label === 'Net' || label === 'Net Income') {
+                        showMonthlyTransactions(month, null, 'Net Income', true);
+                        return;
+                    }
+                    
+                    if (accountId) {
+                        showMonthlyTransactions(month, accountId, label, true);
+                    } else {
+                        // If account not found, show all transactions for the month
+                        showMonthlyTransactions(month, null, label, true);
+                    }
                 }
             }
         });
         window._barCharts.push(chart);
     });
     console.log('[CHARTS] Rendering complete');
-}
+} 
 
 function expandBarChart(index, containerId) {
     console.log('[CHARTS] expandBarChart called, index:', index, 'container:', containerId);
@@ -1974,8 +2030,8 @@ function expandBarChart(index, containerId) {
         flex-shrink: 0;
     `;
     header.innerHTML = `
-        <h3 style="margin:0; font-size:24px; color:#333;">${card.dataset.month} - Detail</h3>
-        <button class="btn btn-secondary" style="padding:10px 24px; font-size:16px;">
+        <h3 style="margin:0; font-size:28px; color:#333;">${card.dataset.month} - Detail</h3>
+        <button class="btn btn-secondary" style="padding:12px 28px; font-size:18px;">
             <i class="fas fa-times"></i> Close
         </button>
     `;
@@ -2017,7 +2073,7 @@ function expandBarChart(index, containerId) {
         return;
     }
 
-    // Create new chart with larger font sizes
+    // Create new chart with much larger font sizes
     const ctx = newCanvas.getContext('2d');
     
     const newChart = new Chart(ctx, {
@@ -2046,8 +2102,8 @@ function expandBarChart(index, containerId) {
                             return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
                         }
                     },
-                    titleFont: { size: 16 },
-                    bodyFont: { size: 14 }
+                    titleFont: { size: 20, weight: 'bold' },
+                    bodyFont: { size: 18 }
                 },
                 annotation: {
                     annotations: {
@@ -2063,7 +2119,7 @@ function expandBarChart(index, containerId) {
                                 enabled: true,
                                 position: 'right',
                                 color: '#333',
-                                font: { size: 16, weight: 'bold' }
+                                font: { size: 20, weight: 'bold' }
                             }
                         }
                     }
@@ -2076,15 +2132,21 @@ function expandBarChart(index, containerId) {
                     min: oldChart.options.scales.y.min,
                     ticks: { 
                         callback: (val) => '$' + val,
-                        font: { size: 16, weight: 'bold' }
+                        font: { size: 18, weight: 'bold' }
                     }
                 },
                 x: {
                     ticks: {
                         maxRotation: 45,
                         minRotation: 45,
-                        font: { size: 14, weight: 'bold' }
+                        font: { size: 16, weight: 'bold' }
                     }
+                }
+            },
+            onClick: function(e, elements) {
+                // Pass through to original chart's onClick
+                if (oldChart.options.onClick) {
+                    oldChart.options.onClick.call(this, e, elements);
                 }
             }
         }
