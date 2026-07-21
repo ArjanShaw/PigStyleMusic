@@ -13,16 +13,20 @@ let bankAccounts = [];
 // Chart instances
 let plChartInstance = null;
 let cashFlowChartInstance = null;
+let bsChartInstance = null;
 let expandedChartInstance = null;
 let isExpanded = false;
 
 // Chart data cache for breakdown modal
 let plChartData = null;
 let cashFlowChartData = null;
+let bsChartData = null;
 let plMonths = [];
 let cashFlowMonths = [];
+let bsMonths = [];
 let allPLData = null;
 let allCashFlowData = null;
+let allBSData = null;
 
 // Account name to ID mapping
 let accountNameToId = {};
@@ -115,7 +119,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             else if (sub === 'cash-flow') {
                 console.log('[INIT] Cash Flow tab selected');
-                // Set default month pickers if empty
                 const now = new Date();
                 const endInput = document.getElementById('cash-flow-end');
                 if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
@@ -148,6 +151,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 } else {
                     loadMonthlyPL();
+                }
+            }
+            else if (sub === 'balance-sheet') {
+                console.log('[INIT] Balance Sheet tab selected');
+                const now = new Date();
+                const endInput = document.getElementById('bs-end');
+                if (!endInput.value) endInput.value = now.toISOString().slice(0, 7);
+                const startInput = document.getElementById('bs-start');
+                if (!startInput.value) {
+                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                    startInput.value = startDate.toISOString().slice(0, 7);
+                }
+                if (bankAccounts.length === 0) {
+                    loadBankAccountsForRowDropdowns().then(() => {
+                        loadBalanceSheet();
+                    });
+                } else {
+                    loadBalanceSheet();
                 }
             }
             else if (sub === 'orders') {
@@ -354,7 +375,6 @@ async function loadBankAccountsForRowDropdowns() {
         const data = await res.json();
         if (data.status === 'success') {
             bankAccounts = data.accounts;
-            // Build accountNameToId mapping
             accountNameToId = {};
             bankAccounts.forEach(acc => {
                 const trimmed = acc.name.trim();
@@ -2296,19 +2316,23 @@ function renderLineChart(canvasId, data, options = {}) {
     console.log('[CHART] Y-axis max:', yMax);
 
     const isPL = options.type === 'pl';
-    console.log('[CHART] Chart type:', isPL ? 'P&L' : 'Cash Flow');
+    console.log('[CHART] Chart type:', isPL ? 'P&L' : (options.type === 'balancesheet' ? 'Balance Sheet' : 'Cash Flow'));
 
     if (canvasId === 'pl-chart') {
         plChartData = data;
         plMonths = months;
         allPLData = data;
         console.log('[CHART] Stored plChartData');
-        
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartData = data;
         cashFlowMonths = months;
         allCashFlowData = data;
         console.log('[CHART] Stored cashFlowChartData');
+    } else if (canvasId === 'bs-chart') {
+        bsChartData = data;
+        bsMonths = months;
+        allBSData = data;
+        console.log('[CHART] Stored bsChartData');
     }
 
     console.log('[CHART] Creating Chart.js instance...');
@@ -2392,6 +2416,9 @@ function renderLineChart(canvasId, data, options = {}) {
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartInstance = chart;
         console.log('[CHART] Set cashFlowChartInstance');
+    } else if (canvasId === 'bs-chart') {
+        bsChartInstance = chart;
+        console.log('[CHART] Set bsChartInstance');
     }
 
     // X-axis click handler
@@ -2443,7 +2470,9 @@ function renderLineChart(canvasId, data, options = {}) {
                 
                 document.getElementById('monthly-tx-modal')?.classList.remove('active');
                 
-                const dataToUse = canvasId === 'pl-chart' ? plChartData : cashFlowChartData;
+                const dataToUse = canvasId === 'pl-chart' ? plChartData : 
+                                 canvasId === 'cash-flow-chart' ? cashFlowChartData : 
+                                 bsChartData;
                 if (dataToUse) {
                     console.log('[CHART-X] Showing breakdown for month:', month);
                     showMonthBreakdownModal(month, dataToUse, options.type || 'pl');
@@ -2766,7 +2795,6 @@ async function loadMonthlyPL() {
         console.log('[MONTHLY-PL]   - months:', data.months ? JSON.stringify(data.months) : 'none');
         console.log('[MONTHLY-PL]   - account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
         
-        // Log July data specifically if it exists
         if (data.account_breakdown && data.account_breakdown['2026-07']) {
             console.log('[MONTHLY-PL] ✅ July 2026 data found:');
             console.log('[MONTHLY-PL]   - July accounts:', Object.keys(data.account_breakdown['2026-07']));
@@ -2813,4 +2841,126 @@ async function loadMonthlyPL() {
         document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
     console.log('[MONTHLY-PL] ===== LOAD MONTHLY P&L END =====');
+}
+
+// ============================================================
+// BALANCE SHEET
+// ============================================================
+
+async function loadBalanceSheet() {
+    console.log('[BALANCE-SHEET] ==================================================');
+    console.log('[BALANCE-SHEET] LOAD BALANCE SHEET START');
+    console.log('[BALANCE-SHEET] Timestamp:', new Date().toISOString());
+    
+    const startInput = document.getElementById('bs-start');
+    const endInput = document.getElementById('bs-end');
+    
+    console.log('[BALANCE-SHEET] Start input element:', startInput);
+    console.log('[BALANCE-SHEET] End input element:', endInput);
+    console.log('[BALANCE-SHEET] Start input value:', startInput ? startInput.value : 'NULL');
+    console.log('[BALANCE-SHEET] End input value:', endInput ? endInput.value : 'NULL');
+    
+    const start = startInput ? startInput.value : '';
+    const end = endInput ? endInput.value : '';
+    
+    console.log('[BALANCE-SHEET] Start month:', start);
+    console.log('[BALANCE-SHEET] End month:', end);
+    
+    if (!start || !end) {
+        console.log('[BALANCE-SHEET] ❌ Missing start or end month. Start:', start, 'End:', end);
+        alert('Please select both start and end months.');
+        return;
+    }
+    
+    if (bankAccounts.length === 0) {
+        console.log('[BALANCE-SHEET] Loading bank accounts');
+        await loadBankAccountsForRowDropdowns();
+        console.log('[BALANCE-SHEET] Bank accounts loaded, count:', bankAccounts.length);
+    }
+
+    try {
+        console.log('[BALANCE-SHEET] Converting months to dates...');
+        const startDate = new Date(start + '-01');
+        const endDate = new Date(end + '-01');
+        const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
+        
+        console.log('[BALANCE-SHEET] startDate:', startDate.toISOString());
+        console.log('[BALANCE-SHEET] endDate:', endDate.toISOString());
+        console.log('[BALANCE-SHEET] lastDay:', lastDay.toISOString());
+        
+        const startStr = startDate.toISOString().slice(0, 10);
+        const endStr = lastDay.toISOString().slice(0, 10);
+        
+        console.log('[BALANCE-SHEET] ✅ Calculated start date:', startStr);
+        console.log('[BALANCE-SHEET] ✅ Calculated end date:', endStr);
+        
+        const url = `${AppConfig.baseUrl}/api/accounting/balance-sheet?start=${startStr}&end=${endStr}`;
+        console.log('[BALANCE-SHEET] 🔗 Fetching URL:', url);
+        
+        const res = await fetch(url, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        
+        console.log('[BALANCE-SHEET] 📡 Fetch response status:', res.status);
+        console.log('[BALANCE-SHEET] 📡 Fetch response ok:', res.ok);
+        
+        if (!res.ok) {
+            console.error('[BALANCE-SHEET] ❌ Fetch failed with status:', res.status);
+            throw new Error('Failed to fetch Balance Sheet data');
+        }
+        
+        const data = await res.json();
+        console.log('[BALANCE-SHEET] 📦 Data received:');
+        console.log('[BALANCE-SHEET]   - status:', data.status);
+        console.log('[BALANCE-SHEET]   - months count:', data.months ? data.months.length : 0);
+        console.log('[BALANCE-SHEET]   - months:', data.months ? JSON.stringify(data.months) : 'none');
+        console.log('[BALANCE-SHEET]   - account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
+        
+        if (data.account_breakdown && data.account_breakdown['2026-07']) {
+            console.log('[BALANCE-SHEET] ✅ July 2026 data found:');
+            console.log('[BALANCE-SHEET]   - July accounts:', Object.keys(data.account_breakdown['2026-07']));
+            console.log('[BALANCE-SHEET]   - July values:', JSON.stringify(data.account_breakdown['2026-07'], null, 2));
+        } else {
+            console.log('[BALANCE-SHEET] ❌ July 2026 data NOT FOUND in API response');
+            console.log('[BALANCE-SHEET] Available months:', data.months ? data.months.join(', ') : 'none');
+        }
+        
+        if (data.status === 'success') {
+            console.log('[BALANCE-SHEET] ✅ Data loaded successfully');
+            
+            allBSData = data;
+            bsMonths = data.months || [];
+            console.log('[BALANCE-SHEET] Stored bsMonths:', bsMonths);
+            
+            const dateRangeEl = document.getElementById('bs-date-range');
+            if (dateRangeEl && bsMonths.length > 0) {
+                const formatMonth = (m) => {
+                    const [year, month] = m.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[parseInt(month) - 1]} ${year}`;
+                };
+                const displayText = `Showing ${formatMonth(bsMonths[0])} to ${formatMonth(bsMonths[bsMonths.length - 1])}`;
+                dateRangeEl.textContent = displayText;
+                dateRangeEl.style.display = 'block';
+                console.log('[BALANCE-SHEET] Date range label set to:', displayText);
+            } else {
+                console.log('[BALANCE-SHEET] ⚠️ No months to display in date range label');
+            }
+            
+            console.log('[BALANCE-SHEET] 📊 Calling renderLineChart with data');
+            console.log('[BALANCE-SHEET] Data months count:', data.months ? data.months.length : 0);
+            renderLineChart('bs-chart', data, { type: 'balancesheet' });
+            console.log('[BALANCE-SHEET] renderLineChart called successfully');
+            
+        } else {
+            console.error('[BALANCE-SHEET] ❌ API returned error status:', data.error);
+            document.getElementById('bs-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
+        }
+    } catch (err) {
+        console.error('[BALANCE-SHEET] ❌ CRITICAL ERROR:', err);
+        console.error('[BALANCE-SHEET] Error stack:', err.stack);
+        document.getElementById('bs-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+    }
+    console.log('[BALANCE-SHEET] ===== LOAD BALANCE SHEET END =====');
 }
