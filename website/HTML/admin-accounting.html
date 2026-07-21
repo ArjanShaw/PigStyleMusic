@@ -114,35 +114,14 @@
         .monthly-controls { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; }
         .monthly-controls .form-group { min-width: 150px; }
         .monthly-controls .form-group input[type="month"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        .monthly-chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; margin-top: 20px; }
-        .monthly-chart-grid .monthly-chart-card { background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; min-height: 250px; position: relative; cursor: pointer; transition: box-shadow 0.2s; }
-        .monthly-chart-grid .monthly-chart-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .monthly-chart-grid .monthly-chart-card h4 { margin-top: 0; margin-bottom: 10px; color: #333; font-size: 16px; text-align: center; }
-        .monthly-chart-grid .monthly-chart-card canvas { max-height: 200px; width: 100% !important; }
-        .monthly-loading, .monthly-error { grid-column: 1 / -1; text-align: center; padding: 40px; color: #666; }
-        .monthly-error { color: #dc3545; }
-
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; }
-        .modal-overlay.active { display: flex; }
-        .modal-box { background: white; border-radius: 8px; max-width: 800px; width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-        .modal-header { padding: 15px 20px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; border-radius: 8px 8px 0 0; }
-        .modal-header h3 { margin: 0; font-size: 18px; }
-        .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #666; }
-        .modal-close:hover { color: #333; }
-        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
-        .modal-body table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        .modal-body th { background: #f8f9fa; padding: 8px 10px; text-align: left; border-bottom: 2px solid #ddd; }
-        .modal-body td { padding: 6px 10px; border-bottom: 1px solid #eee; }
-        .modal-body .total-row { font-weight: bold; background: #f0f0f0; }
-        .modal-body .debit { color: #28a745; }
-        .modal-body .credit { color: #dc3545; }
-        .modal-loading { text-align: center; padding: 30px; color: #666; }
-
-        .status-badge.asset { background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
-        .status-badge.liability { background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
-        .status-badge.equity { background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
-        .status-badge.revenue { background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
-        .status-badge.expense { background: #f8d7da; color: #721c24; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        
+        /* Single chart container */
+        .chart-container-wrapper { background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; position: relative; min-height: 400px; }
+        .chart-container-wrapper canvas { max-height: 400px; width: 100% !important; }
+        .chart-container-wrapper .chart-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 15px; text-align: center; }
+        .chart-container-wrapper .chart-subtitle { font-size: 14px; color: #666; text-align: center; margin-bottom: 15px; }
+        .chart-container-wrapper .chart-date-range { font-size: 14px; color: #666; text-align: center; margin-bottom: 10px; }
+        .chart-container-wrapper .chart-click-hint { font-size: 12px; color: #999; text-align: center; margin-top: 10px; font-style: italic; }
 
         /* Expanded chart styles */
         #expanded-chart-container {
@@ -160,19 +139,24 @@
             flex-direction: column;
             overflow: hidden;
         }
-
-        #expanded-chart-container h3 {
+        #expanded-chart-container .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+        #expanded-chart-container .chart-header h3 {
             margin: 0;
-            font-size: 24px;
+            font-size: 28px;
             color: #333;
         }
-
-        #expanded-chart-container .btn-secondary {
-            padding: 10px 24px;
-            font-size: 16px;
+        #expanded-chart-container .chart-body {
+            flex: 1;
+            position: relative;
+            min-height: 0;
         }
-
-        #expanded-chart-canvas {
+        #expanded-chart-container .chart-body canvas {
             width: 100% !important;
             height: 100% !important;
             position: absolute;
@@ -180,40 +164,39 @@
             left: 0;
         }
 
-        .monthly-chart-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-box { background: white; border-radius: 8px; max-width: 900px; width: 95%; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .modal-header { padding: 15px 20px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; border-radius: 8px 8px 0 0; flex-shrink: 0; }
+        .modal-header h3 { margin: 0; font-size: 18px; }
+        .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #666; }
+        .modal-close:hover { color: #333; }
+        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+        .modal-body table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .modal-body th { background: #f8f9fa; padding: 8px 10px; text-align: left; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 2; }
+        .modal-body td { padding: 6px 10px; border-bottom: 1px solid #eee; }
+        .modal-body .total-row { font-weight: bold; background: #f0f0f0; }
+        .modal-body .debit { color: #28a745; }
+        .modal-body .credit { color: #dc3545; }
+        .modal-loading { text-align: center; padding: 30px; color: #666; }
+        .modal-summary { background: #f8f9fa; padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; display: flex; gap: 20px; flex-wrap: wrap; }
+        .modal-summary .summary-item { font-size: 14px; }
+        .modal-summary .summary-item strong { color: #333; }
+        .modal-summary .summary-item .amount-positive { color: #28a745; font-weight: 600; }
+        .modal-summary .summary-item .amount-negative { color: #dc3545; font-weight: 600; }
 
-        .monthly-chart-card {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            min-height: 250px;
-            position: relative;
-            cursor: pointer;
-            transition: box-shadow 0.2s;
-        }
+        .status-badge.asset { background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.liability { background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.equity { background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.revenue { background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.expense { background: #f8d7da; color: #721c24; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
 
-        .monthly-chart-card:hover {
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .monthly-chart-card h4 {
-            margin-top: 0;
-            margin-bottom: 10px;
-            color: #333;
-            font-size: 16px;
-            text-align: center;
-        }
-
-        .monthly-chart-card canvas {
-            max-height: 200px;
-            width: 100% !important;
-        }
+        .chart-legend-toggle { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+        .chart-legend-toggle .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; padding: 2px 8px; border-radius: 4px; border: 1px solid transparent; }
+        .chart-legend-toggle .legend-item:hover { background: #f0f0f0; }
+        .chart-legend-toggle .legend-item .color-box { width: 16px; height: 4px; border-radius: 2px; }
+        .chart-legend-toggle .legend-item.hidden { opacity: 0.4; text-decoration: line-through; }
+        .chart-legend-toggle .legend-item .legend-label { color: #333; }
     </style>
 </head>
 <body>
@@ -241,7 +224,7 @@
                 <button class="sub-tab" data-subtab="accounts"><i class="fas fa-list"></i> Accounts</button>
                 <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
                 <button class="sub-tab" data-subtab="cash-flow"><i class="fas fa-money-bill-wave"></i> Cash Flow</button>
-                <button class="sub-tab" data-subtab="monthly-pl"><i class="fas fa-chart-bar"></i> Monthly P&L</button>
+                <button class="sub-tab" data-subtab="monthly-pl"><i class="fas fa-chart-line"></i> Monthly P&L</button>
                 <button class="sub-tab" data-subtab="orders"><i class="fas fa-shopping-bag"></i> Orders</button>
             </div>
 
@@ -266,7 +249,7 @@
                 </div>
             </div>
 
-            <!-- ACCOUNT TRANSACTIONS - UPDATED (no eye, added unpost) -->
+            <!-- ACCOUNT TRANSACTIONS -->
             <div id="sub-account-transactions" class="sub-tab-content">
                 <h4><i class="fas fa-receipt"></i> Account Transactions</h4>
                 <p class="text-muted">View all journal entries filtered by account. Select an account to see its transaction history. Use the <strong>Unpost</strong> button to remove a transaction from this account and restore it to unprocessed state.</p>
@@ -352,7 +335,7 @@
                 <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
             </div>
 
-            <!-- BANK TAB - WITH BULK DESTINATION -->
+            <!-- BANK TAB -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4><i class="fas fa-university"></i> Bank Transactions</h4>
                 <p class="text-muted">Select a <strong>Source</strong> from the filter dropdown. Use the <strong>Bulk Destination</strong> to set the same destination for all filtered transactions, then click <strong>Apply</strong> to post them.</p>
@@ -379,7 +362,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- Filter bar with Bulk Destination -->
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
                     <div class="form-group" style="flex:2;">
                         <label>Filter by description</label>
@@ -396,14 +378,12 @@
                         <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply</button>
                     </div>
                 </div>
-
                 <div style="background: #e3f2fd; border-left: 4px solid #007bff; padding: 10px 15px; margin-bottom: 15px; border-radius: 4px; color: #004085;">
                     <i class="fas fa-info-circle"></i> 
                     <strong>How to record deposits from payment processors (Square / PayPal):</strong><br>
                     For a deposit that appears in your bank account from Square or PayPal, set <strong>Source</strong> to the processor asset account (e.g., <code>Square Asset</code> or <code>PayPal</code>) and <strong>Destination</strong> to your bank account (e.g., <code>FNBO Bank</code>). 
                     This creates a transfer that reduces the processor asset and increases your bank balance – it will <strong>not</strong> duplicate revenue.
                 </div>
-
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
                         <thead>
@@ -461,30 +441,36 @@
             <!-- CASH FLOW -->
             <div id="sub-cash-flow" class="sub-tab-content">
                 <h4><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
-                <p class="text-muted">Positive bars = cash inflows (revenue), negative bars = cash outflows (expenses). Click any bar to see the underlying transactions. The purple bar is the net cash flow for the month. <strong>Click on the chart card to expand it full screen. Double-click the chart to expand it.</strong></p>
+                <p class="text-muted">Shows monthly cash inflows (positive) and outflows (negative) by account. <strong>Click any data point</strong> to see the underlying transactions. <strong>Double-click the chart</strong> to expand it full screen.</p>
                 <div class="monthly-controls">
                     <div class="form-group"><label>Start Month</label><input type="month" id="cash-flow-start"></div>
                     <div class="form-group"><label>End Month</label><input type="month" id="cash-flow-end"></div>
                     <button class="btn btn-primary" onclick="loadCashFlow()"><i class="fas fa-sync-alt"></i> Generate</button>
                 </div>
                 <div id="cash-flow-date-range" style="margin: 10px 0 20px 0; font-size: 16px; font-weight: 600; color: #333; display: none;"></div>
-                <div id="cash-flow-chart-grid" class="monthly-chart-grid">
-                    <p class="monthly-loading">Select a date range and click Generate.</p>
+                <div id="cash-flow-chart-container" class="chart-container-wrapper">
+                    <div class="chart-title">Cash Flow</div>
+                    <div class="chart-subtitle">Monthly cash inflows and outflows by account</div>
+                    <div class="chart-click-hint">Click any data point to see transactions &bull; Double-click to expand</div>
+                    <canvas id="cash-flow-chart"></canvas>
                 </div>
             </div>
 
             <!-- MONTHLY P&L -->
             <div id="sub-monthly-pl" class="sub-tab-content">
-                <h4><i class="fas fa-chart-bar"></i> Monthly Profit & Loss</h4>
-                <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. Green bars = revenue, red bars = expenses, purple bar = Net Income. <strong>Click on the chart card to expand it full screen. Double-click the chart to expand it.</strong></p>
+                <h4><i class="fas fa-chart-line"></i> Monthly Profit & Loss</h4>
+                <p class="text-muted">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click any data point</strong> to see the underlying transactions. <strong>Double-click the chart</strong> to expand it full screen.</p>
                 <div class="monthly-controls">
                     <div class="form-group"><label>Start Month</label><input type="month" id="pl-start"></div>
                     <div class="form-group"><label>End Month</label><input type="month" id="pl-end"></div>
                     <button class="btn btn-primary" onclick="loadMonthlyPL()"><i class="fas fa-sync-alt"></i> Generate</button>
                 </div>
                 <div id="pl-date-range" style="margin: 10px 0 20px 0; font-size: 16px; font-weight: 600; color: #333; display: none;"></div>
-                <div id="pl-chart-grid" class="monthly-chart-grid">
-                    <p class="monthly-loading">Select a date range and click Generate.</p>
+                <div id="pl-chart-container" class="chart-container-wrapper">
+                    <div class="chart-title">Monthly Profit &amp; Loss</div>
+                    <div class="chart-subtitle">Revenue, expenses, and net income by month</div>
+                    <div class="chart-click-hint">Click any data point to see transactions &bull; Double-click to expand</div>
+                    <canvas id="pl-chart"></canvas>
                 </div>
             </div>
 
@@ -591,6 +577,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=5"></script>
+    <script src="/static/js/admin-accounting.js?v=6"></script>
 </body>
 </html>

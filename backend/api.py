@@ -8808,68 +8808,6 @@ def monthly_performance():
     })
 
 
-@app.route('/api/accounting/monthly-account-transactions', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def monthly_account_transactions():
-    """Return journal entries for a given month.
-       If account_id is provided, filter by that account.
-       If exclude_orders=true, skip entries with source_type = 'order'.
-    """
-    month = request.args.get('month')
-    account_id = request.args.get('account_id', type=int)  # can be None
-    exclude_orders = request.args.get('exclude_orders', 'false').lower() == 'true'
-
-    if not month:
-        return jsonify({'status': 'error', 'error': 'month required'}), 400
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    query = '''
-        SELECT 
-            je.transaction_date,
-            je.description,
-            jl.debit_amount / 100.0 as debit_amount,
-            jl.credit_amount / 100.0 as credit_amount,
-            a.name as account_name,
-            je.source_type
-        FROM journal_lines jl
-        JOIN journal_entries je ON je.id = jl.journal_entry_id
-        JOIN accounts a ON a.id = jl.account_id
-        WHERE strftime('%Y-%m', je.transaction_date) = ?
-    '''
-    params = [month]
-
-    if account_id is not None:
-        query += ' AND jl.account_id = ?'
-        params.append(account_id)
-
-    if exclude_orders:
-        query += ' AND je.source_type != ?'
-        params.append('order')
-
-    query += ' ORDER BY je.transaction_date DESC'
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-
-    transactions = []
-    for row in rows:
-        transactions.append({
-            'transaction_date': row['transaction_date'],
-            'description': row['description'],
-            'debit_amount': row['debit_amount'],
-            'credit_amount': row['credit_amount'],
-            'account_name': row['account_name'],
-            'source_type': row['source_type']
-        })
-
-    return jsonify({
-        'status': 'success',
-        'transactions': transactions
-    })
-
 
 @app.route('/api/accounting/cash-flow', methods=['GET'])
 @login_required
@@ -8951,6 +8889,226 @@ def cash_flow():
         'net': net_arr
     })
 
+# ==================== ACCOUNTING: MONTHLY ACCOUNT TRANSACTIONS (FIXED) ====================
+
+@app.route('/api/accounting/monthly-account-transactions', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def monthly_account_transactions():
+    """Return journal entries for a given month.
+       If account_id is provided, filter by that account.
+       If exclude_orders=true, skip entries with source_type = 'order'.
+    """
+    month = request.args.get('month')
+    account_id = request.args.get('account_id', type=int)  # can be None
+    exclude_orders = request.args.get('exclude_orders', 'false').lower() == 'true'
+
+    if not month:
+        return jsonify({'status': 'error', 'error': 'month required'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = '''
+        SELECT 
+            je.transaction_date,
+            je.description,
+            jl.debit_amount / 100.0 as debit_amount,
+            jl.credit_amount / 100.0 as credit_amount,
+            a.name as account_name,
+            je.source_type,
+            je.source_id
+        FROM journal_lines jl
+        JOIN journal_entries je ON je.id = jl.journal_entry_id
+        JOIN accounts a ON a.id = jl.account_id
+        WHERE strftime('%Y-%m', je.transaction_date) = ?
+    '''
+    params = [month]
+
+    if account_id is not None:
+        query += ' AND jl.account_id = ?'
+        params.append(account_id)
+
+    if exclude_orders:
+        query += ' AND je.source_type != ?'
+        params.append('order')
+
+    query += ' ORDER BY je.transaction_date DESC, je.id DESC'
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    transactions = []
+    for row in rows:
+        # Calculate net amount (debit - credit)
+        debit = row['debit_amount'] or 0
+        credit = row['credit_amount'] or 0
+        net = debit - credit
+        
+        transactions.append({
+            'transaction_date': row['transaction_date'],
+            'description': row['description'],
+            'debit_amount': debit,
+            'credit_amount': credit,
+            'account_name': row['account_name'],
+            'source_type': row['source_type'],
+            'source_id': row['source_id'],
+            'net_amount': net
+        })
+
+    return jsonify({
+        'status': 'success',
+        'transactions': transactions
+    })
+
+
+# ==================== ACCOUNTING: MONTHLY P&L (KEPT AS IS) ====================
+
+@app.route('/api/accounting/monthly-pl', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def monthly_pl():
+    """Monthly Profit & Loss - calculates COGS dynamically from batches or assumption rates."""
+    start = request.args.get('start')
+    end = request.args.get('end')
+    if not start or not end:
+        return jsonify({'status': 'error', 'error': 'start and end months required'}), 400
+
+    from datetime import datetime, timedelta
+    start_date = datetime.strptime(start + '-01', '%Y-%m-%d')
+    end_date = datetime.strptime(end + '-01', '%Y-%m-%d')
+    if end_date.month == 12:
+        end_date = end_date.replace(year=end_date.year+1, month=1, day=1) - timedelta(days=1)
+    else:
+        end_date = end_date.replace(month=end_date.month+1, day=1) - timedelta(days=1)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get revenue from journal entries
+    cursor.execute('''
+        SELECT
+            strftime('%Y-%m', je.transaction_date) as month,
+            a.name,
+            COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as amount
+        FROM journal_lines jl
+        JOIN journal_entries je ON jl.journal_entry_id = je.id
+        JOIN accounts a ON jl.account_id = a.id
+        WHERE a.code IN ('4000', '4001', '4003', '4010')
+          AND je.transaction_date >= ? AND je.transaction_date <= ?
+          AND je.source_type != 'order'
+        GROUP BY month, a.id
+        ORDER BY month, a.code
+    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    revenue_rows = cursor.fetchall()
+
+    # Get COGS from records
+    cursor.execute('''
+        SELECT
+            strftime('%Y-%m', r.date_sold) as month,
+            COALESCE(SUM(
+                CASE 
+                    WHEN r.batch_id IS NOT NULL AND r.batch_id IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN
+                        r.store_price / (
+                            SELECT COALESCE(SUM(store_price), 1)
+                            FROM records r2
+                            WHERE r2.batch_id = r.batch_id
+                        ) * (
+                            SELECT COALESCE(jl.debit_amount / 100.0, 0)
+                            FROM journal_lines jl
+                            WHERE jl.journal_entry_id = r.batch_id
+                              AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
+                        )
+                    ELSE
+                        r.store_price * 
+                        CASE 
+                            WHEN r.condition_sleeve_id = 1 AND r.condition_disc_id = 1 THEN 0.55
+                            ELSE 0.30
+                        END
+                END
+            ), 0) as cogs,
+            COUNT(*) as records_sold,
+            SUM(CASE WHEN r.batch_id IS NOT NULL AND r.batch_id IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN 1 ELSE 0 END) as batch_linked,
+            SUM(CASE WHEN r.batch_id IS NULL OR r.batch_id NOT IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN 1 ELSE 0 END) as assumed_cogs
+        FROM records r
+        WHERE r.status_id = 3
+          AND r.date_sold >= ? AND r.date_sold <= ?
+        GROUP BY strftime('%Y-%m', r.date_sold)
+        ORDER BY month
+    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    cogs_rows = cursor.fetchall()
+    cogs_by_month = {row['month']: row['cogs'] for row in cogs_rows}
+
+    # Get other expenses
+    cursor.execute('''
+        SELECT
+            strftime('%Y-%m', je.transaction_date) as month,
+            a.name,
+            COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as amount
+        FROM journal_lines jl
+        JOIN journal_entries je ON jl.journal_entry_id = je.id
+        JOIN accounts a ON jl.account_id = a.id
+        WHERE a.code IN ('5010', '5020', '5040', '6010', '6020', '6080', '6090', '6100')
+          AND je.transaction_date >= ? AND je.transaction_date <= ?
+          AND je.source_type != 'order'
+        GROUP BY month, a.id
+        ORDER BY month, a.code
+    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    expense_rows = cursor.fetchall()
+
+    conn.close()
+
+    # Build month list
+    months = []
+    current = datetime.strptime(start + '-01', '%Y-%m-%d')
+    while current <= end_date:
+        months.append(current.strftime('%Y-%m'))
+        if current.month == 12:
+            current = current.replace(year=current.year+1, month=1, day=1)
+        else:
+            current = current.replace(month=current.month+1, day=1)
+
+    # Build data structure
+    account_breakdown = {}
+
+    # Add revenue
+    for row in revenue_rows:
+        month = row['month']
+        if month not in account_breakdown:
+            account_breakdown[month] = {}
+        account_breakdown[month][row['name']] = row['amount']
+
+    # Add COGS
+    for month in months:
+        if month not in account_breakdown:
+            account_breakdown[month] = {}
+        cogs = cogs_by_month.get(month, 0)
+        if cogs > 0:
+            account_breakdown[month]['COGS'] = -cogs
+
+    # Add other expenses
+    for row in expense_rows:
+        month = row['month']
+        if month not in account_breakdown:
+            account_breakdown[month] = {}
+        account_breakdown[month][row['name']] = -row['amount']
+
+    # Add Net Income for each month
+    for month in months:
+        if month not in account_breakdown:
+            account_breakdown[month] = {}
+        total = sum(account_breakdown[month].values())
+        if total != 0:
+            account_breakdown[month]['Net Income'] = total
+
+    return jsonify({
+        'status': 'success',
+        'months': months,
+        'account_breakdown': account_breakdown
+    })
+
+
+# ==================== ACCOUNTING: CASH FLOW DETAIL (KEPT AS IS) ====================
 
 @app.route('/api/accounting/cash-flow-detail', methods=['GET'])
 @login_required
@@ -8975,8 +9133,6 @@ def cash_flow_detail():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Include Inventory (1050) as a cash flow item
-    # For asset accounts, debit = cash out (negative), credit = cash in (positive)
     cursor.execute('''
         SELECT
             strftime('%Y-%m', je.transaction_date) as month,
@@ -8987,13 +9143,9 @@ def cash_flow_detail():
         JOIN journal_entries je ON je.id = jl.journal_entry_id
         JOIN accounts a ON a.id = jl.account_id
         WHERE a.code IN (
-            -- Revenue accounts (cash inflows)
             '4000', '4001', '4003', '4010',
-            -- Inventory (cash outflow when purchased)
             '1050',
-            -- Cash accounts (show net cash position)
             '1015', '1025',
-            -- Expense accounts (cash outflows)
             '5000', '5010', '5020', '5040', '6010', '6020', '6080', '6090', '6100'
         )
         AND je.transaction_date >= ? AND je.transaction_date <= ?
@@ -9019,19 +9171,24 @@ def cash_flow_detail():
     for row in rows:
         month = row['month']
         if month in data:
-            # For asset accounts (Inventory, Cash), debit = cash out (negative)
-            # So we invert the sign to show outflows as negative
             if row['type'] == 'asset':
                 data[month][row['name']] = -row['net_change']
             else:
                 data[month][row['name']] = row['net_change']
+
+    # Add Net Cash for each month
+    for month in months:
+        if month not in data:
+            data[month] = {}
+        total = sum(data[month].values())
+        if total != 0:
+            data[month]['Net Cash'] = total
 
     return jsonify({
         'status': 'success',
         'months': months,
         'account_breakdown': data
     })
-
 
 @app.route('/api/accounting/bank/sync', methods=['POST'])
 @login_required
@@ -9947,153 +10104,6 @@ def accounting_delete_account(account_id):
     except Exception as e:
         app.logger.error(f"Error deleting account: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/api/accounting/monthly-pl', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def monthly_pl():
-    """Monthly Profit & Loss - calculates COGS dynamically from batches or assumption rates."""
-    start = request.args.get('start')
-    end = request.args.get('end')
-    if not start or not end:
-        return jsonify({'status': 'error', 'error': 'start and end months required'}), 400
-
-    from datetime import datetime, timedelta
-    start_date = datetime.strptime(start + '-01', '%Y-%m-%d')
-    end_date = datetime.strptime(end + '-01', '%Y-%m-%d')
-    if end_date.month == 12:
-        end_date = end_date.replace(year=end_date.year+1, month=1, day=1) - timedelta(days=1)
-    else:
-        end_date = end_date.replace(month=end_date.month+1, day=1) - timedelta(days=1)
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # Get revenue from journal entries
-    cursor.execute('''
-        SELECT
-            strftime('%Y-%m', je.transaction_date) as month,
-            a.name,
-            COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as amount
-        FROM journal_lines jl
-        JOIN journal_entries je ON jl.journal_entry_id = je.id
-        JOIN accounts a ON jl.account_id = a.id
-        WHERE a.code IN ('4000', '4001', '4003', '4010')
-          AND je.transaction_date >= ? AND je.transaction_date <= ?
-          AND je.source_type != 'order'
-        GROUP BY month, a.id
-        ORDER BY month, a.code
-    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
-    revenue_rows = cursor.fetchall()
-
-    # Get COGS from records
-    # For records with batch_id: calculate from batch
-    # For records without batch_id: use assumption rate based on condition
-    cursor.execute('''
-        SELECT
-            strftime('%Y-%m', r.date_sold) as month,
-            COALESCE(SUM(
-                CASE 
-                    -- If batch_id exists, use batch allocation
-                    WHEN r.batch_id IS NOT NULL AND r.batch_id IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN
-                        r.store_price / (
-                            SELECT COALESCE(SUM(store_price), 1)
-                            FROM records r2
-                            WHERE r2.batch_id = r.batch_id
-                        ) * (
-                            SELECT COALESCE(jl.debit_amount / 100.0, 0)
-                            FROM journal_lines jl
-                            WHERE jl.journal_entry_id = r.batch_id
-                              AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
-                        )
-                    -- If no batch_id, use assumption rate based on condition
-                    ELSE
-                        r.store_price * 
-                        CASE 
-                            WHEN r.condition_sleeve_id = 1 AND r.condition_disc_id = 1 THEN 0.55
-                            ELSE 0.30
-                        END
-                END
-            ), 0) as cogs,
-            COUNT(*) as records_sold,
-            SUM(CASE WHEN r.batch_id IS NOT NULL AND r.batch_id IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN 1 ELSE 0 END) as batch_linked,
-            SUM(CASE WHEN r.batch_id IS NULL OR r.batch_id NOT IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN 1 ELSE 0 END) as assumed_cogs
-        FROM records r
-        WHERE r.status_id = 3  -- Sold
-          AND r.date_sold >= ? AND r.date_sold <= ?
-        GROUP BY strftime('%Y-%m', r.date_sold)
-        ORDER BY month
-    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
-    cogs_rows = cursor.fetchall()
-    cogs_by_month = {row['month']: row['cogs'] for row in cogs_rows}
-
-    # Get other expenses
-    cursor.execute('''
-        SELECT
-            strftime('%Y-%m', je.transaction_date) as month,
-            a.name,
-            COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as amount
-        FROM journal_lines jl
-        JOIN journal_entries je ON jl.journal_entry_id = je.id
-        JOIN accounts a ON jl.account_id = a.id
-        WHERE a.code IN ('5010', '5020', '5040', '6010', '6020', '6080', '6090', '6100')
-          AND je.transaction_date >= ? AND je.transaction_date <= ?
-          AND je.source_type != 'order'
-        GROUP BY month, a.id
-        ORDER BY month, a.code
-    ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
-    expense_rows = cursor.fetchall()
-
-    conn.close()
-
-    # Build month list
-    months = []
-    current = datetime.strptime(start + '-01', '%Y-%m-%d')
-    while current <= end_date:
-        months.append(current.strftime('%Y-%m'))
-        if current.month == 12:
-            current = current.replace(year=current.year+1, month=1, day=1)
-        else:
-            current = current.replace(month=current.month+1, day=1)
-
-    # Build data structure
-    account_breakdown = {}
-
-    # Add revenue
-    for row in revenue_rows:
-        month = row['month']
-        if month not in account_breakdown:
-            account_breakdown[month] = {}
-        account_breakdown[month][row['name']] = row['amount']
-
-    # Add COGS
-    for month in months:
-        if month not in account_breakdown:
-            account_breakdown[month] = {}
-        cogs = cogs_by_month.get(month, 0)
-        if cogs > 0:
-            account_breakdown[month]['COGS'] = -cogs
-
-    # Add other expenses
-    for row in expense_rows:
-        month = row['month']
-        if month not in account_breakdown:
-            account_breakdown[month] = {}
-        account_breakdown[month][row['name']] = -row['amount']
-
-    # Add Net Income for each month
-    for month in months:
-        if month not in account_breakdown:
-            account_breakdown[month] = {}
-        total = sum(account_breakdown[month].values())
-        if total != 0:
-            account_breakdown[month]['Net Income'] = total
-
-    return jsonify({
-        'status': 'success',
-        'months': months,
-        'account_breakdown': account_breakdown
-    })
 
 
 
