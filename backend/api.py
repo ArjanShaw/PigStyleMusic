@@ -8911,6 +8911,7 @@ def monthly_account_transactions():
 
     query = '''
         SELECT 
+            je.id as journal_entry_id,
             je.transaction_date,
             je.description,
             jl.debit_amount / 100.0 as debit_amount,
@@ -8940,12 +8941,12 @@ def monthly_account_transactions():
 
     transactions = []
     for row in rows:
-        # Calculate net amount (debit - credit)
         debit = row['debit_amount'] or 0
         credit = row['credit_amount'] or 0
         net = debit - credit
         
         transactions.append({
+            'journal_entry_id': row['journal_entry_id'],
             'transaction_date': row['transaction_date'],
             'description': row['description'],
             'debit_amount': debit,
@@ -10107,14 +10108,13 @@ def accounting_delete_account(account_id):
 
 
 # ==================== ACCOUNTING: COGS CALCULATION ====================
-
 @app.route('/api/accounting/cogs-calculation', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def cogs_calculation():
     """
     Returns the detailed COGS calculation for a given month.
-    Shows records sold with their COGS allocation and batch allocations.
+    Calculates COGS dynamically from records sold, using batch allocation or assumption rates.
     """
     month = request.args.get('month')
     if not month:
@@ -10122,7 +10122,6 @@ def cogs_calculation():
 
     try:
         from datetime import datetime, timedelta
-        # Parse month
         year, month_num = month.split('-')
         start_date = datetime(int(year), int(month_num), 1)
         if int(month_num) == 12:
@@ -10136,17 +10135,19 @@ def cogs_calculation():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get COGS assumption rates
-        new_rate, used_rate = get_cogs_rates()
+        # Get COGS assumption rates from app_config
+        try:
+            new_rate, used_rate = get_cogs_rates()
+        except ValueError as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 400
         
-        # Get records sold in this month with their COGS
+        # Get records sold in this month (NO r.cogs column)
         cursor.execute('''
             SELECT 
                 r.id,
                 r.artist,
                 r.title,
                 r.store_price as sale_price,
-                r.cogs,
                 r.batch_id,
                 r.condition_sleeve_id,
                 r.condition_disc_id,
@@ -10165,33 +10166,31 @@ def cogs_calculation():
         for rec in records:
             rec_dict = dict(rec)
             
-            # Calculate COGS if not already set
-            if rec_dict['cogs'] is None:
+            # Calculate COGS dynamically
+            if rec_dict['batch_id']:
+                batch_ids.add(rec_dict['batch_id'])
+                # We'll calculate batch allocation later
+                cogs_value = None  # Placeholder
+            else:
                 # Use assumption rates
                 if rec_dict['condition_sleeve_id'] == 1 and rec_dict['condition_disc_id'] == 1:
                     cogs_value = rec_dict['sale_price'] * new_rate
                 else:
                     cogs_value = rec_dict['sale_price'] * used_rate
-                rec_dict['cogs'] = cogs_value
-            else:
-                cogs_value = rec_dict['cogs']
             
-            rec_dict['cogs'] = float(cogs_value)
-            total_cogs += cogs_value
-            
-            if rec_dict['batch_id']:
-                batch_ids.add(rec_dict['batch_id'])
+            rec_dict['cogs'] = cogs_value
             
             records_list.append({
                 'id': rec_dict['id'],
                 'artist': rec_dict['artist'] or '',
                 'title': rec_dict['title'] or '',
                 'sale_price': float(rec_dict['sale_price'] or 0),
-                'cogs': float(rec_dict['cogs']),
+                'cogs': float(rec_dict['cogs']) if rec_dict['cogs'] is not None else None,
+                'batch_id': rec_dict['batch_id'],
                 'date_sold': rec_dict['date_sold']
             })
         
-        # Get batch allocations
+        # Get batch allocations for records with batch_id
         batch_allocations = []
         for batch_id in batch_ids:
             # Get batch total cost (from journal entry)
@@ -10219,36 +10218,53 @@ def cogs_calculation():
                     
                     # Get records from this batch that were sold in this month
                     cursor.execute('''
+                        SELECT r.id, r.store_price
+                        FROM records r
+                        WHERE r.batch_id = ? AND r.status_id = 3 
+                          AND r.date_sold >= ? AND r.date_sold <= ?
+                    ''', (batch_id, start_str, end_str))
+                    sold_records = cursor.fetchall()
+                    
+                    # Calculate allocated COGS for each sold record in this batch
+                    for sold_rec in sold_records:
+                        sold_price = float(sold_rec['store_price'])
+                        allocated_cogs = (sold_price / total_store_price) * total_cost
+                        
+                        # Update the record in records_list with the calculated COGS
+                        for rec in records_list:
+                            if rec['id'] == sold_rec['id']:
+                                rec['cogs'] = allocated_cogs
+                                break
+                    
+                    # Get total sold store price for this batch
+                    cursor.execute('''
                         SELECT SUM(store_price) as sold_store_price
                         FROM records
                         WHERE batch_id = ? AND status_id = 3 
                           AND date_sold >= ? AND date_sold <= ?
                     ''', (batch_id, start_str, end_str))
                     sold_row = cursor.fetchone()
+                    sold_store_price = float(sold_row['sold_store_price']) if sold_row and sold_row['sold_store_price'] else 0
                     
-                    if sold_row and sold_row['sold_store_price']:
-                        sold_store_price = float(sold_row['sold_store_price'])
-                        allocated_cogs = (sold_store_price / total_store_price) * total_cost
-                        
-                        batch_allocations.append({
-                            'batch_id': batch_id,
-                            'total_cost': total_cost,
-                            'sold_store_price': sold_store_price,
-                            'total_store_price': total_store_price,
-                            'allocated': allocated_cogs
-                        })
+                    allocated_total = (sold_store_price / total_store_price) * total_cost if total_store_price > 0 else 0
+                    
+                    batch_allocations.append({
+                        'batch_id': batch_id,
+                        'total_cost': total_cost,
+                        'sold_store_price': sold_store_price,
+                        'total_store_price': total_store_price,
+                        'allocated': allocated_total
+                    })
+        
+        # Recalculate total COGS from records_list
+        total_cogs = sum(r['cogs'] for r in records_list if r['cogs'] is not None)
         
         conn.close()
-        
-        # Calculate total from records and batches to verify
-        records_total = sum(r['cogs'] for r in records_list)
-        batch_total = sum(b['allocated'] for b in batch_allocations)
-        calculated_total = records_total + batch_total
         
         return jsonify({
             'status': 'success',
             'month': month,
-            'total_cogs': calculated_total,
+            'total_cogs': total_cogs,
             'records': records_list,
             'batch_allocations': batch_allocations
         })
@@ -10257,6 +10273,8 @@ def cogs_calculation():
         app.logger.error(f"COGS calculation error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+        
 
 
 if __name__ == '__main__': 
