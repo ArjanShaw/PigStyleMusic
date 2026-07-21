@@ -29,9 +29,6 @@ let currentBreakdownMonth = '';
 let currentBreakdownMonths = [];
 let currentBreakdownMonthIndex = -1;
 
-// COGS accounts to exclude from regular transaction view
-const COGS_ACCOUNT_NAMES = ['COGS', 'Cost of Goods Sold'];
-
 // ============================================================
 // TOAST NOTIFICATION
 // ============================================================
@@ -1400,7 +1397,6 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
         
-        // If COGS, add special indicator
         const displayName = isCOGS ? `COGS (Calculated) - ${dateRange}` : `${accountName} - ${dateRange}`;
         title.textContent = displayName;
         console.log('[MODAL] 5. Title set to:', title.textContent);
@@ -1410,9 +1406,8 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         
         modal.classList.add('active');
         console.log('[MODAL] 7. Active class added, modal should be visible');
-        console.log('[MODAL] 8. Modal classes:', modal.className);
         
-        // Build URL - for COGS, we need a different endpoint
+        // Build URL
         let url;
         if (isCOGS) {
             url = `${AppConfig.baseUrl}/api/accounting/cogs-transactions?month=${month}`;
@@ -1549,19 +1544,16 @@ async function unpostTransaction(entryId) {
             const modalBody = document.getElementById('modal-body');
             if (modalBody) {
                 modalBody.innerHTML = '<div class="modal-loading">Reloading...</div>';
-                // Re-fetch the current view - we need to know what month/account we're on
                 const title = document.getElementById('modal-title');
                 if (title) {
                     const titleParts = title.textContent.split(' - ');
                     if (titleParts.length === 2) {
                         const accountName = titleParts[0];
                         const dateRange = titleParts[1];
-                        // Try to extract month from dateRange
                         const match = dateRange.match(/(\d{2})\/(\d{2})\/(\d{2})/);
                         if (match) {
                             const month = `20${match[3]}-${match[1]}`;
                             const isCOGS = accountName.includes('COGS');
-                            // We need to re-fetch with the same account
                             const accountId = accountNameToId[accountName.toLowerCase()] || null;
                             showMonthlyTransactions(month, accountId, accountName, true, isCOGS);
                         }
@@ -1659,7 +1651,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         document.getElementById('breakdown-prev-month')?.addEventListener('click', function() {
             if (currentBreakdownMonthIndex > 0) {
                 const newMonth = currentBreakdownMonths[currentBreakdownMonthIndex - 1];
-                // Close the transactions modal if open
                 document.getElementById('monthly-tx-modal')?.classList.remove('active');
                 showMonthBreakdownModal(newMonth, chartData, chartType);
             }
@@ -1677,11 +1668,10 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         const monthData = chartData.account_breakdown[month] || {};
         console.log('[BREAKDOWN] 6. Month data:', monthData);
         
-        // Separate Net Income from other accounts
+        // Separate Net Income and COGS
         const netLabel = Object.keys(monthData).find(name => 
             name === 'Net' || name === 'Net Income' || name === 'Net Cash'
         );
-        // Separate COGS
         const cogsLabel = Object.keys(monthData).find(name => 
             name === 'COGS' || name === 'Cost of Goods Sold'
         );
@@ -1723,7 +1713,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             window._breakdownChart = null;
         }
         
-        // Build colors - green for positive, red for negative, purple for Net, orange for COGS
+        // Build colors
         const barColors = filtered.map(item => {
             if (item.label === netLabel) {
                 return 'rgba(111, 66, 193, 0.85)';
@@ -1744,11 +1734,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         });
         
         console.log('[BREAKDOWN] 10. Creating bar chart with', filtered.length, 'bars');
-        
-        // Store data for bar click handler
-        const chartDataRef = chartData;
-        const chartTypeRef = chartType;
-        const currentMonth = month;
         
         const chart = new Chart(ctx, {
             type: 'bar',
@@ -1818,30 +1803,24 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                         return;
                     }
                     
-                    // Close any open modals first
                     document.getElementById('monthly-tx-modal')?.classList.remove('active');
                     
-                    // Check if this is COGS - special handling
                     if (label === 'COGS' || label === 'Cost of Goods Sold') {
-                        // Show COGS transactions with special flag
-                        showMonthlyTransactions(currentMonth, null, label, true, true);
+                        showMonthlyTransactions(month, null, label, true, true);
                         return;
                     }
                     
-                    // Get account ID
                     const trimmed = label.trim();
                     const norm = trimmed.toLowerCase();
                     let accountId = accountNameToId[norm] || accountNameToId[trimmed];
                     console.log('[BREAKDOWN] Account ID:', accountId);
                     
-                    // Determine if we should exclude orders (for P&L)
-                    const excludeOrders = chartTypeRef === 'pl';
+                    const excludeOrders = chartType === 'pl';
                     
-                    // Show transactions for this account and month
                     if (accountId) {
-                        showMonthlyTransactions(currentMonth, accountId, label, excludeOrders, false);
+                        showMonthlyTransactions(month, accountId, label, excludeOrders, false);
                     } else {
-                        showMonthlyTransactions(currentMonth, null, label, excludeOrders, false);
+                        showMonthlyTransactions(month, null, label, excludeOrders, false);
                     }
                 }
             }
@@ -1915,14 +1894,11 @@ function renderLineChart(canvasId, data, options = {}) {
     const netLabel = accountNames.find(name => name === 'Net' || name === 'Net Income' || name === 'Net Cash');
     console.log('[CHART] Net label:', netLabel);
     
-    // Separate net from regular accounts
     const regularAccounts = accountNames.filter(name => name !== netLabel);
     
-    // Revenue/expense keywords for styling
     const revenueKeywords = ['revenue', 'sales', 'income', 'shipping', 'fees', 'gift'];
     const expenseKeywords = ['cogs', 'expense', 'cost', 'postage', 'rent', 'utilities', 'payroll', 'amortization', 'insurance', 'supplies'];
     
-    // Sort accounts: revenue first, then expenses, then others
     const sortedAccounts = [...regularAccounts].sort((a, b) => {
         const aLower = a.toLowerCase();
         const bLower = b.toLowerCase();
@@ -1945,12 +1921,10 @@ function renderLineChart(canvasId, data, options = {}) {
     let expenseCount = 0;
     let otherCount = 0;
     
-    // Color palettes - expanded for more variety
     const revenueColors = ['#28a745', '#20c997', '#8bc34a', '#4caf50', '#009688'];
     const expenseColors = ['#dc3545', '#e74c3c', '#ff6b6b', '#c0392b', '#e67e22'];
     const otherColors = ['#007bff', '#17a2b8', '#6f42c1', '#fd7e14', '#e83e8c', '#6c757d', '#0dcaf0', '#d63384'];
     
-    // Line style variations
     const lineDashStyles = [
         [],           // solid
         [5, 5],       // dashed
@@ -1960,7 +1934,6 @@ function renderLineChart(canvasId, data, options = {}) {
         [3, 3],       // short dash
     ];
     
-    // Point style variations
     const pointStyles = ['circle', 'rect', 'triangle', 'diamond', 'cross', 'crossRot', 'star', 'line', 'dash'];
 
     sortedAccounts.forEach((accountName, idx) => {
@@ -1969,7 +1942,6 @@ function renderLineChart(canvasId, data, options = {}) {
             return monthData[accountName] || 0;
         });
         
-        // Skip accounts with all zeros
         if (values.every(v => Math.abs(v) < 0.01)) {
             console.log('[CHART] Skipping zero account:', accountName);
             return;
@@ -1981,7 +1953,6 @@ function renderLineChart(canvasId, data, options = {}) {
         
         let borderColor, backgroundColor, borderDash, borderWidth, pointStyle, pointRadius;
         
-        // Use different styles for each line based on type and index
         const styleIdx = idx % 6;
         const colorIdx = isRevenue ? revenueCount % revenueColors.length : 
                          isExpense ? expenseCount % expenseColors.length : 
@@ -2025,12 +1996,12 @@ function renderLineChart(canvasId, data, options = {}) {
             pointHoverRadius: 7,
             pointHoverBorderWidth: 2,
             fill: false,
-            tension: 0.15,
+            tension: 0,  // STRAIGHT LINES - NO CURVES
             hidden: false
         });
     });
 
-    // Add Net Income / Net Cash as a separate dataset with distinct styling
+    // Add Net Income / Net Cash
     if (netLabel) {
         const netValues = months.map(m => {
             const monthData = account_breakdown[m] || {};
@@ -2052,20 +2023,18 @@ function renderLineChart(canvasId, data, options = {}) {
                 pointBorderColor: 'white',
                 pointBorderWidth: 2,
                 fill: false,
-                tension: 0.15,
+                tension: 0,  // STRAIGHT LINES
                 hidden: false
             });
         }
     }
 
-    // If no datasets have data, show message
     if (datasets.length === 0) {
         console.log('[CHART] No data to display after filtering');
         return null;
     }
     console.log('[CHART] Total datasets:', datasets.length);
 
-    // Calculate y-axis max with some padding
     let maxVal = 0;
     datasets.forEach(ds => {
         ds.data.forEach(v => {
@@ -2075,7 +2044,6 @@ function renderLineChart(canvasId, data, options = {}) {
     const yMax = Math.ceil((maxVal * 1.25) / 100) * 100 || 100;
     console.log('[CHART] Y-axis max:', yMax);
 
-    // Determine if this is P&L or Cash Flow
     const isPL = options.type === 'pl';
     console.log('[CHART] Chart type:', isPL ? 'P&L' : 'Cash Flow');
 
@@ -2104,7 +2072,7 @@ function renderLineChart(canvasId, data, options = {}) {
                     position: 'bottom',
                     labels: {
                         usePointStyle: true,
-                        pointStyle: 'circle',
+                        pointStyle: 'circle',  // All legends show as circles for consistency
                         padding: 20,
                         font: { size: 11 },
                         boxWidth: 14,
@@ -2153,22 +2121,21 @@ function renderLineChart(canvasId, data, options = {}) {
                         drawBorder: true
                     }
                 }
-            }
+            },
+            // REMOVED onClick - datapoint clicks do nothing
         }
     });
     console.log('[CHART] Chart instance created');
 
-    // Store chart reference
     if (canvasId === 'pl-chart') {
         plChartInstance = chart;
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartInstance = chart;
     }
 
-    // ---- ADD X-AXIS CLICK HANDLER ----
+    // ---- X-AXIS CLICK HANDLER ONLY ----
     console.log('[CHART] Adding x-axis click handler');
     
-    // Add click handler directly on the canvas
     canvas.addEventListener('click', function(e) {
         console.log('[CHART-X] Canvas click detected');
         try {
@@ -2176,16 +2143,12 @@ function renderLineChart(canvasId, data, options = {}) {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
             
-            console.log('[CHART-X] Click position:', { x, y, rectWidth: rect.width, rectHeight: rect.height });
-            
-            // Get chart instance
             const chartInstance = Chart.getChart(canvas);
             if (!chartInstance) {
                 console.log('[CHART-X] No chart instance found');
                 return;
             }
             
-            // Check if click is near the x-axis area (bottom 25% of chart)
             const chartArea = chartInstance.chartArea;
             if (!chartArea) {
                 console.log('[CHART-X] No chart area found');
@@ -2194,52 +2157,44 @@ function renderLineChart(canvasId, data, options = {}) {
             
             const chartHeight = chartArea.bottom - chartArea.top;
             
-            console.log('[CHART-X] Chart area:', { top: chartArea.top, bottom: chartArea.bottom, height: chartHeight });
+            // ONLY trigger if click is on x-axis labels (bottom 15% of chart)
+            const yPos = (y - chartArea.top) / chartHeight;
             
-            // Only process if click is near the x-axis (bottom 30%)
-            if (y < chartArea.top || y > chartArea.bottom + 30) {
-                console.log('[CHART-X] Click not in chart area');
+            // Must be near the bottom of the chart (x-axis area)
+            if (yPos < 0.8 || yPos > 1.1) {
+                console.log('[CHART-X] Click not on x-axis (yPos:', yPos, ')');
                 return;
             }
             
-            // Check if click is near the x-axis labels (bottom portion)
-            const yPos = (y - chartArea.top) / chartHeight;
-            if (yPos > 0.8) {
-                console.log('[CHART-X] Click near x-axis');
-                // Get x scale
-                const xScale = chartInstance.scales.x;
-                if (!xScale) {
-                    console.log('[CHART-X] No x scale found');
-                    return;
-                }
+            console.log('[CHART-X] Click on x-axis!');
+            
+            const xScale = chartInstance.scales.x;
+            if (!xScale) {
+                console.log('[CHART-X] No x scale found');
+                return;
+            }
+            
+            const pixelsPerTick = (xScale.right - xScale.left) / (months.length || 1);
+            const clickedIndex = Math.round((x - xScale.left) / pixelsPerTick);
+            
+            console.log('[CHART-X] Clicked index:', clickedIndex, 'months length:', months.length);
+            
+            if (clickedIndex >= 0 && clickedIndex < months.length) {
+                const month = months[clickedIndex];
+                console.log('[CHART-X] ✅ Month detected:', month);
                 
-                // Find nearest tick
-                const pixelsPerTick = (xScale.right - xScale.left) / (months.length || 1);
-                const clickedIndex = Math.round((x - xScale.left) / pixelsPerTick);
+                document.getElementById('monthly-tx-modal')?.classList.remove('active');
                 
-                console.log('[CHART-X] Clicked index:', clickedIndex, 'months length:', months.length);
-                
-                if (clickedIndex >= 0 && clickedIndex < months.length) {
-                    const month = months[clickedIndex];
-                    console.log('[CHART-X] ✅ Month detected:', month);
-                    
-                    // Close any open modals first
-                    document.getElementById('monthly-tx-modal')?.classList.remove('active');
-                    
-                    // Show breakdown modal
-                    const dataToUse = canvasId === 'pl-chart' ? plChartData : cashFlowChartData;
-                    if (dataToUse) {
-                        console.log('[CHART-X] Showing breakdown for month:', month);
-                        showMonthBreakdownModal(month, dataToUse, options.type || 'pl');
-                    } else {
-                        console.warn('[CHART-X] No chart data available for breakdown');
-                        showToast('No data available for this month', 'warning');
-                    }
+                const dataToUse = canvasId === 'pl-chart' ? plChartData : cashFlowChartData;
+                if (dataToUse) {
+                    console.log('[CHART-X] Showing breakdown for month:', month);
+                    showMonthBreakdownModal(month, dataToUse, options.type || 'pl');
                 } else {
-                    console.log('[CHART-X] Index out of range:', clickedIndex);
+                    console.warn('[CHART-X] No chart data available for breakdown');
+                    showToast('No data available for this month', 'warning');
                 }
             } else {
-                console.log('[CHART-X] Click not near x-axis');
+                console.log('[CHART-X] Index out of range:', clickedIndex);
             }
         } catch (err) {
             console.error('[CHART-X] Error in click handler:', err);
@@ -2247,7 +2202,7 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART-X] Click handler attached');
 
-    // Add double-click to expand
+    // Double-click to expand
     canvas.addEventListener('dblclick', function(e) {
         e.stopPropagation();
         console.log('[CHART] Double-click detected, expanding');
@@ -2284,7 +2239,6 @@ function expandChart(canvasId) {
 
     isExpanded = true;
 
-    // Create expanded container
     const container = document.createElement('div');
     container.id = 'expanded-chart-container';
     
@@ -2304,7 +2258,6 @@ function expandChart(canvasId) {
     
     document.body.appendChild(container);
 
-    // Create new chart on the expanded canvas
     const newCanvas = document.getElementById('expanded-chart-canvas');
     const newCtx = newCanvas.getContext('2d');
     
@@ -2366,7 +2319,6 @@ function expandChart(canvasId) {
 
     window._expandedChart = expandedChart;
     
-    // Handle resize
     const resizeObserver = new ResizeObserver(() => {
         if (expandedChart) expandedChart.resize();
     });
@@ -2398,7 +2350,6 @@ function collapseChart() {
         container.remove();
     }
     
-    // Resize original charts
     if (plChartInstance) {
         try { plChartInstance.resize(); } catch(e) {}
     }
@@ -2447,7 +2398,6 @@ async function loadCashFlow() {
             dateRangeEl.textContent = `Showing from ${start} to ${end}`;
             dateRangeEl.style.display = 'block';
             
-            // Render line chart
             renderLineChart('cash-flow-chart', data, { type: 'cashflow' });
         } else {
             console.error('[CASHFLOW] Error:', data.error);
@@ -2493,7 +2443,6 @@ async function loadMonthlyPL() {
             dateRangeEl.textContent = `Showing from ${start} to ${end}`;
             dateRangeEl.style.display = 'block';
             
-            // Render line chart
             renderLineChart('pl-chart', data, { type: 'pl' });
         } else {
             console.error('[MONTHLY-PL] Error:', data.error);
