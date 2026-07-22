@@ -10554,80 +10554,6 @@ def create_square_payment_link():
 
  
 
-def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
-    """Create a gift card from a confirmed payment."""
-    try:
-        import random, string
-        
-        # Use provided gift card ID or generate one
-        if not gift_card_id:
-            gift_card_id = metadata.get('gift_card_id')
-        if not gift_card_id:
-            random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-            gift_card_id = f"GIFT-{random_part}"
-        
-        # Get recipient info from metadata
-        recipient = metadata.get('recipient', '')
-        sender = metadata.get('sender', '')
-        message = metadata.get('message', '')
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Get accounts
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
-        payable = cursor.fetchone()
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
-        cash = cursor.fetchone()
-        
-        if not payable or not cash:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
-        
-        amount_cents = int(round(amount * 100))
-        today = datetime.now().strftime('%Y-%m-%d')
-        
-        # Description format: GIFT-XXXXX | RECIPIENT | amount
-        recipient_display = recipient if recipient else 'Bearer'
-        desc = f"{gift_card_id} | {recipient_display} | ${amount:.2f} gift card"
-        
-        # Create journal entry
-        cursor.execute('''
-            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-            VALUES (?, ?, ?, ?)
-        ''', (today, desc, 'gift_card', gift_card_id))
-        entry_id = cursor.lastrowid
-        
-        # Debit Cash (money received)
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, cash['id'], amount_cents, 0))
-        
-        # Credit Payable (owe gift card)
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, payable['id'], 0, amount_cents))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'purpose': 'gift_card',
-            'gift_card_id': gift_card_id,
-            'amount': amount,
-            'entry_id': entry_id,
-            'recipient': recipient,
-            'sender': sender,
-            'message': message
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Handle gift card payment error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 def handle_donation_payment(payment_id, amount, metadata):
     """Handle a donation payment."""
@@ -11600,6 +11526,7 @@ def confirm_payment():
         app.logger.error(f"Confirm payment error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
     """Create a gift card from a confirmed payment."""
     try:
@@ -11633,11 +11560,15 @@ def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
         amount_cents = int(round(amount * 100))
         today = datetime.now().strftime('%Y-%m-%d')
         
+        # Description format: GIFT-XXXXX | RECIPIENT | amount
+        recipient_display = recipient if recipient else 'Bearer'
+        desc = f"{gift_card_id} | {recipient_display} | ${amount:.2f} gift card purchased online"
+        
         # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
-        ''', (today, f"{gift_card_id} | ISSUE | ${amount:.2f} gift card purchased online", 'gift_card', gift_card_id))
+        ''', (today, desc, 'gift_card', gift_card_id))
         entry_id = cursor.lastrowid
         
         # Debit Cash (money received)
@@ -11669,7 +11600,6 @@ def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
     except Exception as e:
         app.logger.error(f"Handle gift card payment error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 def handle_donation_payment(payment_id, amount, metadata):
     """Handle a donation payment."""
