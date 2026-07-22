@@ -4303,15 +4303,29 @@
         const today = getLocalMSTDate();
         let success = 0;
         let bernieTotal = 0;
+        let consignorTransactions = [];
         
-        // Separate Bernie items from regular records
-        const regularRecords = selected.filter(r => !r.isCustom);
-        const bernieItems = selected.filter(r => r.isBernie === true);
+        // Separate records by type
+        const regularRecords = [];
+        const bernieItems = [];
+        const consignorRecords = [];
         
-        // Calculate total Bernie donations
+        for (const record of selected) {
+            if (record.isBernie === true) {
+                bernieItems.push(record);
+            } else if (record.isCustom === true) {
+                // Skip other custom items (they're already handled)
+            } else if (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null) {
+                consignorRecords.push(record);
+            } else {
+                regularRecords.push(record);
+            }
+        }
+        
+        // Calculate totals
         bernieTotal = bernieItems.reduce((sum, r) => sum + (r.store_price || 0), 0);
         
-        // Process regular records (mark as sold)
+        // Process regular records (store-owned, mark as sold)
         for (const record of regularRecords) {
             try {
                 await apiRequest('PUT', '/records/' + record.id, {
@@ -4325,48 +4339,89 @@
             }
         }
         
-        // Process Bernie donations - create journal entry
-        if (bernieTotal > 0) {
+        // Process consignor records
+        for (const record of consignorRecords) {
             try {
-                // Get the payment method from the first payment entry
-                const paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
-                
-                // Map payment method to account code
-                const accountMap = {
-                    'Cash': '1015',  // Cash - Register
-                    'Card (Square)': '1030',  // Square Asset
-                    'Gift Card': '1015',  // Cash - Register
-                    'Store Credit': '1015'  // Cash - Register
-                };
-                
-                const accountCode = accountMap[paymentMethod] || '1015';
-                
-                // Get account IDs
-                const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
-                const accounts = accountsRes.accounts || [];
-                const cashAccount = accounts.find(a => a.code === accountCode);
-                const payableAccount = accounts.find(a => a.code === '2015');  // Payable/Bernie account
-                
-                if (!cashAccount || !payableAccount) {
-                    console.error('Required accounts not found for Bernie donation');
-                    showCheckoutStatus('Error: Required accounts not found', 'error');
-                    return;
+                // Get consignor name - FIXED
+                let consignorName = 'Unknown Consignor';
+                try {
+                    const userRes = await apiRequest('GET', '/users/' + record.consignor_id);
+                    // The user endpoint returns the user object directly, not wrapped in status
+                    if (userRes && userRes.id) {
+                        consignorName = userRes.full_name || userRes.username || 'Consignor-' + record.consignor_id;
+                    }
+                } catch (userErr) {
+                    console.warn('Could not fetch consignor name for ID:', record.consignor_id, userErr);
+                    consignorName = 'Consignor-' + record.consignor_id;
                 }
                 
-                // Create journal entry for Bernie donation
+                const salePrice = record.store_price || 0;
+                const commissionRate = record.commission_rate || 0.3; // default 30%
+                const consignorShare = salePrice * (1 - commissionRate);
+                const storeCommission = salePrice * commissionRate;
+                
+                consignorTransactions.push({
+                    record_id: record.id,
+                    consignor_id: record.consignor_id,
+                    consignor_name: consignorName,
+                    sale_price: salePrice,
+                    commission_rate: commissionRate,
+                    consignor_share: consignorShare,
+                    store_commission: storeCommission
+                });
+                
+                // Mark record as sold
+                await apiRequest('PUT', '/records/' + record.id, {
+                    status_id: 3,
+                    date_sold: today,
+                    actual_sale_price: salePrice
+                });
+                success++;
+                
+            } catch (err) {
+                console.error('Failed to process consignor record', record.id, err);
+            }
+        }
+        
+        // Create journal entries for consignor transactions
+        for (const tx of consignorTransactions) {
+            try {
+                // Get accounts
+                const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
+                const accounts = accountsRes.accounts || [];
+                
+                // Find cash account (FNBO)
+                const cashAccount = accounts.find(a => a.code === '1015');
+                // Find sales revenue account
+                const revenueAccount = accounts.find(a => a.code === '4000');
+                // Find payable account (consignor liability)
+                const payableAccount = accounts.find(a => a.code === '2015');
+                
+                if (!cashAccount || !revenueAccount || !payableAccount) {
+                    console.error('Required accounts not found for consignor transaction');
+                    showCheckoutStatus('Error: Required accounts not found', 'error');
+                    continue;
+                }
+                
+                // Create journal entry for consignor sale
                 const entryData = {
                     date: today,
-                    description: `BERNIE | ISSUE | Donation - $${bernieTotal.toFixed(2)} (${bernieItems.length} items)`,
+                    description: `${tx.consignor_name} | ISSUE | Record #${tx.record_id} sold - $${tx.sale_price.toFixed(2)} (${(tx.commission_rate * 100).toFixed(0)}% commission)`,
                     lines: [
                         {
                             account_id: cashAccount.id,
-                            debit: bernieTotal,
+                            debit: tx.sale_price,
                             credit: 0
+                        },
+                        {
+                            account_id: revenueAccount.id,
+                            debit: 0,
+                            credit: tx.store_commission
                         },
                         {
                             account_id: payableAccount.id,
                             debit: 0,
-                            credit: bernieTotal
+                            credit: tx.consignor_share
                         }
                     ]
                 };
@@ -4374,21 +4429,69 @@
                 const result = await apiRequest('POST', '/api/accounting/manual', entryData);
                 
                 if (result.status === 'success') {
-                    console.log(`✅ Bernie donation journal entry created: $${bernieTotal.toFixed(2)}`);
-                    showCheckoutStatus(`✅ Bernie donation of $${bernieTotal.toFixed(2)} recorded`, 'success');
+                    console.log(`✅ Consignor ${tx.consignor_name} credited $${tx.consignor_share.toFixed(2)}`);
                 } else {
-                    console.error('Failed to create Bernie journal entry:', result.error);
-                    showCheckoutStatus(`Error creating Bernie journal entry: ${result.error}`, 'error');
+                    console.error('Failed to create consignor journal entry:', result.error);
                 }
                 
             } catch (err) {
-                console.error('Error processing Bernie donation:', err);
-                showCheckoutStatus('Error processing Bernie donation: ' + err.message, 'error');
+                console.error('Error processing consignor transaction:', err);
             }
         }
         
+        // Process Bernie donations
+        if (bernieTotal > 0) {
+            try {
+                const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
+                const accounts = accountsRes.accounts || [];
+                
+                const paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
+                const accountMap = {
+                    'Cash': '1015',
+                    'Card (Square)': '1030',
+                    'Gift Card': '1015',
+                    'Store Credit': '1015'
+                };
+                const accountCode = accountMap[paymentMethod] || '1015';
+                
+                const cashAccount = accounts.find(a => a.code === accountCode);
+                const payableAccount = accounts.find(a => a.code === '2015');
+                
+                if (cashAccount && payableAccount) {
+                    const entryData = {
+                        date: today,
+                        description: `BERNIE | ISSUE | Donation - $${bernieTotal.toFixed(2)} (${bernieItems.length} items)`,
+                        lines: [
+                            { account_id: cashAccount.id, debit: bernieTotal, credit: 0 },
+                            { account_id: payableAccount.id, debit: 0, credit: bernieTotal }
+                        ]
+                    };
+                    const result = await apiRequest('POST', '/api/accounting/manual', entryData);
+                    if (result.status === 'success') {
+                        console.log(`✅ Bernie donation journal entry created: $${bernieTotal.toFixed(2)}`);
+                    } else {
+                        console.error('Failed to create Bernie journal entry:', result.error);
+                    }
+                }
+            } catch (err) {
+                console.error('Error processing Bernie donation:', err);
+            }
+        }
+        
+        // Update the UI
         setTimeout(() => {
-            showCheckoutStatus(`${success} of ${regularRecords.length} records marked as sold, Bernie donations: $${bernieTotal.toFixed(2)}`, 'success');
+            const consignorCount = consignorTransactions.length;
+            const consignorTotal = consignorTransactions.reduce((sum, t) => sum + t.consignor_share, 0);
+            
+            let statusMsg = `${success} records marked as sold`;
+            if (consignorCount > 0) {
+                statusMsg += `, ${consignorCount} consignor(s) credited $${consignorTotal.toFixed(2)}`;
+            }
+            if (bernieTotal > 0) {
+                statusMsg += `, Bernie donations: $${bernieTotal.toFixed(2)}`;
+            }
+            showCheckoutStatus('✅ ' + statusMsg, 'success');
+            
             checkoutSelectedItems = [];
             checkoutViewMode = 'list';
             checkoutPaymentEntries = [];
@@ -5355,7 +5458,7 @@
         const isRefundMode = mode === 'refund';
         const isPurchasesMode = mode === 'purchases';
         
-        // ===== FIX: Set Active button ONLY visible in Add mode =====
+        // ===== Set Active button ONLY visible in Add mode =====
         if (isAddMode) {
             setActiveBtn.style.display = '';
             const hasTargets = hasSelection || hasRecords;
