@@ -529,8 +529,8 @@
 
     <div id="dashboard-content" class="dashboard-main" style="display: none;">
         
-        <!-- Stats Row -->
-        <div class="stats-grid" style="margin: 20px 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+        <!-- Stats Row - FIXED: Added 5th card for Commission Rate -->
+        <div class="stats-grid" style="margin: 20px 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;">
             <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center;">
                 <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Spent</h3>
                 <p class="stat-number" id="total-purchases-spent" style="font-size: 28px; font-weight: bold; color: #dc3545; margin: 0;">$0.00</p>
@@ -546,6 +546,11 @@
             <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center;">
                 <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">This Month</h3>
                 <p class="stat-number" id="month-purchases-count" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
+            </div>
+            <!-- FIX: Added commission rate card -->
+            <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center;">
+                <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Commission Rate</h3>
+                <p class="stat-number" id="commission-rate" style="font-size: 28px; font-weight: bold; color: #17a2b8; margin: 0;">--%</p>
             </div>
         </div>
 
@@ -995,12 +1000,23 @@
                 try {
                     const response = await APIUtils.get('/api/commission-rate');
                     this.globalCommissionRate = response.commission_rate || 20;
-                    document.getElementById('commission-rate').textContent = `${this.globalCommissionRate}%`;
+                    
+                    // FIX: Check if element exists before setting textContent
+                    const commissionEl = document.getElementById('commission-rate');
+                    if (commissionEl) {
+                        commissionEl.textContent = `${this.globalCommissionRate}%`;
+                    }
+                    
                     console.log(`COMMISSION: Global rate: ${this.globalCommissionRate}%`);
                 } catch (error) {
                     console.warn('COMMISSION: Could not load, using default 20%');
                     this.globalCommissionRate = 20;
-                    document.getElementById('commission-rate').textContent = '20%';
+                    
+                    // FIX: Check if element exists before setting textContent
+                    const commissionEl = document.getElementById('commission-rate');
+                    if (commissionEl) {
+                        commissionEl.textContent = '20%';
+                    }
                 }
             }
 

@@ -2165,7 +2165,14 @@
             ordersFilters.style.display = isDiscogsOrdersMode ? 'block' : 'none';
         }
 
-        setActiveBtn.style.display = isDiscogsOrdersMode ? 'none' : '';
+        // Set Active button visibility - ONLY in Add mode
+        if (setActiveBtn) {
+            if (isAddMode) {
+                setActiveBtn.style.display = '';
+            } else {
+                setActiveBtn.style.display = 'none';
+            }
+        }
 
         if (isAddMode) {
             printBtn.style.display = '';
@@ -2185,7 +2192,10 @@
         }
 
         let customBtn = document.getElementById('custom-item-btn');
+        let bernBtn = document.getElementById('bern-it-btn');
+        
         if (isCheckoutMode) {
+            // Custom Item button
             if (!customBtn) {
                 customBtn = document.createElement('button');
                 customBtn.id = 'custom-item-btn';
@@ -2195,8 +2205,21 @@
                 completeActionBtn.parentNode.insertBefore(customBtn, completeActionBtn.nextSibling);
             }
             customBtn.style.display = 'inline-block';
+            
+            // Bern It button
+            if (!bernBtn) {
+                bernBtn = document.createElement('button');
+                bernBtn.id = 'bern-it-btn';
+                bernBtn.className = 'btn btn-success';
+                bernBtn.innerHTML = '<i class="fas fa-donate"></i> Bern It';
+                bernBtn.addEventListener('click', addBernieItem);
+                // Insert after Custom Item button
+                customBtn.parentNode.insertBefore(bernBtn, customBtn.nextSibling);
+            }
+            bernBtn.style.display = 'inline-block';
         } else {
             if (customBtn) customBtn.style.display = 'none';
+            if (bernBtn) bernBtn.style.display = 'none';
         }
 
         if (isRefundMode) {
@@ -2385,28 +2408,29 @@
         }
 
         customItemModal = document.createElement('div');
+        customItemModal.id = 'custom-item-modal';
         customItemModal.className = 'modal-overlay';
         customItemModal.style.display = 'flex';
         customItemModal.innerHTML = `
             <div class="modal-content" style="max-width: 400px; width: 95%;">
                 <div class="modal-header" style="background: #17a2b8; color: white;">
                     <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
-                    <button class="modal-close" onclick="document.getElementById('custom-item-modal').style.display='none'" style="color: white;">&times;</button>
+                    <button class="modal-close" onclick="closeCustomItemModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div style="margin-bottom: 15px;">
                         <label for="custom-item-desc" style="display:block; font-weight:500; margin-bottom:4px;">Description *</label>
-                        <input type="text" id="custom-item-desc" class="form-control" placeholder="e.g., Merchandise, Gift Card, etc." style="width:100%; padding:8px;">
+                        <input type="text" id="custom-item-desc" class="form-control" placeholder="e.g., Merchandise, Gift Card, etc." style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
                     </div>
                     <div style="margin-bottom: 15px;">
                         <label for="custom-item-price" style="display:block; font-weight:500; margin-bottom:4px;">Price ($) *</label>
-                        <input type="number" id="custom-item-price" class="form-control" step="0.01" min="0.01" placeholder="0.00" style="width:100%; padding:8px;">
+                        <input type="number" id="custom-item-price" class="form-control" step="0.01" min="0.01" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
                     </div>
                     <div id="custom-item-status" style="margin-top:10px; display:none;"></div>
                 </div>
                 <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
-                    <button class="btn btn-secondary" onclick="closeCustomItemModal()">Cancel</button>
-                    <button class="btn btn-success" id="custom-item-add-btn"><i class="fas fa-check"></i> Add to Checkout</button>
+                    <button class="btn btn-secondary" onclick="closeCustomItemModal()" style="padding:8px 16px; border:none; border-radius:4px; cursor:pointer; background:#6c757d; color:white;">Cancel</button>
+                    <button class="btn btn-success" id="custom-item-add-btn" style="padding:8px 16px; border:none; border-radius:4px; cursor:pointer; background:#28a745; color:white;"><i class="fas fa-check"></i> Add to Checkout</button>
                 </div>
             </div>
         `;
@@ -2433,11 +2457,17 @@
                 addCustomItemFromModal();
             }
         });
+
+        // Click outside to close
+        customItemModal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeCustomItemModal();
+            }
+        });
     }
 
     function closeCustomItemModal() {
         if (customItemModal) {
-            customItemModal.style.display = 'none';
             customItemModal.remove();
             customItemModal = null;
         }
@@ -2482,6 +2512,34 @@
         checkoutSelectedItems.push(customItem);
         showStatus(`Added custom item: "${desc}" for $${price.toFixed(2)}`, 'success');
         closeCustomItemModal();
+
+        checkoutViewMode = 'list';
+        filteredRecords = checkoutSelectedItems.slice();
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        updateSelectionCount();
+        if (checkoutShowSelectedBtn) {
+            checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+        }
+    }
+
+    // ========== Bernie Item ==========
+    function addBernieItem() {
+        const bernieItem = {
+            id: -Date.now() - 1,
+            artist: 'Bernie',
+            title: 'Bern It',
+            store_price: 0.99,
+            barcode: null,
+            isCustom: true,
+            isBernie: true
+        };
+
+        checkoutSelectedItems.push(bernieItem);
+        showStatus(`Added Bernie donation: "Bern It" for $0.99`, 'success');
+        playSound('success');
 
         checkoutViewMode = 'list';
         filteredRecords = checkoutSelectedItems.slice();
@@ -4233,7 +4291,6 @@
         }, 2000);
     }
 
-    // ========== Checkout Complete ==========
     async function completeCheckout() {
         if (checkoutRemaining > 0.01) {
             showCheckoutStatus('Remaining balance not covered', 'error');
@@ -4245,11 +4302,17 @@
         
         const today = getLocalMSTDate();
         let success = 0;
+        let bernieTotal = 0;
         
-        for (const record of selected) {
-            if (record.isCustom === true) {
-                continue;
-            }
+        // Separate Bernie items from regular records
+        const regularRecords = selected.filter(r => !r.isCustom);
+        const bernieItems = selected.filter(r => r.isBernie === true);
+        
+        // Calculate total Bernie donations
+        bernieTotal = bernieItems.reduce((sum, r) => sum + (r.store_price || 0), 0);
+        
+        // Process regular records (mark as sold)
+        for (const record of regularRecords) {
             try {
                 await apiRequest('PUT', '/records/' + record.id, {
                     status_id: 3,
@@ -4262,8 +4325,70 @@
             }
         }
         
+        // Process Bernie donations - create journal entry
+        if (bernieTotal > 0) {
+            try {
+                // Get the payment method from the first payment entry
+                const paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
+                
+                // Map payment method to account code
+                const accountMap = {
+                    'Cash': '1015',  // Cash - Register
+                    'Card (Square)': '1030',  // Square Asset
+                    'Gift Card': '1015',  // Cash - Register
+                    'Store Credit': '1015'  // Cash - Register
+                };
+                
+                const accountCode = accountMap[paymentMethod] || '1015';
+                
+                // Get account IDs
+                const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
+                const accounts = accountsRes.accounts || [];
+                const cashAccount = accounts.find(a => a.code === accountCode);
+                const payableAccount = accounts.find(a => a.code === '2015');  // Payable/Bernie account
+                
+                if (!cashAccount || !payableAccount) {
+                    console.error('Required accounts not found for Bernie donation');
+                    showCheckoutStatus('Error: Required accounts not found', 'error');
+                    return;
+                }
+                
+                // Create journal entry for Bernie donation
+                const entryData = {
+                    date: today,
+                    description: `BERNIE | ISSUE | Donation - $${bernieTotal.toFixed(2)} (${bernieItems.length} items)`,
+                    lines: [
+                        {
+                            account_id: cashAccount.id,
+                            debit: bernieTotal,
+                            credit: 0
+                        },
+                        {
+                            account_id: payableAccount.id,
+                            debit: 0,
+                            credit: bernieTotal
+                        }
+                    ]
+                };
+                
+                const result = await apiRequest('POST', '/api/accounting/manual', entryData);
+                
+                if (result.status === 'success') {
+                    console.log(`✅ Bernie donation journal entry created: $${bernieTotal.toFixed(2)}`);
+                    showCheckoutStatus(`✅ Bernie donation of $${bernieTotal.toFixed(2)} recorded`, 'success');
+                } else {
+                    console.error('Failed to create Bernie journal entry:', result.error);
+                    showCheckoutStatus(`Error creating Bernie journal entry: ${result.error}`, 'error');
+                }
+                
+            } catch (err) {
+                console.error('Error processing Bernie donation:', err);
+                showCheckoutStatus('Error processing Bernie donation: ' + err.message, 'error');
+            }
+        }
+        
         setTimeout(() => {
-            showCheckoutStatus(`${success} of ${selected.filter(r => !r.isCustom).length} records marked as sold`, 'success');
+            showCheckoutStatus(`${success} of ${regularRecords.length} records marked as sold, Bernie donations: $${bernieTotal.toFixed(2)}`, 'success');
             checkoutSelectedItems = [];
             checkoutViewMode = 'list';
             checkoutPaymentEntries = [];
@@ -5230,18 +5355,19 @@
         const isRefundMode = mode === 'refund';
         const isPurchasesMode = mode === 'purchases';
         
-        if (isDiscogsOrdersMode) {
-            setActiveBtn.style.display = 'none';
-        } else {
+        // ===== FIX: Set Active button ONLY visible in Add mode =====
+        if (isAddMode) {
             setActiveBtn.style.display = '';
-            if (isAddMode) {
-                setActiveBtn.disabled = !hasRecords;
-                setActiveBtn.title = 'Set all displayed records to Active (status_id=2)';
+            const hasTargets = hasSelection || hasRecords;
+            setActiveBtn.disabled = !hasTargets;
+            if (hasSelection) {
+                setActiveBtn.textContent = `✅ Set ${count} selected to Active`;
             } else {
-                const selectedCount = getSelectedRecords().length;
-                setActiveBtn.disabled = selectedCount === 0;
-                setActiveBtn.title = `Set ${selectedCount} selected record(s) to Active (status_id=2)`;
+                setActiveBtn.textContent = '✅ Set All to Active';
             }
+            setActiveBtn.title = `Set ${count} selected record(s) to Active (status_id=2)`;
+        } else {
+            setActiveBtn.style.display = 'none';
         }
 
         if (isAddMode) {
@@ -5680,5 +5806,12 @@
     window.removeFromCheckout = removeFromCheckout;
     window.checkSquareAvailability = checkSquareAvailability;
     window.processSquarePayment = processSquarePayment;
+
+    // ========== Custom Item Modal ==========
+    window.showCustomItemModal = showCustomItemModal;
+    window.closeCustomItemModal = closeCustomItemModal;
+
+    // ========== Bernie Button ==========
+    window.addBernieItem = addBernieItem;
 
 })();
