@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - PigStyle Music</title>
     <link rel="icon" href="/static/images/PigStyle.ico">
+    <title>Admin Panel - PigStyle Music</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
@@ -1396,6 +1396,7 @@
             <div class="tab" data-tab="db-query"><i class="fas fa-database"></i> DB Query</div>
             <div class="tab" data-tab="sticky-notes"><i class="fas fa-sticky-note"></i> Sticky Notes</div>
             <div class="tab" data-tab="stats"><i class="fas fa-chart-line"></i> Stats</div>
+            <div class="tab" data-tab="creditors"><i class="fas fa-hand-holding-usd"></i> Creditors</div>
         </div>
 
         <!-- ==================== ADD RECORDS TAB ==================== -->
@@ -2356,6 +2357,120 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                 <i class="fas fa-exclamation-triangle"></i> Error loading statistics
             </div>
         </div>
+
+        <!-- ==================== CREDITORS TAB ==================== -->
+        <div id="creditors-tab" class="tab-content">
+            <h2><i class="fas fa-hand-holding-usd"></i> Creditors</h2>
+            <p class="text-muted">Manage store credit, gift cards, consignor payouts, and Bernie donations.</p>
+            
+            <!-- Quick Stats -->
+            <div class="stats-grid" style="margin-bottom: 20px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="total-owed" style="color: #dc3545;">$0.00</div>
+                    <div class="stat-label">Total Owed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="active-debtors">0</div>
+                    <div class="stat-label">Active Creditors</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="gift-card-count">0</div>
+                    <div class="stat-label">Active Gift Cards</div>
+                </div>
+            </div>
+            
+            <!-- Issue Store Credit -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 20px; border-radius: 12px; color: white;">
+                    <h3 style="margin: 0 0 15px 0; color: white;"><i class="fas fa-hand-holding-usd"></i> Issue Store Credit</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Debtor Name *</label>
+                            <input type="text" id="issue-debtor-name" placeholder="e.g., JANE DOE" style="width: 100%; padding: 10px; border: none; border-radius: 6px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Cash Value ($) *</label>
+                            <input type="number" id="issue-cash-value" placeholder="100.00" step="0.01" min="0.01" style="width: 100%; padding: 10px; border: none; border-radius: 6px;">
+                            <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">Store credit will be 50% higher: <span id="issue-credit-preview">$0.00</span></div>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Reason</label>
+                            <input type="text" id="issue-reason" placeholder="e.g., 5 records traded in" style="width: 100%; padding: 10px; border: none; border-radius: 6px;">
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <button class="btn btn-success" onclick="issueStoreCredit()" style="flex: 1; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white;">
+                                <i class="fas fa-plus"></i> Issue Store Credit
+                            </button>
+                            <button class="btn btn-secondary" onclick="clearIssueForm()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div id="issue-status" style="font-size: 13px; margin-top: 5px;"></div>
+                    </div>
+                </div>
+                 
+            </div>
+            
+            <!-- Lookup Debtor -->
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
+                <h3 style="margin: 0 0 15px 0; color: #333;"><i class="fas fa-search"></i> Lookup Creditor</h3>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 500;">Debtor Name</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="lookup-debtor-name" placeholder="e.g., JANE DOE, GIFT-ABC123, BERNIE" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            <button class="btn btn-primary" onclick="lookupDebtor()"><i class="fas fa-search"></i> Lookup</button>
+                        </div>
+                    </div>
+                    <div style="min-width: 150px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 500;">Or Select</label>
+                        <select id="debtor-dropdown" onchange="selectDebtorFromDropdown()" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="">-- Select Creditor --</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Debtor Details -->
+            <div id="debtor-details" style="display: none; background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap;">
+                    <div>
+                        <h3 id="debtor-name-display" style="margin: 0 0 5px 0; color: #333;">JANE DOE</h3>
+                        <div id="debtor-type-badge" style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">Store Credit</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 14px; color: #666;">Balance</div>
+                        <div id="debtor-balance-display" style="font-size: 32px; font-weight: bold; color: #28a745;">$150.00</div>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin: 15px 0; flex-wrap: wrap;">
+                    <button id="cashout-btn" class="btn btn-warning" onclick="cashOutDebtor()"><i class="fas fa-money-bill-wave"></i> Cash Out</button>
+                    <button id="donate-btn" class="btn btn-info" onclick="donateBernie()" style="display: none;"><i class="fas fa-donate"></i> Donate to Bernie</button>
+                </div>
+                
+                <div id="cashout-info" style="display: none; background: #fff3cd; padding: 10px; border-radius: 4px; margin-bottom: 15px; color: #856404;">
+                    <i class="fas fa-info-circle"></i> Cash payout is 2/3 of store credit value.
+                    <span id="cashout-amount-display"></span>
+                </div>
+                
+                <h4 style="margin: 15px 0 10px 0; color: #333;">Transaction History</h4>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    <table class="records-table" id="debtor-history-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th style="text-align: right;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="debtor-history-body">
+                            <tr><td colspan="3" style="text-align: center; padding: 20px; color: #666;">No transactions found.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ==================== MODALS ==================== -->
@@ -2591,6 +2706,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     <script src="/static/js/accessories-manager.js"></script>
     <script src="/static/js/stats.js"></script>
     <script src="/static/js/inventory-purchases.js"></script>
+    <script src="/static/js/admin-creditors.js"></script>
 
     <script>
     window.dbConfigValues = window.dbConfigValues || {};

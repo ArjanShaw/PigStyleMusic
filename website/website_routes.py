@@ -75,6 +75,20 @@ def admin_accounting():
 def access_denied():
     return send_from_directory('HTML', 'access_denied.html')
 
+# ==================== NEW: GIFT CARDS PAGE ====================
+@app.route('/gift-cards')
+def gift_cards():
+    """Public gift card purchase page."""
+    return send_from_directory('HTML', 'gift-cards.html')
+
+# ==================== NEW: PAYMENT CONFIRMATION PAGE ====================
+# Note: This is handled by the modal in gift-cards.html,
+# but if you want a fallback standalone page:
+@app.route('/payment-confirm')
+def payment_confirm():
+    """Payment confirmation page (fallback for Square redirect)."""
+    return send_from_directory('HTML', 'payment-confirm.html')
+
 # Serve static files
 @app.route('/static/<path:path>')
 def serve_static(path):
