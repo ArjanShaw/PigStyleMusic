@@ -1,209 +1,275 @@
-// ============================================================================
-// gift-cards.js - Gift Card Management Functions
-// ============================================================================
+// ============================================================
+// gift-cards.js – Gift Card Management (Uses Debtor System)
+// ============================================================
 
-// Create a new gift card
-window.createGiftCard = async function() {
-    const amountInput = document.getElementById('gc-amount');
-    if (!amountInput) return;
-    
-    const amount = parseFloat(amountInput.value);
-    
-    if (isNaN(amount) || amount <= 0) {
-        showGiftCardStatus('Please enter a valid amount', 'error');
-        return;
-    }
-    
-    const statusEl = document.getElementById('checkout-status-message') || document.getElementById('discogs-status-message');
-    
-    try {
-        const response = await fetch(`${AppConfig.baseUrl}/api/gift-cards`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ amount: amount })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            await printGiftCard(data.card);
-            showGiftCardStatus(`Gift card ${data.card.id} created: $${data.card.balance.toFixed(2)}`, 'success');
-            
-            // Clear the amount input to default
-            if (amountInput) amountInput.value = '25';
-        } else {
-            throw new Error(data.error || 'Failed to create gift card');
-        }
-    } catch (error) {
-        console.error('Error creating gift card:', error);
-        showGiftCardStatus(`Error: ${error.message}`, 'error');
-    }
-};
-
-// Print gift card as PDF
-async function printGiftCard(card) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
-    
-    // Load and add logo
-    const logoUrl = '/static/images/PigStyle.png';
-    try {
-        const logoImg = await loadImage(logoUrl);
-        doc.addImage(logoImg, 'PNG', 215, 40, 100, 100);
-    } catch (error) {
-        console.warn('Could not load logo:', error);
-        // Add text fallback
-        doc.setFontSize(20);
-        doc.setFont('helvetica', 'bold');
-        doc.text('PIGSTYLE MUSIC', 255, 80, { align: 'center' });
-    }
-    
-    // Add title
-    doc.setFontSize(24);
-    doc.setFont('helvetica', 'bold');
-    doc.text('GIFT CARD', 255, 160, { align: 'center' });
-    
-    // Generate barcode
-    const canvas = document.createElement('canvas');
-    JsBarcode(canvas, card.id, {
-        format: 'CODE128',
-        displayValue: true,
-        fontSize: 14,
-        textMargin: 5,
-        height: 50
-    });
-    const barcodeImg = canvas.toDataURL('image/png');
-    doc.addImage(barcodeImg, 'PNG', 155, 190, 200, 60);
-    
-    // Add amount
-    doc.setFontSize(36);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`$${card.balance.toFixed(2)}`, 255, 290, { align: 'center' });
-    
-    // Add footer
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('pigstylemusic.com', 255, 330, { align: 'center' });
-    
-    // Add small instruction text
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Present this card at checkout or enter code online', 255, 360, { align: 'center' });
-    
-    // Open PDF in new window for printing
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-}
-
-// Check gift card balance
-window.checkGiftCardBalance = async function() {
+/**
+ * Check a gift card balance
+ * Uses the debtor lookup API
+ */
+async function checkGiftCardBalance() {
     const codeInput = document.getElementById('gc-check-code');
     const resultDiv = document.getElementById('gc-balance-result');
     
     if (!codeInput || !resultDiv) return;
     
-    const code = codeInput.value.trim();
-    
+    const code = codeInput.value.trim().toUpperCase();
     if (!code) {
         resultDiv.style.display = 'block';
-        resultDiv.innerHTML = '<span style="color: #ffc107;">Please enter a gift card code</span>';
+        resultDiv.innerHTML = '⚠️ Please enter a gift card code';
+        resultDiv.style.background = 'rgba(255,193,7,0.3)';
         return;
     }
     
+    // Ensure code starts with GIFT-
+    const giftCode = code.startsWith('GIFT-') ? code : 'GIFT-' + code;
+    
     try {
-        const response = await fetch(`${AppConfig.baseUrl}/api/gift-cards/${encodeURIComponent(code)}`, {
-            credentials: 'include'
+        const response = await fetch(`${AppConfig.baseUrl}/api/debtor/lookup`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: giftCode })
         });
         
         const data = await response.json();
         
         resultDiv.style.display = 'block';
-        if (data.success && data.card) {
+        
+        if (data.status === 'success' && data.balance !== undefined) {
+            const balance = data.balance || 0;
+            const isActive = balance > 0;
+            
             resultDiv.innerHTML = `
-                <div style="text-align: center;">
-                    <div style="font-size: 14px; margin-bottom: 5px;">Gift Card: ${escapeHtml(data.card.id)}</div>
-                    <div style="font-size: 28px; font-weight: bold; color: #ffd700;">$${data.card.balance.toFixed(2)}</div>
-                    <div style="font-size: 11px; opacity: 0.8;">Created: ${new Date(data.card.created_at).toLocaleDateString()}</div>
+                <div style="font-size: 14px; color: #333;">
+                    <strong>${giftCode}</strong>
+                    <br>
+                    Balance: <span style="color: ${isActive ? '#28a745' : '#dc3545'}; font-weight: bold;">$${balance.toFixed(2)}</span>
+                    <br>
+                    <span style="font-size: 12px; color: #666;">${isActive ? '✅ Active' : '⚠️ No balance'}</span>
                 </div>
             `;
+            resultDiv.style.background = isActive ? 'rgba(40,167,69,0.15)' : 'rgba(220,53,69,0.15)';
         } else {
-            resultDiv.innerHTML = '<span style="color: #dc3545;">Gift card not found</span>';
+            resultDiv.innerHTML = `⚠️ Gift card not found: ${giftCode}`;
+            resultDiv.style.background = 'rgba(220,53,69,0.15)';
         }
     } catch (error) {
-        console.error('Error checking balance:', error);
+        console.error('Error checking gift card:', error);
         resultDiv.style.display = 'block';
-        resultDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message}</span>`;
+        resultDiv.innerHTML = '❌ Error checking balance';
+        resultDiv.style.background = 'rgba(220,53,69,0.15)';
     }
-};
-
-// Helper function to load image
-function loadImage(url) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = (err) => reject(err);
-        img.src = url;
-    });
 }
 
-// Helper function to show status messages
-function showGiftCardStatus(message, type) {
-    // Try to use existing status message element
-    let statusEl = document.getElementById('checkout-status-message');
-    if (!statusEl) {
-        statusEl = document.getElementById('discogs-status-message');
+/**
+ * Check gift card for payment (during checkout)
+ * Uses the debtor lookup API
+ */
+async function checkGiftCardForPayment() {
+    const codeInput = document.getElementById('giftcard-code');
+    const infoDiv = document.getElementById('giftcard-info');
+    const balanceDisplay = document.getElementById('giftcard-balance-display');
+    const idDisplay = document.getElementById('giftcard-id-display');
+    const applySection = document.getElementById('giftcard-apply-section');
+    const resultDiv = document.getElementById('giftcard-result');
+    
+    if (!codeInput) return;
+    
+    const code = codeInput.value.trim().toUpperCase();
+    if (!code) {
+        showGiftCardResult('Please enter a gift card code.', 'error');
+        return;
     }
-    if (!statusEl) {
-        // Create temporary status element
-        statusEl = document.createElement('div');
-        statusEl.className = 'status-message';
-        const container = document.querySelector('.gift-card-section');
-        if (container) {
-            container.appendChild(statusEl);
+    
+    // Ensure code starts with GIFT-
+    const giftCode = code.startsWith('GIFT-') ? code : 'GIFT-' + code;
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/debtor/lookup`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: giftCode })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.balance !== undefined) {
+            const balance = data.balance || 0;
+            
+            if (balance <= 0) {
+                showGiftCardResult(`❌ Gift card ${giftCode} has no balance.`, 'error');
+                return;
+            }
+            
+            // Show gift card info
+            infoDiv.style.display = 'block';
+            idDisplay.textContent = giftCode;
+            balanceDisplay.textContent = '$' + balance.toFixed(2);
+            
+            // Show apply section
+            applySection.style.display = 'block';
+            document.getElementById('giftcard-amount').value = balance.toFixed(2);
+            
+            // Store the gift card data for later use
+            window._giftCardData = {
+                code: giftCode,
+                balance: balance
+            };
+            
+            resultDiv.style.display = 'none';
+            
+        } else {
+            showGiftCardResult(`❌ Gift card not found: ${giftCode}`, 'error');
         }
+    } catch (error) {
+        console.error('Error checking gift card:', error);
+        showGiftCardResult('❌ Error checking gift card: ' + error.message, 'error');
+    }
+}
+
+function showGiftCardResult(message, type) {
+    const resultDiv = document.getElementById('giftcard-result');
+    if (!resultDiv) return;
+    
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = message;
+    resultDiv.className = 'status-message status-' + type;
+}
+
+/**
+ * Apply gift card to cart (during checkout)
+ */
+async function applyGiftCardToCart() {
+    const amountInput = document.getElementById('giftcard-amount');
+    const resultDiv = document.getElementById('giftcard-result');
+    const giftCardData = window._giftCardData;
+    
+    if (!giftCardData) {
+        showGiftCardResult('Please check a gift card first.', 'error');
+        return;
+    }
+    
+    const amount = parseFloat(amountInput.value);
+    if (isNaN(amount) || amount <= 0) {
+        showGiftCardResult('Please enter a valid amount.', 'error');
+        return;
+    }
+    
+    if (amount > giftCardData.balance) {
+        showGiftCardResult(`❌ Amount exceeds balance. Available: $${giftCardData.balance.toFixed(2)}`, 'error');
+        return;
+    }
+    
+    // Add payment entry to checkout
+    if (typeof addPaymentEntry === 'function') {
+        addPaymentEntry('Gift Card', amount);
+    } else {
+        showGiftCardResult('❌ Checkout not initialized.', 'error');
+        return;
+    }
+    
+    // Close the gift card modal
+    closeGiftCardModal();
+    
+    if (typeof showToast === 'function') {
+        showToast(`✅ Applied $${amount.toFixed(2)} from gift card ${giftCardData.code}`, 'success');
+    }
+}
+
+function setGiftCardAmount(type) {
+    const amountInput = document.getElementById('giftcard-amount');
+    const giftCardData = window._giftCardData;
+    
+    if (!giftCardData || !amountInput) return;
+    
+    if (type === 'full') {
+        amountInput.value = giftCardData.balance.toFixed(2);
+    } else if (type === 'half') {
+        amountInput.value = (giftCardData.balance / 2).toFixed(2);
+    }
+}
+
+function closeGiftCardModal() {
+    const modal = document.getElementById('giftcard-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+// ============================================================
+// CREATE GIFT CARD (Admin Only - In Store)
+// ============================================================
+
+async function createGiftCard() {
+    const amount = parseFloat(document.getElementById('gc-amount')?.value || '0');
+    const recipient = document.getElementById('gc-recipient')?.value?.trim() || '';
+    const statusEl = document.getElementById('gc-status');
+    
+    if (!amount || amount <= 0) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Please enter a valid amount';
+            statusEl.style.color = '#dc3545';
+        }
+        return;
     }
     
     if (statusEl) {
-        statusEl.textContent = message;
-        statusEl.className = `status-message status-${type}`;
-        statusEl.style.display = 'block';
-        setTimeout(() => {
-            statusEl.style.display = 'none';
-        }, 5000);
-    } else {
-        // Fallback to alert for critical errors
-        if (type === 'error') {
-            alert(message);
+        statusEl.textContent = '⏳ Creating gift card...';
+        statusEl.style.color = '#666';
+    }
+    
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/gift-card/create`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                amount: amount,
+                payment_method: 'cash',
+                recipient: recipient
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            if (statusEl) {
+                const recipientDisplay = recipient || 'Bearer';
+                statusEl.textContent = `✅ Gift card ${data.gift_card_id} created for ${recipientDisplay} - $${amount.toFixed(2)}`;
+                statusEl.style.color = '#28a745';
+            }
+            
+            // Generate and print the gift card postcard
+            if (typeof generateGiftCardPostcard === 'function') {
+                const doc = generateGiftCardPostcard(
+                    data.gift_card_id,
+                    data.amount,
+                    recipient || '',
+                    '',
+                    ''
+                );
+                doc.save(`gift-card-${data.gift_card_id}.pdf`);
+            } else {
+                // Fallback: show alert
+                const recipientDisplay = recipient || 'Bearer';
+                alert(`Gift card created: ${data.gift_card_id}\nRecipient: ${recipientDisplay}\nAmount: $${data.amount.toFixed(2)}`);
+            }
+            
+            document.getElementById('gc-amount').value = '';
+            document.getElementById('gc-recipient').value = '';
+            if (typeof loadCreditorsList === 'function') loadCreditorsList();
+            if (typeof loadTotalOwed === 'function') loadTotalOwed();
+            
         } else {
-            console.log(message);
+            if (statusEl) {
+                statusEl.textContent = '❌ ' + (data.error || 'Failed to create gift card');
+                statusEl.style.color = '#dc3545';
+            }
+        }
+    } catch (error) {
+        console.error('Error creating gift card:', error);
+        if (statusEl) {
+            statusEl.textContent = '❌ Error: ' + error.message;
+            statusEl.style.color = '#dc3545';
         }
     }
 }
-
-// Helper function to escape HTML
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Quick preset amount buttons
-window.setGiftCardAmount = function(amount) {
-    const amountInput = document.getElementById('gc-amount');
-    if (amountInput) {
-        amountInput.value = amount;
-    }
-};
-
-// Initialize gift card section when tab is shown
-document.addEventListener('tabChanged', function(e) {
-    if (e.detail && e.detail.tabName === 'admin-config') {
-        // Gift card section is already in the DOM, nothing to initialize
-        console.log('Admin Config tab shown - gift card section ready');
-    }
-});
-
-console.log('✅ gift-cards.js loaded');

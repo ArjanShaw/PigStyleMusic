@@ -137,11 +137,11 @@
     let defaultParamsActive = false;
 
     // ========== Recent Scans for Duplicate Prediction (Scan Mode) ==========
-    let recentScans = []; // Stores { record, timestamp, location }
+    let recentScans = [];
     const MAX_RECENT_SCANS = 10;
 
     // ========== Scan Mode specific counter ==========
-    let scanCounter = 0; // This will be used to track the next index for location
+    let scanCounter = 0;
 
     // ========== Audio ==========
     let audioContext = null;
@@ -999,7 +999,7 @@
         }
     }
 
-    // ========== loadOrderItems (unchanged) ==========
+    // ========== loadOrderItems ==========
     async function loadOrderItems(orderId) {
         console.log(`📦 loadOrderItems() for order ${orderId}`);
         if (!orderId) {
@@ -4239,10 +4239,13 @@
             showCheckoutStatus('Remaining balance not covered', 'error');
             return;
         }
+        
         const selected = checkoutSelectedItems;
         if (selected.length === 0) return;
+        
         const today = getLocalMSTDate();
         let success = 0;
+        
         for (const record of selected) {
             if (record.isCustom === true) {
                 continue;
@@ -4258,26 +4261,33 @@
                 console.error('Failed to update record', record.id, err);
             }
         }
+        
         setTimeout(() => {
             showCheckoutStatus(`${success} of ${selected.filter(r => !r.isCustom).length} records marked as sold`, 'success');
             checkoutSelectedItems = [];
             checkoutViewMode = 'list';
             checkoutPaymentEntries = [];
             checkoutRemaining = 0;
+            
             const modal = document.getElementById('checkout-payment-modal');
             if (modal) modal.style.display = 'none';
+            
             filteredRecords = [];
             totalRecords = 0;
             renderPagination();
             renderTablePage();
+            
             if (checkoutShowSelectedBtn) {
                 checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
             }
             updateSelectionCount();
+            playSound('success');
         }, 500);
     }
 
-    // ========== Show Checkout Modal ==========
+    // ========== Show Checkout Modal (with unified debtor lookup) ==========
+    let checkoutDebtorData = null;
+
     function showCheckoutModal() {
         const oldModal = document.getElementById('checkout-payment-modal');
         if (oldModal) {
@@ -4299,7 +4309,7 @@
         modal.id = 'checkout-payment-modal';
         modal.className = 'modal-overlay';
         modal.innerHTML = `
-            <div class="modal-content" style="max-width: 500px; width: 95%;">
+            <div class="modal-content" style="max-width: 550px; width: 95%;">
                 <div class="modal-header" style="background: #007bff; color: white;">
                     <h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3>
                     <button class="modal-close" onclick="document.getElementById('checkout-payment-modal').style.display='none'" style="color: white;">&times;</button>
@@ -4312,19 +4322,44 @@
                     <div style="font-size: 16px; margin: 10px 0; color: #28a745;">
                         Remaining: $<span id="checkout-remaining">${grandTotal.toFixed(2)}</span>
                     </div>
-                    <div id="store-credit-info" style="display:none; background: #e3f2fd; padding:10px; border-radius:4px; margin-bottom:10px;">
-                        Available store credit: <strong id="store-credit-balance-display">$0.00</strong>
+                    
+                    <!-- UNIFIED DEBTOR / GIFT CARD / STORE CREDIT LOOKUP -->
+                    <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;">
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            <button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;">
+                                <i class="fas fa-search"></i> Lookup
+                            </button>
+                        </div>
+                        <div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                                <span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span>
+                                <span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                                <button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;">
+                                    <i class="fas fa-check"></i> Apply Credit
+                                </button>
+                                <button class="btn btn-sm btn-secondary" onclick="document.getElementById('checkout-debtor-info').style.display='none'">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                            </div>
+                            <div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div>
+                        </div>
+                        <div style="font-size: 12px; color: #666; margin-top: 6px;">
+                            <i class="fas fa-info-circle"></i> Enter a gift card code (GIFT-XXXXX) or a store credit debtor name. Click Apply to use the balance.
+                        </div>
                     </div>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0;">
+                    
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0;">
                         <input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;">
                         <select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;">
-                            <option value="Cash">Cash</option>
-                            <option value="Card (Square)" selected>Card (Square)</option>
-                            <option value="Gift Card">Gift Card</option>
-                            <option value="Store Credit">Store Credit</option>
+                            <option value="Cash" selected>Cash</option>
+                            <option value="Card (Square)">Card (Square)</option>
                         </select>
                         <button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button>
                     </div>
+                    
                     <div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">
                         ⚠️ Square POS is not available. Card option is disabled.
                     </div>
@@ -4340,6 +4375,7 @@
         `;
         document.body.appendChild(modal);
 
+        // Square availability check
         checkSquareAvailability().then(avail => {
             const methodSelect = document.getElementById('checkout-payment-method');
             const cardOption = methodSelect.querySelector('option[value="Card (Square)"]');
@@ -4357,28 +4393,6 @@
         document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
         renderCheckoutEntries();
 
-        const methodSelect = document.getElementById('checkout-payment-method');
-        const storeCreditInfo = document.getElementById('store-credit-info');
-        const balanceDisplay = document.getElementById('store-credit-balance-display');
-
-        methodSelect.addEventListener('change', function() {
-            if (this.value === 'Store Credit') {
-                storeCreditInfo.style.display = 'block';
-                fetch('/api/store-credit/balance', { credentials: 'include' })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.balance !== undefined) {
-                            balanceDisplay.textContent = '$' + parseFloat(data.balance).toFixed(2);
-                        }
-                    })
-                    .catch(() => {
-                        balanceDisplay.textContent = 'Error loading balance';
-                    });
-            } else {
-                storeCreditInfo.style.display = 'none';
-            }
-        });
-
         document.getElementById('checkout-add-payment').onclick = function() {
             const amountInput = document.getElementById('checkout-payment-amount');
             const methodSelect2 = document.getElementById('checkout-payment-method');
@@ -4394,63 +4408,7 @@
             const method = methodSelect2.value;
 
             if (method === 'Card (Square)' && !squareAvailable) {
-                showCheckoutStatus('Square POS is not available. Please use Cash or Gift Card.', 'error');
-                return;
-            }
-
-            if (method === 'Store Credit') {
-                fetch('/api/store-credit/redeem', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ amount: amount, order_id: orderId })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        addPaymentEntry('Store Credit', amount);
-                        balanceDisplay.textContent = '$' + parseFloat(data.new_balance).toFixed(2);
-                    } else {
-                        showCheckoutStatus(data.error || 'Redemption failed', 'error');
-                    }
-                })
-                .catch(err => {
-                    showCheckoutStatus('Error: ' + err.message, 'error');
-                });
-                return;
-            }
-
-            if (method === 'Gift Card') {
-                const code = prompt('Enter gift card code:');
-                if (!code) return;
-                fetch(window.AppConfig.baseUrl + '/api/gift-cards/' + encodeURIComponent(code), {
-                    credentials: 'include'
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.success || !data.card) {
-                        throw new Error('Gift card not found');
-                    }
-                    if (data.card.balance < amount) {
-                        throw new Error(`Insufficient balance: $${data.card.balance.toFixed(2)}`);
-                    }
-                    return fetch(window.AppConfig.baseUrl + '/api/gift-cards/' + data.card.id + '/redeem', {
-                        method: 'POST',
-                        credentials: 'include',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ amount: amount })
-                    });
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.success) {
-                        throw new Error(data.error || 'Failed to redeem gift card');
-                    }
-                    addPaymentEntry('Gift Card', amount);
-                })
-                .catch(err => {
-                    showCheckoutStatus(err.message, 'error');
-                });
+                showCheckoutStatus('Square POS is not available. Please use Cash.', 'error');
                 return;
             }
 
@@ -4547,6 +4505,162 @@
             el.textContent = message;
             el.className = `status-message status-${type}`;
             el.style.display = 'block';
+        }
+    }
+
+    // ========== UNIFIED DEBTOR LOOKUP FOR CHECKOUT ==========
+
+    async function lookupDebtorForCheckout() {
+        const input = document.getElementById('checkout-debtor-code');
+        const infoDiv = document.getElementById('checkout-debtor-info');
+        const statusEl = document.getElementById('checkout-debtor-status');
+        const nameEl = document.getElementById('checkout-debtor-name');
+        const typeEl = document.getElementById('checkout-debtor-type');
+        const balanceEl = document.getElementById('checkout-debtor-balance');
+        
+        if (!input) return;
+        
+        const code = input.value.trim().toUpperCase();
+        if (!code) {
+            if (statusEl) {
+                statusEl.textContent = '⚠️ Please enter a code or name.';
+                statusEl.style.color = '#856404';
+            }
+            return;
+        }
+        
+        statusEl.textContent = '⏳ Looking up...';
+        statusEl.style.color = '#666';
+        
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/debtor/lookup`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: code })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success' && data.balance !== undefined) {
+                checkoutDebtorData = data;
+                const balance = data.balance || 0;
+                const isGiftCard = data.is_gift_card;
+                const isBernie = data.is_bernie;
+                
+                infoDiv.style.display = 'block';
+                nameEl.textContent = data.debtor;
+                
+                if (isGiftCard) {
+                    typeEl.textContent = '🎁 Gift Card';
+                } else if (isBernie) {
+                    typeEl.textContent = '🌹 Bernie Fund (Cannot redeem)';
+                } else {
+                    typeEl.textContent = '💰 Store Credit';
+                }
+                
+                balanceEl.textContent = balance.toFixed(2);
+                balanceEl.style.color = balance > 0 ? '#28a745' : '#dc3545';
+                
+                if (balance <= 0) {
+                    statusEl.textContent = '⚠️ This account has no balance.';
+                    statusEl.style.color = '#856404';
+                } else if (isBernie) {
+                    statusEl.textContent = '⚠️ Bernie funds cannot be redeemed for purchases. Use the Donate button in Creditors.';
+                    statusEl.style.color = '#856404';
+                } else {
+                    statusEl.textContent = `✅ Balance available: $${balance.toFixed(2)}. Click Apply to use it.`;
+                    statusEl.style.color = '#28a745';
+                }
+            } else {
+                infoDiv.style.display = 'block';
+                statusEl.textContent = '❌ Not found. Check the code or name.';
+                statusEl.style.color = '#dc3545';
+                checkoutDebtorData = null;
+            }
+        } catch (error) {
+            console.error('Error looking up debtor:', error);
+            statusEl.textContent = '❌ Error: ' + error.message;
+            statusEl.style.color = '#dc3545';
+            checkoutDebtorData = null;
+        }
+    }
+
+    // ========== APPLY DEBTOR TO CHECKOUT (Auto-Apply) ==========
+
+    async function applyDebtorToCheckout() {
+        if (!checkoutDebtorData) {
+            showCheckoutStatus('Please lookup a debtor first.', 'error');
+            return;
+        }
+        
+        const statusEl = document.getElementById('checkout-debtor-status');
+        const balance = checkoutDebtorData.balance;
+        
+        if (balance <= 0) {
+            statusEl.textContent = '⚠️ This account has no balance.';
+            statusEl.style.color = '#856404';
+            return;
+        }
+        
+        if (checkoutRemaining <= 0.01) {
+            statusEl.textContent = '⚠️ No remaining balance to pay.';
+            statusEl.style.color = '#856404';
+            return;
+        }
+        
+        // Amount to apply = min(balance, remaining)
+        const amount = Math.min(balance, checkoutRemaining);
+        
+        // Create redemption entry in journal
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/debtor/redeem`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: checkoutDebtorData.debtor,
+                    amount: amount,
+                    description: `Checkout redemption - ${checkoutSelectedItems.length} items`
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Add payment entry
+                const method = checkoutDebtorData.is_gift_card ? 'Gift Card' : 'Store Credit';
+                addPaymentEntry(method + ' (' + checkoutDebtorData.debtor + ')', amount);
+                
+                // Update remaining balance
+                checkoutDebtorData.balance -= amount;
+                document.getElementById('checkout-debtor-balance').textContent = checkoutDebtorData.balance.toFixed(2);
+                
+                if (checkoutDebtorData.balance <= 0.01) {
+                    statusEl.textContent = `✅ Applied $${amount.toFixed(2)} from ${checkoutDebtorData.debtor}. Card is now empty.`;
+                    statusEl.style.color = '#28a745';
+                    // Close the debtor section after 2 seconds
+                    setTimeout(() => {
+                        document.getElementById('checkout-debtor-info').style.display = 'none';
+                    }, 2000);
+                } else {
+                    statusEl.textContent = `✅ Applied $${amount.toFixed(2)} from ${checkoutDebtorData.debtor}. Remaining balance: $${checkoutDebtorData.balance.toFixed(2)}`;
+                    statusEl.style.color = '#28a745';
+                }
+                
+                // If remaining is now 0, update button
+                if (checkoutRemaining <= 0.01) {
+                    updateCheckoutCompleteButton();
+                }
+                
+            } else {
+                statusEl.textContent = '❌ ' + (data.error || 'Failed to redeem');
+                statusEl.style.color = '#dc3545';
+            }
+        } catch (error) {
+            console.error('Error redeeming debtor:', error);
+            statusEl.textContent = '❌ Error: ' + error.message;
+            statusEl.style.color = '#dc3545';
         }
     }
 
@@ -4906,9 +5020,7 @@
             renderTablePage();
             showStatus('Scan mode: Scan barcodes to build the list.', 'info');
             searchInput.placeholder = 'Scan barcode here...';
-            // Reset scan counter
             resetScanCounter();
-            // Show the location builder panel (handled by updateFilterVisibility)
         } else if (newMode === 'discogs') {
             filteredRecords = [];
             totalRecords = 0;
@@ -5557,5 +5669,16 @@
     window.closeDiscogsPostModal = closeDiscogsPostModal;
     window.showDiscogsPostModal = showDiscogsPostModal;
     window.closeRefundModal = closeRefundModal;
+
+    // ========== Checkout functions ==========
+    window.lookupDebtorForCheckout = lookupDebtorForCheckout;
+    window.applyDebtorToCheckout = applyDebtorToCheckout;
+    window.addPaymentEntry = addPaymentEntry;
+    window.removeCheckoutEntry = removeCheckoutEntry;
+    window.completeCheckout = completeCheckout;
+    window.addToCheckout = addToCheckout;
+    window.removeFromCheckout = removeFromCheckout;
+    window.checkSquareAvailability = checkSquareAvailability;
+    window.processSquarePayment = processSquarePayment;
 
 })();

@@ -202,6 +202,19 @@ const TabManager = (function() {
                 console.warn('⚠️ initInventoryPurchasesTab not found');
             }
         };
+        
+        // ============================================================
+        // CREDITORS TAB - NEW
+        // ============================================================
+        initializers['creditors'] = () => {
+            console.log('🔵 TabManager: Initializing Creditors tab');
+            if (typeof window.initCreditorsTab === 'function') {
+                console.log('✅ Found initCreditorsTab function, calling it...');
+                window.initCreditorsTab();
+            } else {
+                console.warn('⚠️ initCreditorsTab not found - admin-creditors.js may not be loaded');
+            }
+        };
     }
     
     // Register cleanup functions

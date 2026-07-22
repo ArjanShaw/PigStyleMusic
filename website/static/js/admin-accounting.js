@@ -1,5 +1,5 @@
 // ============================================================
-// admin-accounting.js – Accounting Module (final)
+// admin-accounting.js – Accounting Module
 // ============================================================
 
 let journalCurrentPage = 1;
