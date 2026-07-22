@@ -61,15 +61,8 @@
             transition: all 0.2s;
             min-width: 70px;
         }
-        .amount-btn:hover {
-            border-color: #ff6b6b;
-            background: #fff5f5;
-        }
-        .amount-btn.active {
-            border-color: #ff6b6b;
-            background: #ff6b6b;
-            color: white;
-        }
+        .amount-btn:hover { border-color: #ff6b6b; background: #fff5f5; }
+        .amount-btn.active { border-color: #ff6b6b; background: #ff6b6b; color: white; }
         .custom-amount {
             display: flex;
             align-items: center;
@@ -84,15 +77,8 @@
             font-size: 18px;
             text-align: center;
         }
-        .custom-amount input:focus {
-            outline: none;
-            border-color: #ff6b6b;
-        }
-        .custom-amount span {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-        }
+        .custom-amount input:focus { outline: none; border-color: #ff6b6b; }
+        .custom-amount span { font-size: 18px; font-weight: 600; color: #333; }
 
         .recipient-fields {
             text-align: left;
@@ -115,14 +101,8 @@
             margin-bottom: 12px;
         }
         .recipient-fields input:focus,
-        .recipient-fields textarea:focus {
-            outline: none;
-            border-color: #ff6b6b;
-        }
-        .recipient-fields textarea {
-            resize: vertical;
-            min-height: 50px;
-        }
+        .recipient-fields textarea:focus { outline: none; border-color: #ff6b6b; }
+        .recipient-fields textarea { resize: vertical; min-height: 50px; }
 
         .pay-btn {
             width: 100%;
@@ -140,13 +120,8 @@
             justify-content: center;
             gap: 10px;
         }
-        .pay-btn:hover {
-            transform: translateY(-2px);
-        }
-        .pay-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
+        .pay-btn:hover { transform: translateY(-2px); }
+        .pay-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         
         .status {
             margin-top: 15px;
@@ -154,24 +129,9 @@
             border-radius: 8px;
             display: none;
         }
-        .status.success {
-            display: block;
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .status.error {
-            display: block;
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        .status.info {
-            display: block;
-            background: #cce5ff;
-            color: #004085;
-            border: 1px solid #b8daff;
-        }
+        .status.success { display: block; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status.error { display: block; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status.info { display: block; background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
 
         .back-link {
             display: inline-block;
@@ -180,10 +140,7 @@
             text-decoration: none;
             font-size: 14px;
         }
-        .back-link:hover {
-            color: #333;
-            text-decoration: underline;
-        }
+        .back-link:hover { color: #333; text-decoration: underline; }
         .footer {
             margin-top: 30px;
             font-size: 12px;
@@ -191,13 +148,8 @@
             border-top: 1px solid #eee;
             padding-top: 20px;
         }
-        .footer a {
-            color: #ff6b6b;
-            text-decoration: none;
-        }
-        .footer a:hover {
-            text-decoration: underline;
-        }
+        .footer a { color: #ff6b6b; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
 
         .modal-overlay {
             display: none;
@@ -211,9 +163,7 @@
             justify-content: center;
             align-items: center;
         }
-        .modal-overlay.active {
-            display: flex;
-        }
+        .modal-overlay.active { display: flex; }
         .modal-content {
             background: white;
             border-radius: 16px;
@@ -238,10 +188,7 @@
             color: white;
             border-radius: 16px 16px 0 0;
         }
-        .modal-header h3 {
-            margin: 0;
-            font-size: 18px;
-        }
+        .modal-header h3 { margin: 0; font-size: 18px; }
         .modal-close {
             background: none;
             border: none;
@@ -251,13 +198,8 @@
             opacity: 0.8;
             padding: 0 5px;
         }
-        .modal-close:hover {
-            opacity: 1;
-        }
-        .modal-body {
-            padding: 24px;
-            text-align: center;
-        }
+        .modal-close:hover { opacity: 1; }
+        .modal-body { padding: 24px; text-align: center; }
         .modal-footer {
             padding: 16px 24px;
             border-top: 1px solid #ddd;
@@ -280,9 +222,7 @@
             border-radius: 4px;
             margin: 10px 0;
         }
-        .gift-card-preview .barcode-container canvas {
-            max-width: 100%;
-        }
+        .gift-card-preview .barcode-container canvas { max-width: 100%; }
         .gift-card-preview .amount-display {
             font-size: 32px;
             font-weight: 700;
@@ -322,26 +262,6 @@
         .btn-info { background: #17a2b8; color: white; }
         .btn-info:hover { background: #138496; }
 
-        .preset-buttons {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .preset-btn {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            color: #333;
-            padding: 6px 14px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 13px;
-            transition: all 0.2s;
-        }
-        .preset-btn:hover {
-            background: #e9ecef;
-        }
-
         @media (max-width: 480px) {
             .gift-card-container { padding: 25px 20px; }
             .amount-btn { padding: 10px 16px; font-size: 16px; min-width: 60px; }
@@ -353,7 +273,6 @@
 
 <div class="gift-card-container">
     <img src="/static/images/pigstyle_text.png" alt="PigStyle Music" class="logo">
-    
     <h1>🎁 Gift Cards</h1>
     <p class="subtitle">Give the gift of vinyl</p>
     
@@ -372,10 +291,8 @@
     <div class="recipient-fields">
         <label for="recipient-name"><i class="fas fa-user"></i> Recipient Name (optional)</label>
         <input type="text" id="recipient-name" placeholder="e.g., Jane Doe">
-        
         <label for="sender-name"><i class="fas fa-user"></i> Sender Name (optional)</label>
         <input type="text" id="sender-name" placeholder="e.g., John Smith">
-        
         <label for="personal-message"><i class="fas fa-pencil-alt"></i> Personal Message (optional)</label>
         <textarea id="personal-message" placeholder="Happy Birthday! Enjoy some new vinyl."></textarea>
     </div>
@@ -385,9 +302,7 @@
     </button>
     
     <div id="status" class="status"></div>
-    
     <a href="/" class="back-link">← Back to Home</a>
-    
     <div class="footer">
         PigStyle Music &bull; 100 E 3rd Loveland CO &bull; <a href="tel:9704925630">970-492-5630</a>
     </div>
@@ -405,30 +320,25 @@
                 <i class="fas fa-spinner fa-pulse" style="font-size: 48px; color: #ff6b6b;"></i>
                 <p style="margin-top: 15px; color: #666;">Confirming your payment...</p>
             </div>
-            
             <div id="payment-result" style="display: none;">
                 <div style="font-size: 48px; margin-bottom: 10px;">🎉</div>
                 <h3 style="color: #28a745; margin-bottom: 5px;">Payment Successful!</h3>
                 <p style="color: #666; font-size: 14px;">Your gift card is ready</p>
-                
                 <div class="gift-card-preview">
                     <div class="barcode-container">
                         <canvas id="payment-barcode"></canvas>
                     </div>
-                    
                     <div class="amount-display" id="gift-card-amount">$0.00</div>
                     <div style="margin-top: 5px;">
                         Card ID: <span class="id-display" id="gift-card-id">----</span>
                     </div>
                     <div class="recipient-display" id="gift-card-recipient"></div>
                 </div>
-                
                 <div style="font-size: 13px; color: #666; margin-top: 10px;">
                     <i class="fas fa-info-circle"></i> Not exchangeable for cash.
                     <br>Scan at checkout to redeem.
                 </div>
             </div>
-            
             <div id="payment-error" style="display: none; padding: 20px;">
                 <div style="font-size: 48px; margin-bottom: 10px;">❌</div>
                 <h3 style="color: #dc3545;">Payment Failed</h3>
@@ -484,15 +394,49 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.key === 'Enter') createGiftCardPayment();
     });
     
-    // Check for payment_id in URL (Square redirect)
+    // ============================================================
+    // DETECT SQUARE REDIRECT
+    // ============================================================
     const params = new URLSearchParams(window.location.search);
-    const paymentId = params.get('payment_id');
-    const giftCardId = params.get('gift_card_id');
+    const transactionId = params.get('transactionId');
+    const orderId = params.get('orderId');
     
-    if (paymentId) {
+    console.log('🔍 transactionId:', transactionId);
+    console.log('🔍 orderId:', orderId);
+    
+    if (orderId) {
+        // Get payment_id from order
+        console.log('🔍 Fetching payment_id from order...');
+        fetch(`${AppConfig.baseUrl}/api/square/order-payment/${orderId}`, {
+            credentials: 'include'
+        })
+        .then(r => {
+            if (!r.ok) throw new Error('Failed to fetch payment_id');
+            return r.json();
+        })
+        .then(data => {
+            console.log('🔍 Order payment response:', data);
+            if (data.payment_id) {
+                // Clean the URL
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, newUrl);
+                confirmPayment(data.payment_id, null);
+            } else {
+                showStatus('Payment processed but could not confirm. Please contact the store.', 'error');
+            }
+        })
+        .catch(err => {
+            console.error('❌ Error:', err);
+            showStatus('Payment processed but could not confirm. Please contact the store.', 'error');
+        });
+    } else if (transactionId) {
+        // Clean the URL
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
-        confirmPayment(paymentId, giftCardId);
+        // Try using transactionId as payment_id
+        confirmPayment(transactionId, null);
+    } else {
+        console.log('No redirect parameters found.');
     }
 });
 
@@ -510,7 +454,7 @@ function getSelectedAmount() {
 }
 
 // ============================================================
-// CREATE PAYMENT (with Localhost Bypass + DB Save)
+// CREATE PAYMENT
 // ============================================================
 
 async function createGiftCardPayment() {
@@ -531,64 +475,11 @@ async function createGiftCardPayment() {
     statusEl.style.display = 'none';
     
     try {
-        // ============================================================
-        // LOCALHOST BYPASS: Skip Square payment, create gift card directly
-        // ============================================================
-        const isLocalhost = window.location.hostname === 'localhost' || 
-                           window.location.hostname === '127.0.0.1';
-        
-        if (isLocalhost) {
-            console.log('🔧 LOCALHOST: Creating gift card directly (bypassing Square)');
-            
-            const createUrl = `${AppConfig.baseUrl}/api/gift-card/create`;
-            const response = await fetch(createUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
-                    amount: amount,
-                    payment_method: 'test',
-                    recipient: recipient,
-                    sender: sender,
-                    message: message
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                const giftData = {
-                    status: 'success',
-                    purpose: 'gift_card',
-                    gift_card_id: data.gift_card_id,
-                    amount: data.amount,
-                    entry_id: data.entry_id,
-                    recipient: recipient,
-                    sender: sender,
-                    message: message,
-                    is_test: true
-                };
-                
-                showTestPaymentConfirmation(giftData);
-                
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Square';
-                showStatus('✅ Test mode: Gift card created and saved to database', 'info');
-                return;
-            } else {
-                throw new Error(data.error || 'Failed to create gift card');
-            }
-        }
-        
-        // ============================================================
-        // NORMAL FLOW: Use Square payment
-        // ============================================================
+        const redirectUrl = window.location.origin + '/gift-cards';
         const apiUrl = `${AppConfig.baseUrl}/api/square/create-payment-link`;
+        
         console.log('Calling API:', apiUrl);
+        console.log('Redirect URL:', redirectUrl);
         
         const response = await fetch(apiUrl, {
             method: 'POST',
@@ -598,7 +489,7 @@ async function createGiftCardPayment() {
                 amount: amount,
                 purpose: 'gift_card',
                 item_name: `PigStyle Music Gift Card`,
-                redirect_path: '/gift-cards',
+                redirect_url: redirectUrl,
                 metadata: {
                     recipient: recipient,
                     sender: sender,
@@ -633,66 +524,12 @@ async function createGiftCardPayment() {
 }
 
 // ============================================================
-// TEST MODE: Show confirmation with DB-created gift card
-// ============================================================
-
-function showTestPaymentConfirmation(data) {
-    const modal = document.getElementById('payment-modal');
-    const loadingEl = document.getElementById('payment-loading');
-    const resultEl = document.getElementById('payment-result');
-    const errorEl = document.getElementById('payment-error');
-    const statusEl = document.getElementById('payment-status');
-    
-    modal.classList.add('active');
-    loadingEl.style.display = 'none';
-    resultEl.style.display = 'block';
-    errorEl.style.display = 'none';
-    statusEl.textContent = '🧪 TEST MODE - Gift Card Created';
-    statusEl.style.color = 'white';
-    
-    document.getElementById('gift-card-amount').textContent = '$' + data.amount.toFixed(2);
-    document.getElementById('gift-card-id').textContent = data.gift_card_id;
-    document.getElementById('gift-card-recipient').textContent = data.recipient ? `For: ${data.recipient}` : '';
-    
-    JsBarcode('#payment-barcode', data.gift_card_id, {
-        format: 'CODE128',
-        width: 2,
-        height: 80,
-        displayValue: true,
-        fontSize: 18,
-        font: 'monospace',
-        textAlign: 'center',
-        textPosition: 'bottom',
-        textMargin: 5,
-        background: '#ffffff',
-        lineColor: '#000000'
-    });
-    
-    document.getElementById('print-postcard-btn').style.display = 'inline-flex';
-    document.getElementById('download-pdf-btn').style.display = 'inline-flex';
-    
-    lastGiftCardData = data;
-    
-    const resultContainer = document.getElementById('payment-result');
-    const testBadge = document.createElement('div');
-    testBadge.style.cssText = `
-        background: #fff3cd;
-        color: #856404;
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-size: 13px;
-        margin-bottom: 10px;
-        border: 1px solid #ffeeba;
-    `;
-    testBadge.innerHTML = '🧪 <strong>TEST MODE</strong> - No actual payment was processed';
-    resultContainer.prepend(testBadge);
-}
-
-// ============================================================
 // PAYMENT CONFIRMATION
 // ============================================================
 
 async function confirmPayment(paymentId, giftCardId) {
+    console.log('🔍 confirmPayment called with paymentId:', paymentId);
+    
     const modal = document.getElementById('payment-modal');
     const loadingEl = document.getElementById('payment-loading');
     const resultEl = document.getElementById('payment-result');
@@ -707,7 +544,10 @@ async function confirmPayment(paymentId, giftCardId) {
     statusEl.textContent = '⏳ Processing...';
     
     try {
+        // Get metadata from the payment
         const metadataUrl = `${AppConfig.baseUrl}/api/square/payment-metadata/${paymentId}`;
+        console.log('🔍 Fetching metadata from:', metadataUrl);
+        
         const metadataResponse = await fetch(metadataUrl, { credentials: 'include' });
         
         if (!metadataResponse.ok) {
@@ -715,8 +555,12 @@ async function confirmPayment(paymentId, giftCardId) {
         }
         
         const metadataData = await metadataResponse.json();
+        console.log('🔍 Metadata response:', metadataData);
         
+        // Confirm the payment
         const confirmUrl = `${AppConfig.baseUrl}/api/payment/confirm`;
+        console.log('🔍 Confirming payment at:', confirmUrl);
+        
         const confirmResponse = await fetch(confirmUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -733,6 +577,7 @@ async function confirmPayment(paymentId, giftCardId) {
         }
         
         const data = await confirmResponse.json();
+        console.log('🔍 Confirmation response:', data);
         
         loadingEl.style.display = 'none';
         
@@ -771,7 +616,7 @@ async function confirmPayment(paymentId, giftCardId) {
             statusEl.textContent = '❌ Payment Failed';
         }
     } catch (err) {
-        console.error('Confirmation error:', err);
+        console.error('❌ Confirmation error:', err);
         loadingEl.style.display = 'none';
         errorEl.style.display = 'block';
         errorMessageEl.textContent = err.message || 'Network error. Please contact the store.';
@@ -786,37 +631,27 @@ function closePaymentModal() {
     document.getElementById('payment-error').style.display = 'none';
     document.getElementById('print-postcard-btn').style.display = 'none';
     document.getElementById('download-pdf-btn').style.display = 'none';
-    const testBadge = document.querySelector('#payment-result .test-badge');
-    if (testBadge) testBadge.remove();
 }
 
 // ============================================================
-// POSTCARD PDF GENERATION - SINGLE SIDED, POSTCARD SIZE
+// POSTCARD PDF GENERATION
 // ============================================================
 
 function generateGiftCardPostcard(giftCardId, amount, recipient, sender, message) {
-    // Postcard size: A6 landscape (148mm x 105mm)
     const doc = new window.jspdf.jsPDF('landscape', 'mm', 'a6');
     const pageWidth = 148;
     const pageHeight = 105;
     
-    // === SINGLE SIDED POSTCARD ===
-    
-    // Background color - warm cream
     doc.setFillColor(255, 248, 235);
     doc.rect(0, 0, pageWidth, pageHeight, 'F');
     
-    // Outer border
     doc.setDrawColor(200, 180, 150);
     doc.setLineWidth(0.8);
     doc.rect(3, 3, pageWidth - 6, pageHeight - 6);
-    
-    // Decorative inner border
     doc.setDrawColor(220, 200, 170);
     doc.setLineWidth(0.3);
     doc.rect(6, 6, pageWidth - 12, pageHeight - 12);
     
-    // Corner decorations
     doc.setFillColor(200, 180, 150);
     const dotSize = 1.5;
     doc.circle(8, 8, dotSize, 'F');
@@ -824,30 +659,25 @@ function generateGiftCardPostcard(giftCardId, amount, recipient, sender, message
     doc.circle(8, pageHeight - 8, dotSize, 'F');
     doc.circle(pageWidth - 8, pageHeight - 8, dotSize, 'F');
     
-    // Store name
     doc.setFontSize(24);
     doc.setTextColor(200, 50, 50);
     doc.setFont('helvetica', 'bold');
     doc.text('PIGSTYLE MUSIC', pageWidth / 2, 20, { align: 'center' });
     
-    // Subtitle
     doc.setFontSize(11);
     doc.setTextColor(100, 100, 100);
     doc.setFont('helvetica', 'normal');
     doc.text('GIFT CARD', pageWidth / 2, 28, { align: 'center' });
     
-    // Decorative line
     doc.setDrawColor(200, 180, 150);
     doc.setLineWidth(0.3);
     doc.line(30, 33, pageWidth - 30, 33);
     
-    // Amount
     doc.setFontSize(30);
     doc.setTextColor(40, 167, 69);
     doc.setFont('helvetica', 'bold');
     doc.text(`$${amount.toFixed(2)}`, pageWidth / 2, 52, { align: 'center' });
     
-    // Recipient
     doc.setFontSize(12);
     doc.setTextColor(50, 50, 50);
     doc.setFont('helvetica', 'normal');
@@ -858,7 +688,6 @@ function generateGiftCardPostcard(giftCardId, amount, recipient, sender, message
         doc.text(`From: ${sender}`, pageWidth / 2, 71, { align: 'center' });
     }
     
-    // Message (if provided)
     let messageY = 79;
     if (message) {
         doc.setFontSize(9);
@@ -875,7 +704,6 @@ function generateGiftCardPostcard(giftCardId, amount, recipient, sender, message
         messageY = 79;
     }
     
-    // Barcode - positioned based on whether there's a message
     const barcodeY = message ? Math.min(messageY + 8, 88) : 85;
     
     const barcodeCanvas = document.createElement('canvas');
@@ -901,14 +729,12 @@ function generateGiftCardPostcard(giftCardId, amount, recipient, sender, message
     const barcodeX = (pageWidth - barcodeWidth) / 2;
     doc.addImage(barcodeDataUrl, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight);
     
-    // Footer text - below barcode
     const footerY = barcodeY + barcodeHeight + 5;
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
     doc.setFont('helvetica', 'normal');
     doc.text('Scan at checkout to redeem. Not exchangeable for cash.', pageWidth / 2, footerY, { align: 'center' });
     
-    // Card ID in small print at bottom
     doc.setFontSize(6);
     doc.setTextColor(180, 180, 180);
     doc.text(`ID: ${giftCardId}`, pageWidth / 2, footerY + 4, { align: 'center' });
@@ -921,13 +747,11 @@ function downloadGiftCardPDF() {
         alert('No gift card data available. Please create a gift card first.');
         return;
     }
-    
     try {
         const data = lastGiftCardData;
         const recipient = document.getElementById('recipient-name').value.trim();
         const sender = document.getElementById('sender-name').value.trim();
         const message = document.getElementById('personal-message').value.trim();
-        
         const doc = generateGiftCardPostcard(
             data.gift_card_id,
             data.amount,
@@ -935,7 +759,6 @@ function downloadGiftCardPDF() {
             sender || data.sender || '',
             message || data.message || ''
         );
-        
         doc.save(`gift-card-${data.gift_card_id}.pdf`);
     } catch (err) {
         console.error('Download error:', err);
@@ -948,13 +771,11 @@ function printGiftCardPostcard() {
         alert('No gift card data available. Please create a gift card first.');
         return;
     }
-    
     try {
         const data = lastGiftCardData;
         const recipient = document.getElementById('recipient-name').value.trim();
         const sender = document.getElementById('sender-name').value.trim();
         const message = document.getElementById('personal-message').value.trim();
-        
         const doc = generateGiftCardPostcard(
             data.gift_card_id,
             data.amount,
@@ -962,7 +783,6 @@ function printGiftCardPostcard() {
             sender || data.sender || '',
             message || data.message || ''
         );
-        
         const pdfBlob = doc.output('blob');
         const pdfUrl = URL.createObjectURL(pdfBlob);
         const printWindow = window.open(pdfUrl);

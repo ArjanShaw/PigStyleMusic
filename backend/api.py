@@ -10464,12 +10464,304 @@ def balance_sheet():
 # ============================================================
 # DEBTOR / CREDITOR SYSTEM ENDPOINTS
 # ============================================================
+# ============================================================
+# GENERIC SQUARE PAYMENT LINK ENDPOINTS
+# ============================================================
 
+@app.route('/api/square/create-payment-link', methods=['POST'])
+@login_required
+def create_square_payment_link():
+    """Create a generic Square payment link."""
+    try:
+        data = request.json
+        
+        amount = float(data.get('amount', 0))
+        if amount <= 0:
+            return jsonify({'status': 'error', 'error': 'Invalid amount'}), 400
+        
+        purpose = data.get('purpose')
+        if not purpose:
+            return jsonify({'status': 'error', 'error': 'purpose required'}), 400
+        
+        metadata = data.get('metadata', {})
+        metadata['purpose'] = purpose
+        
+        item_name = data.get('item_name', f"Payment - {purpose}")
+        
+        # ========== CHANGED: Use redirect_url from frontend ==========
+        redirect_url = data.get('redirect_url')
+        if not redirect_url:
+            redirect_path = data.get('redirect_path', '/gift-cards')
+            redirect_url = request.host_url.rstrip('/') + redirect_path
+        
+        print(f"🔀 Redirect URL: {redirect_url}")
+        
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        location_id = os.environ.get('SQUARE_LOCATION_ID')
+        
+        if not access_token or not location_id:
+            return jsonify({'status': 'error', 'error': 'Square not configured'}), 500
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        payload = {
+            "idempotency_key": str(uuid.uuid4()),
+            "order": {
+                "location_id": location_id,
+                "line_items": [{
+                    "name": item_name,
+                    "quantity": "1",
+                    "base_price_money": {
+                        "amount": int(round(amount * 100)),
+                        "currency": "USD"
+                    }
+                }],
+                "metadata": metadata
+            },
+            "checkout_options": {
+                "redirect_url": redirect_url
+            }
+        }
+        
+        response = requests.post(
+            'https://connect.squareup.com/v2/online-checkout/payment-links',
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            app.logger.error(f"Square payment link error: {response.text}")
+            return jsonify({'status': 'error', 'error': 'Failed to create payment link'}), 400
+        
+        result = response.json()
+        payment_link = result.get('payment_link', {})
+        
+        return jsonify({
+            'status': 'success',
+            'checkout_url': payment_link.get('url'),
+            'payment_link_id': payment_link.get('id'),
+            'metadata': metadata
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Create payment link error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+ 
+
+def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
+    """Create a gift card from a confirmed payment."""
+    try:
+        import random, string
+        
+        # Use provided gift card ID or generate one
+        if not gift_card_id:
+            gift_card_id = metadata.get('gift_card_id')
+        if not gift_card_id:
+            random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            gift_card_id = f"GIFT-{random_part}"
+        
+        # Get recipient info from metadata
+        recipient = metadata.get('recipient', '')
+        sender = metadata.get('sender', '')
+        message = metadata.get('message', '')
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get accounts
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
+        payable = cursor.fetchone()
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
+        cash = cursor.fetchone()
+        
+        if not payable or not cash:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
+        
+        amount_cents = int(round(amount * 100))
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Description format: GIFT-XXXXX | RECIPIENT | amount
+        recipient_display = recipient if recipient else 'Bearer'
+        desc = f"{gift_card_id} | {recipient_display} | ${amount:.2f} gift card"
+        
+        # Create journal entry
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (today, desc, 'gift_card', gift_card_id))
+        entry_id = cursor.lastrowid
+        
+        # Debit Cash (money received)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, cash['id'], amount_cents, 0))
+        
+        # Credit Payable (owe gift card)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, payable['id'], 0, amount_cents))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'purpose': 'gift_card',
+            'gift_card_id': gift_card_id,
+            'amount': amount,
+            'entry_id': entry_id,
+            'recipient': recipient,
+            'sender': sender,
+            'message': message
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Handle gift card payment error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+def handle_donation_payment(payment_id, amount, metadata):
+    """Handle a donation payment."""
+    try:
+        campaign = metadata.get('campaign', 'general')
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get accounts
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
+        payable = cursor.fetchone()
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
+        cash = cursor.fetchone()
+        
+        if not payable or not cash:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
+        
+        amount_cents = int(round(amount * 100))
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Create journal entry for donation (Bernie)
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (today, f"BERNIE | ISSUE | Donation - ${amount:.2f} ({campaign})", 'bernie_donation', payment_id))
+        entry_id = cursor.lastrowid
+        
+        # Debit Cash
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, cash['id'], amount_cents, 0))
+        
+        # Credit Payable (donation liability)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, payable['id'], 0, amount_cents))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'purpose': 'donation',
+            'campaign': campaign,
+            'amount': amount,
+            'entry_id': entry_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Handle donation payment error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+def handle_store_credit_payment(payment_id, amount, metadata):
+    """Handle a store credit purchase."""
+    try:
+        debtor_name = metadata.get('debtor_name', '').upper()
+        if not debtor_name:
+            return jsonify({'status': 'error', 'error': 'debtor_name required for store credit'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get accounts
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
+        payable = cursor.fetchone()
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
+        cash = cursor.fetchone()
+        
+        if not payable or not cash:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
+        
+        # Store credit is 50% higher than cash value
+        credit_value = amount * 1.5
+        amount_cents = int(round(credit_value * 100))
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Create journal entry
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (today, f"{debtor_name} | ISSUE | Store credit - ${credit_value:.2f} (cash paid ${amount:.2f})", 'store_credit', payment_id))
+        entry_id = cursor.lastrowid
+        
+        # Debit Payable
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, payable['id'], amount_cents, 0))
+        
+        # Credit Revenue (or Store Credit Issued)
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4050',))
+        credit_account = cursor.fetchone()
+        if not credit_account:
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
+            credit_account = cursor.fetchone()
+        
+        if credit_account:
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (entry_id, credit_account['id'], 0, amount_cents))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'purpose': 'store_credit',
+            'debtor_name': debtor_name,
+            'credit_value': credit_value,
+            'cash_paid': amount,
+            'entry_id': entry_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Handle store credit payment error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ============================================================
+# DEBTOR / CREDITOR SYSTEM ENDPOINTS
+# ============================================================
 
 @app.route('/api/debtor/lookup', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def debtor_lookup():
+    """Look up a debtor by name and get their balance and transaction history."""
     try:
         data = request.json
         debtor_name = data.get('name', '').strip().upper()
@@ -10480,7 +10772,36 @@ def debtor_lookup():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get balance - ONLY PAYABLE ACCOUNT (2015)
+        # Try exact match first
+        cursor.execute('''
+            SELECT description, source_type FROM journal_entries
+            WHERE description LIKE ?
+            LIMIT 1
+        ''', (f'{debtor_name} | %',))
+        
+        row = cursor.fetchone()
+        original_name = debtor_name
+        
+        # If not found and it's not a GIFT- code, try recipient name
+        if not row and not debtor_name.startswith('GIFT-'):
+            cursor.execute('''
+                SELECT description, source_type FROM journal_entries
+                WHERE description LIKE ?
+                LIMIT 1
+            ''', (f'% | {debtor_name} | %',))
+            row = cursor.fetchone()
+            
+            if row:
+                parts = row['description'].split(' | ')
+                if parts and parts[0].strip():
+                    debtor_name = parts[0].strip()
+        
+        # If still not found, return error
+        if not row:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Debtor not found: {original_name}'}), 404
+        
+        # Get balance - only Payable account (2015)
         cursor.execute('''
             SELECT 
                 COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
@@ -10497,7 +10818,12 @@ def debtor_lookup():
         # Force positive for liability
         balance = abs(raw_balance)
         
-        # Get transactions - ONLY PAYABLE ACCOUNT
+        # If balance is 0, return not found
+        if balance == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Debtor not found (balance is $0)'}), 404
+        
+        # Get transactions - only Payable account (2015)
         cursor.execute('''
             SELECT 
                 je.id as journal_entry_id,
@@ -10545,6 +10871,180 @@ def debtor_lookup():
     except Exception as e:
         app.logger.error(f"Debtor lookup error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/debtor/list', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def debtor_list():
+    """Get a list of all unique debtors with their display names."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all unique debtors with their descriptions
+        cursor.execute('''
+            SELECT DISTINCT 
+                SUBSTR(description, 1, INSTR(description, ' | ') - 1) as debtor_name,
+                description,
+                source_type
+            FROM journal_entries
+            WHERE description LIKE '% | %'
+            ORDER BY debtor_name
+        ''')
+        
+        debtors_raw = cursor.fetchall()
+        conn.close()
+        
+        result = []
+        seen_names = set()
+        
+        for row in debtors_raw:
+            name = row['debtor_name']
+            if not name:
+                continue
+            
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+            
+            # Get balance for this debtor
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute('''
+                SELECT 
+                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
+                FROM journal_entries je
+                JOIN journal_lines jl ON jl.journal_entry_id = je.id
+                JOIN accounts a ON a.id = jl.account_id
+                WHERE je.description LIKE ?
+                  AND a.code = '2015'
+            ''', (f'{name} | %',))
+            bal = cur2.fetchone()
+            conn2.close()
+            
+            balance = abs(bal['balance']) if bal else 0
+            
+            # Skip debtors with $0 balance
+            if balance <= 0:
+                continue
+            
+            display_name = name
+            
+            # If it's a gift card, extract the recipient
+            if name.startswith('GIFT-'):
+                parts = row['description'].split(' | ')
+                if len(parts) >= 2 and parts[1].strip():
+                    recipient = parts[1].strip()
+                    display_name = f"{recipient} - {name}"
+                else:
+                    display_name = f"Bearer - {name}"
+            
+            result.append({
+                'name': name,
+                'display_name': display_name,
+                'balance': balance
+            })
+        
+        # Sort by balance descending (highest first)
+        result.sort(key=lambda x: x['balance'], reverse=True)
+        
+        return jsonify({
+            'status': 'success',
+            'debtors': result
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Debtor list error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/debtor/redeem', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def debtor_redeem():
+    """Redeem debtor credit for a purchase."""
+    try:
+        data = request.json
+        debtor_name = data.get('name', '').strip().upper()
+        amount = float(data.get('amount', 0))
+        description = data.get('description', '').strip()
+        
+        if not debtor_name:
+            return jsonify({'status': 'error', 'error': 'Debtor name required'}), 400
+        if amount <= 0:
+            return jsonify({'status': 'error', 'error': 'Amount must be greater than 0'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get current balance - only Payable account (2015)
+        cursor.execute('''
+            SELECT 
+                COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            JOIN accounts a ON a.id = jl.account_id
+            WHERE je.description LIKE ?
+              AND a.code = '2015'
+        ''', (f'{debtor_name} | %',))
+        
+        result = cursor.fetchone()
+        raw_balance = result['balance'] if result else 0
+        
+        # Force positive (liability accounts)
+        balance = abs(raw_balance)
+        
+        if balance < amount:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Insufficient balance. Available: ${balance:.2f}'}), 400
+        
+        # Get accounts
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
+        payable = cursor.fetchone()
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
+        revenue = cursor.fetchone()
+        
+        if not payable or not revenue:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        amount_cents = int(round(amount * 100))
+        
+        # Create journal entry
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (today, f"{debtor_name} | REDEEM | {description}", 'debtor_redeem', debtor_name))
+        entry_id = cursor.lastrowid
+        
+        # Debit Payable (reduce what we owe)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, payable['id'], amount_cents, 0))
+        
+        # Credit Revenue
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, revenue['id'], 0, amount_cents))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'${amount:.2f} redeemed from {debtor_name}',
+            'entry_id': entry_id,
+            'new_balance': balance - amount
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Debtor redeem error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/debtor/issue', methods=['POST'])
 @login_required
@@ -10626,91 +11126,6 @@ def debtor_issue():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-@app.route('/api/debtor/redeem', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def debtor_redeem():
-    try:
-        data = request.json
-        debtor_name = data.get('name', '').strip().upper()
-        amount = float(data.get('amount', 0))
-        description = data.get('description', '').strip()
-        
-        if not debtor_name:
-            return jsonify({'status': 'error', 'error': 'Debtor name required'}), 400
-        if amount <= 0:
-            return jsonify({'status': 'error', 'error': 'Amount must be greater than 0'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Get current balance - EXACT SAME QUERY as /api/debtor/lookup
-        cursor.execute('''
-            SELECT 
-                COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
-            FROM journal_entries je
-            JOIN journal_lines jl ON jl.journal_entry_id = je.id
-            JOIN accounts a ON a.id = jl.account_id
-            WHERE je.description LIKE ?
-              AND a.code = '2015'
-        ''', (f'{debtor_name} | %',))
-        
-        result = cursor.fetchone()
-        raw_balance = result['balance'] if result else 0
-        
-        # Force positive (liability accounts)
-        balance = abs(raw_balance)
-        
-        if balance < amount:
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'Insufficient balance. Available: ${balance:.2f}'}), 400
-        
-        # Get accounts
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
-        payable = cursor.fetchone()
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
-        revenue = cursor.fetchone()
-        
-        if not payable or not revenue:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
-        
-        today = datetime.now().strftime('%Y-%m-%d')
-        amount_cents = int(round(amount * 100))
-        
-        # Create journal entry
-        cursor.execute('''
-            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-            VALUES (?, ?, ?, ?)
-        ''', (today, f"{debtor_name} | REDEEM | {description}", 'debtor_redeem', debtor_name))
-        entry_id = cursor.lastrowid
-        
-        # Debit Payable (reduce what we owe)
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, payable['id'], amount_cents, 0))
-        
-        # Credit Revenue
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, revenue['id'], 0, amount_cents))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'${amount:.2f} redeemed from {debtor_name}',
-            'entry_id': entry_id,
-            'new_balance': balance - amount
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Debtor redeem error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
 @app.route('/api/debtor/cashout', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -10729,19 +11144,17 @@ def debtor_cashout():
         # Get current balance
         cursor.execute('''
             SELECT 
-                COALESCE(SUM(
-                    CASE 
-                        WHEN jl.debit_amount > 0 THEN jl.debit_amount 
-                        ELSE -jl.credit_amount 
-                    END
-                ), 0) / 100.0 as balance
+                COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
             FROM journal_entries je
             JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            JOIN accounts a ON a.id = jl.account_id
             WHERE je.description LIKE ?
+              AND a.code = '2015'
         ''', (f'{debtor_name} | %',))
         
         result = cursor.fetchone()
-        balance = result['balance'] if result else 0
+        raw_balance = result['balance'] if result else 0
+        balance = abs(raw_balance)
         
         if balance <= 0:
             conn.close()
@@ -10822,10 +11235,12 @@ def debtor_cashout():
         app.logger.error(f"Debtor cashout error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/gift-card/create', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def create_gift_card():
+    """Create a new gift card (admin only - in store)."""
     try:
         data = request.json
         amount = float(data.get('amount', 0))
@@ -10855,7 +11270,6 @@ def create_gift_card():
         today = datetime.now().strftime('%Y-%m-%d')
         amount_cents = int(round(amount * 100))
         
-        # Description format: GIFT-XXXXX | RECIPIENT | amount
         recipient_display = recipient if recipient else 'Bearer'
         desc = f"{gift_card_id} | {recipient_display} | ${amount:.2f} gift card"
         
@@ -10889,95 +11303,7 @@ def create_gift_card():
     except Exception as e:
         app.logger.error(f"Gift card creation error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/debtor/list', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def debtor_list():
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT DISTINCT 
-                SUBSTR(description, 1, INSTR(description, ' | ') - 1) as debtor_name,
-                description,
-                source_type,
-                id
-            FROM journal_entries
-            WHERE description LIKE '% | %'
-            ORDER BY debtor_name
-        ''')
-        
-        debtors_raw = cursor.fetchall()
-        conn.close()
-        
-        result = []
-        seen_names = set()
-        
-        for row in debtors_raw:
-            name = row['debtor_name']
-            if not name:
-                continue
-            
-            if name in seen_names:
-                continue
-            seen_names.add(name)
-            
-            # Get balance for this debtor
-            conn2 = get_db()
-            cur2 = conn2.cursor()
-            cur2.execute('''
-                SELECT 
-                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
-                FROM journal_entries je
-                JOIN journal_lines jl ON jl.journal_entry_id = je.id
-                JOIN accounts a ON a.id = jl.account_id
-                WHERE je.description LIKE ?
-                  AND a.code = '2015'
-            ''', (f'{name} | %',))
-            bal = cur2.fetchone()
-            conn2.close()
-            
-            balance = abs(bal['balance']) if bal else 0
-            
-            # ============================================================
-            # SKIP debtors with $0 balance
-            # ============================================================
-            if balance <= 0:
-                continue
-            
-            display_name = name
-            
-            # If it's a gift card, extract the recipient
-            if name.startswith('GIFT-'):
-                parts = row['description'].split(' | ')
-                if len(parts) >= 2 and parts[1].strip():
-                    recipient = parts[1].strip()
-                    display_name = f"{recipient} - {name}"
-                else:
-                    display_name = f"Bearer - {name}"
-            elif row['source_type'] == 'store_credit':
-                display_name = name
-            
-            result.append({
-                'name': name,
-                'display_name': display_name,
-                'balance': balance
-            })
-        
-        result.sort(key=lambda x: x['balance'], reverse=True)
-        
-        return jsonify({
-            'status': 'success',
-            'debtors': result
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Debtor list error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 @app.route('/api/bernie/donate', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -11115,96 +11441,6 @@ def account_balance():
 # ============================================================
 # GENERIC SQUARE PAYMENT LINK ENDPOINTS
 # ============================================================
-
-@app.route('/api/square/create-payment-link', methods=['POST'])
-@login_required
-def create_square_payment_link():
-    """
-    Create a generic Square payment link.
-    After payment, the redirect_url will be called with payment_id and metadata.
-    """
-    try:
-        data = request.json
-        
-        # Required: amount in dollars
-        amount = float(data.get('amount', 0))
-        if amount <= 0:
-            return jsonify({'status': 'error', 'error': 'Invalid amount'}), 400
-        
-        # Required: what to do after payment (e.g., 'gift_card', 'donation', 'store_credit')
-        purpose = data.get('purpose')
-        if not purpose:
-            return jsonify({'status': 'error', 'error': 'purpose required (e.g., gift_card)'}), 400
-        
-        # Optional: metadata to pass through to confirmation
-        metadata = data.get('metadata', {})
-        metadata['purpose'] = purpose
-        
-        # Optional: item name for the receipt
-        item_name = data.get('item_name', f"Payment - {purpose}")
-        
-        # Optional: redirect URL (default: /gift-cards or /payment-confirm)
-        redirect_path = data.get('redirect_path', '/gift-cards')
-        redirect_url = f"{request.host_url.rstrip('/')}{redirect_path}"
-        
-        # Create Square payment link
-        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
-        location_id = os.environ.get('SQUARE_LOCATION_ID')
-        
-        if not access_token or not location_id:
-            return jsonify({'status': 'error', 'error': 'Square not configured'}), 500
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json',
-            'Square-Version': '2026-01-22'
-        }
-        
-        payload = {
-            "idempotency_key": str(uuid.uuid4()),
-            "order": {
-                "location_id": location_id,
-                "line_items": [{
-                    "name": item_name,
-                    "quantity": "1",
-                    "base_price_money": {
-                        "amount": int(round(amount * 100)),
-                        "currency": "USD"
-                    }
-                }],
-                "metadata": metadata
-            },
-            "checkout_options": {
-                "redirect_url": redirect_url
-            }
-        }
-        
-        response = requests.post(
-            'https://connect.squareup.com/v2/online-checkout/payment-links',
-            headers=headers,
-            json=payload,
-            timeout=30
-        )
-        
-        if response.status_code != 200:
-            app.logger.error(f"Square payment link error: {response.text}")
-            return jsonify({'status': 'error', 'error': 'Failed to create payment link'}), 400
-        
-        result = response.json()
-        payment_link = result.get('payment_link', {})
-        
-        return jsonify({
-            'status': 'success',
-            'checkout_url': payment_link.get('url'),
-            'payment_link_id': payment_link.get('id'),
-            'metadata': metadata
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Create payment link error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
 @app.route('/api/square/payment-metadata/<payment_id>', methods=['GET'])
 @login_required
 def get_payment_metadata(payment_id):
@@ -11229,7 +11465,6 @@ def get_payment_metadata(payment_id):
         order_id = payment.get('order_id')
         
         if order_id:
-            # Get order metadata
             order_response = requests.get(
                 f'https://connect.squareup.com/v2/orders/{order_id}',
                 headers=headers,
@@ -11251,7 +11486,45 @@ def get_payment_metadata(payment_id):
     except Exception as e:
         app.logger.error(f"Get payment metadata error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
+    
+@app.route('/api/square/order-payment/<order_id>', methods=['GET'])
+@login_required
+def get_order_payment(order_id):
+    """Get the payment_id from an order."""
+    try:
+        headers = {
+            'Authorization': f'Bearer {os.environ.get("SQUARE_ACCESS_TOKEN")}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        response = requests.get(
+            f'https://connect.squareup.com/v2/orders/{order_id}',
+            headers=headers,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 400
+        
+        order = response.json().get('order', {})
+        payment_id = order.get('metadata', {}).get('payment_id')
+        
+        if not payment_id:
+            tenders = order.get('tenders', [])
+            for tender in tenders:
+                if tender.get('payment_id'):
+                    payment_id = tender.get('payment_id')
+                    break
+        
+        return jsonify({
+            'status': 'success',
+            'payment_id': payment_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Get order payment error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/payment/confirm', methods=['POST'])
 def confirm_payment():
@@ -11326,7 +11599,6 @@ def confirm_payment():
     except Exception as e:
         app.logger.error(f"Confirm payment error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
     """Create a gift card from a confirmed payment."""
