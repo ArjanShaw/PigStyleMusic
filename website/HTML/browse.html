@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+browse.html => <!DOCTYPE html>
 <html lang='en'>
 <head>
     <meta charset='UTF-8'>
@@ -88,7 +88,7 @@
             overflow: hidden;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             transition: transform 0.2s, box-shadow 0.2s;
-            cursor: pointer;
+            cursor: default;
         }
         
         .record-card:hover {
@@ -173,17 +173,6 @@
             display: flex;
             align-items: center;
             gap: 5px;
-        }
-        
-        .in-cart-badge {
-            display: inline-block;
-            background: #28a745;
-            color: white;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            margin-left: 8px;
         }
         
         .pagination-btn {
@@ -433,23 +422,6 @@
             margin-top: 20px;
         }
         
-        .add-to-cart-modal-btn {
-            flex: 1;
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 40px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        
-        .add-to-cart-modal-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        
         .close-modal-btn {
             flex: 1;
             background: #e9ecef;
@@ -460,130 +432,6 @@
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-        }
-        
-        .cart-drawer {
-            position: fixed;
-            top: 0;
-            right: -400px;
-            width: 400px;
-            height: 100vh;
-            background: white;
-            z-index: 3000;
-            transition: right 0.3s ease;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .cart-drawer.open {
-            right: 0;
-        }
-        
-        .cart-drawer-header {
-            padding: 20px;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .cart-drawer-close {
-            background: none;
-            border: none;
-            font-size: 28px;
-            cursor: pointer;
-        }
-        
-        .cart-drawer-items {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-        }
-        
-        .cart-drawer-footer {
-            padding: 20px;
-            border-top: 1px solid #eee;
-        }
-        
-        .cart-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.5);
-            z-index: 2500;
-            display: none;
-        }
-        
-        .cart-overlay.active {
-            display: block;
-        }
-        
-        .cart-icon-wrapper {
-            position: relative;
-            display: inline-block;
-            margin-left: 15px;
-            cursor: pointer;
-        }
-        
-        .cart-badge {
-            position: absolute;
-            top: -8px;
-            right: -12px;
-            background: #ff6b6b;
-            color: white;
-            border-radius: 50%;
-            padding: 2px 6px;
-            font-size: 0.7rem;
-            min-width: 18px;
-            text-align: center;
-        }
-        
-        .checkout-modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.8);
-            z-index: 4000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .checkout-modal {
-            background: white;
-            border-radius: 20px;
-            max-width: 550px;
-            width: 90%;
-            max-height: 85vh;
-            overflow-y: auto;
-        }
-        
-        .empty-cart-message {
-            text-align: center;
-            padding: 40px;
-            color: #999;
-        }
-        
-        .remove-item-btn {
-            background: none;
-            border: none;
-            color: #dc3545;
-            cursor: pointer;
-        }
-        
-        .checkout-btn {
-            width: 100%;
-            padding: 12px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
         }
         
         .notification {
@@ -614,12 +462,6 @@
                 <i class="fas fa-bell"></i> Record Alerts
             </a>
             <div id="auth-section"></div>
-            <div id="cartToggleContainer" style="display: none;">
-                <div class="cart-icon-wrapper" id="cartToggle">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span id="cartBadge" class="cart-badge">0</span>
-                </div>
-            </div>
         </div>
     </nav>
 
@@ -679,22 +521,6 @@
         </div>
     </div>
 
-    <div class="cart-drawer" id="cartDrawer">
-        <div class="cart-drawer-header">
-            <h3><i class="fas fa-shopping-cart"></i> Your Cart</h3>
-            <button class="cart-drawer-close" id="closeCartDrawer">&times;</button>
-        </div>
-        <div class="cart-drawer-items" id="cartItems">
-            <div class="empty-cart-message">
-                <i class="fas fa-shopping-bag"></i>
-                <p>Your cart is empty</p>
-            </div>
-        </div>
-        <div class="cart-drawer-footer" id="cartFooter" style="display: none;"></div>
-    </div>
-
-    <div class="cart-overlay" id="cartOverlay"></div>
-
     <!-- Subscription Modal -->
     <div id="subscribe-modal" class="subscribe-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 5000; justify-content: center; align-items: center;">
         <div style="background: white; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90%; overflow-y: auto;">
@@ -749,9 +575,6 @@
         let newVinylActive = false;
         let currentPage = 1;
         let recordsPerPage = 50;
-        let cart = { items: [], total: 0 };
-        let shippingCost = 0;
-        let taxRate = 0;
 
         // Subscription Modal Functions
         const subscribeModal = document.getElementById('subscribe-modal');
@@ -1090,7 +913,6 @@
             const genre = extractGenreFromLocation(record.location);
             const locationDisplay = formatLocationDisplay(record.location);
             const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
-            const alreadyInCart = cart.items.some(item => item.copyId === record.id);
             
             const imageHtml = record.image_url ? 
                 `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
@@ -1105,7 +927,6 @@
                     <div class="record-card-price">$${parseFloat(record.store_price).toFixed(2)}</div>
                     <div>
                         <span class="record-card-condition">${escapeHtml(combinedCondition)}</span>
-                        ${alreadyInCart ? '<span class="in-cart-badge"><i class="fas fa-check"></i> In Cart</span>' : ''}
                     </div>
             `;
             
@@ -1122,7 +943,6 @@
         }
 
         function showRecordModal(record) {
-            const alreadyInCart = cart.items.some(item => item.copyId === record.id);
             const genre = extractGenreFromLocation(record.location);
             const locationDisplay = formatLocationDisplay(record.location);
             const discCondition = getConditionDisplayName(record.condition_disc_id);
@@ -1155,7 +975,6 @@
                         </div>
                         <div class="record-modal-price">$${parseFloat(record.store_price).toFixed(2)}</div>
                         <div class="record-modal-actions">
-                            <button class="add-to-cart-modal-btn" ${alreadyInCart ? 'disabled' : ''}><i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> ${alreadyInCart ? 'In Cart' : 'Add to Cart'}</button>
                             <button class="close-modal-btn">Close</button>
                         </div>
                     </div>
@@ -1166,74 +985,8 @@
             modal.querySelector('.record-modal-close').onclick = () => modal.remove();
             modal.querySelector('.close-modal-btn').onclick = () => modal.remove();
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-            
-            const addBtn = modal.querySelector('.add-to-cart-modal-btn');
-            if (addBtn && !addBtn.disabled) {
-                addBtn.onclick = () => { addToCart(record); modal.remove(); };
-            }
         }
 
-        function addToCart(record) {
-            if (cart.items.some(item => item.copyId === record.id)) {
-                showNotification('Already in cart', 'error');
-                return;
-            }
-            const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
-            cart.items.push({
-                copyId: record.id, title: record.title, artist: record.artist,
-                condition: combinedCondition,
-                price: parseFloat(record.store_price), image_url: record.image_url,
-                location: formatLocationDisplay(record.location), quantity: 1
-            });
-            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            saveCart();
-            showNotification(`Added ${record.title} to cart!`, 'success');
-            displayRecords(allRecords);
-        }
-        
-        function removeFromCart(index) {
-            cart.items.splice(index, 1);
-            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            saveCart();
-            showNotification('Removed from cart', 'success');
-            if (cart.items.length === 0) closeCartDrawer();
-            displayRecords(allRecords);
-        }
-        
-        function saveCart() { localStorage.setItem('pigstyle_cart', JSON.stringify(cart)); updateCartDisplay(); }
-        function loadCart() { const saved = localStorage.getItem('pigstyle_cart'); if (saved) { cart = JSON.parse(saved); updateCartDisplay(); } }
-        
-        function updateCartDisplay() {
-            const count = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-            document.getElementById('cartBadge').textContent = count;
-            document.getElementById('cartToggleContainer').style.display = count > 0 ? 'block' : 'none';
-            updateCartDrawer();
-        }
-        
-        function updateCartDrawer() {
-            const itemsDiv = document.getElementById('cartItems'); 
-            const footer = document.getElementById('cartFooter'); 
-            if(cart.items.length===0){ 
-                itemsDiv.innerHTML='<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>'; 
-                footer.style.display='none'; 
-                return; 
-            } 
-            let subtotal = cart.items.reduce((s,i)=>s+(i.price*i.quantity),0); 
-            let taxAmt = subtotal * (taxRate/100); 
-            let html = `
-                <table class="cart-items-table">
-                    <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr></thead>
-                    <tbody>
-            `;
-            cart.items.forEach((item, idx) => {
-                html += `<tr><td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.condition}</small><br><small><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.location)}</small></td><td>$${item.price.toFixed(2)}</td><td>${item.quantity}</td><td>$${(item.price * item.quantity).toFixed(2)}</td><td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
-            });
-            html += `</tbody></table><div style="margin-top:15px"><div>Subtotal: $${subtotal.toFixed(2)}</div><div>Tax: $${taxAmt.toFixed(2)}</div><div><strong>Total: $${(subtotal + taxAmt).toFixed(2)}</strong></div><button class="checkout-btn" id="checkoutBtn">Proceed to Checkout</button></div>`;
-            itemsDiv.innerHTML = html;
-            footer.style.display = 'block';
-            document.getElementById('checkoutBtn')?.addEventListener('click', showCheckoutModal);
-        }
-        
         function showNotification(msg, type) {
             const n = document.createElement('div');
             n.className = 'notification';
@@ -1241,17 +994,6 @@
             n.style.background = type === 'error' ? '#dc3545' : '#28a745';
             document.body.appendChild(n);
             setTimeout(() => n.remove(), 3000);
-        }
-        
-        function openCartDrawer() { 
-            document.getElementById('cartDrawer').classList.add('open'); 
-            document.getElementById('cartOverlay').classList.add('active'); 
-            updateCartDrawer(); 
-        }
-        
-        function closeCartDrawer() { 
-            document.getElementById('cartDrawer').classList.remove('open'); 
-            document.getElementById('cartOverlay').classList.remove('active'); 
         }
         
         function escapeHtml(text) { 
@@ -1268,57 +1010,9 @@
                 setTimeout(()=>fn(...a), delay); 
             }; 
         }
-
-        function showCheckoutModal() {
-            closeCartDrawer();
-            const subtotal = cart.total;
-            const taxAmount = subtotal * (taxRate / 100);
-            const baseTotal = subtotal + taxAmount;
-            const modal = document.createElement('div');
-            modal.className = 'checkout-modal-overlay';
-            modal.innerHTML = `<div class="checkout-modal"><div class="checkout-modal-header" style="padding:20px;background:#2c3e50;color:white;display:flex;justify-content:space-between"><h3>Checkout</h3><button class="checkout-modal-close" style="background:none;border:none;color:white;font-size:24px">&times;</button></div><div style="padding:20px"><div>Subtotal: $${subtotal.toFixed(2)}</div><div>Tax: $${taxAmount.toFixed(2)}</div><div><strong>Total: $${baseTotal.toFixed(2)}</strong></div><div style="margin:20px 0"><label><input type="radio" name="type" value="pickup" checked> In-Store Pickup</label><label style="margin-left:20px"><input type="radio" name="type" value="shipping"> Ship to Me ($${shippingCost.toFixed(2)} shipping)</label></div><div id="shippingFields" style="display:none"><input type="text" id="shippingName" placeholder="Full Name" style="width:100%;padding:8px;margin:5px 0"><input type="email" id="shippingEmail" placeholder="Email" style="width:100%;padding:8px;margin:5px 0"><input type="text" id="shippingAddress" placeholder="Address" style="width:100%;padding:8px;margin:5px 0"><input type="text" id="shippingCity" placeholder="City" style="width:100%;padding:8px;margin:5px 0"><input type="text" id="shippingZip" placeholder="ZIP" style="width:100%;padding:8px;margin:5px 0"></div><div id="pickupFields"><input type="text" id="pickupName" placeholder="Your Name" style="width:100%;padding:8px;margin:5px 0"><input type="email" id="pickupEmail" placeholder="Email" style="width:100%;padding:8px;margin:5px 0"></div><button id="confirmCheckoutBtn" style="width:100%;padding:12px;background:#28a745;color:white;border:none;border-radius:6px;margin-top:20px">Continue to Payment</button></div></div>`;
-            document.body.appendChild(modal);
-            const closeBtn = modal.querySelector('.checkout-modal-close');
-            closeBtn.onclick = () => modal.remove();
-            const radios = modal.querySelectorAll('input[name="type"]');
-            const shippingFields = modal.querySelector('#shippingFields');
-            const pickupFields = modal.querySelector('#pickupFields');
-            radios.forEach(r => r.onchange = () => { 
-                shippingFields.style.display = r.value === 'shipping' ? 'block' : 'none'; 
-                pickupFields.style.display = r.value === 'pickup' ? 'block' : 'none'; 
-            });
-            modal.querySelector('#confirmCheckoutBtn').onclick = async () => {
-                const isShipping = modal.querySelector('input[value="shipping"]').checked;
-                let customerName, customerEmail;
-                if (isShipping) {
-                    customerName = modal.querySelector('#shippingName').value.trim();
-                    customerEmail = modal.querySelector('#shippingEmail').value.trim();
-                    if (!customerName || !customerEmail) { showNotification('Please fill all fields', 'error'); return; }
-                } else {
-                    customerName = modal.querySelector('#pickupName').value.trim();
-                    customerEmail = modal.querySelector('#pickupEmail').value.trim();
-                    if (!customerName) { showNotification('Please enter your name', 'error'); return; }
-                }
-                const finalTotal = isShipping ? baseTotal + shippingCost : baseTotal;
-                const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items: cart.items.map(i => ({ copy_id: i.copyId, title: i.title, artist: i.artist, price: i.price, condition: i.condition, quantity: i.quantity })), item_type: 'record', shipping: { method: isShipping ? 'shipping' : 'pickup', amount: isShipping ? shippingCost : 0 }, subtotal: subtotal, total: finalTotal, tax: taxAmount, customer_name: customerName, customer_email: customerEmail })
-                });
-                const data = await response.json();
-                if (data.status === 'success' && data.checkout_url) window.location.href = data.checkout_url;
-                else showNotification('Checkout failed', 'error');
-            };
-            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-        }
         
         document.addEventListener('DOMContentLoaded', async () => {
-            shippingCost = parseFloat(await getConfigValue('SHIPPING_COST')) || 0;
-            taxRate = parseFloat(await getConfigValue('TAX_RATE')) || 0;
-            loadCart();
             await loadCatalogData();
-            document.getElementById('cartToggle')?.addEventListener('click', openCartDrawer);
-            document.getElementById('closeCartDrawer')?.addEventListener('click', closeCartDrawer);
-            document.getElementById('cartOverlay')?.addEventListener('click', closeCartDrawer);
             document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
                 selectedGenres = []; 
                 currentSearchTerm = ''; 
@@ -1362,7 +1056,6 @@
                 currentPage = 1; 
                 loadCatalogData(); 
             });
-            window.removeFromCart = removeFromCart;
         });
     </script>
 </body>
