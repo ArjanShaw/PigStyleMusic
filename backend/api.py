@@ -2888,95 +2888,188 @@ def get_markup_analysis():
 BILLS_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'bills')
 os.makedirs(BILLS_UPLOAD_FOLDER, exist_ok=True)
 
+def parse_purchase_from_journal(entry):
+    """
+    Given a journal entry row (sqlite3.Row), parse the description
+    to extract purchase fields. Returns a dict.
+    """
+    row = dict(entry)  # Convert to dict for safe .get()
+    
+    # Handle description being NULL
+    desc = row.get('description')
+    if desc is None:
+        desc = ''
+    else:
+        desc = str(desc)  # ensure string
+    
+    purchase = {
+        'id': row.get('id'),
+        'purchase_date': row.get('transaction_date', ''),
+        'seller_name': 'Unknown',
+        'seller_contact': '',
+        'amount_spent': 0.0,
+        'description': '',
+        'bill_of_sale_path': None,
+        'created_at': row.get('created_at') or row.get('transaction_date', '')
+    }
+    
+    # Parse pipe‑separated format
+    parts = desc.split('|')
+    for part in parts:
+        part = part.strip()
+        if part.startswith('seller:'):
+            purchase['seller_name'] = part.split(':', 1)[1].strip()
+        elif part.startswith('contact:'):
+            purchase['seller_contact'] = part.split(':', 1)[1].strip()
+        elif part.startswith('amount:'):
+            try:
+                purchase['amount_spent'] = float(part.split(':', 1)[1].strip())
+            except:
+                pass
+        elif part.startswith('date:'):
+            purchase['purchase_date'] = part.split(':', 1)[1].strip()
+        elif part.startswith('desc:'):
+            purchase['description'] = part.split(':', 1)[1].strip()
+        elif part.startswith('bill:'):
+            purchase['bill_of_sale_path'] = part.split(':', 1)[1].strip()
+    
+    # Fallback for old format "Inventory purchase from <seller>"
+    if purchase['seller_name'] == 'Unknown':
+        import re
+        match = re.search(r'Inventory purchase from (.*?)(?:\||$)', desc)
+        if match:
+            purchase['seller_name'] = match.group(1).strip()
+    
+    return purchase
+
+
+
 @app.route('/api/inventory-purchases', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def get_inventory_purchases():
-    """Get all inventory purchases with optional filtering"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Get filter parameters
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         seller_name = request.args.get('seller_name', '').strip()
         limit = request.args.get('limit', 100, type=int)
         offset = request.args.get('offset', 0, type=int)
-        
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Main query: join journal_entries with journal_lines to get total debit for inventory account
         query = '''
             SELECT 
-                id,
-                purchase_date,
-                seller_name,
-                seller_contact,
-                amount_spent,
-                description,
-                bill_of_sale_path,
-                created_at,
-                updated_at
-            FROM inventory_purchases
-            WHERE 1=1
+                je.id,
+                je.transaction_date,
+                je.description,
+                je.created_at,
+                COALESCE(SUM(jl.debit_amount), 0) / 100.0 as amount_spent
+            FROM journal_entries je
+            LEFT JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            LEFT JOIN accounts a ON a.id = jl.account_id AND a.code = '1050'
+            WHERE je.source_type = 'purchase'
         '''
         params = []
-        
+
         if start_date:
-            query += ' AND purchase_date >= ?'
+            query += ' AND je.transaction_date >= ?'
             params.append(start_date)
-        
         if end_date:
-            query += ' AND purchase_date <= ?'
+            query += ' AND je.transaction_date <= ?'
             params.append(end_date)
-        
         if seller_name:
-            query += ' AND seller_name LIKE ?'
+            query += ' AND je.description LIKE ?'
             params.append(f'%{seller_name}%')
-        
-        query += ' ORDER BY purchase_date DESC, created_at DESC LIMIT ? OFFSET ?'
+
+        query += ' GROUP BY je.id ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
         params.extend([limit, offset])
-        
+
         cursor.execute(query, params)
-        purchases = cursor.fetchall()
-        
-        # Get total count
+        rows = cursor.fetchall()
+
+        purchases = []
+        for row in rows:
+            row_dict = dict(row)
+            desc = row_dict.get('description') or ''
+            amount = row_dict.get('amount_spent', 0.0)
+
+            # Parse seller name from description
+            seller = 'Unknown'
+            if desc:
+                # Try pipe format: seller: <name>
+                if 'seller:' in desc:
+                    parts = desc.split('|')
+                    for part in parts:
+                        part = part.strip()
+                        if part.startswith('seller:'):
+                            seller = part.split(':', 1)[1].strip()
+                            break
+                # Fallback to "Inventory purchase from <seller>"
+                else:
+                    import re
+                    match = re.search(r'Inventory purchase from (.*?)(?:\||$)', desc)
+                    if match:
+                        seller = match.group(1).strip()
+
+            # Parse contact, description, bill path (optional)
+            contact = ''
+            description = ''
+            bill_path = None
+            if desc and '|' in desc:
+                parts = desc.split('|')
+                for part in parts:
+                    part = part.strip()
+                    if part.startswith('contact:'):
+                        contact = part.split(':', 1)[1].strip()
+                    elif part.startswith('desc:'):
+                        description = part.split(':', 1)[1].strip()
+                    elif part.startswith('bill:'):
+                        bill_path = part.split(':', 1)[1].strip()
+
+            purchases.append({
+                'id': row_dict['id'],
+                'purchase_date': row_dict['transaction_date'],
+                'seller_name': seller,
+                'seller_contact': contact,
+                'amount_spent': amount,
+                'description': description,
+                'bill_of_sale_path': bill_path,
+                'created_at': row_dict['created_at'] or row_dict['transaction_date']
+            })
+
+        # Total count (without limit/offset)
         count_query = '''
-            SELECT COUNT(*) as total FROM inventory_purchases WHERE 1=1
+            SELECT COUNT(*) as total
+            FROM journal_entries
+            WHERE source_type = 'purchase'
         '''
         count_params = []
         if start_date:
-            count_query += ' AND purchase_date >= ?'
+            count_query += ' AND transaction_date >= ?'
             count_params.append(start_date)
         if end_date:
-            count_query += ' AND purchase_date <= ?'
+            count_query += ' AND transaction_date <= ?'
             count_params.append(end_date)
         if seller_name:
-            count_query += ' AND seller_name LIKE ?'
+            count_query += ' AND description LIKE ?'
             count_params.append(f'%{seller_name}%')
-        
+
         cursor.execute(count_query, count_params)
         total = cursor.fetchone()['total']
-        
         conn.close()
-        
-        purchases_list = []
-        for purchase in purchases:
-            purchase_dict = dict(purchase)
-            # Convert amount to float for JSON
-            purchase_dict['amount_spent'] = float(purchase_dict['amount_spent'])
-            purchases_list.append(purchase_dict)
-        
+
         return jsonify({
             'status': 'success',
-            'purchases': purchases_list,
+            'purchases': purchases,
             'total': total,
             'limit': limit,
             'offset': offset
         })
-        
     except Exception as e:
         app.logger.error(f"Error getting inventory purchases: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/inventory-purchases', methods=['POST'])
 @login_required
@@ -2987,67 +3080,55 @@ def create_inventory_purchase():
         if not data:
             return jsonify({'status': 'error', 'error': 'No data provided'}), 400
 
-        # Required fields
-        if 'amount_spent' not in data:
-            return jsonify({'status': 'error', 'error': 'amount_spent is required'}), 400
-
         seller_name = data.get('seller_name')
         if not seller_name or not str(seller_name).strip():
             return jsonify({'status': 'error', 'error': 'Seller name is required'}), 400
 
-        payment_type = data.get('payment_type', 'cash')
-        consignor_id = data.get('consignor_id')
-
-        # Validate amount
-        try:
-            amount_spent = float(data['amount_spent'])
-        except:
-            return jsonify({'status': 'error', 'error': 'amount_spent must be a number'}), 400
-
+        amount_spent = float(data.get('amount_spent', 0))
         if amount_spent <= 0:
             return jsonify({'status': 'error', 'error': 'amount_spent must be greater than 0'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
+        payment_type = data.get('payment_type', 'cash')
+        consignor_id = data.get('consignor_id')
+        payment_account_code = data.get('payment_account_id')
 
         # Validate consignor if store credit
         if payment_type == 'store_credit':
             if not consignor_id:
-                conn.close()
                 return jsonify({'status': 'error', 'error': 'Consignor required for store credit'}), 400
+            conn = get_db()
+            cursor = conn.cursor()
             cursor.execute('SELECT id FROM users WHERE id = ? AND role = "consignor"', (consignor_id,))
             if not cursor.fetchone():
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Invalid consignor'}), 400
+            conn.close()
 
-        # Insert purchase
         purchase_date = data.get('purchase_date') or datetime.now().strftime('%Y-%m-%d')
         seller_contact = (data.get('seller_contact') or '').strip()
-        description = (data.get('description') or '').strip()
-        bill_of_sale_path = (data.get('bill_of_sale_path') or '').strip()
+        description_text = (data.get('description') or '').strip()
+        bill_path = (data.get('bill_of_sale_path') or '').strip()
 
-        cursor.execute('''
-            INSERT INTO inventory_purchases (
-                purchase_date, seller_name, seller_contact, amount_spent, 
-                description, bill_of_sale_path
-            ) VALUES (?, ?, ?, ?, ?, ?)
-        ''', (purchase_date, seller_name, seller_contact, amount_spent, description, bill_of_sale_path))
-        purchase_id = cursor.lastrowid
-        conn.commit()
+        # Build description in pipe‑separated format
+        desc = f"Inventory purchase | seller: {seller_name} | contact: {seller_contact} | amount: {amount_spent:.2f} | date: {purchase_date} | desc: {description_text}"
+        if bill_path:
+            desc += f" | bill: {bill_path}"
 
-        # --- Journal Entry ---
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Insert journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
-        ''', (purchase_date, f"Inventory purchase from {seller_name}", 'purchase', str(purchase_id)))
+        ''', (purchase_date, desc, 'purchase', str(int(time.time()))))
         entry_id = cursor.lastrowid
 
+        # Insert journal lines
         amount_cents = int(round(amount_spent * 100))
         inventory_id = get_account_id('1050')   # Inventory asset
 
         if payment_type == 'cash':
-            # Need payment account code from request
-            payment_account_code = data.get('payment_account_id')
             if not payment_account_code:
                 conn.rollback()
                 conn.close()
@@ -3087,16 +3168,8 @@ def create_inventory_purchase():
             config_row = cursor.fetchone()
             multiplier = float(config_row['config_value']) if config_row else 1.5
             credit_amount = amount_spent * multiplier
-
-            # Update user balance
-            cursor.execute('UPDATE users SET store_credit_balance = store_credit_balance + ? WHERE id = ?', 
+            cursor.execute('UPDATE users SET store_credit_balance = store_credit_balance + ? WHERE id = ?',
                            (credit_amount, consignor_id))
-            # Record credit transaction in journal? Already done above.
-            # Optionally log in a separate table if needed, but we use the journal.
-
-            # We can also store a reference in the purchase record (optional)
-            cursor.execute('UPDATE inventory_purchases SET consignor_id = ? WHERE id = ?', 
-                           (consignor_id, purchase_id))
 
         conn.commit()
         conn.close()
@@ -3104,13 +3177,222 @@ def create_inventory_purchase():
         return jsonify({
             'status': 'success',
             'message': 'Inventory purchase recorded',
-            'purchase_id': purchase_id,
+            'purchase_id': entry_id,   # journal entry ID acts as purchase ID
             'payment_type': payment_type
         })
-
     except Exception as e:
         app.logger.error(f"Error creating inventory purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_inventory_purchase(purchase_id):
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        query = '''
+            SELECT 
+                je.id,
+                je.transaction_date,
+                je.description,
+                je.created_at,
+                COALESCE(SUM(jl.debit_amount), 0) / 100.0 as amount_spent
+            FROM journal_entries je
+            LEFT JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            LEFT JOIN accounts a ON a.id = jl.account_id AND a.code = '1050'
+            WHERE je.id = ? AND je.source_type = 'purchase'
+            GROUP BY je.id
+        '''
+        cursor.execute(query, (purchase_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+
+        row_dict = dict(row)
+        desc = row_dict.get('description') or ''
+        amount = row_dict.get('amount_spent', 0.0)
+
+        seller = 'Unknown'
+        if desc:
+            if 'seller:' in desc:
+                parts = desc.split('|')
+                for part in parts:
+                    part = part.strip()
+                    if part.startswith('seller:'):
+                        seller = part.split(':', 1)[1].strip()
+                        break
+            else:
+                import re
+                match = re.search(r'Inventory purchase from (.*?)(?:\||$)', desc)
+                if match:
+                    seller = match.group(1).strip()
+
+        contact = ''
+        description = ''
+        bill_path = None
+        if desc and '|' in desc:
+            parts = desc.split('|')
+            for part in parts:
+                part = part.strip()
+                if part.startswith('contact:'):
+                    contact = part.split(':', 1)[1].strip()
+                elif part.startswith('desc:'):
+                    description = part.split(':', 1)[1].strip()
+                elif part.startswith('bill:'):
+                    bill_path = part.split(':', 1)[1].strip()
+
+        purchase = {
+            'id': row_dict['id'],
+            'purchase_date': row_dict['transaction_date'],
+            'seller_name': seller,
+            'seller_contact': contact,
+            'amount_spent': amount,
+            'description': description,
+            'bill_of_sale_path': bill_path,
+            'created_at': row_dict['created_at'] or row_dict['transaction_date']
+        }
+
+        return jsonify({'status': 'success', 'purchase': purchase})
+    except Exception as e:
+        app.logger.error(f"Error getting inventory purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_inventory_purchase(purchase_id):
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, description FROM journal_entries WHERE id = ? AND source_type = "purchase"', (purchase_id,))
+        entry = cursor.fetchone()
+        if not entry:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+
+        # Build updated description from fields
+        purchase_date = data.get('purchase_date') or datetime.now().strftime('%Y-%m-%d')
+        seller_name = data.get('seller_name', '').strip()
+        seller_contact = data.get('seller_contact', '').strip()
+        amount_spent = data.get('amount_spent')
+        description_text = data.get('description', '').strip()
+        bill_path = data.get('bill_of_sale_path', '').strip()
+
+        if not seller_name:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Seller name is required'}), 400
+        if not amount_spent or amount_spent <= 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'amount_spent must be greater than 0'}), 400
+
+        desc = f"Inventory purchase | seller: {seller_name} | contact: {seller_contact} | amount: {amount_spent:.2f} | date: {purchase_date} | desc: {description_text}"
+        if bill_path:
+            desc += f" | bill: {bill_path}"
+
+        # Update description (and optionally transaction_date)
+        cursor.execute('''
+            UPDATE journal_entries
+            SET description = ?, transaction_date = ?
+            WHERE id = ?
+        ''', (desc, purchase_date, purchase_id))
+
+        # Note: If amount changed, you'd need to update the journal_lines as well.
+        # For simplicity, we only update the description; you may extend this.
+
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success', 'message': 'Purchase updated successfully'})
+    except Exception as e:
+        app.logger.error(f"Error updating inventory purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_inventory_purchase(purchase_id):
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        # Get bill path before deletion (for cleanup)
+        cursor.execute('SELECT description FROM journal_entries WHERE id = ? AND source_type = "purchase"', (purchase_id,))
+        entry = cursor.fetchone()
+        if not entry:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+
+        bill_path = None
+        desc = entry['description']
+        match = re.search(r'bill:\s*([^\s|]+)', desc)
+        if match:
+            bill_path = match.group(1).strip()
+
+        # Delete journal lines and entry
+        cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (purchase_id,))
+        cursor.execute('DELETE FROM journal_entries WHERE id = ?', (purchase_id,))
+
+        # Delete bill file if exists
+        if bill_path:
+            file_path = os.path.join(os.path.dirname(__file__), 'static', bill_path.lstrip('/'))
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    app.logger.warning(f"Could not delete bill image file: {e}")
+
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success', 'message': 'Purchase deleted successfully'})
+    except Exception as e:
+        app.logger.error(f"Error deleting inventory purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/inventory-purchases/summary', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_inventory_purchases_summary():
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, transaction_date, description FROM journal_entries WHERE source_type = "purchase"')
+        rows = cursor.fetchall()
+        conn.close()
+
+        total_spent = 0.0
+        month_spent = 0.0
+        current_month = datetime.now().strftime('%Y-%m')
+
+        for row in rows:
+            purchase = parse_purchase_from_journal(row)
+            total_spent += purchase['amount_spent']
+            if purchase.get('purchase_date', '').startswith(current_month):
+                month_spent += purchase['amount_spent']
+
+        return jsonify({
+            'status': 'success',
+            'summary': {
+                'total_spent': total_spent,
+                'month_spent': month_spent,
+                'total_purchases': len(rows),
+                'month_purchases': sum(1 for r in rows if r['transaction_date'].startswith(current_month))
+            }
+        })
+    except Exception as e:
+        app.logger.error(f"Error getting inventory purchases summary: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== END OF INVENTORY PURCHASES ====================
+
 
 @app.route('/api/store-credit/balance', methods=['GET'])
 @login_required
@@ -3236,429 +3518,6 @@ def upload_bill_of_sale():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_inventory_purchase(purchase_id):
-    """Get a single inventory purchase by ID"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT id, purchase_date, seller_name, seller_contact, amount_spent, 
-                   description, bill_of_sale_path, created_at, updated_at
-            FROM inventory_purchases WHERE id = ?
-        ''', (purchase_id,))
-        
-        purchase = cursor.fetchone()
-        conn.close()
-        
-        if not purchase:
-            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
-        
-        purchase_dict = dict(purchase)
-        purchase_dict['amount_spent'] = float(purchase_dict['amount_spent'])
-        
-        return jsonify({
-            'status': 'success',
-            'purchase': purchase_dict
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error getting inventory purchase: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['PUT'])
-@login_required
-@role_required(['admin'])
-def update_inventory_purchase(purchase_id):
-    """Update an existing inventory purchase"""
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Check if purchase exists
-        cursor.execute('SELECT id FROM inventory_purchases WHERE id = ?', (purchase_id,))
-        if not cursor.fetchone():
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
-        
-        update_fields = []
-        update_values = []
-        
-        if 'purchase_date' in data:
-            update_fields.append('purchase_date = ?')
-            update_values.append(data['purchase_date'])
-        
-        if 'seller_name' in data:
-            update_fields.append('seller_name = ?')
-            update_values.append(data['seller_name'].strip() if data['seller_name'] else None)
-        
-        if 'seller_contact' in data:
-            update_fields.append('seller_contact = ?')
-            update_values.append(data['seller_contact'].strip() if data['seller_contact'] else None)
-        
-        if 'amount_spent' in data:
-            amount = float(data['amount_spent'])
-            if amount <= 0:
-                conn.close()
-                return jsonify({'status': 'error', 'error': 'amount_spent must be greater than 0'}), 400
-            update_fields.append('amount_spent = ?')
-            update_values.append(amount)
-        
-        if 'description' in data:
-            update_fields.append('description = ?')
-            update_values.append(data['description'].strip() if data['description'] else None)
-        
-        if 'bill_of_sale_path' in data:
-            update_fields.append('bill_of_sale_path = ?')
-            update_values.append(data['bill_of_sale_path'].strip() if data['bill_of_sale_path'] else None)
-        
-        if not update_fields:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
-        
-        update_fields.append('updated_at = CURRENT_TIMESTAMP')
-        update_values.append(purchase_id)
-        
-        cursor.execute(f"UPDATE inventory_purchases SET {', '.join(update_fields)} WHERE id = ?", update_values)
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'status': 'success', 'message': 'Purchase updated successfully'})
-        
-    except Exception as e:
-        app.logger.error(f"Error updating inventory purchase: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/inventory-purchases/<int:purchase_id>', methods=['DELETE'])
-@login_required
-@role_required(['admin'])
-def delete_inventory_purchase(purchase_id):
-    """Delete an inventory purchase (and optionally the bill image file)"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Get bill path before deletion
-        cursor.execute('SELECT bill_of_sale_path FROM inventory_purchases WHERE id = ?', (purchase_id,))
-        purchase = cursor.fetchone()
-        
-        if not purchase:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
-        
-        # Delete the associated bill image file if it exists
-        if purchase['bill_of_sale_path']:
-            file_path = os.path.join(os.path.dirname(__file__), 'static', purchase['bill_of_sale_path'].lstrip('/'))
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    app.logger.warning(f"Could not delete bill image file: {e}")
-        
-        cursor.execute('DELETE FROM inventory_purchases WHERE id = ?', (purchase_id,))
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'status': 'success', 'message': 'Purchase deleted successfully'})
-        
-    except Exception as e:
-        app.logger.error(f"Error deleting inventory purchase: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-# ==================== COGS (Cost of Goods Sold) ENDPOINTS ====================
-
-@app.route('/api/cogs/batch', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def set_batch_cogs():
-    """
-    Set COGS for selected records by distributing a batch total
-    proportionally based on each record's store_price.
-    
-    Request body: { 
-        "batch_cogs": 100.00,
-        "record_ids": [1, 2, 3, ...]  # Array of record IDs to update
-    }
-    """
-    try:
-        data = request.get_json()
-        
-        if not data or 'batch_cogs' not in data:
-            return jsonify({'status': 'error', 'error': 'batch_cogs required'}), 400
-        
-        batch_cogs = float(data['batch_cogs'])
-        
-        if batch_cogs < 0:
-            return jsonify({'status': 'error', 'error': 'batch_cogs cannot be negative'}), 400
-        
-        # Get the record IDs from the request
-        record_ids = data.get('record_ids', [])
-        
-        if not record_ids or not isinstance(record_ids, list) or len(record_ids) == 0:
-            return jsonify({'status': 'error', 'error': 'No records selected. Please add records to the print queue first.'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Get the selected records with their store_price
-        placeholders = ','.join('?' for _ in record_ids)
-        cursor.execute(f'''
-            SELECT id, store_price 
-            FROM records 
-            WHERE id IN ({placeholders}) 
-            AND store_price IS NOT NULL AND store_price > 0
-        ''', record_ids)
-        
-        records = cursor.fetchall()
-        
-        if not records:
-            conn.close()
-            return jsonify({
-                'status': 'error', 
-                'error': 'No valid records found with store_price > 0'
-            }), 404
-        
-        # Calculate total store_price sum for selected records
-        total_store_price = sum(record['store_price'] for record in records)
-        
-        if total_store_price <= 0:
-            conn.close()
-            return jsonify({
-                'status': 'error', 
-                'error': 'Total store price sum is zero or negative'
-            }), 400
-        
-        # Calculate and update COGS for each record proportionally
-        records_updated = 0
-        total_cogs_sum = 0
-        updated_records = []
-        
-        for record in records:
-            # Calculate proportional COGS
-            proportion = record['store_price'] / total_store_price
-            cogs_value = batch_cogs * proportion
-            cogs_value = round(cogs_value, 2)  # Round to 2 decimal places
-            
-            # Update the record
-            cursor.execute('''
-                UPDATE records 
-                SET cogs = ? 
-                WHERE id = ?
-            ''', (cogs_value, record['id']))
-            
-            records_updated += 1
-            total_cogs_sum += cogs_value
-            
-            updated_records.append({
-                'id': record['id'],
-                'cogs': cogs_value
-            })
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Successfully distributed ${batch_cogs:.2f} across {records_updated} selected records',
-            'records_updated': records_updated,
-            'batch_cogs': batch_cogs,
-            'total_store_price_sum': round(total_store_price, 2),
-            'total_cogs_sum': round(total_cogs_sum, 2),
-            'average_cogs': round(total_cogs_sum / records_updated, 2) if records_updated > 0 else 0,
-            'updated_records': updated_records
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error setting batch COGS: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/api/cogs/summary', methods=['GET'])
-@login_required
-def get_cogs_summary():
-    """Get COGS summary statistics by status"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Summary by status
-        cursor.execute('''
-            SELECT 
-                r.status_id,
-                s.status_name,
-                COUNT(*) as record_count,
-                COALESCE(SUM(r.store_price), 0) as total_store_price,
-                COALESCE(SUM(r.cogs), 0) as total_cogs,
-                COALESCE(AVG(r.cogs), 0) as avg_cogs,
-                COALESCE(SUM(r.store_price - r.cogs), 0) as total_profit
-            FROM records r
-            LEFT JOIN d_status s ON r.status_id = s.id
-            GROUP BY r.status_id
-            ORDER BY r.status_id
-        ''')
-        
-        summary = cursor.fetchall()
-        
-        # Overall totals
-        cursor.execute('''
-            SELECT 
-                COUNT(*) as total_records,
-                COALESCE(SUM(store_price), 0) as total_store_price,
-                COALESCE(SUM(cogs), 0) as total_cogs,
-                COALESCE(SUM(store_price - cogs), 0) as total_profit
-            FROM records
-            WHERE cogs IS NOT NULL
-        ''')
-        
-        overall = cursor.fetchone()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'summary': [dict(row) for row in summary],
-            'overall': {
-                'total_records_with_cogs': overall['total_records'],
-                'total_store_price': float(overall['total_store_price']),
-                'total_cogs': float(overall['total_cogs']),
-                'total_profit': float(overall['total_profit'])
-            }
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error getting COGS summary: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/cogs/record/<int:record_id>', methods=['PUT'])
-@login_required
-@role_required(['admin'])
-def update_individual_cogs(record_id):
-    """Update COGS for a single record"""
-    try:
-        data = request.get_json()
-        
-        if not data or 'cogs' not in data:
-            return jsonify({'status': 'error', 'error': 'cogs value required'}), 400
-        
-        cogs_value = float(data['cogs'])
-        
-        if cogs_value < 0:
-            return jsonify({'status': 'error', 'error': 'COGS cannot be negative'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT id FROM records WHERE id = ?', (record_id,))
-        if not cursor.fetchone():
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Record not found'}), 404
-        
-        cursor.execute('UPDATE records SET cogs = ? WHERE id = ?', (cogs_value, record_id))
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'COGS updated to ${cogs_value:.2f} for record #{record_id}'
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error updating individual COGS: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/cogs/clear', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def clear_cogs_for_status():
-    """Clear COGS values for records with a specific status (or all)"""
-    try:
-        data = request.get_json()
-        status_id = data.get('status_id') if data else None
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        if status_id is not None:
-            cursor.execute('UPDATE records SET cogs = NULL WHERE status_id = ?', (status_id,))
-            cleared_count = cursor.rowcount
-            message = f'Cleared COGS for {cleared_count} records with status_id={status_id}'
-        else:
-            cursor.execute('UPDATE records SET cogs = NULL')
-            cleared_count = cursor.rowcount
-            message = f'Cleared COGS for all {cleared_count} records'
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'message': message,
-            'records_cleared': cleared_count
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error clearing COGS: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/api/inventory-purchases/summary', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_inventory_purchases_summary():
-    """Get summary statistics for inventory purchases"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Total spent all time
-        cursor.execute('SELECT COALESCE(SUM(amount_spent), 0) as total_spent FROM inventory_purchases')
-        total_spent = cursor.fetchone()['total_spent']
-        
-        # Total spent this month
-        cursor.execute('''
-            SELECT COALESCE(SUM(amount_spent), 0) as month_spent 
-            FROM inventory_purchases 
-            WHERE strftime('%Y-%m', purchase_date) = strftime('%Y-%m', 'now')
-        ''')
-        month_spent = cursor.fetchone()['month_spent']
-        
-        # Total purchases count
-        cursor.execute('SELECT COUNT(*) as total_purchases FROM inventory_purchases')
-        total_purchases = cursor.fetchone()['total_purchases']
-        
-        # Purchases this month
-        cursor.execute('''
-            SELECT COUNT(*) as month_purchases 
-            FROM inventory_purchases 
-            WHERE strftime('%Y-%m', purchase_date) = strftime('%Y-%m', 'now')
-        ''')
-        month_purchases = cursor.fetchone()['month_purchases']
-        
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'summary': {
-                'total_spent': float(total_spent),
-                'month_spent': float(month_spent),
-                'total_purchases': total_purchases,
-                'month_purchases': month_purchases
-            }
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error getting inventory purchases summary: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/records/<int:record_id>', methods=['PUT'])
 def update_record(record_id):
@@ -11839,4 +11698,4 @@ def process_refund():
 
 
 if __name__ == '__main__': 
-    app.run(debug=True, port=5000)@app.route('/api/refund/process', methods=['POST'])
+    app.run(debug=True, port=5000)
