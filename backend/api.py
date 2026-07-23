@@ -2507,9 +2507,9 @@ def create_record():
         cursor.execute('''
             INSERT INTO records (
                 artist, title, barcode, image_url, catalog_number,
-                condition_sleeve_id, condition_disc_id, store_price, youtube_url, 
+                condition_sleeve_id, condition_disc_id, store_price,
                 consignor_id, commission_rate, status_id, discogs_genre_raw, notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ''', (
             data.get('artist'), 
             data.get('title'), 
@@ -2518,8 +2518,7 @@ def create_record():
             data.get('catalog_number', ''), 
             condition_sleeve_id,
             condition_disc_id, 
-            float(data.get('store_price', 0.0)), 
-            data.get('youtube_url', ''),
+            float(data.get('store_price', 0.0)),
             consignor_id, 
             float(commission_rate) if commission_rate else None, 
             int(status_id),
@@ -3642,7 +3641,6 @@ def search_records():
 @app.route('/records/random', methods=['GET'])
 def get_random_records():
     limit = request.args.get('limit', default=500, type=int)
-    has_youtube = request.args.get('has_youtube', default=None, type=str)
     conn = get_db()
     cursor = conn.cursor()
     query = '''
@@ -3654,8 +3652,6 @@ def get_random_records():
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL AND r.artist != '' AND r.title != ''
     '''
     params = []
-    if has_youtube and has_youtube.lower() == 'true':
-        query += ' AND (r.youtube_url LIKE "%youtube.com%" OR r.youtube_url LIKE "%youtu.be%")'
     query += ' ORDER BY RANDOM() LIMIT ?'
     params.append(limit)
     cursor.execute(query, params)
@@ -3981,9 +3977,9 @@ def add_consignor_record():
     cursor.execute('''
         INSERT INTO records (
             artist, title, barcode, image_url, catalog_number,
-            condition_sleeve_id, condition_disc_id, store_price, youtube_url, 
+            condition_sleeve_id, condition_disc_id, store_price,
             consignor_id, commission_rate, status_id, created_at, discogs_genre_raw
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
     ''', (
         data.get('artist'), 
         data.get('title'), 
@@ -3993,7 +3989,6 @@ def add_consignor_record():
         condition_sleeve_id, 
         condition_disc_id, 
         float(data.get('store_price')), 
-        data.get('youtube_url', ''), 
         session['user_id'],
         commission_rate, 
         1, 
@@ -4330,7 +4325,7 @@ def get_catalog_records():
     cutoff_row = cursor.fetchone()
     cutoff_days = int(cutoff_row['config_value']) if cutoff_row else 30
     query = """
-        SELECT r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number, r.store_price, r.youtube_url, r.consignor_id,
+        SELECT r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number, r.store_price, r.consignor_id,
         r.commission_rate, r.created_at, r.status_id, ds.status_name as status_name,
         r.date_sold, r.condition_sleeve_id, cs.condition_name as condition_sleeve,
         r.condition_disc_id, cd.condition_name as condition_disc, r.last_seen,
@@ -4350,7 +4345,7 @@ def get_catalog_records():
             'id': row['id'], 'artist': row['artist'], 'title': row['title'],
             'barcode': row['barcode'], 'image_url': row['image_url'],
             'catalog_number': row['catalog_number'], 'store_price': row['store_price'],
-            'youtube_url': row['youtube_url'], 'consignor_id': row['consignor_id'],
+            'consignor_id': row['consignor_id'],
             'commission_rate': row['commission_rate'], 'created_at': row['created_at'],
             'status_id': row['status_id'], 'status_name': row['status_name'],
             'date_sold': row['date_sold'], 'condition_sleeve_id': row['condition_sleeve_id'],
@@ -4371,7 +4366,7 @@ def get_catalog_grouped_by_release():
     cursor.execute('''
         SELECT r.id, r.artist, r.title, r.barcode, COALESCE(r.image_url, '') as image_url,
         cs.condition_name as sleeve_condition, cd.condition_name as disc_condition, 
-        r.store_price, r.catalog_number, r.youtube_url, r.created_at, s.status_name,
+        r.store_price, r.catalog_number, r.created_at, s.status_name,
         r.discogs_genre_raw
         FROM records r
         LEFT JOIN d_status s ON r.status_id = s.id
@@ -4434,7 +4429,7 @@ def get_catalog_grouped_by_release():
             'disc_condition_rank': condition_order.get(record_dict.get('disc_condition'), 99),
             'store_price': record_dict['store_price'], 'barcode': record_dict.get('barcode', ''),
             'catalog_number': record_dict.get('catalog_number', ''),
-            'youtube_url': record_dict.get('youtube_url', ''), 'created_at': record_dict.get('created_at')
+            'created_at': record_dict.get('created_at')
         }
         groups[key]['formats'][record_format]['copies'].append(copy_data)
         groups[key]['formats'][record_format]['total_copies'] += 1
