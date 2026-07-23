@@ -21,6 +21,8 @@ import urllib.parse
 import json
 import threading
 import uuid
+import time  # if not already imported
+
 from functools import wraps
 from discogs_handler import DiscogsHandler 
 import hmac
@@ -52,9 +54,14 @@ from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUse
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 
 app = Flask(__name__)
+
+
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
 
-
+@app.before_request
+def handle_options():
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
 
 # Configure upload settings for accessories
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'images', 'merch')
@@ -11756,7 +11763,80 @@ def generate_blank_gift_cards():
         app.logger.error(f"Generate blank gift cards error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+import time  # if not already imported
+
+@app.route('/api/refund/process', methods=['POST', 'OPTIONS'])
+@login_required
+@role_required(['admin'])
+def process_refund():
+    # Handle OPTIONS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'DELETE, GET, OPTIONS, PATCH, POST, PUT')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+
+    try:
+        data = request.json
+        record_ids = data.get('record_ids', [])
+        reason = data.get('reason', 'Customer refund')
+        mode = data.get('mode', 'restock')   # 'restock' or 'writeoff'
+
+        if not record_ids:
+            return jsonify({'status': 'error', 'error': 'No records selected'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Validate records exist and are sold
+        placeholders = ','.join('?' for _ in record_ids)
+        cursor.execute(f'''
+            SELECT id, status_id FROM records WHERE id IN ({placeholders})
+        ''', record_ids)
+        records = cursor.fetchall()
+
+        if len(records) != len(record_ids):
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Some records not found'}), 404
+
+        for rec in records:
+            if rec['status_id'] not in (3, 4):
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'Record {rec["id"]} is not sold'}), 400
+
+        if mode == 'restock':
+            # Set status back to Active, clear sale fields
+            cursor.execute(f'''
+                UPDATE records 
+                SET status_id = 2, date_sold = NULL, actual_sale_price = NULL
+                WHERE id IN ({placeholders})
+            ''', record_ids)
+            message = f'Restocked {len(record_ids)} record(s)'
+        elif mode == 'writeoff':
+            # Delete the records (write-off)
+            cursor.execute(f'DELETE FROM records WHERE id IN ({placeholders})', record_ids)
+            message = f'Written off {len(record_ids)} record(s)'
+        else:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Invalid mode'}), 400
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': message,
+            'mode': mode,
+            'count': len(record_ids)
+        })
+
+    except Exception as e:
+        app.logger.error(f"Refund error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
 if __name__ == '__main__': 
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000)@app.route('/api/refund/process', methods=['POST'])
