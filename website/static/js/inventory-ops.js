@@ -4290,41 +4290,48 @@
             }
         }, 2000);
     }
-
+ 
     async function completeCheckout() {
         if (checkoutRemaining > 0.01) {
             showCheckoutStatus('Remaining balance not covered', 'error');
             return;
         }
-        
+
         const selected = checkoutSelectedItems;
         if (selected.length === 0) return;
-        
+
+        // --- Determine payment types ---
+        const hasCashPayment = checkoutPaymentEntries.some(entry =>
+            entry.method === 'Cash' || entry.method === 'Store Credit' || entry.method === 'Gift Card'
+        );
+        const hasSquarePayment = checkoutPaymentEntries.some(entry => entry.method === 'Card (Square)');
+
+        // --- Process sale (existing logic) ---
         const today = getLocalMSTDate();
         let success = 0;
         let bernieTotal = 0;
         let consignorTransactions = [];
-        
+
         // Separate records by type
         const regularRecords = [];
         const bernieItems = [];
         const consignorRecords = [];
-        
+
         for (const record of selected) {
             if (record.isBernie === true) {
                 bernieItems.push(record);
             } else if (record.isCustom === true) {
-                // Skip other custom items (they're already handled)
+                // Skip other custom items (already handled)
             } else if (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null) {
                 consignorRecords.push(record);
             } else {
                 regularRecords.push(record);
             }
         }
-        
+
         // Calculate totals
         bernieTotal = bernieItems.reduce((sum, r) => sum + (r.store_price || 0), 0);
-        
+
         // Process regular records (store-owned, mark as sold)
         for (const record of regularRecords) {
             try {
@@ -4338,15 +4345,14 @@
                 console.error('Failed to update record', record.id, err);
             }
         }
-        
+
         // Process consignor records
         for (const record of consignorRecords) {
             try {
-                // Get consignor name - FIXED
+                // Get consignor name
                 let consignorName = 'Unknown Consignor';
                 try {
                     const userRes = await apiRequest('GET', '/users/' + record.consignor_id);
-                    // The user endpoint returns the user object directly, not wrapped in status
                     if (userRes && userRes.id) {
                         consignorName = userRes.full_name || userRes.username || 'Consignor-' + record.consignor_id;
                     }
@@ -4354,12 +4360,12 @@
                     console.warn('Could not fetch consignor name for ID:', record.consignor_id, userErr);
                     consignorName = 'Consignor-' + record.consignor_id;
                 }
-                
+
                 const salePrice = record.store_price || 0;
                 const commissionRate = record.commission_rate || 0.3; // default 30%
                 const consignorShare = salePrice * (1 - commissionRate);
                 const storeCommission = salePrice * commissionRate;
-                
+
                 consignorTransactions.push({
                     record_id: record.id,
                     consignor_id: record.consignor_id,
@@ -4369,7 +4375,7 @@
                     consignor_share: consignorShare,
                     store_commission: storeCommission
                 });
-                
+
                 // Mark record as sold
                 await apiRequest('PUT', '/records/' + record.id, {
                     status_id: 3,
@@ -4377,74 +4383,53 @@
                     actual_sale_price: salePrice
                 });
                 success++;
-                
+
             } catch (err) {
                 console.error('Failed to process consignor record', record.id, err);
             }
         }
-        
+
         // Create journal entries for consignor transactions
         for (const tx of consignorTransactions) {
             try {
-                // Get accounts
                 const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
                 const accounts = accountsRes.accounts || [];
-                
-                // Find cash account (FNBO)
                 const cashAccount = accounts.find(a => a.code === '1015');
-                // Find sales revenue account
                 const revenueAccount = accounts.find(a => a.code === '4000');
-                // Find payable account (consignor liability)
                 const payableAccount = accounts.find(a => a.code === '2015');
-                
+
                 if (!cashAccount || !revenueAccount || !payableAccount) {
                     console.error('Required accounts not found for consignor transaction');
                     showCheckoutStatus('Error: Required accounts not found', 'error');
                     continue;
                 }
-                
-                // Create journal entry for consignor sale
+
                 const entryData = {
                     date: today,
                     description: `${tx.consignor_name} | ISSUE | Record #${tx.record_id} sold - $${tx.sale_price.toFixed(2)} (${(tx.commission_rate * 100).toFixed(0)}% commission)`,
                     lines: [
-                        {
-                            account_id: cashAccount.id,
-                            debit: tx.sale_price,
-                            credit: 0
-                        },
-                        {
-                            account_id: revenueAccount.id,
-                            debit: 0,
-                            credit: tx.store_commission
-                        },
-                        {
-                            account_id: payableAccount.id,
-                            debit: 0,
-                            credit: tx.consignor_share
-                        }
+                        { account_id: cashAccount.id, debit: tx.sale_price, credit: 0 },
+                        { account_id: revenueAccount.id, debit: 0, credit: tx.store_commission },
+                        { account_id: payableAccount.id, debit: 0, credit: tx.consignor_share }
                     ]
                 };
-                
                 const result = await apiRequest('POST', '/api/accounting/manual', entryData);
-                
                 if (result.status === 'success') {
                     console.log(`✅ Consignor ${tx.consignor_name} credited $${tx.consignor_share.toFixed(2)}`);
                 } else {
                     console.error('Failed to create consignor journal entry:', result.error);
                 }
-                
             } catch (err) {
                 console.error('Error processing consignor transaction:', err);
             }
         }
-        
+
         // Process Bernie donations
         if (bernieTotal > 0) {
             try {
                 const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
                 const accounts = accountsRes.accounts || [];
-                
+
                 const paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
                 const accountMap = {
                     'Cash': '1015',
@@ -4453,10 +4438,10 @@
                     'Store Credit': '1015'
                 };
                 const accountCode = accountMap[paymentMethod] || '1015';
-                
+
                 const cashAccount = accounts.find(a => a.code === accountCode);
                 const payableAccount = accounts.find(a => a.code === '2015');
-                
+
                 if (cashAccount && payableAccount) {
                     const entryData = {
                         date: today,
@@ -4477,40 +4462,130 @@
                 console.error('Error processing Bernie donation:', err);
             }
         }
-        
-        // Update the UI
+
+        // --- PRINT RECEIPT (only if cash/store credit/gift card was used) ---
+        let receiptPrinted = false;
+        let receiptError = null;
+
+        if (hasCashPayment) {
+            // Build receipt string
+            const printerPath = '/dev/pigstyle_printer';
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+            const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+            let receipt = '\x1B@'; // reset
+            receipt += '\x1B\x61\x01'; // center
+            receipt += 'PigStyle Music\n';
+            receipt += '====================\n';
+            receipt += `${dateStr} ${timeStr}\n\n`;
+            receipt += '\x1B\x61\x00'; // left
+            receipt += 'ITEMS:\n';
+            receipt += '--------------------\n';
+
+            let subtotal = 0;
+            for (const item of selected) {
+                const price = item.store_price || 0;
+                const desc = item.isCustom ? item.title : `${item.artist} - ${item.title}`;
+                if (item.isBernie) {
+                    receipt += `[Bernie] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
+                } else if (item.consignor_id && item.consignor_id !== 1) {
+                    receipt += `[Consignor] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
+                } else {
+                    receipt += `${desc.padEnd(25)}$${price.toFixed(2)}\n`;
+                }
+                subtotal += price;
+            }
+
+            const taxRate = 0.08;
+            const tax = subtotal * taxRate;
+            const grandTotal = subtotal + tax;
+
+            receipt += '--------------------\n';
+            receipt += `${'Subtotal'.padEnd(25)}$${subtotal.toFixed(2)}\n`;
+            receipt += `${'Tax'.padEnd(25)}$${tax.toFixed(2)}\n`;
+            receipt += `${'Total'.padEnd(25)}$${grandTotal.toFixed(2)}\n\n`;
+
+            receipt += 'PAYMENT:\n';
+            receipt += '--------------------\n';
+            let totalPaid = 0;
+            for (const entry of checkoutPaymentEntries) {
+                receipt += `${entry.method.padEnd(25)}$${entry.amount.toFixed(2)}\n`;
+                totalPaid += entry.amount;
+            }
+            if (totalPaid < grandTotal) {
+                receipt += `${'Unpaid'.padEnd(25)}$${(grandTotal - totalPaid).toFixed(2)}\n`;
+            }
+            receipt += '--------------------\n';
+
+            receipt += '\x1B\x61\x01'; // center
+            receipt += 'Thank you!\n';
+            receipt += 'PigStyle Music\n';
+            receipt += 'Come back soon!\n\n\n\n';
+            receipt += '\n'.repeat(12); // feed extra paper
+
+
+            // Send to printer
+            try {
+                const response = await fetch(window.AppConfig.baseUrl + '/print-receipt', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ printer: printerPath, data: receipt })
+                });
+                const result = await response.json();
+                if (response.ok && result.status === 'success') {
+                    receiptPrinted = true;
+                } else {
+                    receiptError = result.message || 'Printer API error';
+                }
+            } catch (error) {
+                receiptError = error.message || 'Network error';
+            }
+        } else if (hasSquarePayment) {
+            console.log('Square payment detected, skipping software receipt.');
+        }
+
+        // --- Build final confirmation message ---
+        const consignorCount = consignorTransactions.length;
+        const consignorTotal = consignorTransactions.reduce((sum, t) => sum + t.consignor_share, 0);
+
+        let statusMsg = `${success} records marked as sold`;
+        if (consignorCount > 0) {
+            statusMsg += `, ${consignorCount} consignor(s) credited $${consignorTotal.toFixed(2)}`;
+        }
+        if (bernieTotal > 0) {
+            statusMsg += `, Bernie donations: $${bernieTotal.toFixed(2)}`;
+        }
+
+        if (hasCashPayment && receiptPrinted) {
+            statusMsg += ' ✅ Receipt printed.';
+        } else if (hasCashPayment && receiptError) {
+            statusMsg += ` ⚠️ Receipt could not be printed (${receiptError}). Purchase completed anyway.`;
+        } else if (hasSquarePayment) {
+            statusMsg += ' ✅ Receipt printed by Square terminal.';
+        }
+
+        showCheckoutStatus('✅ ' + statusMsg, receiptError ? 'warning' : 'success');
+
+        // --- Cleanup ---
         setTimeout(() => {
-            const consignorCount = consignorTransactions.length;
-            const consignorTotal = consignorTransactions.reduce((sum, t) => sum + t.consignor_share, 0);
-            
-            let statusMsg = `${success} records marked as sold`;
-            if (consignorCount > 0) {
-                statusMsg += `, ${consignorCount} consignor(s) credited $${consignorTotal.toFixed(2)}`;
-            }
-            if (bernieTotal > 0) {
-                statusMsg += `, Bernie donations: $${bernieTotal.toFixed(2)}`;
-            }
-            showCheckoutStatus('✅ ' + statusMsg, 'success');
-            
             checkoutSelectedItems = [];
             checkoutViewMode = 'list';
             checkoutPaymentEntries = [];
             checkoutRemaining = 0;
-            
             const modal = document.getElementById('checkout-payment-modal');
             if (modal) modal.style.display = 'none';
-            
             filteredRecords = [];
             totalRecords = 0;
             renderPagination();
             renderTablePage();
-            
             if (checkoutShowSelectedBtn) {
                 checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
             }
             updateSelectionCount();
             playSound('success');
-        }, 500);
+        }, 1500);
     }
 
     // ========== Show Checkout Modal (with unified debtor lookup) ==========
