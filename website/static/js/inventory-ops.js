@@ -945,7 +945,6 @@
         const dateFrom = document.getElementById('discogs-orders-date-from');
         const dateTo = document.getElementById('discogs-orders-date-to');
         const search = document.getElementById('discogs-orders-search');
-        // Do NOT reset status filter – keep current selection
         
         if (!dateFrom.value) {
             const thirtyDaysAgo = new Date();
@@ -4290,7 +4289,74 @@
             }
         }, 2000);
     }
- 
+
+    // ===== NEW: Receipt download as plain text =====
+
+    /**
+     * Downloads a plain text receipt file.
+     */
+    function downloadReceipt(items, subtotal, tax, total, paymentEntries, change) {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+        const lines = [];
+        lines.push('PigStyle Music');
+        lines.push('====================');
+        lines.push(`${dateStr} ${timeStr}`);
+        lines.push('');
+        lines.push('ITEMS:');
+        lines.push('--------------------');
+        items.forEach(item => {
+            const desc = `${item.artist || 'Custom'} - ${item.title || 'Item'}`;
+            const price = (item.store_price || 0).toFixed(2);
+            lines.push(`${desc.padEnd(30)} $${price.padStart(8)}`);
+        });
+        lines.push('--------------------');
+        lines.push(`Subtotal${' '.repeat(22)} $${subtotal.toFixed(2)}`);
+        lines.push(`Tax${' '.repeat(27)} $${tax.toFixed(2)}`);
+        lines.push(`Total${' '.repeat(25)} $${total.toFixed(2)}`);
+        lines.push('--------------------');
+        paymentEntries.forEach(p => {
+            lines.push(`${p.method.padEnd(30)} $${p.amount.toFixed(2)}`);
+        });
+        if (change > 0) {
+            lines.push(`Change${' '.repeat(24)} $${change.toFixed(2)}`);
+        }
+        lines.push('');
+        lines.push('Thank you!');
+        lines.push('Come back soon!');
+        lines.push('\n\n\n\n');
+
+        const text = lines.join('\n');
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `receipt_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Sample receipt for Test Print button (downloads a sample)
+    function downloadSampleReceipt() {
+        const sampleItems = [
+            { artist: 'Sample Artist 1', title: 'Test Record A', store_price: 9.99 },
+            { artist: 'Sample Artist 2', title: 'Test Record B', store_price: 14.50 },
+            { artist: 'Custom', title: 'Test Merchandise', store_price: 5.99 }
+        ];
+        const subtotal = sampleItems.reduce((sum, i) => sum + i.store_price, 0);
+        const tax = subtotal * 0.08;
+        const total = subtotal + tax;
+        const paymentEntries = [{ method: 'Cash', amount: total }];
+        const change = 0;
+        downloadReceipt(sampleItems, subtotal, tax, total, paymentEntries, change);
+    }
+
+    // ===== End of new receipt functions =====
+
     async function completeCheckout() {
         if (checkoutRemaining > 0.01) {
             showCheckoutStatus('Remaining balance not covered', 'error');
@@ -4463,88 +4529,23 @@
             }
         }
 
-        // --- PRINT RECEIPT (only if cash/store credit/gift card was used) ---
-        let receiptPrinted = false;
-        let receiptError = null;
+        // --- DOWNLOAD RECEIPT for ALL payment methods ---
+        const subtotal = selected.reduce((sum, r) => sum + (r.store_price || 0), 0);
+        const tax = subtotal * 0.08;
+        const grandTotal = subtotal + tax;
 
-        if (hasCashPayment) {
-            // Build receipt string
-            const printerPath = '/dev/pigstyle_printer';
-            const now = new Date();
-            const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-            const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        const totalPaid = checkoutPaymentEntries.reduce((sum, e) => sum + e.amount, 0);
+        const change = totalPaid - grandTotal > 0 ? totalPaid - grandTotal : 0;
 
-            let receipt = '\x1B@'; // reset
-            receipt += '\x1B\x61\x01'; // center
-            receipt += 'PigStyle Music\n';
-            receipt += '====================\n';
-            receipt += `${dateStr} ${timeStr}\n\n`;
-            receipt += '\x1B\x61\x00'; // left
-            receipt += 'ITEMS:\n';
-            receipt += '--------------------\n';
-
-            let subtotal = 0;
-            for (const item of selected) {
-                const price = item.store_price || 0;
-                const desc = item.isCustom ? item.title : `${item.artist} - ${item.title}`;
-                if (item.isBernie) {
-                    receipt += `[Bernie] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
-                } else if (item.consignor_id && item.consignor_id !== 1) {
-                    receipt += `[Consignor] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
-                } else {
-                    receipt += `${desc.padEnd(25)}$${price.toFixed(2)}\n`;
-                }
-                subtotal += price;
-            }
-
-            const taxRate = 0.08;
-            const tax = subtotal * taxRate;
-            const grandTotal = subtotal + tax;
-
-            receipt += '--------------------\n';
-            receipt += `${'Subtotal'.padEnd(25)}$${subtotal.toFixed(2)}\n`;
-            receipt += `${'Tax'.padEnd(25)}$${tax.toFixed(2)}\n`;
-            receipt += `${'Total'.padEnd(25)}$${grandTotal.toFixed(2)}\n\n`;
-
-            receipt += 'PAYMENT:\n';
-            receipt += '--------------------\n';
-            let totalPaid = 0;
-            for (const entry of checkoutPaymentEntries) {
-                receipt += `${entry.method.padEnd(25)}$${entry.amount.toFixed(2)}\n`;
-                totalPaid += entry.amount;
-            }
-            if (totalPaid < grandTotal) {
-                receipt += `${'Unpaid'.padEnd(25)}$${(grandTotal - totalPaid).toFixed(2)}\n`;
-            }
-            receipt += '--------------------\n';
-
-            receipt += '\x1B\x61\x01'; // center
-            receipt += 'Thank you!\n';
-            receipt += 'PigStyle Music\n';
-            receipt += 'Come back soon!\n\n\n\n';
-            receipt += '\n'.repeat(12); // feed extra paper
-
-
-            // Send to printer
-            try {
-                const response = await fetch(window.AppConfig.baseUrl + '/print-receipt', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ printer: printerPath, data: receipt })
-                });
-                const result = await response.json();
-                if (response.ok && result.status === 'success') {
-                    receiptPrinted = true;
-                } else {
-                    receiptError = result.message || 'Printer API error';
-                }
-            } catch (error) {
-                receiptError = error.message || 'Network error';
-            }
-        } else if (hasSquarePayment) {
-            console.log('Square payment detected, skipping software receipt.');
-        }
+        // Always download receipt
+        downloadReceipt(
+            selected,
+            subtotal,
+            tax,
+            grandTotal,
+            checkoutPaymentEntries,
+            change
+        );
 
         // --- Build final confirmation message ---
         const consignorCount = consignorTransactions.length;
@@ -4558,15 +4559,15 @@
             statusMsg += `, Bernie donations: $${bernieTotal.toFixed(2)}`;
         }
 
-        if (hasCashPayment && receiptPrinted) {
-            statusMsg += ' ✅ Receipt printed.';
-        } else if (hasCashPayment && receiptError) {
-            statusMsg += ` ⚠️ Receipt could not be printed (${receiptError}). Purchase completed anyway.`;
+        if (hasCashPayment) {
+            statusMsg += ' ✅ Receipt downloaded.';
         } else if (hasSquarePayment) {
-            statusMsg += ' ✅ Receipt printed by Square terminal.';
+            statusMsg += ' ✅ Receipt downloaded (Square payment also printed terminal receipt).';
+        } else {
+            statusMsg += ' ✅ Receipt downloaded.';
         }
 
-        showCheckoutStatus('✅ ' + statusMsg, receiptError ? 'warning' : 'success');
+        showCheckoutStatus('✅ ' + statusMsg, 'success');
 
         // --- Cleanup ---
         setTimeout(() => {
@@ -5836,7 +5837,7 @@
         });
 
         clearSearchBtn.addEventListener('click', clearSearch);
- 
+
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
             currentPage = 1;
@@ -5984,6 +5985,8 @@
     window.removeFromCheckout = removeFromCheckout;
     window.checkSquareAvailability = checkSquareAvailability;
     window.processSquarePayment = processSquarePayment;
+    window.downloadReceipt = downloadReceipt;
+    window.downloadSampleReceipt = downloadSampleReceipt;
 
     // ========== Custom Item Modal ==========
     window.showCustomItemModal = showCustomItemModal;
