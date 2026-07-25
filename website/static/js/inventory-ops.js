@@ -192,6 +192,19 @@
         } catch (e) { console.warn('Sound error:', e); }
     }
 
+    // ========== Helper: Download receipt as .txt ==========
+    function downloadReceipt(text, filename = 'receipt.txt') {
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
     // ========== Helpers ==========
     function escapeHtml(text) {
         if (!text) return '';
@@ -4463,23 +4476,19 @@
             }
         }
 
-        // --- PRINT RECEIPT (only if cash/store credit/gift card was used) ---
-        let receiptPrinted = false;
+        // --- GENERATE RECEIPT .TXT FILE (for cash/store credit/gift card) ---
         let receiptError = null;
+        let receiptDownloaded = false;
 
         if (hasCashPayment) {
-            // Build receipt string
-            const printerPath = '/dev/pigstyle_printer';
+            // Build receipt string (same as before, but without escape codes for plain text)
             const now = new Date();
             const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
             const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-            let receipt = '\x1B@'; // reset
-            receipt += '\x1B\x61\x01'; // center
-            receipt += 'PigStyle Music\n';
+            let receipt = 'PigStyle Music\n';
             receipt += '====================\n';
             receipt += `${dateStr} ${timeStr}\n\n`;
-            receipt += '\x1B\x61\x00'; // left
             receipt += 'ITEMS:\n';
             receipt += '--------------------\n';
 
@@ -4518,29 +4527,19 @@
             }
             receipt += '--------------------\n';
 
-            receipt += '\x1B\x61\x01'; // center
             receipt += 'Thank you!\n';
             receipt += 'PigStyle Music\n';
             receipt += 'Come back soon!\n\n\n\n';
-            receipt += '\n'.repeat(12); // feed extra paper
 
+            // Generate filename with timestamp
+            const filename = `receipt_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.txt`;
 
-            // Send to printer
             try {
-                const response = await fetch(window.AppConfig.baseUrl + '/print-receipt', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ printer: printerPath, data: receipt })
-                });
-                const result = await response.json();
-                if (response.ok && result.status === 'success') {
-                    receiptPrinted = true;
-                } else {
-                    receiptError = result.message || 'Printer API error';
-                }
+                downloadReceipt(receipt, filename);
+                receiptDownloaded = true;
             } catch (error) {
-                receiptError = error.message || 'Network error';
+                receiptError = error.message || 'Download error';
+                console.error('Receipt download error:', error);
             }
         } else if (hasSquarePayment) {
             console.log('Square payment detected, skipping software receipt.');
@@ -4558,34 +4557,41 @@
             statusMsg += `, Bernie donations: $${bernieTotal.toFixed(2)}`;
         }
 
-        if (hasCashPayment && receiptPrinted) {
-            statusMsg += ' ✅ Receipt printed.';
+        if (hasCashPayment && receiptDownloaded) {
+            statusMsg += ' ✅ Receipt downloaded.';
         } else if (hasCashPayment && receiptError) {
-            statusMsg += ` ⚠️ Receipt could not be printed (${receiptError}). Purchase completed anyway.`;
+            statusMsg += ` ⚠️ Receipt could not be downloaded (${receiptError}). Purchase completed anyway.`;
         } else if (hasSquarePayment) {
             statusMsg += ' ✅ Receipt printed by Square terminal.';
         }
 
         showCheckoutStatus('✅ ' + statusMsg, receiptError ? 'warning' : 'success');
 
-        // --- Cleanup ---
-        setTimeout(() => {
-            checkoutSelectedItems = [];
-            checkoutViewMode = 'list';
-            checkoutPaymentEntries = [];
-            checkoutRemaining = 0;
-            const modal = document.getElementById('checkout-payment-modal');
-            if (modal) modal.style.display = 'none';
-            filteredRecords = [];
-            totalRecords = 0;
-            renderPagination();
-            renderTablePage();
-            if (checkoutShowSelectedBtn) {
-                checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
-            }
-            updateSelectionCount();
-            playSound('success');
-        }, 1500);
+        // --- IMMEDIATE CLEANUP & CLOSE MODAL ---
+        // Clear checkout data
+        checkoutSelectedItems = [];
+        checkoutViewMode = 'list';
+        checkoutPaymentEntries = [];
+        checkoutRemaining = 0;
+
+        // Close the modal immediately
+        const modal = document.getElementById('checkout-payment-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+
+        // Refresh the table display
+        filteredRecords = [];
+        totalRecords = 0;
+        renderPagination();
+        renderTablePage();
+
+        if (checkoutShowSelectedBtn) {
+            checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
+        }
+        updateSelectionCount();
+
+        playSound('success');
     }
 
     // ========== Show Checkout Modal (with unified debtor lookup) ==========
