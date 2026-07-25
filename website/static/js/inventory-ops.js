@@ -4303,8 +4303,8 @@
             }
         }, 2000);
     }
- 
-    async function completeCheckout() {
+  
+        async function completeCheckout() {
         if (checkoutRemaining > 0.01) {
             showCheckoutStatus('Remaining balance not covered', 'error');
             return;
@@ -4476,73 +4476,69 @@
             }
         }
 
-        // --- GENERATE RECEIPT .TXT FILE (for cash/store credit/gift card) ---
+        // --- GENERATE RECEIPT .TXT FILE (for ALL payment methods) ---
         let receiptError = null;
         let receiptDownloaded = false;
 
-        if (hasCashPayment) {
-            // Build receipt string (same as before, but without escape codes for plain text)
-            const now = new Date();
-            const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-            const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        // Build receipt string (same for all methods)
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-            let receipt = 'PigStyle Music\n';
-            receipt += '====================\n';
-            receipt += `${dateStr} ${timeStr}\n\n`;
-            receipt += 'ITEMS:\n';
-            receipt += '--------------------\n';
+        let receipt = 'PigStyle Music\n';
+        receipt += '====================\n';
+        receipt += `${dateStr} ${timeStr}\n\n`;
+        receipt += 'ITEMS:\n';
+        receipt += '--------------------\n';
 
-            let subtotal = 0;
-            for (const item of selected) {
-                const price = item.store_price || 0;
-                const desc = item.isCustom ? item.title : `${item.artist} - ${item.title}`;
-                if (item.isBernie) {
-                    receipt += `[Bernie] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
-                } else if (item.consignor_id && item.consignor_id !== 1) {
-                    receipt += `[Consignor] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
-                } else {
-                    receipt += `${desc.padEnd(25)}$${price.toFixed(2)}\n`;
-                }
-                subtotal += price;
+        let subtotal = 0;
+        for (const item of selected) {
+            const price = item.store_price || 0;
+            const desc = item.isCustom ? item.title : `${item.artist} - ${item.title}`;
+            if (item.isBernie) {
+                receipt += `[Bernie] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
+            } else if (item.consignor_id && item.consignor_id !== 1) {
+                receipt += `[Consignor] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
+            } else {
+                receipt += `${desc.padEnd(25)}$${price.toFixed(2)}\n`;
             }
+            subtotal += price;
+        }
 
-            const taxRate = 0.08;
-            const tax = subtotal * taxRate;
-            const grandTotal = subtotal + tax;
+        const taxRate = 0.08;
+        const tax = subtotal * taxRate;
+        const grandTotal = subtotal + tax;
 
-            receipt += '--------------------\n';
-            receipt += `${'Subtotal'.padEnd(25)}$${subtotal.toFixed(2)}\n`;
-            receipt += `${'Tax'.padEnd(25)}$${tax.toFixed(2)}\n`;
-            receipt += `${'Total'.padEnd(25)}$${grandTotal.toFixed(2)}\n\n`;
+        receipt += '--------------------\n';
+        receipt += `${'Subtotal'.padEnd(25)}$${subtotal.toFixed(2)}\n`;
+        receipt += `${'Tax'.padEnd(25)}$${tax.toFixed(2)}\n`;
+        receipt += `${'Total'.padEnd(25)}$${grandTotal.toFixed(2)}\n\n`;
 
-            receipt += 'PAYMENT:\n';
-            receipt += '--------------------\n';
-            let totalPaid = 0;
-            for (const entry of checkoutPaymentEntries) {
-                receipt += `${entry.method.padEnd(25)}$${entry.amount.toFixed(2)}\n`;
-                totalPaid += entry.amount;
-            }
-            if (totalPaid < grandTotal) {
-                receipt += `${'Unpaid'.padEnd(25)}$${(grandTotal - totalPaid).toFixed(2)}\n`;
-            }
-            receipt += '--------------------\n';
+        receipt += 'PAYMENT:\n';
+        receipt += '--------------------\n';
+        let totalPaid = 0;
+        for (const entry of checkoutPaymentEntries) {
+            receipt += `${entry.method.padEnd(25)}$${entry.amount.toFixed(2)}\n`;
+            totalPaid += entry.amount;
+        }
+        if (totalPaid < grandTotal) {
+            receipt += `${'Unpaid'.padEnd(25)}$${(grandTotal - totalPaid).toFixed(2)}\n`;
+        }
+        receipt += '--------------------\n';
 
-            receipt += 'Thank you!\n';
-            receipt += 'PigStyle Music\n';
-            receipt += 'Come back soon!\n\n\n\n';
+        receipt += 'Thank you!\n';
+        receipt += 'PigStyle Music\n';
+        receipt += 'Come back soon!\n\n\n\n';
 
-            // Generate filename with timestamp
-            const filename = `receipt_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.txt`;
+        // Generate filename with timestamp
+        const filename = `receipt_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.txt`;
 
-            try {
-                downloadReceipt(receipt, filename);
-                receiptDownloaded = true;
-            } catch (error) {
-                receiptError = error.message || 'Download error';
-                console.error('Receipt download error:', error);
-            }
-        } else if (hasSquarePayment) {
-            console.log('Square payment detected, skipping software receipt.');
+        try {
+            downloadReceipt(receipt, filename);
+            receiptDownloaded = true;
+        } catch (error) {
+            receiptError = error.message || 'Download error';
+            console.error('Receipt download error:', error);
         }
 
         // --- Build final confirmation message ---
@@ -4557,12 +4553,10 @@
             statusMsg += `, Bernie donations: $${bernieTotal.toFixed(2)}`;
         }
 
-        if (hasCashPayment && receiptDownloaded) {
+        if (receiptDownloaded) {
             statusMsg += ' ✅ Receipt downloaded.';
-        } else if (hasCashPayment && receiptError) {
+        } else if (receiptError) {
             statusMsg += ` ⚠️ Receipt could not be downloaded (${receiptError}). Purchase completed anyway.`;
-        } else if (hasSquarePayment) {
-            statusMsg += ' ✅ Receipt printed by Square terminal.';
         }
 
         showCheckoutStatus('✅ ' + statusMsg, receiptError ? 'warning' : 'success');
