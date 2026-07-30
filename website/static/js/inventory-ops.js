@@ -31,7 +31,6 @@
     const selectedCountSpan = document.getElementById('selected-count');
     const completeActionBtn = document.getElementById('complete-action-btn');
     const printBtn = document.getElementById('print-btn');
-    const setActiveBtn = document.getElementById('set-active-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
     // ========== Mode Control Panels ==========
@@ -43,6 +42,18 @@
     const deleteFilters = document.getElementById('delete-filters');
     const checkoutFilters = document.getElementById('checkout-filters');
     const discogsOrdersFilters = document.getElementById('discogs-orders-filters');
+
+    console.log('🔍 DOM Elements found:', {
+        paramsPurchasePanel: !!paramsPurchasePanel,
+        scanLocationBuilder: !!scanLocationBuilder,
+        filterGroup: !!filterGroup,
+        discogsFilters: !!discogsFilters,
+        discogsMarkupUi: !!discogsMarkupUi,
+        deleteFilters: !!deleteFilters,
+        checkoutFilters: !!checkoutFilters,
+        discogsOrdersFilters: !!discogsOrdersFilters,
+        completeActionBtn: !!completeActionBtn
+    });
 
     // ========== Draft Purchase Panel Elements ==========
     const draftPanelBody = document.getElementById('params-purchase-body');
@@ -640,23 +651,32 @@
 
     // ========== UNIFIED MODE PANEL MANAGEMENT ==========
     function showPanelsForMode(mode) {
+        console.log(`📐 showPanelsForMode called with mode: ${mode}`);
+
         // Hide all panels first
         for (const key in panelElements) {
             const element = panelElements[key];
             if (element) {
                 element.style.display = 'none';
+                console.log(`📐 Hidden panel: ${key}`);
             }
         }
 
         // Show panels for the current mode
         const modeConfig = MODE_PANELS[mode];
         if (modeConfig) {
+            console.log(`📐 modeConfig found for ${mode}:`, modeConfig);
             modeConfig.panels.forEach(panelKey => {
                 const element = panelElements[panelKey];
                 if (element) {
                     element.style.display = 'block';
+                    console.log(`📐 Showing panel: ${panelKey}`);
+                } else {
+                    console.warn(`📐 Panel element not found: ${panelKey}`);
                 }
             });
+        } else {
+            console.warn(`📐 No modeConfig found for ${mode}`);
         }
 
         // Special handling for scan mode - populate genres
@@ -683,6 +703,7 @@
                 'refund': 'Search sold records by artist, title, or barcode...'
             };
             searchInput.placeholder = placeholders[mode] || 'Search...';
+            console.log(`📐 Search placeholder set to: ${searchInput.placeholder}`);
         }
 
         // Update Complete button
@@ -695,31 +716,51 @@
     }
 
     function updateCompleteButton(mode) {
-        if (!completeActionBtn) return;
+        console.log(`🔘 updateCompleteButton called with mode: ${mode}`);
+        if (!completeActionBtn) {
+            console.error('🔘 completeActionBtn is null!');
+            return;
+        }
+
+        console.log(`🔘 completeActionBtn current display: ${completeActionBtn.style.display}`);
+        console.log(`🔘 completeActionBtn current disabled: ${completeActionBtn.disabled}`);
 
         if (mode === 'add') {
             completeActionBtn.style.display = 'none';
+            console.log('🔘 Add mode: hiding complete button');
         } else if (mode === 'refund') {
             completeActionBtn.style.display = '';
             completeActionBtn.textContent = '💰 Process Refund';
+            console.log('🔘 Refund mode: showing as "Process Refund"');
         } else if (mode === 'scan') {
             completeActionBtn.style.display = '';
             completeActionBtn.textContent = '📍 Apply Location';
+            console.log('🔘 Scan mode: showing as "Apply Location"');
         } else if (mode === 'discogs') {
             completeActionBtn.style.display = '';
             completeActionBtn.textContent = '📤 Post to Discogs';
+            console.log('🔘 Discogs mode: showing as "Post to Discogs"');
         } else if (mode === 'delete') {
             completeActionBtn.style.display = '';
             completeActionBtn.textContent = '🗑️ Delete Selected';
+            console.log('🔘 Delete mode: showing as "Delete Selected"');
         } else if (mode === 'checkout') {
             completeActionBtn.style.display = '';
             completeActionBtn.textContent = '🛒 Checkout';
+            completeActionBtn.disabled = false;
+            console.log('🔘 Checkout mode: showing as "🛒 Checkout" - ENABLED');
         } else if (mode === 'discogs_orders') {
             completeActionBtn.style.display = '';
             completeActionBtn.textContent = '📦 Mark Sold';
+            console.log('🔘 Discogs Orders mode: showing as "Mark Sold"');
         } else {
             completeActionBtn.style.display = 'none';
+            console.log('🔘 Unknown mode: hiding complete button');
         }
+
+        // Ensure the click handler is attached
+        console.log('🔘 completeActionBtn onclick:', completeActionBtn.onclick);
+        console.log('🔘 completeActionBtn listeners:', completeActionBtn._listeners || 'none');
     }
 
     // ========== Unified Record Loader ==========
@@ -3911,9 +3952,6 @@
         loadRecords({ statusIds: statuses, mode: 'delete', search: searchTerm });
     }
 
-    // ========== SET ACTIVE - REMOVED ==========
-    // The Set Active button has been removed. Records are set to Active when a draft is accepted.
-
     // ========== Print Price Tags ==========
     function printPriceTags() {
         let records = [];
@@ -3935,10 +3973,17 @@
 
     // ========== Checkout functions ==========
     function addToCheckout(recordId) {
+        console.log(`🛒 addToCheckout called with recordId: ${recordId}`);
         const record = allRecords.find(r => r.id === recordId);
-        if (!record) return;
+        if (!record) {
+            console.warn(`🛒 Record ${recordId} not found in allRecords`);
+            return;
+        }
+        console.log(`🛒 Found record: ${record.artist} - ${record.title}`);
+        
         if (!checkoutSelectedItems.some(r => r.id === recordId)) {
             checkoutSelectedItems.push(record);
+            console.log(`🛒 Added to checkout. Now ${checkoutSelectedItems.length} items.`);
             showStatus(`Added "${record.artist} - ${record.title}" to checkout`, 'success');
             checkoutViewMode = 'list';
             filteredRecords = checkoutSelectedItems.slice();
@@ -3951,14 +3996,17 @@
                 checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
             }
         } else {
+            console.log(`🛒 Record ${recordId} already in checkout`);
             showStatus('Record already in checkout list', 'info');
         }
     }
 
     function removeFromCheckout(recordId) {
+        console.log(`🛒 removeFromCheckout called with recordId: ${recordId}`);
         const index = checkoutSelectedItems.findIndex(r => r.id === recordId);
         if (index !== -1) {
             const removed = checkoutSelectedItems.splice(index, 1)[0];
+            console.log(`🛒 Removed ${removed.artist} - ${removed.title} from checkout. Now ${checkoutSelectedItems.length} items.`);
             showStatus(`Removed "${removed.artist} - ${removed.title}" from checkout`, 'info');
             filteredRecords = checkoutSelectedItems.slice();
             totalRecords = filteredRecords.length;
@@ -3975,6 +4023,8 @@
                 renderPagination();
                 renderTablePage();
             }
+        } else {
+            console.warn(`🛒 Record ${recordId} not found in checkout`);
         }
     }
 
@@ -4125,13 +4175,22 @@
     }
   
     async function completeCheckout() {
+        console.log('🛒 completeCheckout called');
+        console.log(`🛒 checkoutRemaining: ${checkoutRemaining}`);
+        console.log(`🛒 checkoutSelectedItems length: ${checkoutSelectedItems.length}`);
+        
         if (checkoutRemaining > 0.01) {
+            console.log('🛒 Remaining balance not covered');
             showCheckoutStatus('Remaining balance not covered', 'error');
             return;
         }
 
         const selected = checkoutSelectedItems;
-        if (selected.length === 0) return;
+        if (selected.length === 0) {
+            console.log('🛒 No items in checkout');
+            return;
+        }
+        console.log(`🛒 Processing ${selected.length} items`);
 
         const today = getLocalMSTDate();
         let success = 0;
@@ -4155,6 +4214,9 @@
         }
 
         bernieTotal = bernieItems.reduce((sum, r) => sum + (r.store_price || 0), 0);
+        console.log(`🛒 Bernie total: ${bernieTotal}`);
+        console.log(`🛒 Regular records: ${regularRecords.length}`);
+        console.log(`🛒 Consignor records: ${consignorRecords.length}`);
 
         for (const record of regularRecords) {
             try {
@@ -4383,22 +4445,33 @@
         updateSelectionCount();
 
         playSound('success');
+        console.log('🛒 completeCheckout finished successfully');
     }
 
-    // ========== Show Checkout Modal (with unified debtor lookup) ==========
-    let checkoutDebtorData = null;
-
+    // ========== Show Checkout Modal ==========
     function showCheckoutModal() {
+        console.log('🛒 showCheckoutModal called');
+        console.log(`🛒 checkoutSelectedItems length: ${checkoutSelectedItems.length}`);
+        console.log('🛒 checkoutSelectedItems:', checkoutSelectedItems);
+        
         const oldModal = document.getElementById('checkout-payment-modal');
         if (oldModal) {
+            console.log('🛒 Removing existing modal');
             oldModal.parentNode.removeChild(oldModal);
         }
 
         const selected = checkoutSelectedItems;
-        if (selected.length === 0) { showStatus('No records in checkout list', 'warning'); return; }
+        if (selected.length === 0) { 
+            console.log('🛒 No items in checkout');
+            showStatus('No records in checkout list', 'warning'); 
+            return; 
+        }
+        
         const total = selected.reduce((sum, r) => sum + (r.store_price || 0), 0);
         const tax = total * 0.08;
         const grandTotal = total + tax;
+        console.log(`🛒 Total: ${total}, Tax: ${tax}, Grand Total: ${grandTotal}`);
+        
         checkoutTotal = grandTotal;
         checkoutRemaining = grandTotal;
         checkoutPaymentEntries = [];
@@ -4473,6 +4546,7 @@
             </div>
         `;
         document.body.appendChild(modal);
+        console.log('🛒 Modal created and appended');
 
         checkSquareAvailability().then(avail => {
             const methodSelect = document.getElementById('checkout-payment-method');
@@ -4514,12 +4588,15 @@
         };
 
         document.getElementById('checkout-complete-payment').onclick = function() {
+            console.log('🛒 Complete Payment button clicked');
             if (checkoutRemaining > 0.01) {
+                console.log(`🛒 Remaining: ${checkoutRemaining}`);
                 showCheckoutStatus('Remaining balance not covered', 'error');
                 return;
             }
             const methodSelect3 = document.getElementById('checkout-payment-method');
             const method = methodSelect3.value;
+            console.log(`🛒 Payment method: ${method}`);
             if (method === 'Card (Square)') {
                 processSquarePayment();
             } else {
@@ -4535,10 +4612,12 @@
             statusDiv.style.display = 'none';
             statusDiv.textContent = '';
         }
+        console.log('🛒 showCheckoutModal finished');
     }
 
     // ========== Add Payment Entry ==========
     function addPaymentEntry(method, amount) {
+        console.log(`💳 addPaymentEntry: ${method} $${amount}`);
         if (amount > checkoutRemaining && checkoutRemaining > 0) {
             // allow overpayment
         }
@@ -4684,7 +4763,7 @@
         }
     }
 
-    // ========== APPLY DEBTOR TO CHECKOUT (Auto-Apply) ==========
+    // ========== APPLY DEBTOR TO CHECKOUT ==========
 
     async function applyDebtorToCheckout() {
         if (!checkoutDebtorData) {
@@ -4760,26 +4839,40 @@
     function handleCompleteAction() {
         const mode = currentSearchMode;
         console.log(`🔵 handleCompleteAction called for mode: ${mode}`);
+        console.log(`🔵 completeActionBtn element:`, completeActionBtn);
+        
         if (mode === 'add') {
-            showStatus('Use Print or Set Active buttons.', 'info');
+            console.log('🔵 Add mode - showing info');
+            showStatus('Use Print button.', 'info');
         } else if (mode === 'scan') {
+            console.log('🔵 Scan mode - applying location');
             applyScanLocation();
         } else if (mode === 'discogs') {
+            console.log('🔵 Discogs mode - showing post modal');
             console.log(`🔵 handleCompleteAction: calling showDiscogsPostModal`);
             showDiscogsPostModal();
         } else if (mode === 'delete') {
+            console.log('🔵 Delete mode - deleting selected');
             deleteSelected();
         } else if (mode === 'checkout') {
+            console.log('🔵 Checkout mode - showing checkout modal');
+            console.log(`🔵 checkoutSelectedItems length: ${checkoutSelectedItems.length}`);
             if (checkoutSelectedItems.length === 0) {
+                console.log('🔵 No items in checkout');
                 showStatus('No items in checkout.', 'warning');
                 return;
             }
+            console.log('🔵 Calling showCheckoutModal...');
             showCheckoutModal();
+            console.log('🔵 showCheckoutModal returned');
         } else if (mode === 'discogs_orders') {
+            console.log('🔵 Discogs Orders mode - processing order');
             processDiscogsOrder();
         } else if (mode === 'refund') {
+            console.log('🔵 Refund mode - processing refund');
             processRefund();
         } else {
+            console.log(`🔵 Unknown mode: ${mode}`);
             showStatus('No action available for this mode', 'warning');
         }
     }
@@ -5301,8 +5394,6 @@
         const isAddMode = mode === 'add';
         const isRefundMode = mode === 'refund';
         
-        // Set Active button is REMOVED - no longer needed
-        
         if (isAddMode) {
             const hasTargets = hasSelection || hasRecords;
             printBtn.disabled = !hasTargets;
@@ -5330,6 +5421,7 @@
                 completeActionBtn.disabled = !hasSelection;
             } else if (mode === 'checkout') {
                 completeActionBtn.disabled = checkoutSelectedItems.length === 0;
+                console.log(`🔘 updateSelectionCount: checkout mode, disabled=${completeActionBtn.disabled}, items=${checkoutSelectedItems.length}`);
             } else if (mode === 'discogs_orders') {
                 const hasOrder = selectedOrderId !== null;
                 const hasItems = filteredRecords.length > 0;
@@ -5519,6 +5611,7 @@
             renderPagination();
             renderTablePage();
             showStatus('Checkout mode: Search to add records, or use "Custom Item".', 'info');
+            console.log('🔄 onModeChange: loading records for checkout');
             loadRecords({ statusIds: [2], mode: 'checkout' }).then(() => {
                 checkoutViewMode = 'list';
                 filteredRecords = checkoutSelectedItems.slice();
@@ -5527,6 +5620,7 @@
                 renderPagination();
                 renderTablePage();
                 updateSelectionCount();
+                console.log(`🔄 Checkout loaded: ${checkoutSelectedItems.length} items`);
             });
             if (checkoutShowSelectedBtn) {
                 checkoutShowSelectedBtn.style.display = 'inline-block';
@@ -5610,23 +5704,26 @@
         console.log('🔄 inventory-ops: Initializing...');
 
         if (_initialized) {
-            await loadMinimumPrice();
-            await loadStorePriceMultiplier();
-            await loadConditions();
-            await loadConsignors();
-            await loadAccounts();
-            await loadStats();
+            console.log('🔄 inventory-ops: Already initialized, skipping duplicate init');
             return;
         }
 
+        console.log('📥 Loading minimum price...');
         await loadMinimumPrice();
+        console.log('📥 Loading store price multiplier...');
         await loadStorePriceMultiplier();
+        console.log('📥 Loading conditions...');
         await loadConditions();
+        console.log('📥 Loading consignors...');
         await loadConsignors();
+        console.log('📥 Loading accounts...');
         await loadAccounts();
+        console.log('📥 Loading stats...');
         await loadStats();
+        console.log('📥 Loading genres...');
         await loadGenres();
 
+        console.log('📥 Populating default param selects...');
         populateDefaultParamSelects();
 
         // Set up event listeners for the scan location builder
@@ -5759,14 +5856,11 @@
 
         printBtn.addEventListener('click', printPriceTags);
 
-        // Set Active button is REMOVED
-        setActiveBtn.style.display = 'none';
-
         const oldGlobalBtn = document.getElementById('global-set-active-btn');
         if (oldGlobalBtn) oldGlobalBtn.remove();
 
         completeActionBtn.addEventListener('click', handleCompleteAction);
-        cancelRangeBtn.addEventListener('click', cancelRangeSelection);
+        console.log('🔘 completeActionBtn click handler attached in init');
 
         if (discogsLocationSelect) {
             discogsLocationSelect.addEventListener('change', function() {
@@ -5860,18 +5954,35 @@
         setTimeout(() => { el.style.display = 'none'; }, 3000);
     }
 
+    // ========== EXPOSE INIT FUNCTION FOR TABMANAGER ==========
+    window.initAddRecordsTab = function() {
+        console.log('🔵 TabManager called initAddRecordsTab');
+        if (!_initialized) {
+            init();
+        } else {
+            console.log('🔄 initAddRecordsTab: already initialized');
+        }
+    };
+
+    // Also expose it as initInventoryOpsTab for compatibility
+    window.initInventoryOpsTab = window.initAddRecordsTab;
+
+    console.log('✅ initAddRecordsTab exposed to window');
+
     // ========== AUTO-INITIALIZE ==========
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            if (!_initialized) init();
-        });
-    } else {
-        if (!_initialized) init();
+    // Only initialize if DOM is already ready and TabManager hasn't called us yet
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        // Check if we should auto-init (only if TabManager hasn't already)
+        setTimeout(function() {
+            if (!_initialized) {
+                console.log('🔄 Auto-initializing inventory-ops (fallback)');
+                init();
+            }
+        }, 1000);
     }
 
     // ========== Expose globals ==========
     window.refreshDiscogsLocations = loadDiscogsLocations;
-    window.initAddRecordsTab = init;
 
     window.closeDiscogsPostModal = closeDiscogsPostModal;
     window.showDiscogsPostModal = showDiscogsPostModal;
@@ -5897,5 +6008,11 @@
     window.acceptDraftWithSignature = acceptDraftWithSignature;
     window.declineDraft = declineDraft;
     window.clearDraftForm = clearDraftForm;
+
+    // Explicitly expose checkout modal for debugging
+    window.showCheckoutModal = showCheckoutModal;
+
+    console.log('✅ All functions exposed to window');
+    console.log('🔘 completeActionBtn click handler attached:', completeActionBtn.onclick);
 
 })();
