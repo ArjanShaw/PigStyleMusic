@@ -1,6 +1,6 @@
 // ============================================================================
 // inventory-ops.js - Unified Inventory Operations (Refactored)
-// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders, Refund, Inventory Purchases
+// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders, Refund
 // ============================================================================
 
 (function() {
@@ -34,33 +34,34 @@
     const setActiveBtn = document.getElementById('set-active-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
-    const discogsUi = document.getElementById('filter-group');
-    const discogsLocationSelect = document.getElementById('discogs-location-select');
-    const discogsStatusMessage = document.getElementById('discogs-status-message');
-    const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
-    const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
-
-    const defaultSleeveSelect = document.getElementById('default-sleeve-condition');
-    const defaultDiscSelect = document.getElementById('default-disc-condition');
-    const defaultPriceInput = document.getElementById('default-price');
-    const defaultConsignorSelect = document.getElementById('default-consignor');
-
-    const deleteStatusFilter = document.getElementById('delete-status-filter');
-    const checkoutFilters = document.getElementById('checkout-filters');
-    const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
-    const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
-
-    const discogsOrderSelect = document.getElementById('discogs-order-select');
-    const discogsOrdersRefreshBtn = document.getElementById('discogs-orders-refresh-btn');
-    const discogsOrdersStatus = document.getElementById('discogs-orders-status');
-    const discogsOrdersStatusFilter = document.getElementById('discogs-orders-status-filter');
-    const discogsOrdersApplyFiltersBtn = document.getElementById('discogs-orders-apply-filters-btn');
-    const discogsOrdersDateFrom = document.getElementById('discogs-orders-date-from');
-    const discogsOrdersDateTo = document.getElementById('discogs-orders-date-to');
-    const discogsOrdersSearch = document.getElementById('discogs-orders-search');
-
-    // ========== Scan Location Builder Panel Elements ==========
+    // ========== Mode Control Panels ==========
+    const paramsPurchasePanel = document.getElementById('params-purchase-panel');
     const scanLocationBuilder = document.getElementById('scan-location-builder');
+    const filterGroup = document.getElementById('filter-group');
+    const discogsFilters = document.getElementById('discogs-filters');
+    const discogsMarkupUi = document.getElementById('discogs-markup-ui');
+    const deleteFilters = document.getElementById('delete-filters');
+    const checkoutFilters = document.getElementById('checkout-filters');
+    const discogsOrdersFilters = document.getElementById('discogs-orders-filters');
+
+    // ========== Draft Purchase Panel Elements ==========
+    const draftPanelBody = document.getElementById('params-purchase-body');
+    const draftToggleIcon = document.getElementById('params-purchase-toggle-icon');
+    const draftFormSection = document.getElementById('draft-form-section');
+    const activeDraftSection = document.getElementById('active-draft-section');
+    const draftSellerName = document.getElementById('draft-seller-name');
+    const draftSellerContact = document.getElementById('draft-seller-contact');
+    const draftDescription = document.getElementById('draft-description');
+    const draftDisplaySeller = document.getElementById('draft-display-seller');
+    const draftDisplayContact = document.getElementById('draft-display-contact');
+    const draftDisplayDescription = document.getElementById('draft-display-description');
+    const draftDisplayId = document.getElementById('draft-display-id');
+    const draftLinkedCount = document.getElementById('draft-linked-count');
+    const draftOfferAmount = document.getElementById('draft-offer-amount');
+    const draftStatusMessage = document.getElementById('draft-status-message');
+    const draftActionStatus = document.getElementById('draft-action-status');
+
+    // ========== Scan Location Builder Elements ==========
     const scanGenreSelect = document.getElementById('scan-genre');
     const scanNewGenreInput = document.getElementById('scan-new-genre-input');
     const scanAddGenreBtn = document.getElementById('scan-add-genre-btn');
@@ -73,6 +74,35 @@
     const scanLocationPreview = document.getElementById('scan-location-preview');
     const scanCounterDisplay = document.getElementById('scan-counter-display');
     const scanResetCounterBtn = document.getElementById('scan-reset-counter-btn');
+
+    // ========== Discogs Elements ==========
+    const discogsLocationSelect = document.getElementById('discogs-location-select');
+    const discogsStatusMessage = document.getElementById('discogs-status-message');
+    const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
+    const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
+
+    // ========== Delete Mode Elements ==========
+    const deleteStatusFilter = document.getElementById('delete-status-filter');
+
+    // ========== Checkout Elements ==========
+    const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
+    const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
+
+    // ========== Discogs Orders Elements ==========
+    const discogsOrderSelect = document.getElementById('discogs-order-select');
+    const discogsOrdersRefreshBtn = document.getElementById('discogs-orders-refresh-btn');
+    const discogsOrdersStatus = document.getElementById('discogs-orders-status');
+    const discogsOrdersStatusFilter = document.getElementById('discogs-orders-status-filter');
+    const discogsOrdersApplyFiltersBtn = document.getElementById('discogs-orders-apply-filters-btn');
+    const discogsOrdersDateFrom = document.getElementById('discogs-orders-date-from');
+    const discogsOrdersDateTo = document.getElementById('discogs-orders-date-to');
+    const discogsOrdersSearch = document.getElementById('discogs-orders-search');
+
+    // ========== Default Params Elements ==========
+    const defaultSleeveSelect = document.getElementById('default-sleeve-condition');
+    const defaultDiscSelect = document.getElementById('default-disc-condition');
+    const defaultPriceInput = document.getElementById('default-price');
+    const defaultConsignorSelect = document.getElementById('default-consignor');
 
     // ========== State ==========
     let currentSearchMode = 'add';
@@ -136,76 +166,63 @@
     };
     let defaultParamsActive = false;
 
-    // ========== Recent Scans for Duplicate Prediction (Scan Mode) ==========
     let recentScans = [];
     const MAX_RECENT_SCANS = 10;
-
-    // ========== Scan Mode specific counter ==========
     let scanCounter = 0;
+
+    // ========== Draft Purchase State ==========
+    let activeDraft = null;
+    let draftLinkedRecordIds = [];
+    let draftPanelExpanded = true;
 
     // ========== Audio ==========
     let audioContext = null;
 
-    function playSound(type) {
-        try {
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioContext.state === 'suspended') audioContext.resume();
+    // ========== Mode Panel Configuration ==========
+    const MODE_PANELS = {
+        add: {
+            panels: ['paramsPurchasePanel'],
+            visible: true
+        },
+        scan: {
+            panels: ['scanLocationBuilder'],
+            visible: true
+        },
+        discogs: {
+            panels: ['filterGroup', 'discogsFilters', 'discogsMarkupUi'],
+            visible: true
+        },
+        delete: {
+            panels: ['filterGroup', 'deleteFilters'],
+            visible: true
+        },
+        checkout: {
+            panels: ['filterGroup', 'checkoutFilters'],
+            visible: true
+        },
+        discogs_orders: {
+            panels: ['filterGroup', 'discogsOrdersFilters'],
+            visible: true
+        },
+        refund: {
+            panels: ['filterGroup'],
+            visible: true
+        }
+    };
 
-            const configs = {
-                beep: { freq: 800, duration: 200, type: 'sine', gain: 0.3 },
-                error: { freq: 220, duration: 600, type: 'sawtooth', gain: 0.4 },
-                success: { freq: 523.25, duration: 200, type: 'sine', gain: 0.2, notes: [523.25, 659.25, 783.99] }
-            };
+    // Panel visibility map
+    const panelElements = {
+        paramsPurchasePanel: paramsPurchasePanel,
+        scanLocationBuilder: scanLocationBuilder,
+        filterGroup: filterGroup,
+        discogsFilters: discogsFilters,
+        discogsMarkupUi: discogsMarkupUi,
+        deleteFilters: deleteFilters,
+        checkoutFilters: checkoutFilters,
+        discogsOrdersFilters: discogsOrdersFilters
+    };
 
-            const config = configs[type];
-            if (!config) return;
-
-            if (config.notes) {
-                config.notes.forEach((freq, i) => {
-                    setTimeout(() => {
-                        const osc = audioContext.createOscillator();
-                        const gain = audioContext.createGain();
-                        osc.connect(gain);
-                        gain.connect(audioContext.destination);
-                        osc.frequency.value = freq;
-                        osc.type = config.type;
-                        gain.gain.setValueAtTime(config.gain, audioContext.currentTime);
-                        gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + config.duration / 1000);
-                        osc.start();
-                        osc.stop(audioContext.currentTime + config.duration / 1000);
-                    }, i * 100);
-                });
-            } else {
-                const osc = audioContext.createOscillator();
-                const gain = audioContext.createGain();
-                osc.connect(gain);
-                gain.connect(audioContext.destination);
-                osc.frequency.value = config.freq;
-                osc.type = config.type;
-                gain.gain.setValueAtTime(config.gain, audioContext.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + config.duration / 1000);
-                osc.start();
-                osc.stop(audioContext.currentTime + config.duration / 1000);
-            }
-        } catch (e) { console.warn('Sound error:', e); }
-    }
-
-    // ========== Helper: Download receipt as .txt ==========
-    function downloadReceipt(text, filename = 'receipt.txt') {
-        const blob = new Blob([text], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
-    // ========== Helpers ==========
+    // ========== Helper Functions ==========
     function escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');
@@ -220,6 +237,11 @@
         el.className = 'status-message status-' + (type || 'info');
         el.style.display = 'block';
         setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+
+    function showToast(message, type) {
+        console.log(`🍞 TOAST [${type}]: ${message}`);
+        showStatus(message, type);
     }
 
     function showDiscogsStatus(message, type) {
@@ -317,8 +339,70 @@
         }
     }
 
+    function playSound(type) {
+        try {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') audioContext.resume();
+
+            const configs = {
+                beep: { freq: 800, duration: 200, type: 'sine', gain: 0.3 },
+                error: { freq: 220, duration: 600, type: 'sawtooth', gain: 0.4 },
+                success: { freq: 523.25, duration: 200, type: 'sine', gain: 0.2, notes: [523.25, 659.25, 783.99] }
+            };
+
+            const config = configs[type];
+            if (!config) return;
+
+            if (config.notes) {
+                config.notes.forEach((freq, i) => {
+                    setTimeout(() => {
+                        const osc = audioContext.createOscillator();
+                        const gain = audioContext.createGain();
+                        osc.connect(gain);
+                        gain.connect(audioContext.destination);
+                        osc.frequency.value = freq;
+                        osc.type = config.type;
+                        gain.gain.setValueAtTime(config.gain, audioContext.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + config.duration / 1000);
+                        osc.start();
+                        osc.stop(audioContext.currentTime + config.duration / 1000);
+                    }, i * 100);
+                });
+            } else {
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+                osc.frequency.value = config.freq;
+                osc.type = config.type;
+                gain.gain.setValueAtTime(config.gain, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + config.duration / 1000);
+                osc.start();
+                osc.stop(audioContext.currentTime + config.duration / 1000);
+            }
+        } catch (e) { console.warn('Sound error:', e); }
+    }
+
+    // ========== Helper: Download receipt as .txt ==========
+    function downloadReceipt(text, filename = 'receipt.txt') {
+        console.log(`📄 downloadReceipt: filename=${filename}, text length=${text.length}`);
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log('✅ downloadReceipt: file downloaded');
+    }
+
     // ========== Consolidated API ==========
     async function apiRequest(method, endpoint, body) {
+        console.log(`🌐 apiRequest: ${method} ${endpoint}`, body || '');
         const options = {
             method: method,
             credentials: 'include',
@@ -404,17 +488,8 @@
 
     // ========== Default Parameters ==========
     function toggleDefaultParams() {
-        const content = document.getElementById('default-params-content');
-        const icon = document.getElementById('default-params-toggle-icon');
-        if (!content || !icon) return;
-        if (content.style.display === 'none' || content.style.display === '') {
-            content.style.display = 'block';
-            icon.style.transform = 'rotate(180deg)';
-            loadDefaultParamsFromStorage();
-        } else {
-            content.style.display = 'none';
-            icon.style.transform = 'rotate(0deg)';
-        }
+        // This is now handled by toggleParamsPurchasePanel
+        toggleParamsPurchasePanel();
     }
 
     function loadDefaultParamsFromStorage() {
@@ -563,6 +638,90 @@
         }
     }
 
+    // ========== UNIFIED MODE PANEL MANAGEMENT ==========
+    function showPanelsForMode(mode) {
+        // Hide all panels first
+        for (const key in panelElements) {
+            const element = panelElements[key];
+            if (element) {
+                element.style.display = 'none';
+            }
+        }
+
+        // Show panels for the current mode
+        const modeConfig = MODE_PANELS[mode];
+        if (modeConfig) {
+            modeConfig.panels.forEach(panelKey => {
+                const element = panelElements[panelKey];
+                if (element) {
+                    element.style.display = 'block';
+                }
+            });
+        }
+
+        // Special handling for scan mode - populate genres
+        if (mode === 'scan' && scanLocationBuilder) {
+            populateScanGenreDropdown();
+            updateScanLocationPreview();
+            updateScanCounter();
+        }
+
+        // Special handling for discogs mode - show markup UI
+        if (mode === 'discogs' && discogsMarkupUi) {
+            discogsMarkupUi.style.display = 'block';
+        }
+
+        // Search placeholder - controlled by mode
+        if (searchInput) {
+            const placeholders = {
+                'add': 'Search Discogs...',
+                'scan': 'Scan barcode here...',
+                'discogs': 'Search within records...',
+                'delete': 'Search records...',
+                'checkout': 'Search records...',
+                'discogs_orders': 'Search orders...',
+                'refund': 'Search sold records by artist, title, or barcode...'
+            };
+            searchInput.placeholder = placeholders[mode] || 'Search...';
+        }
+
+        // Update Complete button
+        updateCompleteButton(mode);
+
+        // Load draft if in add mode
+        if (mode === 'add' && !activeDraft) {
+            loadActiveDraft();
+        }
+    }
+
+    function updateCompleteButton(mode) {
+        if (!completeActionBtn) return;
+
+        if (mode === 'add') {
+            completeActionBtn.style.display = 'none';
+        } else if (mode === 'refund') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '💰 Process Refund';
+        } else if (mode === 'scan') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '📍 Apply Location';
+        } else if (mode === 'discogs') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '📤 Post to Discogs';
+        } else if (mode === 'delete') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '🗑️ Delete Selected';
+        } else if (mode === 'checkout') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '🛒 Checkout';
+        } else if (mode === 'discogs_orders') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '📦 Mark Sold';
+        } else {
+            completeActionBtn.style.display = 'none';
+        }
+    }
+
     // ========== Unified Record Loader ==========
     async function loadRecords(options = {}) {
         console.log('🔵 loadRecords called with options:', options);
@@ -582,7 +741,8 @@
                 hasYoutube = false,
                 filterBySearch = true,
                 showAllStatuses = false,
-                format = null
+                format = null,
+                excludeBatch = false
             } = options;
 
             let url = '/records';
@@ -614,6 +774,9 @@
                 }
                 if (format) {
                     params.append('format', format);
+                }
+                if (excludeBatch) {
+                    params.append('exclude_batch', 'true');
                 }
             }
 
@@ -681,9 +844,9 @@
             else if (statusIds && statusIds.length > 1) statusMsg += ` with status_ids ${statusIds.join(', ')}`;
             if (location) statusMsg += ` in location "${location}"`;
             if (search) statusMsg += ` matching "${search}"`;
+            if (excludeBatch) statusMsg += ` (excluding linked records)`;
             showStatus(statusMsg, 'info');
             updateSelectionCount();
-            updateFilterVisibility();
 
             if (mode === 'discogs') {
                 if (location) {
@@ -750,6 +913,12 @@
 
     // ========== Discogs Prices ==========
     async function populateDiscogsPrices(records) {
+        // Only run in discogs mode
+        if (currentSearchMode !== 'discogs') {
+            console.log('💰 populateDiscogsPrices: skipping - not in discogs mode');
+            return;
+        }
+
         console.log(`💰 populateDiscogsPrices: received ${records.length} records`);
         if (!records || records.length === 0) {
             console.log('💰 populateDiscogsPrices: no records, returning');
@@ -758,9 +927,6 @@
 
         const eligibleRecords = records.filter(r => {
             const eligible = r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at;
-            if (eligible) {
-                console.log(`💰 Eligible record ${r.id}: ${r.artist} - ${r.title}`);
-            }
             return eligible;
         });
         console.log(`💰 populateDiscogsPrices: ${eligibleRecords.length} eligible out of ${records.length}`);
@@ -901,7 +1067,6 @@
             }
 
             ordersList = data.orders || [];
-            // Sort newest first (descending by created_at)
             ordersList.sort((a, b) => {
                 const dateA = new Date(a.created_at);
                 const dateB = new Date(b.created_at);
@@ -958,7 +1123,6 @@
         const dateFrom = document.getElementById('discogs-orders-date-from');
         const dateTo = document.getElementById('discogs-orders-date-to');
         const search = document.getElementById('discogs-orders-search');
-        // Do NOT reset status filter – keep current selection
         
         if (!dateFrom.value) {
             const thirtyDaysAgo = new Date();
@@ -976,7 +1140,6 @@
         applyDiscogsOrdersFilters();
     }
 
-    // ========== DISCOGS ORDERS SEARCH (by buyer username/email) ==========
     function performDiscogsOrdersSearch(term) {
         if (!term) {
             applyDiscogsOrdersFilters();
@@ -1540,16 +1703,11 @@
                     <th>Date Sold</th>
                 </tr>
             `;
-        } else if (currentSearchMode === 'purchases') {
-            theadHtml = '';
         }
+
         recordsTableHead.innerHTML = theadHtml;
 
         let tbodyHtml = '';
-        if (currentSearchMode === 'purchases') {
-            renderPurchasesMode();
-            return;
-        }
 
         if (pageRecords.length === 0) {
             let msg = 'No records found';
@@ -2023,7 +2181,11 @@
         }
 
         updateSelectionCount();
-        updateFilterVisibility();
+
+        // Update draft linked count if in Add mode
+        if (currentSearchMode === 'add') {
+            updateDraftLinkedCount();
+        }
     }
 
     // ========== Helper: lookup barcode for order item ==========
@@ -2091,159 +2253,6 @@
         }
     }
 
-    // ========== Update filter visibility ==========
-    function updateFilterVisibility() {
-        const isDiscogsMode = currentSearchMode === 'discogs';
-        const isDeleteMode = currentSearchMode === 'delete';
-        const isCheckoutMode = currentSearchMode === 'checkout';
-        const isAddMode = currentSearchMode === 'add';
-        const isDiscogsOrdersMode = currentSearchMode === 'discogs_orders';
-        const isScanMode = currentSearchMode === 'scan';
-        const isRefundMode = currentSearchMode === 'refund';
-        const isPurchasesMode = currentSearchMode === 'purchases';
-
-        const defaultParamsSection = document.getElementById('default-params-section');
-        if (defaultParamsSection) {
-            defaultParamsSection.style.display = isAddMode ? 'block' : 'none';
-        }
-
-        // Show/hide the scan location builder panel
-        if (scanLocationBuilder) {
-            scanLocationBuilder.style.display = isScanMode ? 'block' : 'none';
-            if (isScanMode) {
-                // Populate genres and update preview
-                populateScanGenreDropdown();
-                updateScanLocationPreview();
-                updateScanCounter();
-            }
-        }
-
-        if (discogsUi) {
-            discogsUi.style.display = (isDiscogsMode || isDeleteMode || isCheckoutMode || isDiscogsOrdersMode) ? 'block' : 'none';
-        }
-        const markupUi = document.getElementById('discogs-markup-ui');
-        if (markupUi) {
-            markupUi.style.display = isDiscogsMode ? 'block' : 'none';
-        }
-        const discogsFilters = document.getElementById('discogs-filters');
-        if (discogsFilters) {
-            discogsFilters.style.display = isDiscogsMode ? 'block' : 'none';
-        }
-        const deleteFilters = document.getElementById('delete-filters');
-        if (deleteFilters) {
-            deleteFilters.style.display = isDeleteMode ? 'block' : 'none';
-            if (deleteStatusFilter) {
-                deleteStatusFilter.innerHTML = `
-                    <option value="1">New</option>
-                    <option value="2">Active</option>
-                `;
-            }
-        }
-        if (checkoutFilters) {
-            const statusFilterEl = document.getElementById('checkout-status-filter');
-            if (statusFilterEl) {
-                statusFilterEl.style.display = 'none';
-            }
-            checkoutFilters.style.display = isCheckoutMode ? 'block' : 'none';
-        }
-        if (checkoutShowSelectedBtn && checkoutShowAllBtn) {
-            checkoutShowSelectedBtn.style.display = isCheckoutMode ? 'inline-block' : 'none';
-            checkoutShowAllBtn.style.display = isCheckoutMode ? 'inline-block' : 'none';
-            if (isCheckoutMode) {
-                checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
-                checkoutShowAllBtn.textContent = 'Search Results';
-                checkoutShowSelectedBtn.onclick = function() {
-                    checkoutViewMode = 'list';
-                    filteredRecords = checkoutSelectedItems.slice();
-                    totalRecords = filteredRecords.length;
-                    currentPage = 1;
-                    renderPagination();
-                    renderTablePage();
-                    updateSelectionCount();
-                };
-                checkoutShowAllBtn.onclick = function() {
-                    checkoutViewMode = 'search';
-                    filteredRecords = allRecords.slice();
-                    totalRecords = filteredRecords.length;
-                    currentPage = 1;
-                    renderPagination();
-                    renderTablePage();
-                    updateSelectionCount();
-                };
-            }
-        }
-
-        const ordersFilters = document.getElementById('discogs-orders-filters');
-        if (ordersFilters) {
-            ordersFilters.style.display = isDiscogsOrdersMode ? 'block' : 'none';
-        }
-
-        // Set Active button visibility - ONLY in Add mode
-        if (setActiveBtn) {
-            if (isAddMode) {
-                setActiveBtn.style.display = '';
-            } else {
-                setActiveBtn.style.display = 'none';
-            }
-        }
-
-        if (isAddMode) {
-            printBtn.style.display = '';
-        } else {
-            printBtn.style.display = 'none';
-        }
-
-        if (isRefundMode) {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '💰 Process Refund';
-        } else if (isAddMode) {
-            completeActionBtn.style.display = 'none';
-        } else if (isPurchasesMode) {
-            completeActionBtn.style.display = 'none';
-        } else {
-            completeActionBtn.style.display = '';
-        }
-
-        let customBtn = document.getElementById('custom-item-btn');
-        let bernBtn = document.getElementById('bern-it-btn');
-        
-        if (isCheckoutMode) {
-            // Custom Item button
-            if (!customBtn) {
-                customBtn = document.createElement('button');
-                customBtn.id = 'custom-item-btn';
-                customBtn.className = 'btn btn-info';
-                customBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Custom Item';
-                customBtn.addEventListener('click', showCustomItemModal);
-                completeActionBtn.parentNode.insertBefore(customBtn, completeActionBtn.nextSibling);
-            }
-            customBtn.style.display = 'inline-block';
-            
-            // Bern It button
-            if (!bernBtn) {
-                bernBtn = document.createElement('button');
-                bernBtn.id = 'bern-it-btn';
-                bernBtn.className = 'btn btn-success';
-                bernBtn.innerHTML = '<i class="fas fa-donate"></i> Bern It';
-                bernBtn.addEventListener('click', addBernieItem);
-                // Insert after Custom Item button
-                customBtn.parentNode.insertBefore(bernBtn, customBtn.nextSibling);
-            }
-            bernBtn.style.display = 'inline-block';
-        } else {
-            if (customBtn) customBtn.style.display = 'none';
-            if (bernBtn) bernBtn.style.display = 'none';
-        }
-
-        if (isRefundMode) {
-            searchInput.placeholder = 'Search sold records by artist, title, or barcode...';
-        } else if (isPurchasesMode) {
-            searchInput.placeholder = 'Filter purchases by seller name or description...';
-        } else {
-            // default placeholder set by mode switch
-        }
-    }
-
     // ========== Scan Location Builder Functions ==========
     function populateScanGenreDropdown() {
         if (!scanGenreSelect) return;
@@ -2285,10 +2294,8 @@
             scanLocationPreview.textContent = parts.join(' | ') || '--';
         }
 
-        // Update counter display
         updateScanCounter();
 
-        // Enable/disable Complete button based on mandatory fields
         const hasGenre = !!genre;
         const hasSublocation = sublocation && sublocation !== '';
         const isValid = hasGenre && hasSublocation;
@@ -2354,12 +2361,10 @@
 
         const today = getLocalMSTDate();
 
-        // Assign counters from bottom to top (oldest to newest)
-        // records is already in newest-first order (from filteredRecords)
         let updated = 0;
         for (let i = records.length - 1; i >= 0; i--) {
             const record = records[i];
-            const counter = records.length - i; // bottom = 1, top = N
+            const counter = records.length - i;
             let parts = [];
             if (genre) parts.push(genre);
             if (mainLocation) parts.push(mainLocation);
@@ -2368,12 +2373,10 @@
             const locationString = parts.join(' | ');
 
             try {
-                // Update the record in the database
                 apiRequest('PUT', '/records/' + record.id, {
                     location: locationString,
                     last_seen: today
                 }).then(() => {
-                    // Update local record
                     record.location = locationString;
                     record.last_seen = today;
                 }).catch(e => {
@@ -2385,7 +2388,6 @@
             }
         }
 
-        // Save last submitted location for prediction
         if (updated > 0) {
             const firstRecord = records[0];
             const firstCounter = records.length;
@@ -2398,7 +2400,6 @@
             localStorage.setItem('lastSubmittedLocation', lastSubmittedLocation);
         }
 
-        // Clear the list
         filteredRecords = [];
         totalRecords = 0;
         currentPage = 1;
@@ -2471,7 +2472,6 @@
             }
         });
 
-        // Click outside to close
         customItemModal.addEventListener('click', function(e) {
             if (e.target === this) {
                 closeCustomItemModal();
@@ -2662,8 +2662,20 @@
             notes: notes
         };
 
+        // If there's an active draft, link the record to it via batch_id
+        if (activeDraft && activeDraft.id) {
+            recordData.batch_id = activeDraft.id;
+            console.log(`🔗 Linking record to draft #${activeDraft.id} via batch_id`);
+        }
+
         const result = await apiRequest('POST', '/records', recordData);
         showStatus(`✅ Record #${result.record.id} added successfully!`, 'success');
+        
+        // If linked to draft, add to linked records list
+        if (activeDraft && activeDraft.id) {
+            draftLinkedRecordIds.push(result.record.id);
+            updateDraftLinkedCount();
+        }
         
         if (searchInput) {
             searchInput.focus();
@@ -2671,7 +2683,7 @@
         }
         
         clearSearch();
-        await loadRecords({ statusIds: [1], mode: 'add' });
+        await loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
         await loadStats();
     }
 
@@ -2700,9 +2712,6 @@
             return;
         } else if (mode === 'discogs_orders') {
             performDiscogsOrdersSearch(term);
-            return;
-        } else if (mode === 'purchases') {
-            renderPurchasesMode();
             return;
         }
 
@@ -2773,7 +2782,7 @@
         updateSelectionCount();
     }
 
-    // ========== SCAN MODE with Duplicate Scoring (no modal) ==========
+    // ========== SCAN MODE with Duplicate Scoring ==========
     function getArtistSortKey(artistName) {
         if (!artistName) return '';
         let name = artistName.trim();
@@ -2938,7 +2947,6 @@
         if (existing) {
             const today = getLocalMSTDate();
             existing.last_seen = today;
-            // Keep the list order (newest first) – we don't re-sort by last_seen.
             renderPagination();
             renderTablePage();
             playSound('success');
@@ -2948,7 +2956,6 @@
             return;
         }
 
-        // Add to front of filteredRecords (newest first)
         filteredRecords.unshift(record);
         totalRecords = filteredRecords.length;
         currentPage = 1;
@@ -2959,7 +2966,6 @@
         updateSelectionCount();
         if (searchInput) searchInput.value = '';
         addToRecentScans(record, record.location || '');
-        // Update counter display
         updateScanCounter();
     }
 
@@ -3050,7 +3056,7 @@
         if (currentSearchMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
-            loadRecords({ statusIds: [1], mode: 'add' });
+            loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
         } else if (currentSearchMode === 'scan') {
             // keep list
         } else if (currentSearchMode === 'refund') {
@@ -3083,8 +3089,6 @@
             renderPagination();
             renderTablePage();
             applyDiscogsOrdersFilters();
-        } else if (currentSearchMode === 'purchases') {
-            renderPurchasesMode();
         }
         showStatus('Search cleared', 'info');
         
@@ -3190,77 +3194,6 @@
             content.style.display = 'none';
             icon.style.transform = 'rotate(0deg)';
         }
-    };
-
-    window.toggleDefaultParams = function() {
-        const content = document.getElementById('default-params-content');
-        const icon = document.getElementById('default-params-toggle-icon');
-        if (!content || !icon) return;
-        if (content.style.display === 'none' || content.style.display === '') {
-            content.style.display = 'block';
-            icon.style.transform = 'rotate(180deg)';
-            loadDefaultParamsFromStorage();
-            populateDefaultParamSelects();
-        } else {
-            content.style.display = 'none';
-            icon.style.transform = 'rotate(0deg)';
-        }
-    };
-
-    window.applyDefaultParams = function() {
-        const sleeveId = defaultSleeveSelect ? parseInt(defaultSleeveSelect.value) : null;
-        const discId = defaultDiscSelect ? parseInt(defaultDiscSelect.value) : null;
-        const price = defaultPriceInput ? parseFloat(defaultPriceInput.value) : null;
-        const consignorId = defaultConsignorSelect ? parseInt(defaultConsignorSelect.value) : null;
-
-        defaultParams = {
-            sleeveConditionId: sleeveId || null,
-            discConditionId: discId || null,
-            price: price || null,
-            consignorId: consignorId || null
-        };
-        defaultParamsActive = true;
-        saveDefaultParamsToStorage();
-
-        const rows = document.querySelectorAll('.btn-add-record-from-search');
-        if (rows.length === 0) {
-            updateDefaultParamsStatus('No search results to apply defaults to', 'warning');
-            return;
-        }
-
-        rows.forEach(btn => {
-            const row = btn.closest('tr');
-            if (!row) return;
-            const sleeveSelect = row.querySelector('.sleeve-condition-select');
-            const discSelect = row.querySelector('.disc-condition-select');
-            const priceInput = row.querySelector('.price-input');
-            const consignorSelect = row.querySelector('.consignor-select');
-
-            if (sleeveSelect && defaultParams.sleeveConditionId) sleeveSelect.value = defaultParams.sleeveConditionId;
-            if (discSelect && defaultParams.discConditionId) discSelect.value = defaultParams.discConditionId;
-            if (priceInput && defaultParams.price) priceInput.value = defaultParams.price;
-            if (consignorSelect && defaultParams.consignorId) consignorSelect.value = defaultParams.consignorId;
-        });
-
-        updateDefaultParamsStatus(`Defaults applied to ${rows.length} search results`, 'success');
-        renderTablePage();
-    };
-
-    window.clearDefaultParams = function() {
-        defaultParams = {
-            sleeveConditionId: null,
-            discConditionId: null,
-            price: null,
-            consignorId: null
-        };
-        defaultParamsActive = false;
-        if (defaultSleeveSelect) defaultSleeveSelect.value = '';
-        if (defaultDiscSelect) defaultDiscSelect.value = '';
-        if (defaultPriceInput) defaultPriceInput.value = '';
-        if (defaultConsignorSelect) defaultConsignorSelect.value = '';
-        localStorage.removeItem('defaultParams');
-        updateDefaultParamsStatus('Defaults cleared', 'info');
-        renderTablePage();
     };
 
     // ========== Markup Rules Management ==========
@@ -3978,121 +3911,8 @@
         loadRecords({ statusIds: statuses, mode: 'delete', search: searchTerm });
     }
 
-    // ========== SET ACTIVE ==========
-    async function setActiveRecords() {
-        const mode = currentSearchMode;
-        let records = [];
-        
-        if (rangeFromIndex !== null && rangeToIndex !== null) {
-            records = getSelectedRecords();
-            console.log(`🔵 setActiveRecords: using range selection, found ${records.length} records`);
-        } else if (mode === 'add') {
-            records = filteredRecords;
-            console.log(`🔵 setActiveRecords: Add mode, no range, using all ${records.length} records`);
-        } else if (mode === 'scan') {
-            records = filteredRecords;
-            console.log(`🔵 setActiveRecords: Scan mode, using all ${records.length} scanned records`);
-        } else if (mode === 'checkout') {
-            records = checkoutSelectedItems;
-            console.log(`🔵 setActiveRecords: Checkout mode, using ${records.length} checkout items`);
-        } else if (mode === 'discogs_orders') {
-            const items = filteredRecords;
-            const recordIds = [];
-            const recordMap = {};
-            for (const item of items) {
-                if (item.pigstyle_id && !isNaN(item.pigstyle_id)) {
-                    if (!recordMap[item.pigstyle_id]) {
-                        recordMap[item.pigstyle_id] = true;
-                        recordIds.push(item.pigstyle_id);
-                    }
-                }
-            }
-            if (recordIds.length === 0) {
-                showStatus('No records with valid PigStyle IDs found in this order.', 'warning');
-                return;
-            }
-            try {
-                const response = await fetch(window.AppConfig.baseUrl + '/records/by-ids', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ record_ids: recordIds })
-                });
-                const data = await response.json();
-                if (data.status === 'success' && data.records) {
-                    records = data.records;
-                    console.log(`🔵 setActiveRecords: Discogs Orders mode, found ${records.length} records from ${recordIds.length} PigStyle IDs`);
-                } else {
-                    showStatus('Could not fetch records for the PigStyle IDs.', 'error');
-                    return;
-                }
-            } catch (e) {
-                console.error('Error fetching records by ids:', e);
-                showStatus('Error fetching records: ' + e.message, 'error');
-                return;
-            }
-        } else {
-            if (rangeFromIndex === null || rangeToIndex === null) {
-                showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
-                return;
-            }
-            records = getSelectedRecords();
-            console.log(`🔵 setActiveRecords: ${mode} mode, using range selection, found ${records.length} records`);
-        }
-        
-        if (records.length === 0) {
-            showStatus('No records to set active.', 'warning');
-            return;
-        }
-        
-        const inactiveRecords = records.filter(r => r.status_id !== 2);
-        if (inactiveRecords.length === 0) {
-            showStatus('All selected records are already active.', 'info');
-            return;
-        }
-        
-        if (!confirm(`Set ${inactiveRecords.length} record(s) to Active (status_id=2)? This cannot be undone.`)) {
-            return;
-        }
-        
-        let updated = 0;
-        let failed = 0;
-        
-        for (const record of inactiveRecords) {
-            if (record.isCustom === true) continue;
-            
-            try {
-                await apiRequest('PUT', '/records/' + record.id, { status_id: 2 });
-                updated++;
-                record.status_id = 2;
-            } catch (e) {
-                console.error('Failed to update record', record.id, e);
-                failed++;
-            }
-        }
-        
-        showStatus(`✅ ${updated} records set to Active. ${failed > 0 ? failed + ' failed.' : ''}`, updated > 0 ? 'success' : 'error');
-        
-        if (mode === 'add') {
-            await loadRecords({ statusIds: [1], mode: 'add' });
-        } else if (mode === 'discogs') {
-            refreshDiscogsRecords();
-        } else if (mode === 'delete') {
-            applyDeleteFilter();
-        } else if (mode === 'scan') {
-            renderTablePage();
-            updateSelectionCount();
-        } else if (mode === 'checkout') {
-            renderTablePage();
-            updateSelectionCount();
-        } else if (mode === 'discogs_orders') {
-            if (selectedOrderId) {
-                await loadOrderItems(selectedOrderId);
-            }
-        }
-        
-        cancelRangeSelection();
-    }
+    // ========== SET ACTIVE - REMOVED ==========
+    // The Set Active button has been removed. Records are set to Active when a draft is accepted.
 
     // ========== Print Price Tags ==========
     function printPriceTags() {
@@ -4304,7 +4124,7 @@
         }, 2000);
     }
   
-        async function completeCheckout() {
+    async function completeCheckout() {
         if (checkoutRemaining > 0.01) {
             showCheckoutStatus('Remaining balance not covered', 'error');
             return;
@@ -4313,19 +4133,11 @@
         const selected = checkoutSelectedItems;
         if (selected.length === 0) return;
 
-        // --- Determine payment types ---
-        const hasCashPayment = checkoutPaymentEntries.some(entry =>
-            entry.method === 'Cash' || entry.method === 'Store Credit' || entry.method === 'Gift Card'
-        );
-        const hasSquarePayment = checkoutPaymentEntries.some(entry => entry.method === 'Card (Square)');
-
-        // --- Process sale (existing logic) ---
         const today = getLocalMSTDate();
         let success = 0;
         let bernieTotal = 0;
         let consignorTransactions = [];
 
-        // Separate records by type
         const regularRecords = [];
         const bernieItems = [];
         const consignorRecords = [];
@@ -4334,7 +4146,7 @@
             if (record.isBernie === true) {
                 bernieItems.push(record);
             } else if (record.isCustom === true) {
-                // Skip other custom items (already handled)
+                // Skip other custom items
             } else if (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null) {
                 consignorRecords.push(record);
             } else {
@@ -4342,10 +4154,8 @@
             }
         }
 
-        // Calculate totals
         bernieTotal = bernieItems.reduce((sum, r) => sum + (r.store_price || 0), 0);
 
-        // Process regular records (store-owned, mark as sold)
         for (const record of regularRecords) {
             try {
                 await apiRequest('PUT', '/records/' + record.id, {
@@ -4359,10 +4169,8 @@
             }
         }
 
-        // Process consignor records
         for (const record of consignorRecords) {
             try {
-                // Get consignor name
                 let consignorName = 'Unknown Consignor';
                 try {
                     const userRes = await apiRequest('GET', '/users/' + record.consignor_id);
@@ -4375,7 +4183,7 @@
                 }
 
                 const salePrice = record.store_price || 0;
-                const commissionRate = record.commission_rate || 0.3; // default 30%
+                const commissionRate = record.commission_rate || 0.3;
                 const consignorShare = salePrice * (1 - commissionRate);
                 const storeCommission = salePrice * commissionRate;
 
@@ -4389,7 +4197,6 @@
                     store_commission: storeCommission
                 });
 
-                // Mark record as sold
                 await apiRequest('PUT', '/records/' + record.id, {
                     status_id: 3,
                     date_sold: today,
@@ -4402,7 +4209,6 @@
             }
         }
 
-        // Create journal entries for consignor transactions
         for (const tx of consignorTransactions) {
             try {
                 const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
@@ -4437,7 +4243,6 @@
             }
         }
 
-        // Process Bernie donations
         if (bernieTotal > 0) {
             try {
                 const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
@@ -4476,11 +4281,9 @@
             }
         }
 
-        // --- GENERATE RECEIPT .TXT FILE (for ALL payment methods) ---
         let receiptError = null;
         let receiptDownloaded = false;
 
-        // Build receipt string (same for all methods)
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -4530,7 +4333,6 @@
         receipt += 'PigStyle Music\n';
         receipt += 'Come back soon!\n\n\n\n';
 
-        // Generate filename with timestamp
         const filename = `receipt_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.txt`;
 
         try {
@@ -4541,7 +4343,6 @@
             console.error('Receipt download error:', error);
         }
 
-        // --- Build final confirmation message ---
         const consignorCount = consignorTransactions.length;
         const consignorTotal = consignorTransactions.reduce((sum, t) => sum + t.consignor_share, 0);
 
@@ -4561,20 +4362,16 @@
 
         showCheckoutStatus('✅ ' + statusMsg, receiptError ? 'warning' : 'success');
 
-        // --- IMMEDIATE CLEANUP & CLOSE MODAL ---
-        // Clear checkout data
         checkoutSelectedItems = [];
         checkoutViewMode = 'list';
         checkoutPaymentEntries = [];
         checkoutRemaining = 0;
 
-        // Close the modal immediately
         const modal = document.getElementById('checkout-payment-modal');
         if (modal) {
             modal.style.display = 'none';
         }
 
-        // Refresh the table display
         filteredRecords = [];
         totalRecords = 0;
         renderPagination();
@@ -4626,7 +4423,6 @@
                         Remaining: $<span id="checkout-remaining">${grandTotal.toFixed(2)}</span>
                     </div>
                     
-                    <!-- UNIFIED DEBTOR / GIFT CARD / STORE CREDIT LOOKUP -->
                     <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;">
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                             <input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
@@ -4678,7 +4474,6 @@
         `;
         document.body.appendChild(modal);
 
-        // Square availability check
         checkSquareAvailability().then(avail => {
             const methodSelect = document.getElementById('checkout-payment-method');
             const cardOption = methodSelect.querySelector('option[value="Card (Square)"]');
@@ -4912,10 +4707,8 @@
             return;
         }
         
-        // Amount to apply = min(balance, remaining)
         const amount = Math.min(balance, checkoutRemaining);
         
-        // Create redemption entry in journal
         try {
             const response = await fetch(`${AppConfig.baseUrl}/api/debtor/redeem`, {
                 method: 'POST',
@@ -4931,18 +4724,15 @@
             const data = await response.json();
             
             if (data.status === 'success') {
-                // Add payment entry
                 const method = checkoutDebtorData.is_gift_card ? 'Gift Card' : 'Store Credit';
                 addPaymentEntry(method + ' (' + checkoutDebtorData.debtor + ')', amount);
                 
-                // Update remaining balance
                 checkoutDebtorData.balance -= amount;
                 document.getElementById('checkout-debtor-balance').textContent = checkoutDebtorData.balance.toFixed(2);
                 
                 if (checkoutDebtorData.balance <= 0.01) {
                     statusEl.textContent = `✅ Applied $${amount.toFixed(2)} from ${checkoutDebtorData.debtor}. Card is now empty.`;
                     statusEl.style.color = '#28a745';
-                    // Close the debtor section after 2 seconds
                     setTimeout(() => {
                         document.getElementById('checkout-debtor-info').style.display = 'none';
                     }, 2000);
@@ -4951,7 +4741,6 @@
                     statusEl.style.color = '#28a745';
                 }
                 
-                // If remaining is now 0, update button
                 if (checkoutRemaining <= 0.01) {
                     updateCheckoutCompleteButton();
                 }
@@ -4990,493 +4779,477 @@
             processDiscogsOrder();
         } else if (mode === 'refund') {
             processRefund();
-        } else if (mode === 'purchases') {
-            showStatus('Use the purchase form to add a new purchase.', 'info');
         } else {
             showStatus('No action available for this mode', 'warning');
         }
     }
 
-    // ========== INVENTORY PURCHASES MODE ==========
-    function renderPurchasesMode() {
-        recordsTableHead.innerHTML = '';
+    // ========== DRAFT PURCHASE FUNCTIONS ==========
 
-        let html = `
-            <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 20px;">
-                <h3><i class="fas fa-shopping-cart"></i> Record Inventory Purchase</h3>
-                <form id="purchase-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div>
-                        <label for="purchase-seller-name" style="display:block; font-weight:500; margin-bottom:4px;">Seller Name *</label>
-                        <input type="text" id="purchase-seller-name" class="form-control" placeholder="e.g., John's Records" required>
-                    </div>
-                    <div>
-                        <label for="purchase-seller-contact" style="display:block; font-weight:500; margin-bottom:4px;">Seller Contact</label>
-                        <input type="text" id="purchase-seller-contact" class="form-control" placeholder="Email or Phone">
-                    </div>
-                    <div>
-                        <label for="purchase-amount" style="display:block; font-weight:500; margin-bottom:4px;">Amount Spent ($) *</label>
-                        <input type="number" id="purchase-amount" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
-                    </div>
-                    <div>
-                        <label for="purchase-date" style="display:block; font-weight:500; margin-bottom:4px;">Purchase Date</label>
-                        <input type="date" id="purchase-date" class="form-control" value="${getLocalMSTDate()}">
-                    </div>
-                    <div style="grid-column: 1 / -1;">
-                        <label for="purchase-description" style="display:block; font-weight:500; margin-bottom:4px;">Description</label>
-                        <textarea id="purchase-description" class="form-control" rows="2" placeholder="Optional notes about this purchase"></textarea>
-                    </div>
-                    <div style="grid-column: 1 / -1;">
-                        <label style="display:block; font-weight:500; margin-bottom:4px;">Payment Type</label>
-                        <div style="display:flex; gap:20px;">
-                            <label><input type="radio" name="purchase-payment-type" value="cash" checked> Cash</label>
-                            <label><input type="radio" name="purchase-payment-type" value="store_credit"> Store Credit</label>
-                        </div>
-                    </div>
-                    <div id="purchase-consignor-section" style="grid-column: 1 / -1; display: none;">
-                        <label for="purchase-consignor" style="display:block; font-weight:500; margin-bottom:4px;">Consignor (for store credit) *</label>
-                        <select id="purchase-consignor" class="form-control">
-                            <option value="">-- Select consignor --</option>
-                        </select>
-                    </div>
-                    <div style="grid-column: 1 / -1;">
-                        <label for="purchase-bill-image" style="display:block; font-weight:500; margin-bottom:4px;">Bill of Sale (Image)</label>
-                        <input type="file" id="purchase-bill-image" accept="image/*,application/pdf" style="width:100%; padding:8px;">
-                        <div id="purchase-bill-preview" style="margin-top:8px;"></div>
-                    </div>
-                    <div style="grid-column: 1 / -1; display: flex; gap: 10px; justify-content: flex-start;">
-                        <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Record Purchase</button>
-                        <button type="reset" class="btn btn-secondary"><i class="fas fa-undo"></i> Clear</button>
-                    </div>
-                </form>
-                <div id="purchase-status" style="margin-top: 10px; display: none;"></div>
-            </div>
-            <div>
-                <h4><i class="fas fa-list"></i> Recent Purchases</h4>
-                <div style="overflow-x:auto;">
-                    <table class="records-table" style="width:100%;">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Seller</th>
-                                <th>Contact</th>
-                                <th>Amount</th>
-                                <th>Description</th>
-                                <th>Bill</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="purchases-list-body">
-                            <tr><td colspan="7" style="text-align:center; padding:20px;">Loading purchases...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-
-        recordsTableBody.innerHTML = `<tr><td colspan="1"><div>${html}</div></td></tr>`;
-
-        const consignorSelect = document.getElementById('purchase-consignor');
-        if (consignorSelect) {
-            consignorSelect.innerHTML = '<option value="">-- Select consignor --</option>';
-            consignors.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.username + (c.full_name ? ` (${c.full_name})` : '');
-                consignorSelect.appendChild(opt);
-            });
-        }
-
-        document.querySelectorAll('input[name="purchase-payment-type"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                const section = document.getElementById('purchase-consignor-section');
-                if (this.value === 'store_credit') {
-                    section.style.display = 'block';
-                } else {
-                    section.style.display = 'none';
-                }
-            });
-        });
-
-        const fileInput = document.getElementById('purchase-bill-image');
-        const previewDiv = document.getElementById('purchase-bill-preview');
-        if (fileInput) {
-            fileInput.onchange = function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    if (file.type.startsWith('image/')) {
-                        const reader = new FileReader();
-                        reader.onload = function(ev) {
-                            previewDiv.innerHTML = `
-                                <img src="${ev.target.result}" alt="Bill preview" style="max-width:200px; max-height:200px; border-radius:4px; border:1px solid #ddd;">
-                                <p style="font-size:12px; color:#666; margin-top:5px;">${file.name}</p>
-                            `;
-                        };
-                        reader.readAsDataURL(file);
-                    } else {
-                        previewDiv.innerHTML = `<p style="color:#666;"><i class="fas fa-file-pdf"></i> ${file.name}</p>`;
-                    }
-                } else {
-                    previewDiv.innerHTML = '';
-                }
-            };
-        }
-
-        const form = document.getElementById('purchase-form');
-        if (form) {
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-                submitPurchase();
-            });
-        }
-
-        loadPurchasesList();
-
-        const searchTerm = searchInput.value.trim().toLowerCase();
-        if (searchTerm) {
-            filterPurchasesList(searchTerm);
+    function updateDraftLinkedCount() {
+        if (draftLinkedCount) {
+            draftLinkedCount.textContent = draftLinkedRecordIds.length;
         }
     }
 
-    let allPurchases = [];
-
-    async function loadPurchasesList() {
+    async function loadActiveDraft() {
+        console.log('📋 loadActiveDraft: loading active draft...');
         try {
-            const data = await apiRequest('GET', '/api/inventory-purchases?limit=100&offset=0');
-            if (data.status === 'success') {
-                allPurchases = data.purchases || [];
-                renderPurchasesTable(allPurchases);
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            console.log('📋 loadActiveDraft: response received', data);
+            
+            if (data.status === 'success' && data.draft) {
+                activeDraft = data.draft;
+                draftLinkedRecordIds = data.draft.record_ids || [];
+                console.log(`📋 loadActiveDraft: active draft found ID: ${activeDraft.id}, records: ${draftLinkedRecordIds.length}`);
+                showActiveDraftUI();
+                updateDraftLinkedCount();
             } else {
-                showStatus('Failed to load purchases: ' + (data.error || 'Unknown error'), 'error');
+                activeDraft = null;
+                draftLinkedRecordIds = [];
+                console.log('📋 loadActiveDraft: no active draft found');
+                showDraftFormUI();
+                updateDraftLinkedCount();
             }
-        } catch (e) {
-            console.error('Error loading purchases:', e);
-            showStatus('Error loading purchases.', 'error');
+        } catch (error) {
+            console.error('❌ loadActiveDraft error:', error);
+            activeDraft = null;
+            draftLinkedRecordIds = [];
+            showDraftFormUI();
+            updateDraftLinkedCount();
         }
     }
 
-    function renderPurchasesTable(purchases) {
-        const tbody = document.getElementById('purchases-list-body');
-        if (!tbody) return;
-
-        if (purchases.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">No purchases recorded.</td></tr>';
-            return;
+    function showDraftFormUI() {
+        console.log('📋 showDraftFormUI: showing draft form');
+        if (draftFormSection) {
+            draftFormSection.style.display = 'block';
         }
-
-        let html = '';
-        purchases.forEach(p => {
-            const bill = p.bill_of_sale_path ? `<a href="${p.bill_of_sale_path}" target="_blank"><i class="fas fa-file-pdf"></i> View</a>` : '—';
-            html += `
-                <tr>
-                    <td>${p.purchase_date}</td>
-                    <td>${escapeHtml(p.seller_name || '')}</td>
-                    <td>${escapeHtml(p.seller_contact || '')}</td>
-                    <td>$${parseFloat(p.amount_spent).toFixed(2)}</td>
-                    <td>${escapeHtml(p.description || '')}</td>
-                    <td>${bill}</td>
-                    <td>
-                        <button class="btn btn-sm btn-danger" onclick="deletePurchase(${p.id})"><i class="fas fa-trash"></i></button>
-                    </td>
-                </tr>
-            `;
-        });
-        tbody.innerHTML = html;
+        if (activeDraftSection) {
+            activeDraftSection.style.display = 'none';
+        }
+        if (draftSellerName) draftSellerName.value = '';
+        if (draftSellerContact) draftSellerContact.value = '';
+        if (draftDescription) draftDescription.value = '';
     }
 
-    function filterPurchasesList(term) {
-        if (!term) {
-            renderPurchasesTable(allPurchases);
-            return;
+    function showActiveDraftUI() {
+        console.log('📋 showActiveDraftUI: showing active draft');
+        if (draftFormSection) {
+            draftFormSection.style.display = 'none';
         }
-        const filtered = allPurchases.filter(p => 
-            (p.seller_name && p.seller_name.toLowerCase().includes(term)) ||
-            (p.description && p.description.toLowerCase().includes(term))
-        );
-        renderPurchasesTable(filtered);
+        if (activeDraftSection) {
+            activeDraftSection.style.display = 'block';
+        }
+        if (draftDisplaySeller && activeDraft) {
+            draftDisplaySeller.textContent = activeDraft.seller_name || '—';
+        }
+        if (draftDisplayContact && activeDraft) {
+            draftDisplayContact.textContent = activeDraft.seller_contact || '—';
+        }
+        if (draftDisplayDescription && activeDraft) {
+            draftDisplayDescription.textContent = activeDraft.description || '—';
+        }
+        if (draftDisplayId && activeDraft) {
+            draftDisplayId.textContent = activeDraft.id || '—';
+        }
+        updateDraftLinkedCount();
     }
 
-    async function submitPurchase() {
-        const statusDiv = document.getElementById('purchase-status');
-        if (!statusDiv) return;
+    function toggleParamsPurchasePanel() {
+        console.log('📋 toggleParamsPurchasePanel called');
+        const body = document.getElementById('params-purchase-body');
+        const icon = document.getElementById('params-purchase-toggle-icon');
+        if (!body || !icon) return;
+        
+        if (body.classList.contains('expanded')) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+        } else {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+        }
+    }
 
-        const sellerName = document.getElementById('purchase-seller-name')?.value.trim();
-        const sellerContact = document.getElementById('purchase-seller-contact')?.value.trim();
-        const amount = parseFloat(document.getElementById('purchase-amount')?.value);
-        const purchaseDate = document.getElementById('purchase-date')?.value || getLocalMSTDate();
-        const description = document.getElementById('purchase-description')?.value.trim();
-        const paymentType = document.querySelector('input[name="purchase-payment-type"]:checked')?.value || 'cash';
-        const consignorId = document.getElementById('purchase-consignor')?.value || null;
-        const billFile = document.getElementById('purchase-bill-image')?.files[0] || null;
-
+    async function createDraftPurchase() {
+        console.log('📋 createDraftPurchase: START');
+        const sellerName = draftSellerName ? draftSellerName.value.trim() : '';
+        const sellerContact = draftSellerContact ? draftSellerContact.value.trim() : '';
+        const description = draftDescription ? draftDescription.value.trim() : '';
+        
+        console.log(`📋 createDraftPurchase: sellerName="${sellerName}", contact="${sellerContact}", description="${description}"`);
+        
         if (!sellerName) {
-            showPurchaseStatus('Seller name is required.', 'error');
+            console.log('❌ createDraftPurchase: seller name required');
+            showToast('Please enter the seller name.', 'error');
+            showDraftStatus('Please enter the seller name.', 'error');
             return;
         }
-        if (isNaN(amount) || amount <= 0) {
-            showPurchaseStatus('Amount must be greater than 0.', 'error');
+        if (!description) {
+            console.log('❌ createDraftPurchase: description required');
+            showToast('Please enter a description of the items.', 'error');
+            showDraftStatus('Please enter a description of the items.', 'error');
             return;
         }
-        if (paymentType === 'store_credit' && !consignorId) {
-            showPurchaseStatus('Please select a consignor for store credit.', 'error');
-            return;
-        }
-
-        let billPath = null;
-        if (billFile) {
-            const formData = new FormData();
-            formData.append('bill_image', billFile);
-            try {
-                const response = await fetch(window.AppConfig.baseUrl + '/api/inventory-purchases/upload-bill', {
-                    method: 'POST',
-                    credentials: 'include',
-                    body: formData
-                });
-                const data = await response.json();
-                if (data.status === 'success') {
-                    billPath = data.file_path;
-                } else {
-                    showPurchaseStatus('Bill upload failed: ' + (data.error || 'Unknown error'), 'error');
-                    return;
-                }
-            } catch (e) {
-                showPurchaseStatus('Bill upload error: ' + e.message, 'error');
-                return;
-            }
-        }
-
-        const payload = {
+        
+        const requestBody = {
             seller_name: sellerName,
-            seller_contact: sellerContact || '',
-            amount_spent: amount,
-            purchase_date: purchaseDate,
-            description: description || '',
-            payment_type: paymentType,
-            consignor_id: paymentType === 'store_credit' ? consignorId : null,
-            bill_of_sale_path: billPath
+            seller_contact: sellerContact,
+            description: description
         };
-
+        console.log('📋 createDraftPurchase: request body', requestBody);
+        
         try {
-            const result = await apiRequest('POST', '/api/inventory-purchases', payload);
-            if (result.status === 'success') {
-                showPurchaseStatus('✅ Purchase recorded successfully!', 'success');
-                document.getElementById('purchase-seller-name').value = '';
-                document.getElementById('purchase-seller-contact').value = '';
-                document.getElementById('purchase-amount').value = '';
-                document.getElementById('purchase-description').value = '';
-                document.getElementById('purchase-bill-image').value = '';
-                document.getElementById('purchase-bill-preview').innerHTML = '';
-                loadPurchasesList();
+            console.log('📋 createDraftPurchase: sending POST to /api/purchases/draft');
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+            console.log(`📋 createDraftPurchase: response status ${response.status}`);
+            
+            const data = await response.json();
+            console.log('📋 createDraftPurchase: response data', data);
+            
+            if (data.status === 'success') {
+                activeDraft = data.draft;
+                draftLinkedRecordIds = [];
+                showActiveDraftUI();
+                updateDraftLinkedCount();
+                showToast('✅ Draft purchase created successfully! Receipt downloaded.', 'success');
+                showDraftStatus('✅ Draft purchase created successfully! Receipt downloaded.', 'success');
                 playSound('success');
+                
+                const receiptText = generateDraftReceipt(activeDraft);
+                console.log(`📋 createDraftPurchase: receipt length ${receiptText.length}, downloading...`);
+                downloadReceipt(receiptText, `draft_receipt_${activeDraft.id}.txt`);
+                console.log('📋 createDraftPurchase: receipt downloaded');
             } else {
-                showPurchaseStatus('Error: ' + (result.error || 'Unknown error'), 'error');
+                console.error('❌ createDraftPurchase: API returned error', data);
+                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
                 playSound('error');
             }
-        } catch (e) {
-            showPurchaseStatus('Error: ' + e.message, 'error');
+        } catch (error) {
+            console.error('❌ createDraftPurchase: exception caught', error);
+            showToast('❌ Error: ' + error.message, 'error');
+            showDraftStatus('❌ Error: ' + error.message, 'error');
             playSound('error');
+        }
+        console.log('📋 createDraftPurchase: END');
+    }
+
+    function generateDraftReceipt(draft) {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        
+        let receipt = 'PIGSTYLE MUSIC\n';
+        receipt += '====================\n';
+        receipt += 'DRAFT PURCHASE RECEIPT\n';
+        receipt += `${dateStr} ${timeStr}\n\n`;
+        receipt += `Draft ID: ${draft.id}\n`;
+        receipt += `Seller: ${draft.seller_name}\n`;
+        if (draft.seller_contact) {
+            receipt += `Contact: ${draft.seller_contact}\n`;
+        }
+        receipt += `Description: ${draft.description}\n`;
+        receipt += '\n';
+        receipt += 'This is a draft receipt for items received.\n';
+        receipt += 'Records will be added and final offer will be determined.\n\n';
+        receipt += '---\n';
+        receipt += 'PigStyle Music\n';
+        receipt += 'Thank you!\n';
+        
+        return receipt;
+    }
+
+    async function acceptDraftWithSignature() {
+        console.log('📋 acceptDraftWithSignature: START');
+        console.log('📋 acceptDraftWithSignature: activeDraft =', activeDraft);
+        console.log('📋 acceptDraftWithSignature: draftLinkedRecordIds =', draftLinkedRecordIds);
+        
+        if (!activeDraft) {
+            console.log('❌ acceptDraftWithSignature: no active draft');
+            showToast('No active draft to accept.', 'error');
+            showDraftStatus('No active draft to accept.', 'error');
+            return;
+        }
+        
+        const offerAmount = draftOfferAmount ? parseFloat(draftOfferAmount.value) : 0;
+        console.log(`📋 acceptDraftWithSignature: offerAmount = ${offerAmount}, raw value = "${draftOfferAmount ? draftOfferAmount.value : 'null'}"`);
+        
+        if (isNaN(offerAmount) || offerAmount <= 0) {
+            console.log('❌ acceptDraftWithSignature: invalid offer amount');
+            showToast('Please enter a valid offer amount.', 'error');
+            showDraftStatus('Please enter a valid offer amount.', 'error');
+            return;
+        }
+        
+        if (draftLinkedRecordIds.length === 0) {
+            console.log('❌ acceptDraftWithSignature: no records linked');
+            showToast('No records linked to this draft. Add records first.', 'error');
+            showDraftStatus('No records linked to this draft. Add records first.', 'error');
+            return;
+        }
+        
+        const signatureMethod = confirm('Square POS signature? Click OK for Square POS, Cancel for Print & Upload.');
+        console.log(`📋 acceptDraftWithSignature: signatureMethod = ${signatureMethod ? 'square' : 'upload'}`);
+        
+        const requestBody = {
+            offer_amount: offerAmount,
+            signature_method: signatureMethod ? 'square' : 'upload',
+            record_ids: draftLinkedRecordIds
+        };
+        console.log('📋 acceptDraftWithSignature: request body', requestBody);
+        
+        try {
+            console.log(`📋 acceptDraftWithSignature: sending PUT to /api/purchases/draft/${activeDraft.id}`);
+            const response = await fetch(window.AppConfig.baseUrl + `/api/purchases/draft/${activeDraft.id}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+            console.log(`📋 acceptDraftWithSignature: response status ${response.status}`);
+            
+            const data = await response.json();
+            console.log('📋 acceptDraftWithSignature: response data', data);
+            
+            if (data.status === 'success') {
+                // Get the record IDs from the response
+                const recordIds = data.record_ids || draftLinkedRecordIds;
+                
+                // Generate price tags PDF
+                console.log('📋 acceptDraftWithSignature: generating price tags for', recordIds.length, 'records');
+                const recordsToPrint = [];
+                for (const id of recordIds) {
+                    const record = filteredRecords.find(r => r.id === id) || allRecords.find(r => r.id === id);
+                    if (record) {
+                        recordsToPrint.push(record);
+                    }
+                }
+                
+                if (recordsToPrint.length > 0) {
+                    await generatePDF(recordsToPrint);
+                    console.log('📋 acceptDraftWithSignature: price tags generated');
+                    showToast(`📄 Price tags generated for ${recordsToPrint.length} records.`, 'success');
+                }
+                
+                showToast(`✅ Draft accepted! Offer: $${offerAmount.toFixed(2)}`, 'success');
+                showDraftStatus(`✅ Draft accepted! Offer: $${offerAmount.toFixed(2)}`, 'success');
+                playSound('success');
+                
+                if (signatureMethod) {
+                    console.log('📋 acceptDraftWithSignature: sending to Square POS');
+                    await sendBillToSquarePOS(activeDraft, offerAmount, draftLinkedRecordIds);
+                } else {
+                    console.log('📋 acceptDraftWithSignature: generating bill of sale');
+                    const billText = generateBillOfSale(activeDraft, offerAmount, draftLinkedRecordIds);
+                    downloadReceipt(billText, `bill_of_sale_${activeDraft.id}.txt`);
+                    showToast('📄 Bill of Sale downloaded. Have customer sign, take photo, and upload.', 'info');
+                    showDraftStatus('📄 Bill of Sale downloaded. Have customer sign, take photo, and upload.', 'info');
+                }
+                
+                activeDraft = null;
+                draftLinkedRecordIds = [];
+                showDraftFormUI();
+                updateDraftLinkedCount();
+                if (draftOfferAmount) draftOfferAmount.value = '';
+                
+                // Reload records - exclude batch records
+                await loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
+            } else {
+                console.error('❌ acceptDraftWithSignature: API returned error', data);
+                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                playSound('error');
+            }
+        } catch (error) {
+            console.error('❌ acceptDraftWithSignature: exception caught', error);
+            showToast('❌ Error: ' + error.message, 'error');
+            showDraftStatus('❌ Error: ' + error.message, 'error');
+            playSound('error');
+        }
+        console.log('📋 acceptDraftWithSignature: END');
+    }
+
+    async function sendBillToSquarePOS(draft, offerAmount, recordIds) {
+        try {
+            const recordDetails = [];
+            for (const id of recordIds) {
+                const record = filteredRecords.find(r => r.id === id) || allRecords.find(r => r.id === id);
+                if (record) {
+                    recordDetails.push({
+                        id: record.id,
+                        artist: record.artist || 'Unknown',
+                        title: record.title || 'Unknown',
+                        price: record.store_price || 0
+                    });
+                }
+            }
+            
+            console.log('📋 sendBillToSquarePOS: sending request');
+            const response = await fetch(window.AppConfig.baseUrl + '/api/square/bill-of-sale', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    draft_id: draft.id,
+                    seller_name: draft.seller_name,
+                    offer_amount: offerAmount,
+                    records: recordDetails,
+                    signature_method: 'square'
+                })
+            });
+            const data = await response.json();
+            console.log('📋 sendBillToSquarePOS: response', data);
+            
+            if (data.status === 'success') {
+                showToast('✅ Bill of Sale sent to Square POS. Customer can sign on terminal.', 'success');
+                showDraftStatus('✅ Bill of Sale sent to Square POS. Customer can sign on terminal.', 'success');
+                playSound('success');
+            } else {
+                showToast('⚠️ Could not send to Square POS: ' + (data.error || 'Unknown error'), 'warning');
+                showDraftStatus('⚠️ Could not send to Square POS: ' + (data.error || 'Unknown error'), 'warning');
+            }
+        } catch (error) {
+            console.error('Error sending to Square POS:', error);
+            showToast('⚠️ Could not send to Square POS: ' + error.message, 'warning');
+            showDraftStatus('⚠️ Could not send to Square POS: ' + error.message, 'warning');
         }
     }
 
-    function showPurchaseStatus(message, type) {
-        const el = document.getElementById('purchase-status');
+    function generateBillOfSale(draft, offerAmount, recordIds) {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        
+        let bill = 'PIGSTYLE MUSIC\n';
+        bill += '====================\n';
+        bill += 'BILL OF SALE\n';
+        bill += `${dateStr} ${timeStr}\n\n`;
+        bill += `Draft ID: ${draft.id}\n`;
+        bill += `Seller: ${draft.seller_name}\n`;
+        if (draft.seller_contact) {
+            bill += `Contact: ${draft.seller_contact}\n`;
+        }
+        bill += `Description: ${draft.description}\n`;
+        bill += '\n';
+        bill += 'ITEMS:\n';
+        bill += '--------------------\n';
+        
+        let totalValue = 0;
+        for (const id of recordIds) {
+            const record = filteredRecords.find(r => r.id === id) || allRecords.find(r => r.id === id);
+            if (record) {
+                const price = record.store_price || 0;
+                const itemLine = `${record.artist} - ${record.title}`;
+                const padding = Math.max(1, 30 - itemLine.length);
+                bill += itemLine;
+                bill += ' '.repeat(padding);
+                bill += `$${price.toFixed(2)}\n`;
+                totalValue += price;
+            }
+        }
+        
+        bill += '--------------------\n';
+        bill += `${'Total Value'.padEnd(25)} $${totalValue.toFixed(2)}\n`;
+        bill += `${'Offer Amount'.padEnd(25)} $${offerAmount.toFixed(2)}\n`;
+        bill += '\n';
+        bill += 'Seller Signature: ____________________\n';
+        bill += 'Store Rep: ____________________\n';
+        bill += '\n';
+        bill += '---\n';
+        bill += 'PigStyle Music\n';
+        bill += 'Thank you for your business!\n';
+        
+        return bill;
+    }
+
+    async function declineDraft() {
+        console.log('📋 declineDraft: START');
+        console.log('📋 declineDraft: activeDraft =', activeDraft);
+        
+        if (!activeDraft) {
+            console.log('❌ declineDraft: no active draft');
+            showToast('No active draft to decline.', 'error');
+            showDraftStatus('No active draft to decline.', 'error');
+            return;
+        }
+        
+        if (!confirm(`Decline this draft? This will delete ALL ${draftLinkedRecordIds.length} linked records. This cannot be undone.`)) {
+            console.log('📋 declineDraft: cancelled by user');
+            return;
+        }
+        
+        try {
+            console.log(`📋 declineDraft: sending DELETE to /api/purchases/draft/${activeDraft.id}`);
+            const response = await fetch(window.AppConfig.baseUrl + `/api/purchases/draft/${activeDraft.id}`, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            console.log(`📋 declineDraft: response status ${response.status}`);
+            
+            const data = await response.json();
+            console.log('📋 declineDraft: response data', data);
+            
+            if (data.status === 'success') {
+                showToast(`✅ Draft declined. ${data.deleted_count || 0} records deleted.`, 'success');
+                showDraftStatus(`✅ Draft declined. ${data.deleted_count || 0} records deleted.`, 'success');
+                playSound('success');
+                
+                activeDraft = null;
+                draftLinkedRecordIds = [];
+                showDraftFormUI();
+                updateDraftLinkedCount();
+                if (draftOfferAmount) draftOfferAmount.value = '';
+                
+                await loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
+            } else {
+                console.error('❌ declineDraft: API returned error', data);
+                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                playSound('error');
+            }
+        } catch (error) {
+            console.error('❌ declineDraft: exception caught', error);
+            showToast('❌ Error: ' + error.message, 'error');
+            showDraftStatus('❌ Error: ' + error.message, 'error');
+            playSound('error');
+        }
+        console.log('📋 declineDraft: END');
+    }
+
+    function showDraftStatus(message, type) {
+        const el = draftStatusMessage || document.getElementById('draft-status-message');
         if (!el) return;
-        el.textContent = message;
+        type = type || 'info';
+        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
         el.className = `status-message status-${type}`;
         el.style.display = 'block';
         setTimeout(() => { el.style.display = 'none'; }, 5000);
     }
 
-    window.deletePurchase = async function(purchaseId) {
-        if (!confirm('Delete this purchase record?')) return;
-        try {
-            const result = await apiRequest('DELETE', '/api/inventory-purchases/' + purchaseId);
-            if (result.status === 'success') {
-                showStatus('Purchase deleted.', 'success');
-                loadPurchasesList();
-            } else {
-                showStatus('Error deleting purchase: ' + (result.error || 'Unknown'), 'error');
-            }
-        } catch (e) {
-            showStatus('Error: ' + e.message, 'error');
-        }
-    };
-
-    // ========== Mode Change Handler ==========
-    function onModeChange() {
-        const newMode = searchModeSelect.value;
-        currentSearchMode = newMode;
-        console.log(`🔄 onModeChange: switching to ${newMode}`);
-
-        cancelRangeSelection();
-
-        if (newMode === 'add') {
-            currentMode = 'inventory';
-            currentResults = [];
-            loadRecords({ statusIds: [1], mode: 'add' });
-            searchInput.placeholder = 'Search Discogs...';
-            populateDefaultParamSelects();
-        } else if (newMode === 'scan') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Scan mode: Scan barcodes to build the list.', 'info');
-            searchInput.placeholder = 'Scan barcode here...';
-            resetScanCounter();
-        } else if (newMode === 'discogs') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showDiscogsStatus('Showing all records. Use filters to narrow down.', 'info');
-            searchInput.placeholder = 'Search within records...';
-            console.log('🔄 onModeChange: loading discogs records');
-            loadRecords({ showAllStatuses: true, mode: 'discogs' });
-            loadDiscogsLocations();
-            const rulesContent = document.getElementById('markup-rules-content');
-            if (rulesContent && rulesContent.style.display === 'block') {
-                loadMarkupRules();
-            }
-            const chartsContent = document.getElementById('markup-charts-content');
-            if (chartsContent && chartsContent.style.display === 'block') {
-                setTimeout(loadMarkupAnalysisCharts, 300);
-            }
-            initializeLastSeenDate();
-        } else if (newMode === 'delete') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Delete mode: Use filters to find records to delete.', 'info');
-            searchInput.placeholder = 'Search records...';
-            allRecords = [];
-            loadRecords({ statusIds: [1,2], mode: 'delete' }).then(() => {
-                renderTablePage();
-            });
-        } else if (newMode === 'refund') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Refund mode: Search sold records (status 3 or 4) to refund.', 'info');
-            searchInput.placeholder = 'Search sold records by artist, title, or barcode...';
-            allRecords = [];
-            loadRecords({ statusIds: [3, 4], mode: 'refund' });
-        } else if (newMode === 'checkout') {
-            checkoutSelectedItems = [];
-            checkoutViewMode = 'list';
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Checkout mode: Search to add records, or use "Custom Item".', 'info');
-            searchInput.placeholder = 'Search records...';
-            loadRecords({ statusIds: [2], mode: 'checkout' }).then(() => {
-                checkoutViewMode = 'list';
-                filteredRecords = checkoutSelectedItems.slice();
-                totalRecords = filteredRecords.length;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                updateSelectionCount();
-            });
-            if (checkoutShowSelectedBtn) {
-                checkoutShowSelectedBtn.style.display = 'inline-block';
-                checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
-                checkoutShowSelectedBtn.onclick = function() {
-                    checkoutViewMode = 'list';
-                    filteredRecords = checkoutSelectedItems.slice();
-                    totalRecords = filteredRecords.length;
-                    currentPage = 1;
-                    renderPagination();
-                    renderTablePage();
-                    updateSelectionCount();
-                };
-            }
-            if (checkoutShowAllBtn) {
-                checkoutShowAllBtn.style.display = 'inline-block';
-                checkoutShowAllBtn.textContent = 'Search Results';
-                checkoutShowAllBtn.onclick = function() {
-                    checkoutViewMode = 'search';
-                    filteredRecords = allRecords.slice();
-                    totalRecords = filteredRecords.length;
-                    currentPage = 1;
-                    renderPagination();
-                    renderTablePage();
-                    updateSelectionCount();
-                };
-            }
-        } else if (newMode === 'discogs_orders') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Discogs Orders mode: Select an order to fulfill.', 'info');
-            searchInput.placeholder = 'Search orders...';
-            
-            const dateFrom = document.getElementById('discogs-orders-date-from');
-            const dateTo = document.getElementById('discogs-orders-date-to');
-            if (dateFrom && !dateFrom.value) {
-                const thirtyDaysAgo = new Date();
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                dateFrom.value = thirtyDaysAgo.toISOString().split('T')[0];
-            }
-            if (dateTo && !dateTo.value) {
-                dateTo.value = new Date().toISOString().split('T')[0];
-            }
-            
-            const search = document.getElementById('discogs-orders-search');
-            if (search) {
-                search.value = '';
-            }
-            
-            const statusFilter = document.getElementById('discogs-orders-status-filter');
-            if (statusFilter) {
-                statusFilter.value = 'Payment Received';
-            }
-            
-            applyDiscogsOrdersFilters();
-            
-            if (discogsOrderSelect) {
-                discogsOrderSelect.value = '';
-            }
-            selectedOrderId = null;
-            currentOrderItems = [];
-        } else if (newMode === 'purchases') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Inventory Purchases mode: Record total purchase amounts.', 'info');
-            searchInput.placeholder = 'Filter purchases by seller or description...';
-        }
-
-        updateSelectionCount();
-        updateFilterVisibility();
-        renderTablePage();
-    }
-
-    function initializeLastSeenDate() {
-        if (lastSeenCutoffDateInput) {
-            lastSeenCutoffDateInput.value = '';
-            lastSeenCutoffDate = null;
-        }
+    function clearDraftForm() {
+        if (draftSellerName) draftSellerName.value = '';
+        if (draftSellerContact) draftSellerContact.value = '';
+        if (draftDescription) draftDescription.value = '';
+        const statusEl = document.getElementById('draft-status-message');
+        if (statusEl) statusEl.style.display = 'none';
     }
 
     // ========== Pagination ==========
     function renderPagination() {
-        if (currentSearchMode === 'purchases') {
-            const paginationEl = document.querySelector('.pagination');
-            if (paginationEl) paginationEl.style.display = 'none';
-            return;
-        }
         const paginationEl = document.querySelector('.pagination');
         if (paginationEl) paginationEl.style.display = 'flex';
         const totalPages = Math.ceil(totalRecords / pageSize) || 1;
@@ -5504,9 +5277,6 @@
         if (currentSearchMode === 'checkout') {
             return checkoutSelectedItems.slice();
         }
-        if (currentSearchMode === 'purchases') {
-            return [];
-        }
         if (rangeFromIndex === null || rangeToIndex === null) {
             console.log('🔍 getSelectedRecords: no range selected');
             return [];
@@ -5528,26 +5298,11 @@
         const hasRecords = filteredRecords.length > 0;
         const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
 
-        const isDiscogsOrdersMode = mode === 'discogs_orders';
         const isAddMode = mode === 'add';
         const isRefundMode = mode === 'refund';
-        const isPurchasesMode = mode === 'purchases';
         
-        // ===== Set Active button ONLY visible in Add mode =====
-        if (isAddMode) {
-            setActiveBtn.style.display = '';
-            const hasTargets = hasSelection || hasRecords;
-            setActiveBtn.disabled = !hasTargets;
-            if (hasSelection) {
-                setActiveBtn.textContent = `✅ Set ${count} selected to Active`;
-            } else {
-                setActiveBtn.textContent = '✅ Set All to Active';
-            }
-            setActiveBtn.title = `Set ${count} selected record(s) to Active (status_id=2)`;
-        } else {
-            setActiveBtn.style.display = 'none';
-        }
-
+        // Set Active button is REMOVED - no longer needed
+        
         if (isAddMode) {
             const hasTargets = hasSelection || hasRecords;
             printBtn.disabled = !hasTargets;
@@ -5556,52 +5311,39 @@
             } else {
                 printBtn.textContent = '🖨️ Print (all)';
             }
+            printBtn.style.display = '';
         } else {
             printBtn.style.display = 'none';
         }
 
-        let actionLabel = 'Complete';
-        if (mode === 'add') {
-            // no action button in add mode
-        } else if (mode === 'scan') {
-            // Complete button state is handled by updateScanLocationPreview()
-            // but we also need to reflect the count
-            const genre = scanGenreSelect ? scanGenreSelect.value : '';
-            const sublocation = scanSublocation ? scanSublocation.value : '';
-            const isValid = genre && sublocation && hasRecords;
-            completeActionBtn.disabled = !isValid;
-            actionLabel = `Apply Location to ${hasRecords ? filteredRecords.length : 0} scanned records`;
-        } else if (mode === 'discogs') {
-            completeActionBtn.disabled = !hasSelection;
-            actionLabel = `📤 Post ${count} selected to Discogs`;
-        } else if (mode === 'delete') {
-            completeActionBtn.disabled = !hasSelection;
-            actionLabel = `🗑️ Delete ${count} selected`;
-        } else if (mode === 'checkout') {
-            completeActionBtn.disabled = checkoutSelectedItems.length === 0;
-            actionLabel = `🛒 Checkout ${checkoutSelectedItems.length} items`;
-        } else if (mode === 'discogs_orders') {
-            const hasOrder = selectedOrderId !== null;
-            const hasItems = filteredRecords.length > 0;
-            completeActionBtn.disabled = !(hasOrder && hasItems);
-            actionLabel = `📦 Mark ${filteredRecords.length} items sold`;
-        } else if (mode === 'refund') {
-            completeActionBtn.disabled = !hasSelection;
-            actionLabel = `💰 Refund ${count} selected`;
-        } else if (mode === 'purchases') {
-            completeActionBtn.disabled = true;
-            actionLabel = 'Record Purchase';
-        }
-
-        if (mode !== 'add' && mode !== 'purchases') {
-            completeActionBtn.textContent = actionLabel;
+        // Complete button is controlled by showPanelsForMode
+        // Only update disabled state and text here
+        if (completeActionBtn && mode !== 'add') {
+            if (mode === 'scan') {
+                const genre = scanGenreSelect ? scanGenreSelect.value : '';
+                const sublocation = scanSublocation ? scanSublocation.value : '';
+                const isValid = genre && sublocation && hasRecords;
+                completeActionBtn.disabled = !isValid;
+            } else if (mode === 'discogs') {
+                completeActionBtn.disabled = !hasSelection;
+            } else if (mode === 'delete') {
+                completeActionBtn.disabled = !hasSelection;
+            } else if (mode === 'checkout') {
+                completeActionBtn.disabled = checkoutSelectedItems.length === 0;
+            } else if (mode === 'discogs_orders') {
+                const hasOrder = selectedOrderId !== null;
+                const hasItems = filteredRecords.length > 0;
+                completeActionBtn.disabled = !(hasOrder && hasItems);
+            } else if (mode === 'refund') {
+                completeActionBtn.disabled = !hasSelection;
+            }
         }
 
         cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
     }
 
     function applyFilters() {
-        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders' || currentSearchMode === 'refund' || currentSearchMode === 'purchases') {
+        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders' || currentSearchMode === 'refund') {
             return;
         }
         if (currentMode === 'search') {
@@ -5619,7 +5361,11 @@
 
     // ========== PDF Generation ==========
     async function generatePDF(records) {
-        if (!records.length) { showStatus('No records to print', 'warning'); return; }
+        if (!records.length) { 
+            console.log('📄 generatePDF: no records to print');
+            return; 
+        }
+        console.log(`📄 generatePDF: generating PDF for ${records.length} records`);
         const { jsPDF } = window.jspdf;
 
         const labelWidthMM = parseFloat((await apiRequest('GET', '/config/LABEL_WIDTH_MM')).config_value);
@@ -5700,7 +5446,163 @@
         const pdfBlob = doc.output('blob');
         const pdfUrl = URL.createObjectURL(pdfBlob);
         window.open(pdfUrl, '_blank');
+        console.log(`📄 generatePDF: PDF generated with ${records.length} labels`);
         showStatus(`PDF generated with ${records.length} labels`, 'success');
+    }
+
+    // ========== MODE CHANGE ==========
+    function onModeChange() {
+        const newMode = searchModeSelect.value;
+        currentSearchMode = newMode;
+        console.log(`🔄 onModeChange: switching to ${newMode}`);
+
+        cancelRangeSelection();
+
+        if (newMode === 'add') {
+            currentMode = 'inventory';
+            currentResults = [];
+            loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
+            populateDefaultParamSelects();
+        } else if (newMode === 'scan') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Scan mode: Scan barcodes to build the list.', 'info');
+            resetScanCounter();
+        } else if (newMode === 'discogs') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showDiscogsStatus('Showing all records. Use filters to narrow down.', 'info');
+            console.log('🔄 onModeChange: loading discogs records');
+            loadRecords({ showAllStatuses: true, mode: 'discogs' });
+            loadDiscogsLocations();
+            const rulesContent = document.getElementById('markup-rules-content');
+            if (rulesContent && rulesContent.style.display === 'block') {
+                loadMarkupRules();
+            }
+            const chartsContent = document.getElementById('markup-charts-content');
+            if (chartsContent && chartsContent.style.display === 'block') {
+                setTimeout(loadMarkupAnalysisCharts, 300);
+            }
+            initializeLastSeenDate();
+        } else if (newMode === 'delete') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Delete mode: Use filters to find records to delete.', 'info');
+            allRecords = [];
+            loadRecords({ statusIds: [1,2], mode: 'delete' }).then(() => {
+                renderTablePage();
+            });
+        } else if (newMode === 'refund') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Refund mode: Search sold records (status 3 or 4) to refund.', 'info');
+            allRecords = [];
+            loadRecords({ statusIds: [3, 4], mode: 'refund' });
+        } else if (newMode === 'checkout') {
+            checkoutSelectedItems = [];
+            checkoutViewMode = 'list';
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Checkout mode: Search to add records, or use "Custom Item".', 'info');
+            loadRecords({ statusIds: [2], mode: 'checkout' }).then(() => {
+                checkoutViewMode = 'list';
+                filteredRecords = checkoutSelectedItems.slice();
+                totalRecords = filteredRecords.length;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                updateSelectionCount();
+            });
+            if (checkoutShowSelectedBtn) {
+                checkoutShowSelectedBtn.style.display = 'inline-block';
+                checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
+                checkoutShowSelectedBtn.onclick = function() {
+                    checkoutViewMode = 'list';
+                    filteredRecords = checkoutSelectedItems.slice();
+                    totalRecords = filteredRecords.length;
+                    currentPage = 1;
+                    renderPagination();
+                    renderTablePage();
+                    updateSelectionCount();
+                };
+            }
+            if (checkoutShowAllBtn) {
+                checkoutShowAllBtn.style.display = 'inline-block';
+                checkoutShowAllBtn.textContent = 'Search Results';
+                checkoutShowAllBtn.onclick = function() {
+                    checkoutViewMode = 'search';
+                    filteredRecords = allRecords.slice();
+                    totalRecords = filteredRecords.length;
+                    currentPage = 1;
+                    renderPagination();
+                    renderTablePage();
+                    updateSelectionCount();
+                };
+            }
+        } else if (newMode === 'discogs_orders') {
+            filteredRecords = [];
+            totalRecords = 0;
+            currentPage = 1;
+            renderPagination();
+            renderTablePage();
+            showStatus('Discogs Orders mode: Select an order to fulfill.', 'info');
+            
+            const dateFrom = document.getElementById('discogs-orders-date-from');
+            const dateTo = document.getElementById('discogs-orders-date-to');
+            if (dateFrom && !dateFrom.value) {
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                dateFrom.value = thirtyDaysAgo.toISOString().split('T')[0];
+            }
+            if (dateTo && !dateTo.value) {
+                dateTo.value = new Date().toISOString().split('T')[0];
+            }
+            
+            const search = document.getElementById('discogs-orders-search');
+            if (search) {
+                search.value = '';
+            }
+            
+            const statusFilter = document.getElementById('discogs-orders-status-filter');
+            if (statusFilter) {
+                statusFilter.value = 'Payment Received';
+            }
+            
+            applyDiscogsOrdersFilters();
+            
+            if (discogsOrderSelect) {
+                discogsOrderSelect.value = '';
+            }
+            selectedOrderId = null;
+            currentOrderItems = [];
+        }
+
+        // Update panels based on mode
+        showPanelsForMode(newMode);
+        updateSelectionCount();
+        renderTablePage();
+    }
+
+    function initializeLastSeenDate() {
+        if (lastSeenCutoffDateInput) {
+            lastSeenCutoffDateInput.value = '';
+            lastSeenCutoffDate = null;
+        }
     }
 
     // ========== Init ==========
@@ -5773,7 +5675,6 @@
                 genres.push(formattedName);
                 genres.sort();
                 
-                // Refresh the select options
                 if (scanGenreSelect) {
                     const currentVal = scanGenreSelect.value;
                     scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
@@ -5857,7 +5758,9 @@
         lastPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; currentPage = totalPages; renderPagination(); renderTablePage(); });
 
         printBtn.addEventListener('click', printPriceTags);
-        setActiveBtn.addEventListener('click', setActiveRecords);
+
+        // Set Active button is REMOVED
+        setActiveBtn.style.display = 'none';
 
         const oldGlobalBtn = document.getElementById('global-set-active-btn');
         if (oldGlobalBtn) oldGlobalBtn.remove();
@@ -5974,7 +5877,6 @@
     window.showDiscogsPostModal = showDiscogsPostModal;
     window.closeRefundModal = closeRefundModal;
 
-    // ========== Checkout functions ==========
     window.lookupDebtorForCheckout = lookupDebtorForCheckout;
     window.applyDebtorToCheckout = applyDebtorToCheckout;
     window.addPaymentEntry = addPaymentEntry;
@@ -5985,11 +5887,15 @@
     window.checkSquareAvailability = checkSquareAvailability;
     window.processSquarePayment = processSquarePayment;
 
-    // ========== Custom Item Modal ==========
     window.showCustomItemModal = showCustomItemModal;
     window.closeCustomItemModal = closeCustomItemModal;
-
-    // ========== Bernie Button ==========
     window.addBernieItem = addBernieItem;
+
+    // Draft functions exposed to global scope
+    window.toggleDraftPanel = toggleParamsPurchasePanel;
+    window.createDraftPurchase = createDraftPurchase;
+    window.acceptDraftWithSignature = acceptDraftWithSignature;
+    window.declineDraft = declineDraft;
+    window.clearDraftForm = clearDraftForm;
 
 })();

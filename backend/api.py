@@ -11692,5 +11692,307 @@ def process_refund():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+@app.route('/api/purchases/draft', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_active_draft():
+    """Get the active draft purchase from session."""
+    draft = session.get('active_draft')
+    if not draft:
+        return jsonify({'status': 'success', 'draft': None})
+    
+    # Fetch linked record IDs using batch_id
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id FROM records WHERE batch_id = ? AND status_id = 1
+    ''', (draft['id'],))
+    records = cursor.fetchall()
+    conn.close()
+    
+    draft['record_ids'] = [r['id'] for r in records]
+    
+    return jsonify({'status': 'success', 'draft': draft})
+
+
+@app.route('/api/purchases/draft', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_draft_purchase():
+    """Create a new draft purchase and store in session."""
+    data = request.json
+    
+    seller_name = data.get('seller_name', '').strip()
+    seller_contact = data.get('seller_contact', '').strip()
+    description = data.get('description', '').strip()
+    
+    if not seller_name or not description:
+        return jsonify({'status': 'error', 'error': 'Seller name and description required'}), 400
+    
+    draft_id = f"DRAFT_{int(time.time())}_{secrets.token_hex(4)}"
+    
+    draft = {
+        'id': draft_id,
+        'seller_name': seller_name,
+        'seller_contact': seller_contact,
+        'description': description,
+        'created_at': datetime.now().isoformat(),
+        'record_ids': []
+    }
+    
+    session['active_draft'] = draft
+    
+    return jsonify({
+        'status': 'success',
+        'message': 'Draft purchase created',
+        'draft': draft
+    })
+
+@app.route('/api/purchases/draft/<draft_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_draft_purchase(draft_id):
+    """
+    Accept a draft purchase.
+    - Creates journal entry (Debit Inventory, Credit Cash/Store Credit)
+    - Clears draft from session
+    - Records already have batch_id set
+    """
+    draft = session.get('active_draft')
+    if not draft or draft['id'] != draft_id:
+        return jsonify({'status': 'error', 'error': 'No active draft found'}), 404
+    
+    data = request.json
+    offer_amount = data.get('offer_amount')
+    signature_method = data.get('signature_method', 'upload')
+    record_ids = data.get('record_ids', [])
+    
+    if not offer_amount or offer_amount <= 0:
+        return jsonify({'status': 'error', 'error': 'Valid offer amount required'}), 400
+    
+    if not record_ids:
+        return jsonify({'status': 'error', 'error': 'No records linked to draft'}), 400
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("BEGIN TRANSACTION")
+        
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))
+        inventory = cursor.fetchone()
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
+        cash = cursor.fetchone()
+        
+        if not inventory or not cash:
+            conn.rollback()
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
+        
+        amount_cents = int(round(offer_amount * 100))
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        desc = f"Inventory purchase from {draft['seller_name']} | amount: {offer_amount:.2f} | desc: {draft['description']}"
+        if signature_method == 'square':
+            desc += " | signed via Square POS"
+        
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (today, desc, 'purchase', draft_id))
+        entry_id = cursor.lastrowid
+        
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, inventory['id'], amount_cents, 0))
+        
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, cash['id'], 0, amount_cents))
+        
+        conn.commit()
+        session.pop('active_draft', None)
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Draft accepted. Journal entry #{entry_id} created.',
+            'entry_id': entry_id,
+            'offer_amount': offer_amount,
+            'signature_method': signature_method,
+            'record_count': len(record_ids)
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        app.logger.error(f"Error accepting draft: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/purchases/draft/<draft_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_draft_purchase(draft_id):
+    """
+    Decline a draft purchase.
+    - Deletes ALL records linked to the draft via batch_id
+    - Clears draft from session
+    """
+    draft = session.get('active_draft')
+    if not draft or draft['id'] != draft_id:
+        return jsonify({'status': 'error', 'error': 'No active draft found'}), 404
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("BEGIN TRANSACTION")
+        
+        cursor.execute('''
+            SELECT id FROM records WHERE batch_id = ? AND status_id = 1
+        ''', (draft_id,))
+        records = cursor.fetchall()
+        record_ids = [r['id'] for r in records]
+        
+        if record_ids:
+            placeholders = ','.join('?' for _ in record_ids)
+            cursor.execute(f'DELETE FROM records WHERE id IN ({placeholders})', record_ids)
+        
+        conn.commit()
+        session.pop('active_draft', None)
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Draft declined. {len(record_ids)} records deleted.',
+            'deleted_count': len(record_ids)
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        app.logger.error(f"Error declining draft: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/purchases/draft/<draft_id>/unlink/<int:record_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def unlink_record_from_draft(draft_id, record_id):
+    """Remove a record from the active draft."""
+    draft = session.get('active_draft')
+    if not draft or draft['id'] != draft_id:
+        return jsonify({'status': 'error', 'error': 'No active draft found'}), 404
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # CHANGED: purchase_id → batch_id
+    cursor.execute('''
+        SELECT id FROM records WHERE id = ? AND batch_id = ? AND status_id = 1
+    ''', (record_id, draft_id))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Record not linked to this draft'}), 404
+    
+    # CHANGED: purchase_id → batch_id
+    cursor.execute('UPDATE records SET batch_id = NULL WHERE id = ?', (record_id,))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'status': 'success',
+        'message': f'Record #{record_id} unlinked from draft'
+    })
+
+
+@app.route('/api/square/bill-of-sale', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def send_bill_of_sale_to_square():
+    """
+    Send a bill of sale to Square POS for signature.
+    """
+    data = request.json
+    draft_id = data.get('draft_id')
+    seller_name = data.get('seller_name', '')
+    offer_amount = data.get('offer_amount', 0)
+    records = data.get('records', [])
+    
+    if not draft_id or not seller_name or offer_amount <= 0:
+        return jsonify({'status': 'error', 'error': 'Missing required fields'}), 400
+    
+    bill_lines = []
+    bill_lines.append("PIGSTYLE MUSIC")
+    bill_lines.append("====================")
+    bill_lines.append("BILL OF SALE")
+    bill_lines.append(f"Seller: {seller_name}")
+    bill_lines.append("")
+    bill_lines.append("ITEMS:")
+    bill_lines.append("--------------------")
+    
+    for record in records:
+        artist = record.get('artist', 'Unknown')
+        title = record.get('title', 'Unknown')
+        price = record.get('price', 0)
+        bill_lines.append(f"{artist} - {title}")
+        bill_lines.append(f"  ${price:.2f}")
+    
+    bill_lines.append("--------------------")
+    bill_lines.append(f"Total Offer: ${offer_amount:.2f}")
+    bill_lines.append("")
+    bill_lines.append("Seller Signature: ____________________")
+    bill_lines.append("Store Rep: ____________________")
+    bill_lines.append("")
+    bill_lines.append("---")
+    bill_lines.append("PigStyle Music")
+    bill_lines.append("Thank you for your business!")
+    
+    bill_text = "\n".join(bill_lines)
+    
+    try:
+        devices, error = get_terminal_devices()
+        if error or not devices:
+            return jsonify({'status': 'error', 'error': 'No Square terminal available'}), 400
+        
+        device_id = devices[0].get('id')
+        if device_id and device_id.startswith('device:'):
+            device_id = device_id[len('device:'):]
+        
+        checkout_data = {
+            "idempotency_key": str(uuid.uuid4()),
+            "checkout": {
+                "amount_money": {
+                    "amount": 1,
+                    "currency": "USD"
+                },
+                "device_options": {
+                    "device_id": device_id
+                },
+                "reference_id": f"bill_{draft_id}",
+                "note": bill_text[:500]
+            }
+        }
+        
+        result, error = square_api_request('/v2/terminals/checkouts', method='POST', data=checkout_data)
+        
+        if error:
+            return jsonify({'status': 'error', 'error': f'Square error: {error}'}), 400
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Bill of Sale sent to Square POS',
+            'checkout_id': result.get('checkout', {}).get('id'),
+            'bill_text': bill_text
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error sending to Square POS: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
