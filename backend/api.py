@@ -9327,139 +9327,132 @@ def get_active_draft():
     
     return jsonify({'status': 'success', 'draft': draft})
 
-
 @app.route('/api/purchases/draft', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def create_draft_purchase():
-    """Create a new draft purchase and store in database."""
-    data = request.json
-    
-    seller_name = data.get('seller_name', '').strip()
-    seller_contact = data.get('seller_contact', '').strip()
-    description = data.get('description', '').strip()
-    
-    if not seller_name or not description:
-        return jsonify({'status': 'error', 'error': 'Seller name and description required'}), 400
-    
-    draft_id = f"DRAFT_{int(time.time())}_{secrets.token_hex(4)}"
-    
-    # Store in session (for active draft tracking)
-    draft = {
-        'id': draft_id,
-        'seller_name': seller_name,
-        'seller_contact': seller_contact,
-        'description': description,
-        'created_at': datetime.now().isoformat(),
-        'record_ids': []
-    }
-    session['active_draft'] = draft
-    
-    # ALSO INSERT INTO DATABASE so it appears in the dropdown
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Build description in pipe-separated format for consistency
-    desc = f"Inventory purchase | seller: {seller_name} | contact: {seller_contact} | desc: {description}"
-    
-    cursor.execute('''
-        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-        VALUES (?, ?, ?, ?)
-    ''', (datetime.now().strftime('%Y-%m-%d'), desc, 'purchase', draft_id))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({
-        'status': 'success',
-        'message': 'Draft purchase created',
-        'draft': draft
-    })
+    """
+    Create a new draft purchase.
+    Inserts a row into purchases and a minimal journal entry.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
 
-@app.route('/api/purchases/draft/<draft_id>', methods=['PUT'])
+        seller_name = data.get('seller_name', '').strip()
+        seller_contact = data.get('seller_contact', '').strip()
+        description = data.get('description', '').strip()
+
+        if not seller_name or not description:
+            return jsonify({'status': 'error', 'error': 'Seller name and description are required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Insert into purchases
+        cursor.execute('''
+            INSERT INTO purchases (seller_name, seller_contact, description, status)
+            VALUES (?, ?, ?, 'draft')
+        ''', (seller_name, seller_contact, description))
+        purchase_id = cursor.lastrowid
+
+        # Insert minimal journal entry
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (datetime.now().strftime('%Y-%m-%d'), f'Purchase #{purchase_id}', 'purchase', str(purchase_id)))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Draft purchase created',
+            'draft_id': purchase_id
+        })
+    except Exception as e:
+        app.logger.error(f"Error creating draft: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
+
+@app.route('/api/purchases/draft/<int:draft_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
 def update_draft_purchase(draft_id):
     """
-    Accept a draft purchase.
-    - Creates journal entry (Debit Inventory, Credit Cash/Store Credit)
-    - Clears draft from session
-    - Records already have batch_id set
+    Accept a draft: mark as complete, add journal lines (debit inventory, credit cash).
     """
-    draft = session.get('active_draft')
-    if not draft or draft['id'] != draft_id:
-        return jsonify({'status': 'error', 'error': 'No active draft found'}), 404
-    
-    data = request.json
-    offer_amount = data.get('offer_amount')
-    signature_method = data.get('signature_method', 'upload')
-    record_ids = data.get('record_ids', [])
-    
-    if not offer_amount or offer_amount <= 0:
-        return jsonify({'status': 'error', 'error': 'Valid offer amount required'}), 400
-    
-    if not record_ids:
-        return jsonify({'status': 'error', 'error': 'No records linked to draft'}), 400
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
     try:
-        cursor.execute("BEGIN TRANSACTION")
-        
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        offer_amount = data.get('offer_amount')
+        signature_method = data.get('signature_method', 'upload')
+        record_ids = data.get('record_ids', [])
+
+        if not offer_amount or offer_amount <= 0:
+            return jsonify({'status': 'error', 'error': 'Valid offer amount required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # 1. Get the purchase and its linked journal entry
+        cursor.execute('''
+            SELECT p.id, p.status, je.id as journal_entry_id
+            FROM purchases p
+            JOIN journal_entries je ON je.id = p.id AND je.source_type = 'purchase'  -- ← FIXED JOIN
+            WHERE p.id = ?
+        ''', (draft_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Draft not found'}), 404
+
+        if row['status'] == 'complete':
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Draft already completed'}), 400
+
+        journal_entry_id = row['journal_entry_id']
+
+        # 2. Update purchase status to 'complete'
+        cursor.execute('UPDATE purchases SET status = "complete", updated_at = CURRENT_TIMESTAMP WHERE id = ?', (draft_id,))
+
+        # 3. Get account IDs
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))
         inventory = cursor.fetchone()
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
         cash = cursor.fetchone()
-        
         if not inventory or not cash:
-            conn.rollback()
             conn.close()
             return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
-        
+
+        # 4. Add journal lines (if not already present)
         amount_cents = int(round(offer_amount * 100))
-        today = datetime.now().strftime('%Y-%m-%d')
-        
-        desc = f"Inventory purchase from {draft['seller_name']} | amount: {offer_amount:.2f} | desc: {draft['description']}"
-        if signature_method == 'square':
-            desc += " | signed via Square POS"
-        
-        cursor.execute('''
-            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-            VALUES (?, ?, ?, ?)
-        ''', (today, desc, 'purchase', draft_id))
-        entry_id = cursor.lastrowid
-        
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, inventory['id'], amount_cents, 0))
-        
-        cursor.execute('''
-            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-            VALUES (?, ?, ?, ?)
-        ''', (entry_id, cash['id'], 0, amount_cents))
-        
+        cursor.execute('SELECT id FROM journal_lines WHERE journal_entry_id = ?', (journal_entry_id,))
+        if not cursor.fetchone():
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (journal_entry_id, inventory['id'], amount_cents, 0))
+            cursor.execute('''
+                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                VALUES (?, ?, ?, ?)
+            ''', (journal_entry_id, cash['id'], 0, amount_cents))
+
         conn.commit()
-        session.pop('active_draft', None)
         conn.close()
-        
+
         return jsonify({
             'status': 'success',
-            'message': f'Draft accepted. Journal entry #{entry_id} created.',
-            'entry_id': entry_id,
+            'message': f'Draft #{draft_id} completed',
             'offer_amount': offer_amount,
-            'signature_method': signature_method,
-            'record_count': len(record_ids)
+            'signature_method': signature_method
         })
-        
     except Exception as e:
-        conn.rollback()
-        conn.close()
         app.logger.error(f"Error accepting draft: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-  
 
 @app.route('/api/purchases/draft/<draft_id>/unlink/<int:record_id>', methods=['PUT'])
 @login_required
@@ -9616,235 +9609,117 @@ def serve_bill_image(filename):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-# ============================================================
-# DRAFT PURCHASE ENDPOINTS
-# ============================================================
 @app.route('/api/purchases/drafts', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def get_all_drafts():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT 
-            je.id as draft_id,
-            je.transaction_date as created_at,
-            je.description,
-            COUNT(r.id) as record_count,
-            -- Check if there are journal lines (completed purchase)
-            EXISTS (SELECT 1 FROM journal_lines jl WHERE jl.journal_entry_id = je.id) as has_journal_lines,
-            -- Get the debit amount from journal lines (the offer amount)
-            COALESCE(
-                (SELECT jl.debit_amount / 100.0 
-                 FROM journal_lines jl 
-                 WHERE jl.journal_entry_id = je.id 
-                 AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
-                 LIMIT 1),
-                0
-            ) as offer_amount
-        FROM journal_entries je
-        LEFT JOIN records r ON r.batch_id = je.id
-        WHERE je.source_type = 'purchase'
-        GROUP BY je.id
-        ORDER BY je.transaction_date DESC
-    ''')
-    drafts = cursor.fetchall()
-    
-    result = []
-    for d in drafts:
-        d_dict = dict(d)
-        desc = d_dict.get('description', '')
-        
-        seller = 'Unknown Seller'
-        date = d_dict.get('created_at', '').split('T')[0] if d_dict.get('created_at') else 'Unknown Date'
-        bill_path = ''
-        
-        if desc:
-            # Try pipe-separated format: "seller: Mark Whitaker"
-            if 'seller:' in desc:
-                seller_match = re.search(r'seller:\s*([^|]+)', desc)
-                if seller_match:
-                    seller = seller_match.group(1).strip()
-            # Try old format: "Inventory purchase from Mark Whitaker - 150 331/3 + 200 45s"
-            elif 'Inventory purchase from' in desc:
-                seller_match = re.search(r'Inventory purchase from\s+(.+?)(?:\s*\||$)', desc)
-                if seller_match:
-                    seller = seller_match.group(1).strip()
-            # Try just "from" format
-            elif 'from ' in desc:
-                seller_match = re.search(r'from\s+(.+?)(?:\s*\||$)', desc)
-                if seller_match:
-                    seller = seller_match.group(1).strip()
-            
-            # Try to get date from pipe format
-            date_match = re.search(r'date:\s*([^|]+)', desc)
-            if date_match:
-                date = date_match.group(1).strip()
-            
-            # Extract bill path
-            bill_match = re.search(r'bill:\s*([^\s|]+)', desc)
-            if bill_match:
-                bill_path = bill_match.group(1).strip()
-        
-        record_count = d_dict.get('record_count', 0)
-        has_journal_lines = d_dict.get('has_journal_lines', 0)
-        offer_amount = d_dict.get('offer_amount', 0)
-        
-        # Determine status
-        if has_journal_lines:
-            status = 'complete'
-        elif record_count > 0:
-            # Check if any records have status_id = 2 (active)
-            conn2 = get_db()
-            cur2 = conn2.cursor()
-            cur2.execute('SELECT COUNT(*) as active_count FROM records WHERE batch_id = ? AND status_id = 2', (d_dict['draft_id'],))
-            active_row = cur2.fetchone()
-            conn2.close()
-            if active_row and active_row['active_count'] > 0:
-                status = 'complete'
-            else:
-                status = 'draft'
-        else:
-            status = 'draft'  # Older purchases with no records but has journal lines
-        
-        d_dict['seller_name'] = seller
-        d_dict['date'] = date
-        d_dict['bill_of_sale_path'] = bill_path
-        d_dict['status'] = status
-        d_dict['offer_amount'] = float(offer_amount) if offer_amount else 0
-        result.append(d_dict)
-    
-    conn.close()
-    return jsonify({'status': 'success', 'drafts': result})
+    """
+    List all purchases (drafts and complete) with record counts and offer amounts.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT 
+                p.id as draft_id,
+                p.seller_name,
+                p.seller_contact,
+                p.description,
+                p.bill_of_sale_path,
+                p.status,
+                p.created_at,
+                je.id as journal_entry_id,
+                COUNT(r.id) as record_count,
+                EXISTS (SELECT 1 FROM journal_lines jl WHERE jl.journal_entry_id = je.id) as has_journal_lines,
+                COALESCE((SELECT jl.debit_amount / 100.0 
+                         FROM journal_lines jl 
+                         WHERE jl.journal_entry_id = je.id 
+                         AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050') 
+                         LIMIT 1), 0) as offer_amount
+            FROM purchases p
+            JOIN journal_entries je ON je.id = p.id AND je.source_type = 'purchase'
+            LEFT JOIN records r ON r.batch_id = je.id
+            GROUP BY p.id
+            ORDER BY p.created_at DESC
+        ''')
+        rows = cursor.fetchall()
+        conn.close()
+
+        result = []
+        for row in rows:
+            result.append({
+                'draft_id': row['draft_id'],
+                'seller_name': row['seller_name'],
+                'seller_contact': row['seller_contact'] or '',
+                'description': row['description'],
+                'bill_of_sale_path': row['bill_of_sale_path'],
+                'status': row['status'],
+                'created_at': row['created_at'],
+                'record_count': row['record_count'] or 0,
+                'offer_amount': float(row['offer_amount'] or 0),
+                'has_journal_lines': bool(row['has_journal_lines'])
+            })
+
+        return jsonify({'status': 'success', 'drafts': result})
+    except Exception as e:
+        app.logger.error(f"Error listing drafts: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def get_draft_by_id(draft_id):
     """
-    Get a single draft purchase by ID with parsed seller info.
+    Get detailed information for a specific draft.
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
         cursor.execute('''
             SELECT 
-                je.id as draft_id,
-                je.transaction_date as created_at,
-                je.description,
+                p.id as draft_id,
+                p.seller_name,
+                p.seller_contact,
+                p.description,
+                p.bill_of_sale_path,
+                p.status,
+                p.created_at,
+                je.id as journal_entry_id,
                 COUNT(r.id) as record_count,
-                EXISTS (SELECT 1 FROM journal_lines jl WHERE jl.journal_entry_id = je.id) as has_journal_lines,
-                COALESCE(
-                    (SELECT jl.debit_amount / 100.0 
-                     FROM journal_lines jl 
-                     WHERE jl.journal_entry_id = je.id 
-                     AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
-                     LIMIT 1),
-                    0
-                ) as offer_amount
-            FROM journal_entries je
+                COALESCE((SELECT jl.debit_amount / 100.0 
+                         FROM journal_lines jl 
+                         WHERE jl.journal_entry_id = je.id 
+                         AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050') 
+                         LIMIT 1), 0) as offer_amount
+            FROM purchases p
+            JOIN journal_entries je ON je.id = p.id AND je.source_type = 'purchase'  -- ← FIXED JOIN
             LEFT JOIN records r ON r.batch_id = je.id
-            WHERE je.id = ? AND je.source_type = 'purchase'
-            GROUP BY je.id
+            WHERE p.id = ?
+            GROUP BY p.id
         ''', (draft_id,))
-        
         row = cursor.fetchone()
         conn.close()
-        
+
         if not row:
             return jsonify({'status': 'error', 'error': 'Draft not found'}), 404
-        
-        draft = dict(row)
-        desc = draft.get('description', '')
-        
-        seller = 'Unknown Seller'
-        seller_contact = ''
-        description_text = ''
-        date = draft.get('created_at', '').split('T')[0] if draft.get('created_at') else 'Unknown Date'
-        bill_path = ''
-        
-        if desc:
-            # Try pipe-separated format: "seller: Mark Whitaker"
-            if 'seller:' in desc:
-                seller_match = re.search(r'seller:\s*([^|]+)', desc)
-                if seller_match:
-                    seller = seller_match.group(1).strip()
-            # Try old format: "Inventory purchase from Mark Whitaker - 150 331/3 + 200 45s"
-            elif 'Inventory purchase from' in desc:
-                seller_match = re.search(r'Inventory purchase from\s+(.+?)(?:\s*\||$)', desc)
-                if seller_match:
-                    seller = seller_match.group(1).strip()
-            # Try just "from" format
-            elif 'from ' in desc:
-                seller_match = re.search(r'from\s+(.+?)(?:\s*\||$)', desc)
-                if seller_match:
-                    seller = seller_match.group(1).strip()
-            
-            # Parse contact if in pipe format
-            contact_match = re.search(r'contact:\s*([^|]+)', desc)
-            if contact_match:
-                seller_contact = contact_match.group(1).strip()
-            
-            # Parse description
-            desc_match = re.search(r'desc:\s*([^|]+)', desc)
-            if desc_match:
-                description_text = desc_match.group(1).strip()
-            else:
-                # Clean the description - remove the seller part and bill part
-                clean_desc = desc
-                clean_desc = re.sub(r'^Inventory purchase from\s+[^|]+\|?\s*', '', clean_desc)
-                clean_desc = re.sub(r'^from\s+[^|]+\|?\s*', '', clean_desc)
-                clean_desc = re.sub(r'\|\s*bill:\s*[^\s|]+', '', clean_desc)
-                if clean_desc:
-                    description_text = clean_desc.strip()
-            
-            # Parse date if in pipe format
-            date_match = re.search(r'date:\s*([^|]+)', desc)
-            if date_match:
-                date = date_match.group(1).strip()
-            
-            # Extract bill path
-            bill_match = re.search(r'bill:\s*([^\s|]+)', desc)
-            if bill_match:
-                bill_path = bill_match.group(1).strip()
-        
-        record_count = draft.get('record_count', 0)
-        has_journal_lines = draft.get('has_journal_lines', 0)
-        offer_amount = draft.get('offer_amount', 0)
-        
-        # Determine status
-        if has_journal_lines:
-            status = 'complete'
-        elif record_count > 0:
-            # Check if any records have status_id = 2 (active)
-            conn2 = get_db()
-            cur2 = conn2.cursor()
-            cur2.execute('SELECT COUNT(*) as active_count FROM records WHERE batch_id = ? AND status_id = 2', (draft_id,))
-            active_row = cur2.fetchone()
-            conn2.close()
-            if active_row and active_row['active_count'] > 0:
-                status = 'complete'
-            else:
-                status = 'draft'
-        else:
-            status = 'complete'  # Older purchases with no records but has journal lines
-        
-        draft['seller_name'] = seller
-        draft['seller_contact'] = seller_contact
-        draft['description_text'] = description_text
-        draft['date'] = date
-        draft['bill_of_sale_path'] = bill_path
-        draft['status'] = status
-        draft['offer_amount'] = float(offer_amount) if offer_amount else 0
-        
+
         return jsonify({
             'status': 'success',
-            'draft': draft
+            'draft': {
+                'draft_id': row['draft_id'],
+                'seller_name': row['seller_name'],
+                'seller_contact': row['seller_contact'] or '',
+                'description': row['description'],
+                'bill_of_sale_path': row['bill_of_sale_path'],
+                'status': row['status'],
+                'created_at': row['created_at'],
+                'record_count': row['record_count'] or 0,
+                'offer_amount': float(row['offer_amount'] or 0)
+            }
         })
-        
     except Exception as e:
-        app.logger.error(f"Error getting draft by ID: {str(e)}")
+        app.logger.error(f"Error fetching draft: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['DELETE'])
@@ -9852,48 +9727,48 @@ def get_draft_by_id(draft_id):
 @role_required(['admin'])
 def delete_draft_purchase(draft_id):
     """
-    Decline a draft purchase.
-    - Deletes ALL records linked to the draft via batch_id
-    - Deletes the journal entry itself
+    Decline a draft: delete the purchase, its journal entry, and all linked records.
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
-        # Check if draft exists
-        cursor.execute('SELECT id FROM journal_entries WHERE id = ? AND source_type = "purchase"', (draft_id,))
-        if not cursor.fetchone():
+
+        # Get journal entry and linked records
+        cursor.execute('''
+            SELECT je.id as journal_entry_id
+            FROM purchases p
+            JOIN journal_entries je ON je.id = p.id AND je.source_type = 'purchase'  -- ← FIXED JOIN
+            WHERE p.id = ?
+        ''', (draft_id,))
+        row = cursor.fetchone()
+        if not row:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Draft not found'}), 404
-        
-        # Get records linked to this draft
-        cursor.execute('SELECT id FROM records WHERE batch_id = ?', (draft_id,))
-        records = cursor.fetchall()
-        record_ids = [r['id'] for r in records]
-        
-        # Delete records linked to the draft
-        if record_ids:
-            placeholders = ','.join('?' for _ in record_ids)
-            cursor.execute(f'DELETE FROM records WHERE id IN ({placeholders})', record_ids)
-        
-        # Delete the journal entry (the draft itself)
-        cursor.execute('DELETE FROM journal_entries WHERE id = ? AND source_type = "purchase"', (draft_id,))
-        
+
+        journal_entry_id = row['journal_entry_id']
+
+        # Delete all records linked to this journal entry (batch_id = journal_entry_id)
+        cursor.execute('DELETE FROM records WHERE batch_id = ?', (journal_entry_id,))
+        deleted_records = cursor.rowcount
+
+        # Delete journal lines and journal entry
+        cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (journal_entry_id,))
+        cursor.execute('DELETE FROM journal_entries WHERE id = ?', (journal_entry_id,))
+
+        # Delete the purchase row
+        cursor.execute('DELETE FROM purchases WHERE id = ?', (draft_id,))
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'status': 'success',
-            'message': f'Draft declined. {len(record_ids)} records deleted.',
-            'deleted_count': len(record_ids)
+            'message': f'Draft #{draft_id} deleted',
+            'deleted_records': deleted_records
         })
-        
     except Exception as e:
-        conn.rollback()
-        conn.close()
-        app.logger.error(f"Error declining draft: {str(e)}")
+        app.logger.error(f"Error deleting draft: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
 
 # ==================== ACCOUNTING: SALE ENTRY ====================
 
@@ -10150,8 +10025,9 @@ def accounting_reconcile_bank_deposit():
 
 # ==================== ACCOUNTING: RECONCILIATION REPORT ====================
 
-@app.route('/api/accounting/reconciliation-report', methods=['GET'])
-@login_required
+
+
+
 @role_required(['admin'])
 def accounting_reconciliation_report():
     """Get full reconciliation report"""
@@ -10725,7 +10601,123 @@ def accounting_reconcile_init():
         'deposits': final_deposits,
         'unmatched': final_unmatched
     })
+ 
 
+# ============================================================
+# PURCHASE METADATA UPDATE (PUT)
+# ============================================================
+@app.route('/api/purchases/<int:purchase_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_purchase(purchase_id):
+    """
+    Update purchase metadata: seller_name, seller_contact, description, status.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Check if purchase exists
+        cursor.execute('SELECT id FROM purchases WHERE id = ?', (purchase_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+
+        allowed_fields = ['seller_name', 'seller_contact', 'description', 'status']
+        updates = []
+        values = []
+
+        for field in allowed_fields:
+            if field in data and data[field] is not None:
+                updates.append(f"{field} = ?")
+                values.append(data[field])
+
+        if not updates:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No valid fields to update'}), 400
+
+        values.append(purchase_id)
+        query = f"UPDATE purchases SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        cursor.execute(query, values)
+        conn.commit()
+        conn.close()
+
+        return jsonify({'status': 'success', 'message': f'Purchase #{purchase_id} updated'})
+
+    except Exception as e:
+        app.logger.error(f"Error updating purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ============================================================
+# PURCHASE BILL UPLOAD (POST)
+# ============================================================
+@app.route('/api/purchases/<int:purchase_id>/bill', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def upload_purchase_bill(purchase_id):
+    """
+    Upload a bill of sale image/PDF for a purchase.
+    """
+    try:
+        if 'bill_image' not in request.files:
+            return jsonify({'status': 'error', 'error': 'No file uploaded'}), 400
+
+        file = request.files['bill_image']
+        if file.filename == '':
+            return jsonify({'status': 'error', 'error': 'No file selected'}), 400
+
+        # Validate extension
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
+        ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+        if ext not in allowed_extensions:
+            return jsonify({
+                'status': 'error',
+                'error': f'File type not allowed. Allowed: {", ".join(allowed_extensions)}'
+            }), 400
+
+        # Check if purchase exists
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM purchases WHERE id = ?', (purchase_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+
+        # Save file
+        import uuid
+        from werkzeug.utils import secure_filename
+        filename = secure_filename(f"bill_{purchase_id}_{uuid.uuid4().hex[:8]}.{ext}")
+        bills_folder = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'bills')
+        os.makedirs(bills_folder, exist_ok=True)
+        filepath = os.path.join(bills_folder, filename)
+        file.save(filepath)
+
+        bill_path = f"/static/uploads/bills/{filename}"
+
+        # Update purchase record
+        cursor.execute('''
+            UPDATE purchases 
+            SET bill_of_sale_path = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (bill_path, purchase_id))
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Bill uploaded successfully',
+            'bill_path': bill_path
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error uploading bill: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
