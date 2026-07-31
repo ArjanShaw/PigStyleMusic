@@ -2910,9 +2910,18 @@
         updateSelectionCount();
         showStatus('Selection cleared', 'info');
     }
-
+    
     // ========== Add Record from Discogs ==========
     async function addRecordFromDiscogs(row, discogsRecord) {
+        // ============================================================
+        //  BLOCK: No draft selected → cannot add record
+        // ============================================================
+        if (!currentDraftId) {
+            showStatus('⚠️ Please select an active Inventory Purchase Draft from the dropdown before adding records.', 'error');
+            playSound('error');
+            return;
+        }
+
         var priceInput = row.querySelector('.price-input');
         var consignorSelect = row.querySelector('.consignor-select');
         var sleeveSelect = row.querySelector('.sleeve-condition-select');
@@ -2925,6 +2934,7 @@
         var discId = null;
         var notes = notesInput ? notesInput.value.trim() : '';
 
+        // Use defaults if active
         if (defaultParamsActive) {
             sleeveId = defaultParams.sleeveConditionId;
             discId = defaultParams.discConditionId;
@@ -2932,6 +2942,7 @@
             consignorId = defaultParams.consignorId;
         }
 
+        // Override with values from the row (if present)
         if (priceInput && priceInput.value) {
             var val = parseFloat(priceInput.value);
             if (!isNaN(val) && val > 0) price = val;
@@ -2949,6 +2960,7 @@
             if (!isNaN(val)) discId = val;
         }
 
+        // Validate required fields
         if (!sleeveId || !discId) {
             showStatus('Please select sleeve and disc conditions (or set defaults)', 'warning');
             return;
@@ -2958,6 +2970,7 @@
             return;
         }
 
+        // Build the record payload
         var recordData = {
             artist: discogsRecord.artist,
             title: discogsRecord.title,
@@ -2969,21 +2982,21 @@
             store_price: price,
             consignor_id: consignorId,
             status_id: 1,
-            notes: notes
+            notes: notes,
+            // ===== CRITICAL: link to the active draft =====
+            batch_id: currentDraftId
         };
 
-        if (currentDraftId) {
-            recordData.batch_id = currentDraftId;
-            console.log('🔗 Linking record to draft #' + currentDraftId + ' via batch_id');
-        }
-
+        // Send to backend
         var result = await apiRequest('POST', '/records', recordData);
-        showStatus('✅ Record #' + result.record.id + ' added successfully!', 'success');
+        showStatus('✅ Record #' + result.record.id + ' added successfully to draft #' + currentDraftId + '!', 'success');
         
+        // Reload the current draft's records
         if (currentDraftId) {
             await loadRecordsForDraft(currentDraftId);
         }
         
+        // Clear the search field and refocus
         if (searchInput) {
             searchInput.focus();
             searchInput.select();
@@ -2992,6 +3005,7 @@
         clearSearch();
         await loadStats();
     }
+
 
     // ========== CONSOLIDATED SEARCH ==========
     function performSearch(term) {

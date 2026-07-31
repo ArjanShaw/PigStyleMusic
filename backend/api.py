@@ -1984,11 +1984,19 @@ def create_record():
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
     
-    required_fields = ['artist', 'title', 'store_price']
+    # ============================================================
+    #  REQUIRED FIELDS
+    # ============================================================
+    required_fields = ['artist', 'title', 'store_price', 'batch_id']  # ← batch_id now required
     for field in required_fields:
-        if field not in data:
-            return jsonify({'status': 'error', 'error': f'{field} required'}), 400
+        if field not in data or data[field] is None:
+            return jsonify({'status': 'error', 'error': f'{field} is required'}), 400
     
+    # Additional validation for batch_id
+    batch_id = data.get('batch_id')
+    if not batch_id:
+        return jsonify({'status': 'error', 'error': 'batch_id must be a valid draft ID'}), 400
+
     conn = get_db()
     cursor = conn.cursor()
     
@@ -2007,17 +2015,16 @@ def create_record():
                 condition_sleeve_id = result['id']
                 condition_disc_id = result['id']
         
-        # Get discogs_genre_raw if provided
         discogs_genre_raw = data.get('discogs_genre_raw', '')
-        # Get notes
         notes = data.get('notes', '')
         
         cursor.execute('''
             INSERT INTO records (
                 artist, title, barcode, image_url, catalog_number,
                 condition_sleeve_id, condition_disc_id, store_price,
-                consignor_id, commission_rate, status_id, discogs_genre_raw, notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                consignor_id, commission_rate, status_id, discogs_genre_raw, notes,
+                batch_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ''', (
             data.get('artist'), 
             data.get('title'), 
@@ -2031,7 +2038,8 @@ def create_record():
             float(commission_rate) if commission_rate else None, 
             int(status_id),
             discogs_genre_raw,
-            notes
+            notes,
+            batch_id
         ))
         
         record_id = cursor.lastrowid
