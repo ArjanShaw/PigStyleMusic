@@ -9324,7 +9324,7 @@ def get_active_draft():
 @login_required
 @role_required(['admin'])
 def create_draft_purchase():
-    """Create a new draft purchase and store in session."""
+    """Create a new draft purchase and store in database."""
     data = request.json
     
     seller_name = data.get('seller_name', '').strip()
@@ -9336,6 +9336,7 @@ def create_draft_purchase():
     
     draft_id = f"DRAFT_{int(time.time())}_{secrets.token_hex(4)}"
     
+    # Store in session (for active draft tracking)
     draft = {
         'id': draft_id,
         'seller_name': seller_name,
@@ -9344,8 +9345,22 @@ def create_draft_purchase():
         'created_at': datetime.now().isoformat(),
         'record_ids': []
     }
-    
     session['active_draft'] = draft
+    
+    # ALSO INSERT INTO DATABASE so it appears in the dropdown
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Build description in pipe-separated format for consistency
+    desc = f"Inventory purchase | seller: {seller_name} | contact: {seller_contact} | desc: {description}"
+    
+    cursor.execute('''
+        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+        VALUES (?, ?, ?, ?)
+    ''', (datetime.now().strftime('%Y-%m-%d'), desc, 'purchase', draft_id))
+    
+    conn.commit()
+    conn.close()
     
     return jsonify({
         'status': 'success',
