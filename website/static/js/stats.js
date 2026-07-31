@@ -16,8 +16,8 @@ async function loadStatsData() {
             throw new Error('AppConfig not loaded');
         }
         
-        // Fetch all stats including created_at distribution
-        const [topArtistsRes, salesOverTimeRes, salesDiscogsTimeRes, topGenresRes, lastSeenDistRes, createdAtDistRes] = await Promise.all([
+        // Fetch all stats including created_at distribution and individual purchases
+        const [topArtistsRes, salesOverTimeRes, salesDiscogsTimeRes, topGenresRes, lastSeenDistRes, createdAtDistRes, purchasesRes] = await Promise.all([
             fetch(AppConfig.baseUrl + '/api/stats/top-artists', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -41,6 +41,10 @@ async function loadStatsData() {
             fetch(AppConfig.baseUrl + '/api/stats/created-at-distribution', {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+            }),
+            fetch(AppConfig.baseUrl + '/api/inventory-purchases?limit=200', {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
             })
         ]);
         
@@ -50,6 +54,7 @@ async function loadStatsData() {
         const topGenres = await topGenresRes.json();
         const lastSeenDistribution = await lastSeenDistRes.json();
         const createdAtDistribution = await createdAtDistRes.json();
+        const purchases = await purchasesRes.json();
         
         console.log('📊 Top Artists:', topArtists);
         console.log('📊 Sales Over Time (Store):', salesOverTime);
@@ -57,6 +62,7 @@ async function loadStatsData() {
         console.log('📊 Top Genres:', topGenres);
         console.log('📊 Last Seen Distribution:', lastSeenDistribution);
         console.log('📊 Created At Distribution:', createdAtDistribution);
+        console.log('📊 Purchases:', purchases);
         
         if (topArtists.status !== 'success') {
             throw new Error('Top artists: ' + (topArtists.error || 'Unknown error'));
@@ -73,6 +79,9 @@ async function loadStatsData() {
         renderTopGenresChart(topGenres);
         renderLastSeenDistributionChart(lastSeenDistribution);
         renderCreatedAtDistributionChart(createdAtDistribution);
+        
+        // Render individual purchases as bar chart with dates
+        renderPurchasesChart(purchases);
         
         // Load artist table (replaces the bar chart)
         loadArtistsTable(topArtists);
@@ -338,7 +347,7 @@ function renderSalesOverTimeChart(storeData, discogsData) {
     });
 }
 
-// NEW FUNCTION: Render Last Seen Distribution Chart
+// Render Last Seen Distribution Chart
 function renderLastSeenDistributionChart(data) {
     const canvas = document.getElementById('lastSeenDistributionChart');
     if (!canvas) return;
@@ -374,7 +383,7 @@ function renderLastSeenDistributionChart(data) {
     const labels = data.week_numbers.map(week => {
         if (week === 0) return 'This week';
         if (week === 1) return '1 week ago';
-        return `${week} weeks ago`;
+        return week + ' weeks ago';
     });
     
     charts.lastSeenDistribution = new Chart(canvas, {
@@ -425,7 +434,7 @@ function renderLastSeenDistributionChart(data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `Records: ${context.raw}`;
+                            return 'Records: ' + context.raw;
                         }
                     }
                 }
@@ -434,7 +443,7 @@ function renderLastSeenDistributionChart(data) {
     });
 }
 
-// NEW FUNCTION: Render Created At Distribution Chart
+// Render Created At Distribution Chart
 function renderCreatedAtDistributionChart(data) {
     const canvas = document.getElementById('createdAtChart');
     if (!canvas) return;
@@ -514,7 +523,140 @@ function renderCreatedAtDistributionChart(data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `Records: ${context.raw}`;
+                            return 'Records: ' + context.raw;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Render Individual Purchases as Bar Chart with Dates on X-Axis
+function renderPurchasesChart(data) {
+    const canvas = document.getElementById('purchasesChart');
+    if (!canvas) return;
+    
+    if (charts.purchases) {
+        charts.purchases.destroy();
+    }
+    
+    if (!data || data.status !== 'success' || !data.purchases || data.purchases.length === 0) {
+        canvas.style.display = 'none';
+        const container = canvas.parentElement;
+        const existingMsg = container.querySelector('.no-purchases-data');
+        if (!existingMsg) {
+            const msg = document.createElement('p');
+            msg.className = 'no-purchases-data';
+            msg.style.textAlign = 'center';
+            msg.style.color = '#999';
+            msg.style.padding = '40px';
+            msg.innerHTML = 'No purchase data available. Start recording inventory purchases.';
+            container.appendChild(msg);
+        }
+        return;
+    }
+    
+    // Remove any "no data" message if it exists
+    const container = canvas.parentElement;
+    const existingMsg = container.querySelector('.no-purchases-data');
+    if (existingMsg) existingMsg.remove();
+    
+    canvas.style.display = 'block';
+    
+    // Sort purchases by date (oldest to newest)
+    const purchases = data.purchases.sort((a, b) => {
+        return new Date(a.purchase_date) - new Date(b.purchase_date);
+    });
+    
+    // Prepare data for chart - use dates as labels
+    const labels = purchases.map(p => {
+        // Format date as MM/DD/YYYY
+        const date = new Date(p.purchase_date);
+        return (date.getMonth() + 1) + '/' + date.getDate() + '/' + date.getFullYear();
+    });
+    
+    const amounts = purchases.map(p => p.amount_spent);
+    const sellerNames = purchases.map(p => p.seller_name);
+    const fullDates = purchases.map(p => p.purchase_date);
+    
+    // Calculate total and average
+    const totalSpent = amounts.reduce((sum, val) => sum + val, 0);
+    const avgSpent = totalSpent / amounts.length;
+    const latestAmount = purchases.length > 0 ? purchases[purchases.length - 1].amount_spent : 0;
+    
+    // Update summary stats display
+    const totalSpentEl = document.getElementById('purchases-total-spent');
+    const avgSpentEl = document.getElementById('purchases-avg-spent');
+    const totalPurchasesEl = document.getElementById('purchases-total-count');
+    const latestAmountEl = document.getElementById('purchases-latest-amount');
+    
+    if (totalSpentEl) totalSpentEl.textContent = '$' + totalSpent.toFixed(2);
+    if (avgSpentEl) avgSpentEl.textContent = '$' + avgSpent.toFixed(2);
+    if (totalPurchasesEl) totalPurchasesEl.textContent = purchases.length;
+    if (latestAmountEl) latestAmountEl.textContent = '$' + latestAmount.toFixed(2);
+    
+    // Create bar chart with dates on x-axis
+    charts.purchases = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Purchase Amount ($)',
+                data: amounts,
+                backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                borderColor: 'rgba(40, 167, 69, 1)',
+                borderWidth: 1,
+                borderRadius: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Amount Spent ($)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        }
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Purchase Date'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 20
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            const index = tooltipItems[0].dataIndex;
+                            const purchase = purchases[index];
+                            return 'Purchase on ' + purchase.purchase_date;
+                        },
+                        label: function(context) {
+                            const index = context.dataIndex;
+                            const purchase = purchases[index];
+                            return [
+                                'Seller: ' + purchase.seller_name,
+                                'Amount: $' + purchase.amount_spent.toFixed(2)
+                            ];
                         }
                     }
                 }
@@ -534,10 +676,12 @@ function loadArtistsTable(data) {
     try {
         if (data && data.artists && data.sales) {
             // Remove asterisks from artist names
-            allArtistsData = data.artists.map((artist, idx) => ({
-                artist: artist.replace(/\*/g, '').trim(),
-                copies_sold: data.sales[idx]
-            }));
+            allArtistsData = data.artists.map(function(artist, idx) {
+                return {
+                    artist: artist.replace(/\*/g, '').trim(),
+                    copies_sold: data.sales[idx]
+                };
+            });
         }
         
         if (allArtistsData.length === 0) {
@@ -546,24 +690,26 @@ function loadArtistsTable(data) {
         }
         
         // Apply search filter
-        let filteredArtists = allArtistsData;
+        var filteredArtists = allArtistsData;
         if (currentArtistSearch) {
-            filteredArtists = allArtistsData.filter(a => 
-                a.artist.toLowerCase().includes(currentArtistSearch.toLowerCase())
-            );
+            filteredArtists = allArtistsData.filter(function(a) {
+                return a.artist.toLowerCase().includes(currentArtistSearch.toLowerCase());
+            });
         }
         
         // Sort by copies sold descending
-        filteredArtists.sort((a, b) => b.copies_sold - a.copies_sold);
+        filteredArtists.sort(function(a, b) {
+            return b.copies_sold - a.copies_sold;
+        });
         
         // Paginate
-        const start = (currentArtistPage - 1) * currentPerPage;
-        const end = start + currentPerPage;
-        const paginatedArtists = filteredArtists.slice(start, end);
-        const totalPages = Math.ceil(filteredArtists.length / currentPerPage);
+        var start = (currentArtistPage - 1) * currentPerPage;
+        var end = start + currentPerPage;
+        var paginatedArtists = filteredArtists.slice(start, end);
+        var totalPages = Math.ceil(filteredArtists.length / currentPerPage);
         
         // Update total artists count in summary card
-        const totalArtistsElem = document.getElementById('totalArtistsCount');
+        var totalArtistsElem = document.getElementById('totalArtistsCount');
         if (totalArtistsElem) {
             totalArtistsElem.textContent = filteredArtists.length;
         }
@@ -572,27 +718,21 @@ function loadArtistsTable(data) {
         if (paginatedArtists.length === 0) {
             tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center;">No artists found</td></tr>';
         } else {
-            tbody.innerHTML = paginatedArtists.map((artist, idx) => {
-                const rank = start + idx + 1;
-                return `
-                    <tr>
-                        <td style="padding: 6px 8px;">${rank}</td>
-                        <td style="padding: 6px 8px;">${escapeHtml(artist.artist)}</td>
-                        <td style="padding: 6px 8px; text-align: right; font-weight: 600;">${artist.copies_sold}</td>
-                    </tr>
-                `;
+            tbody.innerHTML = paginatedArtists.map(function(artist, idx) {
+                var rank = start + idx + 1;
+                return '<tr><td style="padding: 6px 8px;">' + rank + '</td><td style="padding: 6px 8px;">' + escapeHtml(artist.artist) + '</td><td style="padding: 6px 8px; text-align: right; font-weight: 600;">' + artist.copies_sold + '</td></tr>';
             }).join('');
         }
         
         // Update pagination controls
-        const prevBtn = document.getElementById('prevPageBtn');
-        const nextBtn = document.getElementById('nextPageBtn');
-        const pageInfo = document.getElementById('pageInfo');
-        const perPageSelect = document.getElementById('artistsPerPage');
+        var prevBtn = document.getElementById('prevPageBtn');
+        var nextBtn = document.getElementById('nextPageBtn');
+        var pageInfo = document.getElementById('pageInfo');
+        var perPageSelect = document.getElementById('artistsPerPage');
         
         if (prevBtn) prevBtn.disabled = currentArtistPage === 1;
         if (nextBtn) nextBtn.disabled = currentArtistPage === totalPages || totalPages === 0;
-        if (pageInfo) pageInfo.textContent = `Page ${currentArtistPage} of ${totalPages || 1}`;
+        if (pageInfo) pageInfo.textContent = 'Page ' + currentArtistPage + ' of ' + (totalPages || 1);
         if (perPageSelect) perPageSelect.value = currentPerPage;
         
     } catch (error) {
@@ -602,31 +742,30 @@ function loadArtistsTable(data) {
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
+    var div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
 // Setup event listeners for artist table
 function setupArtistTableListeners() {
-    const searchBtn = document.getElementById('searchArtistBtn');
-    const clearBtn = document.getElementById('clearSearchBtn');
-    const searchInput = document.getElementById('artistSearchInput');
-    const prevBtn = document.getElementById('prevPageBtn');
-    const nextBtn = document.getElementById('nextPageBtn');
-    const perPageSelect = document.getElementById('artistsPerPage');
+    var searchBtn = document.getElementById('searchArtistBtn');
+    var clearBtn = document.getElementById('clearSearchBtn');
+    var searchInput = document.getElementById('artistSearchInput');
+    var prevBtn = document.getElementById('prevPageBtn');
+    var nextBtn = document.getElementById('nextPageBtn');
+    var perPageSelect = document.getElementById('artistsPerPage');
     
     if (searchBtn) {
-        searchBtn.onclick = () => {
+        searchBtn.onclick = function() {
             currentArtistSearch = searchInput.value.trim();
             currentArtistPage = 1;
-            // Reload data with search filter
             fetchArtistsAndReload();
         };
     }
     
     if (clearBtn) {
-        clearBtn.onclick = () => {
+        clearBtn.onclick = function() {
             if (searchInput) searchInput.value = '';
             currentArtistSearch = '';
             currentArtistPage = 1;
@@ -635,7 +774,7 @@ function setupArtistTableListeners() {
     }
     
     if (searchInput) {
-        searchInput.onkeypress = (e) => {
+        searchInput.onkeypress = function(e) {
             if (e.key === 'Enter') {
                 currentArtistSearch = searchInput.value.trim();
                 currentArtistPage = 1;
@@ -645,7 +784,7 @@ function setupArtistTableListeners() {
     }
     
     if (prevBtn) {
-        prevBtn.onclick = () => {
+        prevBtn.onclick = function() {
             if (currentArtistPage > 1) {
                 currentArtistPage--;
                 fetchArtistsAndReload();
@@ -654,14 +793,14 @@ function setupArtistTableListeners() {
     }
     
     if (nextBtn) {
-        nextBtn.onclick = () => {
+        nextBtn.onclick = function() {
             currentArtistPage++;
             fetchArtistsAndReload();
         };
     }
     
     if (perPageSelect) {
-        perPageSelect.onchange = () => {
+        perPageSelect.onchange = function() {
             currentPerPage = parseInt(perPageSelect.value);
             currentArtistPage = 1;
             fetchArtistsAndReload();
@@ -671,11 +810,11 @@ function setupArtistTableListeners() {
 
 async function fetchArtistsAndReload() {
     try {
-        const response = await fetch(AppConfig.baseUrl + '/api/stats/top-artists', {
+        var response = await fetch(AppConfig.baseUrl + '/api/stats/top-artists', {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
-        const data = await response.json();
+        var data = await response.json();
         if (data.status === 'success') {
             loadArtistsTable(data);
         }
