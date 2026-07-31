@@ -1,6 +1,6 @@
 // ============================================================================
-// inventory-ops.js - Unified Inventory Operations (Refactored)
-// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders, Refund
+// inventory-ops.js - Unified Inventory Operations
+// Uses one-container-per-mode visibility
 // ============================================================================
 
 (function() {
@@ -33,32 +33,14 @@
     const printBtn = document.getElementById('print-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
-    // ========== Mode Control Panels ==========
-    const inventorySetupPanel = document.getElementById('inventory-setup-panel');
-    const scanLocationBuilder = document.getElementById('scan-location-builder');
-    const filterGroup = document.getElementById('filter-group');
-    const discogsFilters = document.getElementById('discogs-filters');
-    const discogsMarkupUi = document.getElementById('discogs-markup-ui');
-    const deleteFilters = document.getElementById('delete-filters');
-    const checkoutFilters = document.getElementById('checkout-filters');
-    const discogsOrdersFilters = document.getElementById('discogs-orders-filters');
-
-    // ========== Draft Dropdown Elements ==========
-    const draftDropdown = document.getElementById('draft-dropdown');
-    const draftSellerName = document.getElementById('draft-seller-name');
-    const draftSellerContact = document.getElementById('draft-seller-contact');
-    const draftDescription = document.getElementById('draft-description');
-    const draftDisplaySeller = document.getElementById('draft-display-seller');
-    const draftDisplayContact = document.getElementById('draft-display-contact');
-    const draftDisplayDescription = document.getElementById('draft-display-description');
-    const draftDisplayId = document.getElementById('draft-display-id');
-    const draftLinkedCount = document.getElementById('draft-linked-count');
-    const draftOfferAmount = document.getElementById('draft-offer-amount');
-    const draftStatusMessage = document.getElementById('draft-status-message');
-    const draftActionStatus = document.getElementById('draft-action-status');
-    const activeDraftSection = document.getElementById('active-draft-section');
-    const draftFormSection = document.getElementById('draft-form-section');
-    const purchaseBadge = document.getElementById('purchase-badge');
+    // ========== Mode containers ==========
+    const addModeContainer = document.getElementById('add-mode-container');
+    const scanModeContainer = document.getElementById('scan-mode-container');
+    const discogsModeContainer = document.getElementById('discogs-mode-container');
+    const deleteModeContainer = document.getElementById('delete-mode-container');
+    const checkoutModeContainer = document.getElementById('checkout-mode-container');
+    const discogsOrdersModeContainer = document.getElementById('discogs-orders-mode-container');
+    const refundModeContainer = document.getElementById('refund-mode-container');
 
     // ========== Scan Location Builder Elements ==========
     const scanGenreSelect = document.getElementById('scan-genre');
@@ -102,6 +84,21 @@
     const defaultDiscSelect = document.getElementById('default-disc-condition');
     const defaultPriceInput = document.getElementById('default-price');
     const defaultConsignorSelect = document.getElementById('default-consignor');
+
+    // ========== Purchase Table Elements ==========
+    const purchasesContainer = document.getElementById('purchases-container');
+    const purchasesBody = document.getElementById('purchases-body');
+    const metadataPanel = document.getElementById('purchase-metadata-panel');
+    const editPurchaseId = document.getElementById('edit-purchase-id');
+    const editSellerName = document.getElementById('edit-seller-name');
+    const editSellerContact = document.getElementById('edit-seller-contact');
+    const editDescription = document.getElementById('edit-description');
+    const editStatus = document.getElementById('edit-status');
+    const editBillUpload = document.getElementById('edit-bill-upload');
+    const editBillPreview = document.getElementById('edit-bill-preview');
+    const purchaseIdDisplay = document.getElementById('purchase-id-display');
+    const deletePurchaseBtn = document.getElementById('delete-purchase-btn');
+    const acceptDraftBtn = document.getElementById('accept-draft-btn');
 
     // ========== State ==========
     let currentSearchMode = 'add';
@@ -169,55 +166,22 @@
     const MAX_RECENT_SCANS = 10;
     let scanCounter = 0;
 
-    // ========== Draft Purchase State ==========
-    let currentDraftId = null;
-    let currentDraftRecords = [];
+    // ========== Purchase State ==========
+    let selectedPurchaseId = null;
+    let currentPurchaseRecords = [];
 
     // ========== Audio ==========
     let audioContext = null;
 
-    // ========== Mode Panel Configuration ==========
-    const MODE_PANELS = {
-        add: {
-            panels: ['inventorySetupPanel'],
-            visible: true
-        },
-        scan: {
-            panels: ['scanLocationBuilder'],
-            visible: true
-        },
-        discogs: {
-            panels: ['filterGroup', 'discogsFilters', 'discogsMarkupUi'],
-            visible: true
-        },
-        delete: {
-            panels: ['filterGroup', 'deleteFilters'],
-            visible: true
-        },
-        checkout: {
-            panels: ['filterGroup', 'checkoutFilters'],
-            visible: true
-        },
-        discogs_orders: {
-            panels: ['filterGroup', 'discogsOrdersFilters'],
-            visible: true
-        },
-        refund: {
-            panels: ['filterGroup'],
-            visible: true
-        }
-    };
-
-    // Panel visibility map
-    const panelElements = {
-        inventorySetupPanel: inventorySetupPanel,
-        scanLocationBuilder: scanLocationBuilder,
-        filterGroup: filterGroup,
-        discogsFilters: discogsFilters,
-        discogsMarkupUi: discogsMarkupUi,
-        deleteFilters: deleteFilters,
-        checkoutFilters: checkoutFilters,
-        discogsOrdersFilters: discogsOrdersFilters
+    // ========== Mode Container Mapping ==========
+    const modeContainers = {
+        'add': addModeContainer,
+        'scan': scanModeContainer,
+        'discogs': discogsModeContainer,
+        'delete': deleteModeContainer,
+        'checkout': checkoutModeContainer,
+        'discogs_orders': discogsOrdersModeContainer,
+        'refund': refundModeContainer
     };
 
     // ========== Helper Functions ==========
@@ -383,7 +347,6 @@
         } catch (e) { console.warn('Sound error:', e); }
     }
 
-    // ========== Helper: Download receipt as .txt ==========
     function downloadReceipt(text, filename) {
         filename = filename || 'receipt.txt';
         console.log('📄 downloadReceipt: filename=' + filename + ', text length=' + text.length);
@@ -636,118 +599,19 @@
         }
     }
 
-    function showPanelsForMode(mode) {
-    console.log('📐 showPanelsForMode called with mode: ' + mode);
-
-    for (var key in panelElements) {
-        var element = panelElements[key];
-        if (element) {
-            element.style.display = 'none';
-            console.log('📐 Hidden panel: ' + key);
-        }
-    }
-
-    var modeConfig = MODE_PANELS[mode];
-    if (modeConfig) {
-        console.log('📐 modeConfig found for ' + mode + ':', modeConfig);
-        modeConfig.panels.forEach(function(panelKey) {
-            var element = panelElements[panelKey];
-            if (element) {
-                element.style.display = 'block';
-                console.log('📐 Showing panel: ' + panelKey);
-            } else {
-                console.warn('📐 Panel element not found: ' + panelKey);
-            }
+    // ========== New Visibility Function ==========
+    function setActiveMode(mode) {
+        // Hide all containers
+        Object.values(modeContainers).forEach(container => {
+            if (container) container.style.display = 'none';
         });
-    } else {
-        console.warn('📐 No modeConfig found for ' + mode);
-    }
 
-    if (mode === 'scan' && scanLocationBuilder) {
-        populateScanGenreDropdown();
-        updateScanLocationPreview();
-        updateScanCounter();
-    }
-
-    if (mode === 'discogs' && discogsMarkupUi) {
-        discogsMarkupUi.style.display = 'block';
-    }
-
-    // ========== SHOW/HIDE CHECKOUT MODE CONTROLS ==========
-    var checkoutControls = document.getElementById('checkout-mode-controls');
-    if (checkoutControls) {
-        if (mode === 'checkout') {
-            checkoutControls.style.display = 'block';
-            console.log('📐 Checkout controls shown');
+        // Show the active container
+        const activeContainer = modeContainers[mode];
+        if (activeContainer) {
+            activeContainer.style.display = 'block';
         } else {
-            checkoutControls.style.display = 'none';
-            console.log('📐 Checkout controls hidden');
-        }
-    }
-
-    if (searchInput) {
-        var placeholders = {
-            'add': 'Search Discogs...',
-            'scan': 'Scan barcode here...',
-            'discogs': 'Search within records...',
-            'delete': 'Search records...',
-            'checkout': 'Search records...',
-            'discogs_orders': 'Search orders...',
-            'refund': 'Search sold records by artist, title, or barcode...'
-        };
-        searchInput.placeholder = placeholders[mode] || 'Search...';
-        console.log('📐 Search placeholder set to: ' + searchInput.placeholder);
-    }
-
-    updateCompleteButton(mode);
-
-    if (mode === 'add') {
-        loadAllDrafts();
-    }
-}
-
-
-    function updateCompleteButton(mode) {
-        console.log('🔘 updateCompleteButton called with mode: ' + mode);
-        if (!completeActionBtn) {
-            console.error('🔘 completeActionBtn is null!');
-            return;
-        }
-
-        console.log('🔘 completeActionBtn current display: ' + completeActionBtn.style.display);
-        console.log('🔘 completeActionBtn current disabled: ' + completeActionBtn.disabled);
-
-        if (mode === 'add') {
-            completeActionBtn.style.display = 'none';
-            console.log('🔘 Add mode: hiding complete button');
-        } else if (mode === 'refund') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '💰 Process Refund';
-            console.log('🔘 Refund mode: showing as "Process Refund"');
-        } else if (mode === 'scan') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '📍 Apply Location';
-            console.log('🔘 Scan mode: showing as "Apply Location"');
-        } else if (mode === 'discogs') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '📤 Post to Discogs';
-            console.log('🔘 Discogs mode: showing as "Post to Discogs"');
-        } else if (mode === 'delete') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '🗑️ Delete Selected';
-            console.log('🔘 Delete mode: showing as "Delete Selected"');
-        } else if (mode === 'checkout') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '🛒 Checkout';
-            completeActionBtn.disabled = false;
-            console.log('🔘 Checkout mode: showing as "🛒 Checkout" - ENABLED');
-        } else if (mode === 'discogs_orders') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '📦 Mark Sold';
-            console.log('🔘 Discogs Orders mode: showing as "Mark Sold"');
-        } else {
-            completeActionBtn.style.display = 'none';
-            console.log('🔘 Unknown mode: hiding complete button');
+            console.warn('No container found for mode:', mode);
         }
     }
 
@@ -879,7 +743,7 @@
             if (location) statusMsg += ' in location "' + location + '"';
             if (search) statusMsg += ' matching "' + search + '"';
             if (excludeBatch) statusMsg += ' (excluding linked records)';
-            if (batchId) statusMsg += ' (draft ' + batchId + ')';
+            if (batchId) statusMsg += ' (purchase ' + batchId + ')';
             showStatus(statusMsg, 'info');
             updateSelectionCount();
 
@@ -899,456 +763,481 @@
         }
     }
 
-    // ========== DRAFT MANAGEMENT FUNCTIONS ==========
+    // ========== PURCHASES TABLE FUNCTIONS ==========
 
-    async function loadAllDrafts() {
-        console.log('📋 loadAllDrafts: fetching all drafts...');
+    async function loadPurchasesTable() {
+        console.log('📋 loadPurchasesTable: fetching purchases...');
         try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/drafts', {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/drafts', {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
-            var data = await response.json();
-            console.log('📋 loadAllDrafts: response', data);
+            const data = await response.json();
+            if (data.status !== 'success') throw new Error(data.error || 'Failed to load purchases');
 
-            if (data.status === 'success') {
-                var drafts = data.drafts || [];
-                console.log('📋 loadAllDrafts: loaded ' + drafts.length + ' drafts');
-                console.log('📋 Drafts data:', drafts);
-                
-                populateDraftDropdown(drafts);
-                
-                if (drafts.length > 0 && !currentDraftId) {
-                    var firstDraft = drafts[0];
-                    console.log('📋 Auto-selecting first draft: ' + firstDraft.draft_id);
-                    selectDraft(firstDraft.draft_id);
-                } else if (drafts.length === 0) {
-                    showDraftFormUI();
-                } else if (currentDraftId) {
-                    var stillExists = drafts.some(function(d) { return String(d.draft_id) === String(currentDraftId); });
-                    if (!stillExists) {
-                        console.log('📋 Current draft ' + currentDraftId + ' no longer exists, selecting first');
-                        if (drafts.length > 0) {
-                            selectDraft(drafts[0].draft_id);
-                        } else {
-                            showDraftFormUI();
-                        }
+            const purchases = data.drafts || [];
+            if (!purchasesBody) return;
+
+            if (purchases.length === 0) {
+                purchasesBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">No purchases found. Click "New" to create one.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            purchases.forEach(p => {
+                const isSelected = (p.draft_id == selectedPurchaseId);
+                const hasBill = p.bill_of_sale_path && p.bill_of_sale_path.length > 0;
+                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer;">`;
+                html += `<td>${p.draft_id}</td>`;
+                html += `<td>${escapeHtml(p.seller_name)}</td>`;
+                html += `<td><span class="status-badge ${p.status === 'complete' ? 'paid' : 'draft'}">${p.status}</span></td>`;
+                html += `<td>${p.record_count || 0}</td>`;
+                html += `<td>${p.offer_amount ? '$' + p.offer_amount.toFixed(2) : '—'}</td>`;
+                html += `<td>${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>`;
+                html += `<td>${hasBill ? '<i class="fas fa-file-pdf" style="color:#28a745;"></i>' : '<i class="fas fa-times" style="color:#999;"></i>'}</td>`;
+                html += `<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(${p.draft_id})"><i class="fas fa-trash"></i></button></td>`;
+                html += `</tr>`;
+            });
+            purchasesBody.innerHTML = html;
+
+            // Highlight selected row
+            if (selectedPurchaseId) {
+                const row = purchasesBody.querySelector(`tr[data-id="${selectedPurchaseId}"]`);
+                if (row) row.classList.add('record-selected');
+            }
+        } catch (error) {
+            console.error('Error loading purchases:', error);
+            showStatus('Error loading purchases: ' + error.message, 'error');
+        }
+    }
+
+    async function selectPurchase(id) {
+        console.log('📋 selectPurchase: ' + id);
+        selectedPurchaseId = id;
+
+        // Highlight row
+        const rows = purchasesBody.querySelectorAll('tr');
+        rows.forEach(row => row.classList.remove('record-selected'));
+        const selectedRow = purchasesBody.querySelector(`tr[data-id="${id}"]`);
+        if (selectedRow) selectedRow.classList.add('record-selected');
+
+        // Show metadata panel
+        if (metadataPanel) metadataPanel.style.display = 'block';
+        if (purchaseIdDisplay) purchaseIdDisplay.textContent = '#' + id;
+
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + id, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            if (data.status !== 'success' || !data.draft) throw new Error(data.error || 'Purchase not found');
+
+            const draft = data.draft;
+            if (editPurchaseId) editPurchaseId.value = draft.draft_id;
+            if (editSellerName) editSellerName.value = draft.seller_name || '';
+            if (editSellerContact) editSellerContact.value = draft.seller_contact || '';
+            if (editDescription) editDescription.value = draft.description || '';
+            if (editStatus) editStatus.value = draft.status || 'draft';
+
+            // Show bill preview
+            const billPath = draft.bill_of_sale_path;
+            if (editBillPreview) {
+                if (billPath) {
+                    const fullUrl = window.AppConfig.baseUrl + '/' + billPath.replace(/^\/+/, '');
+                    if (billPath.toLowerCase().endsWith('.pdf')) {
+                        editBillPreview.innerHTML = `<a href="${fullUrl}" target="_blank"><i class="fas fa-file-pdf"></i> View PDF</a>`;
+                    } else {
+                        editBillPreview.innerHTML = `<img src="${fullUrl}" style="max-height:100px;border-radius:4px;border:1px solid #ddd;">`;
                     }
-                }
-            } else {
-                console.error('❌ Failed to load drafts:', data.error);
-                populateDraftDropdown([]);
-                showDraftFormUI();
-            }
-        } catch (error) {
-            console.error('❌ loadAllDrafts error:', error);
-            populateDraftDropdown([]);
-            showDraftFormUI();
-        }
-    }
-
-    function populateDraftDropdown(drafts) {
-        if (!draftDropdown) return;
-
-        var currentVal = draftDropdown.value;
-        console.log('📋 populateDraftDropdown: current value = ' + currentVal + ', drafts count = ' + (drafts ? drafts.length : 0));
-        
-        draftDropdown.innerHTML = '<option value="">-- Select a draft --</option>';
-
-        if (!drafts || drafts.length === 0) {
-            console.log('📋 No drafts available');
-            return;
-        }
-
-        drafts.forEach(function(d) {
-            var option = document.createElement('option');
-            option.value = String(d.draft_id);
-            
-            var seller = d.seller_name || 'Unknown Seller';
-            var date = d.date || 'Unknown Date';
-            var status = d.status || 'draft';
-            var recordCount = d.record_count || 0;
-            var label = seller + ' - ' + date;
-            
-            if (status === 'complete') {
-                label += ' ✅ Complete';
-            } else if (recordCount === 0) {
-                label += ' 📄 Complete (No records)';
-            } else {
-                label += ' 📝 Draft (' + recordCount + ' records)';
-            }
-            
-            option.textContent = label;
-            
-            option.dataset.status = status;
-            option.dataset.offerAmount = d.offer_amount || 0;
-            
-            draftDropdown.appendChild(option);
-        });
-
-        if (currentVal && drafts.some(function(d) { return String(d.draft_id) === String(currentVal); })) {
-            draftDropdown.value = String(currentVal);
-            console.log('📋 Restored selection: ' + currentVal);
-        } else if (drafts.length > 0) {
-            var firstId = String(drafts[0].draft_id);
-            draftDropdown.value = firstId;
-            console.log('📋 Selected first draft: ' + firstId);
-        }
-        
-        if (draftDropdown.onchange) {
-            draftDropdown.onchange();
-        }
-    }
-
-    async function selectDraft(draftId) {
-        console.log('📋 selectDraft called with draftId: ' + draftId + ' (type: ' + typeof draftId + ')');
-        
-        if (!draftId || draftId === '') {
-            console.log('📋 No draft ID provided, showing form');
-            showDraftFormUI();
-            return;
-        }
-
-        var draftIdStr = String(draftId);
-        
-        try {
-            if (draftDropdown) {
-                draftDropdown.value = draftIdStr;
-            }
-            
-            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + draftIdStr, {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            
-            if (!response.ok) {
-                console.error('❌ Failed to fetch draft ' + draftIdStr + ': HTTP ' + response.status);
-                showDraftFormUI();
-                return;
-            }
-            
-            var data = await response.json();
-            console.log('📋 selectDraft: server response', data);
-            
-            if (data.status !== 'success' || !data.draft) {
-                console.error('❌ Draft not found:', draftIdStr);
-                showDraftFormUI();
-                return;
-            }
-            
-            var draft = data.draft;
-            console.log('📋 Found draft: ' + draft.seller_name + ' - ' + draft.date + ' (Status: ' + draft.status + ')');
-            
-            currentDraftId = draftIdStr;
-
-            if (draftSellerName) draftSellerName.value = draft.seller_name || '';
-            if (draftSellerContact) draftSellerContact.value = draft.seller_contact || '';
-            if (draftDescription) draftDescription.value = draft.description_text || draft.description || '';
-            
-            if (draftOfferAmount) {
-                if (draft.status === 'complete' && draft.offer_amount > 0) {
-                    draftOfferAmount.value = draft.offer_amount.toFixed(2);
-                    draftOfferAmount.readOnly = true;
-                    draftOfferAmount.style.background = '#e9ecef';
-                    draftOfferAmount.style.cursor = 'not-allowed';
                 } else {
-                    draftOfferAmount.value = '';
-                    draftOfferAmount.readOnly = false;
-                    draftOfferAmount.style.background = 'white';
-                    draftOfferAmount.style.cursor = 'text';
+                    editBillPreview.innerHTML = '<span style="color:#999;">No bill uploaded</span>';
                 }
             }
 
-            showActiveDraftUI(draft);
+            // Reset file input
+            if (editBillUpload) editBillUpload.value = '';
 
-            if (draft.status === 'draft') {
-                await loadRecordsForDraft(draftIdStr);
-            } else {
-                filteredRecords = [];
-                totalRecords = 0;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                if (draft.record_count === 0) {
-                    showStatus('✅ This purchase is complete. No records are linked to it (historical purchase).', 'info');
+            // Show/hide Accept Draft button
+            if (acceptDraftBtn) {
+                if (draft.status === 'draft' && draft.record_count > 0) {
+                    acceptDraftBtn.style.display = 'inline-block';
                 } else {
-                    showStatus('✅ This purchase is complete. All records have been activated.', 'info');
+                    acceptDraftBtn.style.display = 'none';
                 }
             }
-            
+
+            // Enable/disable delete button
+            if (deletePurchaseBtn) {
+                deletePurchaseBtn.disabled = (draft.status === 'complete');
+            }
+
+            // Load records for this purchase
+            await loadRecordsForPurchase(id);
+
+            showStatus('Selected purchase: ' + draft.seller_name + ' (' + (draft.record_count || 0) + ' records)', 'info');
+
         } catch (error) {
-            console.error('❌ selectDraft error:', error);
-            showDraftFormUI();
+            console.error('Error loading purchase metadata:', error);
+            showStatus('Error loading purchase: ' + error.message, 'error');
         }
     }
 
-    async function loadRecordsForDraft(draftId) {
-        console.log('📋 loadRecordsForDraft: ' + draftId);
+    async function loadRecordsForPurchase(purchaseId) {
+        console.log('📋 loadRecordsForPurchase:', purchaseId);
         try {
-            await loadRecords({ 
-                batchId: draftId,
+            await loadRecords({
+                batchId: purchaseId,
                 excludeBatch: false,
-                mode: 'add'
+                mode: 'add',
+                bypassDateFilter: true
             });
-            
-            updateDraftLinkedCount(filteredRecords.length);
-            console.log('📋 Loaded ' + filteredRecords.length + ' records for draft ' + draftId);
+            currentPurchaseRecords = filteredRecords.slice();
+            // Update record count in the purchase table
+            const row = purchasesBody.querySelector(`tr[data-id="${purchaseId}"]`);
+            if (row) {
+                const countCell = row.cells[3];
+                if (countCell) countCell.textContent = filteredRecords.length;
+            }
         } catch (error) {
-            console.error('❌ loadRecordsForDraft error:', error);
+            console.error('Error loading records for purchase:', error);
             filteredRecords = [];
             totalRecords = 0;
+            currentPurchaseRecords = [];
             renderPagination();
             renderTablePage();
         }
     }
 
-    function showDraftFormUI() {
-        if (draftFormSection) draftFormSection.style.display = 'block';
-        if (activeDraftSection) activeDraftSection.style.display = 'none';
-        if (purchaseBadge) {
-            purchaseBadge.textContent = 'No Draft';
-            purchaseBadge.className = 'draft-badge no-draft';
-        }
-        if (draftDropdown) draftDropdown.value = '';
-        currentDraftId = null;
-        currentDraftRecords = [];
-        filteredRecords = [];
-        totalRecords = 0;
-        renderPagination();
-        renderTablePage();
-    }
+    async function savePurchaseMetadata() {
+        const id = editPurchaseId ? editPurchaseId.value : null;
+        if (!id) { showStatus('No purchase selected.', 'error'); return; }
 
-    function showActiveDraftUI(draft) {
-        if (draftFormSection) draftFormSection.style.display = 'none';
-        if (activeDraftSection) activeDraftSection.style.display = 'block';
-        if (purchaseBadge) {
-            purchaseBadge.textContent = 'Draft Active';
-            purchaseBadge.className = 'draft-badge active';
-        }
-
-        var sellerName = draft.seller_name || '—';
-        var sellerContact = draft.seller_contact || '—';
-        var description = draft.description_text || draft.description || '—';
-        var draftId = draft.draft_id || '—';
-        var status = draft.status || 'draft';
-        var offerAmount = draft.offer_amount || 0;
-
-        if (draftDisplaySeller) draftDisplaySeller.textContent = sellerName;
-        if (draftDisplayContact) draftDisplayContact.textContent = sellerContact;
-        if (draftDisplayDescription) draftDisplayDescription.textContent = description;
-        if (draftDisplayId) draftDisplayId.textContent = draftId;
-        if (draftDropdown) draftDropdown.value = draftId;
-
-        updateDraftLinkedCount(draft.record_count || 0);
-
-        var statusBadge = document.getElementById('draft-status-badge');
-        if (statusBadge) {
-            if (status === 'complete') {
-                statusBadge.textContent = '✅ COMPLETE';
-                statusBadge.className = 'draft-badge complete';
-                statusBadge.style.background = '#28a745';
-                statusBadge.style.color = 'white';
-            } else {
-                statusBadge.textContent = '📝 DRAFT';
-                statusBadge.className = 'draft-badge draft';
-                statusBadge.style.background = '#ffc107';
-                statusBadge.style.color = '#333';
-            }
-            statusBadge.style.display = 'inline-block';
-        }
-
-        var billPath = draft.bill_of_sale_path || '';
-        var previewImg = document.getElementById('bill-preview-image');
-        var placeholder = document.getElementById('bill-preview-placeholder');
-        var container = document.getElementById('bill-preview-container');
-
-        if (billPath && billPath !== '') {
-            var fullUrl = window.AppConfig.baseUrl + '/' + billPath.replace(/^\/+/, '');
-            
-            if (billPath.toLowerCase().endsWith('.pdf')) {
-                if (previewImg) {
-                    previewImg.style.display = 'none';
-                }
-                if (placeholder) {
-                    placeholder.innerHTML = '<i class="fas fa-file-pdf" style="font-size: 32px; color: #dc3545;"></i><br><span style="font-size: 12px;">PDF Bill</span>';
-                    placeholder.style.display = 'block';
-                }
-                if (container) {
-                    container.dataset.billPath = fullUrl;
-                    container.dataset.billType = 'pdf';
-                }
-            } else {
-                if (previewImg) {
-                    previewImg.src = fullUrl;
-                    previewImg.style.display = 'block';
-                    previewImg.onerror = function() {
-                        this.style.display = 'none';
-                        if (placeholder) {
-                            placeholder.textContent = '⚠️ Image not found';
-                            placeholder.style.display = 'block';
-                        }
-                    };
-                }
-                if (placeholder) {
-                    placeholder.style.display = 'none';
-                }
-                if (container) {
-                    container.dataset.billPath = fullUrl;
-                    container.dataset.billType = 'image';
-                }
-            }
-        } else {
-            if (previewImg) {
-                previewImg.style.display = 'none';
-                previewImg.src = '';
-            }
-            if (placeholder) {
-                placeholder.style.display = 'block';
-                placeholder.textContent = 'No bill uploaded';
-            }
-            if (container) {
-                container.dataset.billPath = '';
-                container.dataset.billType = '';
-            }
-        }
-        
-        var acceptBtn = document.querySelector('.btn-draft-success');
-        var declineBtn = document.querySelector('.btn-draft-danger');
-        var offerInput = document.getElementById('draft-offer-amount');
-        
-        if (status === 'complete') {
-            if (acceptBtn) {
-                acceptBtn.style.display = 'none';
-            }
-            if (declineBtn) {
-                declineBtn.style.display = 'none';
-            }
-            if (offerInput) {
-                offerInput.readOnly = true;
-                offerInput.style.background = '#e9ecef';
-                offerInput.style.cursor = 'not-allowed';
-                if (offerAmount > 0) {
-                    offerInput.value = offerAmount.toFixed(2);
-                }
-            }
-        } else {
-            if (acceptBtn) {
-                acceptBtn.style.display = '';
-            }
-            if (declineBtn) {
-                declineBtn.style.display = '';
-            }
-            if (offerInput) {
-                offerInput.readOnly = false;
-                offerInput.style.background = 'white';
-                offerInput.style.cursor = 'text';
-                offerInput.value = '';
-            }
-        }
-    }
-
-    function updateDraftLinkedCount(count) {
-        if (draftLinkedCount) {
-            draftLinkedCount.textContent = count || currentDraftRecords.length || 0;
-        }
-    }
-
-    async function createNewDraft() {
-        console.log('📋 createNewDraft: creating new draft...');
-        if (draftSellerName) draftSellerName.value = '';
-        if (draftSellerContact) draftSellerContact.value = '';
-        if (draftDescription) draftDescription.value = '';
-        if (draftOfferAmount) draftOfferAmount.value = '';
-
-        showDraftFormUI();
-
-        if (draftSellerName) draftSellerName.focus();
-
-        showToast('📝 Enter seller details and click Save Draft.', 'info');
-    }
-
-    async function saveDraft() {
-        console.log('📋 saveDraft: saving draft...');
-
-        var sellerName = draftSellerName ? draftSellerName.value.trim() : '';
-        var sellerContact = draftSellerContact ? draftSellerContact.value.trim() : '';
-        var description = draftDescription ? draftDescription.value.trim() : '';
+        const sellerName = editSellerName ? editSellerName.value.trim() : '';
+        const sellerContact = editSellerContact ? editSellerContact.value.trim() : '';
+        const description = editDescription ? editDescription.value.trim() : '';
+        const status = editStatus ? editStatus.value : 'draft';
 
         if (!sellerName) {
-            showToast('Please enter the seller name.', 'error');
-            showDraftStatus('Please enter the seller name.', 'error');
-            return;
-        }
-        if (!description) {
-            showToast('Please enter a description.', 'error');
-            showDraftStatus('Please enter a description.', 'error');
+            showStatus('Seller name is required.', 'error');
             return;
         }
 
         try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/' + id, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ seller_name: sellerName, seller_contact: sellerContact, description, status })
+            });
+            const data = await response.json();
+            if (data.status !== 'success') throw new Error(data.error || 'Failed to update');
+
+            showStatus('✅ Purchase metadata updated.', 'success');
+            await loadPurchasesTable();
+            await selectPurchase(parseInt(id));
+        } catch (error) {
+            showStatus('Error updating purchase: ' + error.message, 'error');
+        }
+    }
+
+    async function uploadBillForPurchase() {
+        if (!editBillUpload) return;
+        const file = editBillUpload.files[0];
+        if (!file) return;
+
+        const id = editPurchaseId ? editPurchaseId.value : null;
+        if (!id) { showStatus('No purchase selected.', 'error'); return; }
+
+        const formData = new FormData();
+        formData.append('bill_image', file);
+        formData.append('purchase_id', id);
+
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/' + id + '/bill', {
+                method: 'POST',
+                credentials: 'include',
+                body: formData
+            });
+            const data = await response.json();
+            if (data.status !== 'success') throw new Error(data.error || 'Upload failed');
+
+            showStatus('✅ Bill uploaded successfully.', 'success');
+            await selectPurchase(parseInt(id));
+            if (editBillUpload) editBillUpload.value = '';
+        } catch (error) {
+            showStatus('Error uploading bill: ' + error.message, 'error');
+        }
+    }
+
+    async function deletePurchase(id) {
+        if (!confirm(`Are you sure you want to delete purchase #${id} and all its linked records? This cannot be undone.`)) return;
+
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + id, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            if (data.status !== 'success') throw new Error(data.error || 'Delete failed');
+
+            showStatus('✅ Purchase deleted.', 'success');
+            if (selectedPurchaseId == id) {
+                selectedPurchaseId = null;
+                if (metadataPanel) metadataPanel.style.display = 'none';
+                filteredRecords = [];
+                totalRecords = 0;
+                currentPurchaseRecords = [];
+                renderPagination();
+                renderTablePage();
+            }
+            await loadPurchasesTable();
+        } catch (error) {
+            showStatus('Error deleting purchase: ' + error.message, 'error');
+        }
+    }
+
+    function deleteSelectedPurchase() {
+        const id = editPurchaseId ? editPurchaseId.value : null;
+        if (id) deletePurchase(parseInt(id));
+    }
+
+    function clearPurchaseSelection() {
+        selectedPurchaseId = null;
+        if (metadataPanel) metadataPanel.style.display = 'none';
+        const rows = purchasesBody.querySelectorAll('tr');
+        rows.forEach(row => row.classList.remove('record-selected'));
+        filteredRecords = [];
+        totalRecords = 0;
+        currentPurchaseRecords = [];
+        renderPagination();
+        renderTablePage();
+        showStatus('Purchase deselected.', 'info');
+    }
+
+    async function createNewPurchase() {
+        const sellerName = prompt('Enter seller name:');
+        if (!sellerName) return;
+        const contact = prompt('Enter contact (phone/email) [optional]:') || '';
+        const description = prompt('Enter description [optional]:') || '';
+
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
                 method: 'POST',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    seller_name: sellerName,
-                    seller_contact: sellerContact,
-                    description: description
-                })
+                body: JSON.stringify({ seller_name: sellerName, seller_contact: contact, description: description })
             });
-            var data = await response.json();
-            console.log('📋 saveDraft: response', data);
+            const data = await response.json();
+            if (data.status !== 'success') throw new Error(data.error || 'Failed to create purchase');
+
+            showStatus('✅ New purchase created.', 'success');
+            await loadPurchasesTable();
+            if (data.draft_id) {
+                await selectPurchase(data.draft_id);
+            }
+        } catch (error) {
+            showStatus('Error creating purchase: ' + error.message, 'error');
+        }
+    }
+
+    async function acceptDraft() {
+        if (!selectedPurchaseId) {
+            showToast('No purchase selected.', 'error');
+            return;
+        }
+
+        const offerAmountInput = document.getElementById('draft-offer-amount');
+        if (!offerAmountInput) {
+            const amount = prompt('Enter offer amount ($):');
+            if (amount === null) return;
+            const offerAmount = parseFloat(amount);
+            if (isNaN(offerAmount) || offerAmount <= 0) {
+                showToast('Please enter a valid offer amount.', 'error');
+                return;
+            }
+            await processAcceptDraft(selectedPurchaseId, offerAmount);
+            return;
+        }
+
+        const offerAmount = parseFloat(offerAmountInput.value);
+        if (isNaN(offerAmount) || offerAmount <= 0) {
+            showToast('Please enter a valid offer amount in the metadata panel.', 'error');
+            return;
+        }
+
+        await processAcceptDraft(selectedPurchaseId, offerAmount);
+    }
+
+    async function processAcceptDraft(purchaseId, offerAmount) {
+        if (!purchaseId) {
+            showToast('No purchase selected.', 'error');
+            return;
+        }
+
+        let draft;
+        try {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + purchaseId, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            if (data.status !== 'success' || !data.draft) throw new Error(data.error || 'Purchase not found');
+            draft = data.draft;
+        } catch (error) {
+            showToast('Error fetching purchase: ' + error.message, 'error');
+            return;
+        }
+
+        if (draft.status === 'complete') {
+            showToast('This purchase is already complete.', 'warning');
+            return;
+        }
+
+        const recordIds = currentPurchaseRecords.map(function(r) { return r.id; });
+        if (recordIds.length === 0) {
+            showToast('No records linked to this purchase.', 'error');
+            return;
+        }
+
+        const signatureMethod = confirm('Square POS signature? Click OK for Square POS, Cancel for Print & Upload.');
+        console.log('📋 acceptDraft: signatureMethod = ' + (signatureMethod ? 'square' : 'upload'));
+
+        const requestBody = {
+            offer_amount: offerAmount,
+            signature_method: signatureMethod ? 'square' : 'upload',
+            record_ids: recordIds
+        };
+
+        try {
+            console.log('📋 acceptDraft: sending PUT to /api/purchases/draft/' + purchaseId);
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + purchaseId, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+            const data = await response.json();
+            console.log('📋 acceptDraft: response', data);
 
             if (data.status === 'success') {
-                showToast('✅ Draft saved successfully!', 'success');
-                showDraftStatus('✅ Draft saved successfully!', 'success');
+                if (currentPurchaseRecords.length > 0) {
+                    await generatePDF(currentPurchaseRecords);
+                    showToast('📄 Price tags generated for ' + currentPurchaseRecords.length + ' records.', 'success');
+                }
+
+                showToast('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
                 playSound('success');
 
-                await loadAllDrafts();
-
-                if (data.draft && data.draft.id) {
-                    selectDraft(data.draft.id);
+                if (signatureMethod) {
+                    await sendBillToSquarePOS(draft, offerAmount, currentPurchaseRecords);
                 } else {
-                    await loadAllDrafts();
+                    var billText = generateBillOfSale(draft, offerAmount, currentPurchaseRecords);
+                    downloadReceipt(billText, 'bill_of_sale_' + purchaseId + '.txt');
+                    showToast('📄 Bill of Sale downloaded. Have customer sign, take photo, and upload.', 'info');
                 }
+
+                await loadPurchasesTable();
+                await selectPurchase(purchaseId);
             } else {
                 showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
                 playSound('error');
             }
         } catch (error) {
-            console.error('❌ saveDraft error:', error);
+            console.error('❌ acceptDraft error:', error);
             showToast('❌ Error: ' + error.message, 'error');
-            showDraftStatus('❌ Error: ' + error.message, 'error');
             playSound('error');
         }
     }
 
-    function clearDraftForm() {
-        if (draftSellerName) draftSellerName.value = '';
-        if (draftSellerContact) draftSellerContact.value = '';
-        if (draftDescription) draftDescription.value = '';
-        if (draftOfferAmount) draftOfferAmount.value = '';
-        var statusEl = document.getElementById('draft-status-message');
-        if (statusEl) statusEl.style.display = 'none';
-        var actionEl = document.getElementById('draft-action-status');
-        if (actionEl) actionEl.style.display = 'none';
+    async function sendBillToSquarePOS(draft, offerAmount, records) {
+        try {
+            var recordDetails = records.map(function(r) {
+                return {
+                    id: r.id,
+                    artist: r.artist || 'Unknown',
+                    title: r.title || 'Unknown',
+                    price: r.store_price || 0
+                };
+            });
+
+            console.log('📋 sendBillToSquarePOS: sending request');
+            var response = await fetch(window.AppConfig.baseUrl + '/api/square/bill-of-sale', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    draft_id: draft.draft_id,
+                    seller_name: draft.seller_name || '',
+                    offer_amount: offerAmount,
+                    records: recordDetails,
+                    signature_method: 'square'
+                })
+            });
+            var data = await response.json();
+            console.log('📋 sendBillToSquarePOS: response', data);
+
+            if (data.status === 'success') {
+                showToast('✅ Bill of Sale sent to Square POS. Customer can sign on terminal.', 'success');
+                playSound('success');
+            } else {
+                showToast('⚠️ Could not send to Square POS: ' + (data.error || 'Unknown error'), 'warning');
+            }
+        } catch (error) {
+            console.error('Error sending to Square POS:', error);
+            showToast('⚠️ Could not send to Square POS: ' + error.message, 'warning');
+        }
     }
 
-    function showDraftStatus(message, type) {
-        var el = draftStatusMessage || document.getElementById('draft-status-message');
-        if (!el) return;
-        type = type || 'info';
-        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        el.className = 'status-message status-' + type;
-        el.style.display = 'block';
-        setTimeout(function() { el.style.display = 'none'; }, 5000);
+    function generateBillOfSale(draft, offerAmount, records) {
+        var now = new Date();
+        var dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        var timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+        var bill = 'PIGSTYLE MUSIC\n';
+        bill += '====================\n';
+        bill += 'BILL OF SALE\n';
+        bill += dateStr + ' ' + timeStr + '\n\n';
+        bill += 'Purchase #: ' + draft.draft_id + '\n';
+        bill += 'Seller: ' + (draft.seller_name || '—') + '\n';
+        if (draft.seller_contact) {
+            bill += 'Contact: ' + draft.seller_contact + '\n';
+        }
+        bill += 'Description: ' + (draft.description || '—') + '\n';
+        bill += '\n';
+        bill += 'ITEMS:\n';
+        bill += '--------------------\n';
+
+        var totalValue = 0;
+        for (var i = 0; i < records.length; i++) {
+            var record = records[i];
+            var price = record.store_price || 0;
+            var itemLine = record.artist + ' - ' + record.title;
+            var padding = Math.max(1, 30 - itemLine.length);
+            bill += itemLine;
+            bill += ' '.repeat(padding);
+            bill += '$' + price.toFixed(2) + '\n';
+            totalValue += price;
+        }
+
+        bill += '--------------------\n';
+        bill += 'Total Value'.padEnd(25) + ' $' + totalValue.toFixed(2) + '\n';
+        bill += 'Offer Amount'.padEnd(25) + ' $' + offerAmount.toFixed(2) + '\n';
+        bill += '\n';
+        bill += 'Seller Signature: ____________________\n';
+        bill += 'Store Rep: ____________________\n';
+        bill += '\n';
+        bill += '---\n';
+        bill += 'PigStyle Music\n';
+        bill += 'Thank you for your business!\n';
+
+        return bill;
     }
 
-    function refreshDraftDropdown() {
-        loadAllDrafts();
-        showToast('🔄 Drafts refreshed.', 'info');
+    function refreshPurchases() {
+        loadPurchasesTable();
+        showToast('🔄 Purchases refreshed.', 'info');
     }
 
     // ========== Toggle Functions for Sub-Panels ==========
@@ -2090,8 +1979,8 @@
                     theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Action</th></tr>';
                 }
             } else {
-                if (currentDraftId && currentDraftRecords.length > 0) {
-                    theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th></tr>';
+                if (selectedPurchaseId && currentPurchaseRecords.length > 0) {
+                    theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th><th>Action</th></tr>';
                 } else {
                     theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th></tr>';
                 }
@@ -2117,10 +2006,10 @@
         if (pageRecords.length === 0) {
             var msg = 'No records found';
             if (currentSearchMode === 'add' && currentMode !== 'search') {
-                if (currentDraftId) {
-                    msg = 'No records linked to this draft. Search Discogs to add records.';
+                if (selectedPurchaseId) {
+                    msg = 'No records linked to this purchase. Search Discogs to add records.';
                 } else {
-                    msg = 'No records linked to a draft. Create or select a draft above.';
+                    msg = 'No purchase selected. Click a row in the purchases table above.';
                 }
             }
             if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records.';
@@ -2141,7 +2030,7 @@
             }
             var colCount = currentSearchMode === 'discogs_orders' ? 10 :
                              (currentSearchMode === 'refund' ? 7 :
-                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 10) :
+                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : (selectedPurchaseId ? 11 : 10)) :
                              (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
                              (currentSearchMode === 'delete' ? 6 : 7)))));
@@ -2242,6 +2131,13 @@
                     rowHtml += '<td>' + escapeHtml(discCondition) + '</td>';
                     rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
                     rowHtml += '<td>' + created + '</td>';
+                    
+                    // Add a "Remove from Purchase" button if a purchase is selected
+                    if (selectedPurchaseId) {
+                        rowHtml += '<td><button class="btn btn-sm btn-danger" onclick="removeRecordFromPurchase(' + id + ')"><i class="fas fa-times"></i></button></td>';
+                    } else {
+                        rowHtml += '<td></td>';
+                    }
                 } else if (currentSearchMode === 'scan') {
                     var id = record.id;
                     var artist = record.artist || 'Unknown';
@@ -2388,6 +2284,7 @@
         }
         recordsTableBody.innerHTML = tbodyHtml;
 
+        // Event listeners for range buttons
         document.querySelectorAll('.btn-from').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var index = parseInt(this.dataset.index);
@@ -2401,6 +2298,7 @@
             });
         });
 
+        // Add record from Discogs search results
         if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
             document.querySelectorAll('.btn-add-record-from-search').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -2431,6 +2329,7 @@
             }
         }
 
+        // Post single record to Discogs
         if (currentSearchMode === 'discogs') {
             document.querySelectorAll('.post-single-btn').forEach(function(btn) {
                 btn.addEventListener('click', function(e) {
@@ -2451,6 +2350,7 @@
             });
         }
 
+        // Checkout add/remove
         if (currentSearchMode === 'checkout') {
             document.querySelectorAll('.add-checkout-item').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -2466,6 +2366,7 @@
             });
         }
 
+        // Discogs orders pigstyle ID assignment
         if (currentSearchMode === 'discogs_orders') {
             document.querySelectorAll('.pigstyle-id-input').forEach(function(input) {
                 input.addEventListener('change', function() {
@@ -2518,6 +2419,25 @@
         }
 
         updateSelectionCount();
+    }
+
+    // ========== Remove Record from Purchase ==========
+    async function removeRecordFromPurchase(recordId) {
+        if (!selectedPurchaseId) {
+            showStatus('No purchase selected.', 'error');
+            return;
+        }
+        if (!confirm('Remove this record from the purchase? The record will still exist but will no longer be linked to purchase #' + selectedPurchaseId + '.')) {
+            return;
+        }
+        try {
+            await apiRequest('PUT', '/records/' + recordId, { batch_id: null });
+            showStatus('✅ Record removed from purchase.', 'success');
+            await loadRecordsForPurchase(selectedPurchaseId);
+            await loadPurchasesTable();
+        } catch (error) {
+            showStatus('Error removing record: ' + error.message, 'error');
+        }
     }
 
     // ========== Helper: lookup barcode for order item ==========
@@ -2910,14 +2830,12 @@
         updateSelectionCount();
         showStatus('Selection cleared', 'info');
     }
-    
+
     // ========== Add Record from Discogs ==========
     async function addRecordFromDiscogs(row, discogsRecord) {
-        // ============================================================
-        //  BLOCK: No draft selected → cannot add record
-        // ============================================================
-        if (!currentDraftId) {
-            showStatus('⚠️ Please select an active Inventory Purchase Draft from the dropdown before adding records.', 'error');
+        // ===== BLOCK: No purchase selected =====
+        if (!selectedPurchaseId) {
+            showStatus('⚠️ Please select a purchase from the table before adding records.', 'error');
             playSound('error');
             return;
         }
@@ -2934,7 +2852,6 @@
         var discId = null;
         var notes = notesInput ? notesInput.value.trim() : '';
 
-        // Use defaults if active
         if (defaultParamsActive) {
             sleeveId = defaultParams.sleeveConditionId;
             discId = defaultParams.discConditionId;
@@ -2942,7 +2859,6 @@
             consignorId = defaultParams.consignorId;
         }
 
-        // Override with values from the row (if present)
         if (priceInput && priceInput.value) {
             var val = parseFloat(priceInput.value);
             if (!isNaN(val) && val > 0) price = val;
@@ -2960,7 +2876,6 @@
             if (!isNaN(val)) discId = val;
         }
 
-        // Validate required fields
         if (!sleeveId || !discId) {
             showStatus('Please select sleeve and disc conditions (or set defaults)', 'warning');
             return;
@@ -2970,7 +2885,6 @@
             return;
         }
 
-        // Build the record payload
         var recordData = {
             artist: discogsRecord.artist,
             title: discogsRecord.title,
@@ -2983,20 +2897,16 @@
             consignor_id: consignorId,
             status_id: 1,
             notes: notes,
-            // ===== CRITICAL: link to the active draft =====
-            batch_id: currentDraftId
+            batch_id: selectedPurchaseId
         };
 
-        // Send to backend
         var result = await apiRequest('POST', '/records', recordData);
-        showStatus('✅ Record #' + result.record.id + ' added successfully to draft #' + currentDraftId + '!', 'success');
+        showStatus('✅ Record #' + result.record.id + ' added successfully to purchase #' + selectedPurchaseId + '!', 'success');
         
-        // Reload the current draft's records
-        if (currentDraftId) {
-            await loadRecordsForDraft(currentDraftId);
-        }
+        // Reload records for this purchase
+        await loadRecordsForPurchase(selectedPurchaseId);
+        await loadPurchasesTable();
         
-        // Clear the search field and refocus
         if (searchInput) {
             searchInput.focus();
             searchInput.select();
@@ -3005,7 +2915,6 @@
         clearSearch();
         await loadStats();
     }
-
 
     // ========== CONSOLIDATED SEARCH ==========
     function performSearch(term) {
@@ -3384,8 +3293,8 @@
         if (currentSearchMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
-            if (currentDraftId) {
-                loadRecordsForDraft(currentDraftId);
+            if (selectedPurchaseId) {
+                loadRecordsForPurchase(selectedPurchaseId);
             } else {
                 filteredRecords = [];
                 totalRecords = 0;
@@ -4309,10 +4218,9 @@
             var recordIds = records.map(function(r) { return r.id; });
             var titles = records.map(function(r) { return r.artist + ' - ' + r.title; });
 
-            // ========== ADD PAYMENT ENTRY FOR SQUARE ==========
+            // ADD PAYMENT ENTRY FOR SQUARE
             var squareAmount = checkoutTotal;
             addPaymentEntry('Card (Square)', squareAmount);
-            // ========== END ADD PAYMENT ENTRY ==========
 
             var response = await fetch(window.AppConfig.baseUrl + '/api/square/terminal/checkout', {
                 method: 'POST',
@@ -4423,7 +4331,7 @@
         }, 2000);
     }
 
-    // ========== MODIFIED: Complete Checkout with Sale Recording ==========
+    // ========== Complete Checkout with Sale Recording ==========
     async function completeCheckout() {
         console.log('🛒 completeCheckout called');
         console.log('🛒 checkoutRemaining: ' + checkoutRemaining);
@@ -4472,7 +4380,7 @@
         var orderId = generateOrderId();
         var totalAmount = 0;
 
-        // ========== NEW: Create sale journal entry ==========
+        // ===== NEW: Create sale journal entry =====
         var paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
         var paymentMethodMap = {
             'Cash': 'cash',
@@ -4519,7 +4427,6 @@
             console.error('❌ Error creating sale journal entry:', err);
             // Continue with checkout even if accounting fails
         }
-        // ========== END NEW SECTION ==========
 
         for (var i = 0; i < regularRecords.length; i++) {
             var record = regularRecords[i];
@@ -5119,237 +5026,6 @@
         }
     }
 
-    // ========== DRAFT PURCHASE FUNCTIONS (Accept/Decline) ==========
-
-    async function acceptDraft() {
-        if (!currentDraftId) {
-            showToast('No draft selected.', 'error');
-            showDraftStatus('No draft selected.', 'error');
-            return;
-        }
-
-        var draft = await fetchDraftDetails(currentDraftId);
-        if (!draft) {
-            showToast('Draft not found.', 'error');
-            return;
-        }
-
-        var offerAmount = draftOfferAmount ? parseFloat(draftOfferAmount.value) : 0;
-        if (isNaN(offerAmount) || offerAmount <= 0) {
-            showToast('Please enter a valid offer amount.', 'error');
-            showDraftStatus('Please enter a valid offer amount.', 'error');
-            return;
-        }
-
-        var signatureMethod = confirm('Square POS signature? Click OK for Square POS, Cancel for Print & Upload.');
-        console.log('📋 acceptDraft: signatureMethod = ' + (signatureMethod ? 'square' : 'upload'));
-
-        var recordIds = currentDraftRecords.map(function(r) { return r.id; });
-        if (recordIds.length === 0) {
-            showToast('No records linked to this draft.', 'error');
-            showDraftStatus('No records linked to this draft.', 'error');
-            return;
-        }
-
-        var requestBody = {
-            offer_amount: offerAmount,
-            signature_method: signatureMethod ? 'square' : 'upload',
-            record_ids: recordIds
-        };
-
-        try {
-            console.log('📋 acceptDraft: sending PUT to /api/purchases/draft/' + currentDraftId);
-            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + currentDraftId, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-            });
-            var data = await response.json();
-            console.log('📋 acceptDraft: response', data);
-
-            if (data.status === 'success') {
-                if (currentDraftRecords.length > 0) {
-                    await generatePDF(currentDraftRecords);
-                    showToast('📄 Price tags generated for ' + currentDraftRecords.length + ' records.', 'success');
-                }
-
-                showToast('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
-                showDraftStatus('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
-                playSound('success');
-
-                if (signatureMethod) {
-                    await sendBillToSquarePOS(draft, offerAmount, currentDraftRecords);
-                } else {
-                    var billText = generateBillOfSale(draft, offerAmount, currentDraftRecords);
-                    downloadReceipt(billText, 'bill_of_sale_' + currentDraftId + '.txt');
-                    showToast('📄 Bill of Sale downloaded. Have customer sign, take photo, and upload.', 'info');
-                    showDraftStatus('📄 Bill of Sale downloaded. Have customer sign, take photo, and upload.', 'info');
-                }
-
-                await loadAllDrafts();
-                showDraftFormUI();
-
-            } else {
-                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                playSound('error');
-            }
-        } catch (error) {
-            console.error('❌ acceptDraft error:', error);
-            showToast('❌ Error: ' + error.message, 'error');
-            showDraftStatus('❌ Error: ' + error.message, 'error');
-            playSound('error');
-        }
-    }
-
-    async function fetchDraftDetails(draftId) {
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + draftId, {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            if (!response.ok) return null;
-            var data = await response.json();
-            return data.status === 'success' ? data.draft : null;
-        } catch (error) {
-            console.error('Error fetching draft details:', error);
-            return null;
-        }
-    }
-
-    async function declineDraft() {
-        if (!currentDraftId) {
-            showToast('No draft selected.', 'error');
-            showDraftStatus('No draft selected.', 'error');
-            return;
-        }
-
-        var recordCount = currentDraftRecords.length;
-
-        if (!confirm('Decline this draft? This will delete ALL ' + recordCount + ' linked records. This cannot be undone.')) {
-            return;
-        }
-
-        try {
-            console.log('📋 declineDraft: sending DELETE to /api/purchases/draft/' + currentDraftId);
-            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + currentDraftId, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            var data = await response.json();
-            console.log('📋 declineDraft: response', data);
-
-            if (data.status === 'success') {
-                showToast('✅ Draft declined. ' + (data.deleted_count || 0) + ' records deleted.', 'success');
-                showDraftStatus('✅ Draft declined. ' + (data.deleted_count || 0) + ' records deleted.', 'success');
-                playSound('success');
-
-                currentDraftRecords = [];
-                await loadAllDrafts();
-                showDraftFormUI();
-
-            } else {
-                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                playSound('error');
-            }
-        } catch (error) {
-            console.error('❌ declineDraft error:', error);
-            showToast('❌ Error: ' + error.message, 'error');
-            showDraftStatus('❌ Error: ' + error.message, 'error');
-            playSound('error');
-        }
-    }
-
-    async function sendBillToSquarePOS(draft, offerAmount, records) {
-        try {
-            var recordDetails = records.map(function(r) {
-                return {
-                    id: r.id,
-                    artist: r.artist || 'Unknown',
-                    title: r.title || 'Unknown',
-                    price: r.store_price || 0
-                };
-            });
-
-            console.log('📋 sendBillToSquarePOS: sending request');
-            var response = await fetch(window.AppConfig.baseUrl + '/api/square/bill-of-sale', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    draft_id: currentDraftId,
-                    seller_name: draft.seller_name || '',
-                    offer_amount: offerAmount,
-                    records: recordDetails,
-                    signature_method: 'square'
-                })
-            });
-            var data = await response.json();
-            console.log('📋 sendBillToSquarePOS: response', data);
-
-            if (data.status === 'success') {
-                showToast('✅ Bill of Sale sent to Square POS. Customer can sign on terminal.', 'success');
-                showDraftStatus('✅ Bill of Sale sent to Square POS. Customer can sign on terminal.', 'success');
-                playSound('success');
-            } else {
-                showToast('⚠️ Could not send to Square POS: ' + (data.error || 'Unknown error'), 'warning');
-                showDraftStatus('⚠️ Could not send to Square POS: ' + (data.error || 'Unknown error'), 'warning');
-            }
-        } catch (error) {
-            console.error('Error sending to Square POS:', error);
-            showToast('⚠️ Could not send to Square POS: ' + error.message, 'warning');
-            showDraftStatus('⚠️ Could not send to Square POS: ' + error.message, 'warning');
-        }
-    }
-
-    function generateBillOfSale(draft, offerAmount, records) {
-        var now = new Date();
-        var dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        var timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-        var bill = 'PIGSTYLE MUSIC\n';
-        bill += '====================\n';
-        bill += 'BILL OF SALE\n';
-        bill += dateStr + ' ' + timeStr + '\n\n';
-        bill += 'Draft ID: ' + currentDraftId + '\n';
-        bill += 'Seller: ' + (draft.seller_name || '—') + '\n';
-        if (draft.seller_contact) {
-            bill += 'Contact: ' + draft.seller_contact + '\n';
-        }
-        bill += 'Description: ' + (draft.description || '—') + '\n';
-        bill += '\n';
-        bill += 'ITEMS:\n';
-        bill += '--------------------\n';
-
-        var totalValue = 0;
-        for (var i = 0; i < records.length; i++) {
-            var record = records[i];
-            var price = record.store_price || 0;
-            var itemLine = record.artist + ' - ' + record.title;
-            var padding = Math.max(1, 30 - itemLine.length);
-            bill += itemLine;
-            bill += ' '.repeat(padding);
-            bill += '$' + price.toFixed(2) + '\n';
-            totalValue += price;
-        }
-
-        bill += '--------------------\n';
-        bill += 'Total Value'.padEnd(25) + ' $' + totalValue.toFixed(2) + '\n';
-        bill += 'Offer Amount'.padEnd(25) + ' $' + offerAmount.toFixed(2) + '\n';
-        bill += '\n';
-        bill += 'Seller Signature: ____________________\n';
-        bill += 'Store Rep: ____________________\n';
-        bill += '\n';
-        bill += '---\n';
-        bill += 'PigStyle Music\n';
-        bill += 'Thank you for your business!\n';
-
-        return bill;
-    }
-
     // ========== Pagination ==========
     function renderPagination() {
         var paginationEl = document.querySelector('.pagination');
@@ -5558,13 +5234,24 @@
 
         cancelRangeSelection();
 
+        // ===== NEW: Set active container =====
+        setActiveMode(newMode);
+
+        // ===== CLEAR PURCHASE SELECTION IF NOT IN ADD MODE =====
+        if (newMode !== 'add') {
+            if (selectedPurchaseId) {
+                clearPurchaseSelection();
+            }
+            if (metadataPanel) metadataPanel.style.display = 'none';
+        }
+
         if (newMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
             populateDefaultParamSelects();
-            loadAllDrafts();
-            if (!currentDraftId) {
-                showDraftFormUI();
+            loadPurchasesTable();
+            if (!selectedPurchaseId) {
+                clearPurchaseSelection();
             }
         } else if (newMode === 'scan') {
             filteredRecords = [];
@@ -5697,7 +5384,6 @@
             currentOrderItems = [];
         }
 
-        showPanelsForMode(newMode);
         updateSelectionCount();
         renderTablePage();
     }
@@ -5843,7 +5529,7 @@
         });
 
         clearSearchBtn.addEventListener('click', clearSearch);
- 
+
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
             currentPage = 1;
@@ -5871,16 +5557,8 @@
         completeActionBtn.addEventListener('click', handleCompleteAction);
         console.log('🔘 completeActionBtn click handler attached in init');
 
-        if (draftDropdown) {
-            draftDropdown.addEventListener('change', function() {
-                var draftId = this.value;
-                if (draftId) {
-                    selectDraft(draftId);
-                } else {
-                    showDraftFormUI();
-                }
-            });
-        }
+        // Load purchases table on init
+        await loadPurchasesTable();
 
         if (discogsLocationSelect) {
             discogsLocationSelect.addEventListener('change', function() {
@@ -6084,13 +5762,11 @@
     window.openBillModal = openBillModal;
     window.closeBillModal = closeBillModal;
 
-    // ========== Expose globals ==========
+    // ========== Expose all globals ==========
     window.refreshDiscogsLocations = loadDiscogsLocations;
-
     window.closeDiscogsPostModal = closeDiscogsPostModal;
     window.showDiscogsPostModal = showDiscogsPostModal;
     window.closeRefundModal = closeRefundModal;
-
     window.lookupDebtorForCheckout = lookupDebtorForCheckout;
     window.applyDebtorToCheckout = applyDebtorToCheckout;
     window.addPaymentEntry = addPaymentEntry;
@@ -6100,24 +5776,30 @@
     window.removeFromCheckout = removeFromCheckout;
     window.checkSquareAvailability = checkSquareAvailability;
     window.processSquarePayment = processSquarePayment;
-
     window.showCustomItemModal = showCustomItemModal;
     window.closeCustomItemModal = closeCustomItemModal;
     window.addBernieItem = addBernieItem;
-
     window.toggleInventorySetupPanel = toggleInventorySetupPanel;
     window.toggleDefaultParamsSub = toggleDefaultParamsSub;
     window.togglePurchaseSub = togglePurchaseSub;
-    window.createNewDraft = createNewDraft;
-    window.saveDraft = saveDraft;
-    window.refreshDraftDropdown = refreshDraftDropdown;
-    window.clearDraftForm = clearDraftForm;
+    window.selectPurchase = selectPurchase;
+    window.savePurchaseMetadata = savePurchaseMetadata;
+    window.uploadBillForPurchase = uploadBillForPurchase;
+    window.deletePurchase = deletePurchase;
+    window.deleteSelectedPurchase = deleteSelectedPurchase;
+    window.clearPurchaseSelection = clearPurchaseSelection;
+    window.createNewPurchase = createNewPurchase;
     window.acceptDraft = acceptDraft;
-    window.declineDraft = declineDraft;
-    window.selectDraft = selectDraft;
-
+    window.refreshPurchases = refreshPurchases;
+    window.loadPurchasesTable = loadPurchasesTable;
     window.showCheckoutModal = showCheckoutModal;
+    window.removeRecordFromPurchase = removeRecordFromPurchase;
+
+    // ===== EXPOSE applyDefaultParams and clearDefaultParams =====
+    window.applyDefaultParams = applyDefaultParams;
+    window.clearDefaultParams = clearDefaultParams;
 
     console.log('✅ All functions exposed to window');
+    console.log('✅ applyDefaultParams and clearDefaultParams are now globally available.');
 
 })();
