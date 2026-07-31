@@ -9697,7 +9697,7 @@ def get_all_drafts():
             else:
                 status = 'draft'
         else:
-            status = 'complete'  # Older purchases with no records but has journal lines
+            status = 'draft'  # Older purchases with no records but has journal lines
         
         d_dict['seller_name'] = seller
         d_dict['date'] = date
