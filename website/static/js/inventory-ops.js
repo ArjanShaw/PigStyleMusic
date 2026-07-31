@@ -636,64 +636,76 @@
         }
     }
 
-    // ========== UNIFIED MODE PANEL MANAGEMENT ==========
     function showPanelsForMode(mode) {
-        console.log('📐 showPanelsForMode called with mode: ' + mode);
+    console.log('📐 showPanelsForMode called with mode: ' + mode);
 
-        for (var key in panelElements) {
-            var element = panelElements[key];
-            if (element) {
-                element.style.display = 'none';
-                console.log('📐 Hidden panel: ' + key);
-            }
-        }
-
-        var modeConfig = MODE_PANELS[mode];
-        if (modeConfig) {
-            console.log('📐 modeConfig found for ' + mode + ':', modeConfig);
-            modeConfig.panels.forEach(function(panelKey) {
-                var element = panelElements[panelKey];
-                if (element) {
-                    element.style.display = 'block';
-                    console.log('📐 Showing panel: ' + panelKey);
-                } else {
-                    console.warn('📐 Panel element not found: ' + panelKey);
-                }
-            });
-        } else {
-            console.warn('📐 No modeConfig found for ' + mode);
-        }
-
-        if (mode === 'scan' && scanLocationBuilder) {
-            populateScanGenreDropdown();
-            updateScanLocationPreview();
-            updateScanCounter();
-        }
-
-        if (mode === 'discogs' && discogsMarkupUi) {
-            discogsMarkupUi.style.display = 'block';
-        }
-
-        if (searchInput) {
-            var placeholders = {
-                'add': 'Search Discogs...',
-                'scan': 'Scan barcode here...',
-                'discogs': 'Search within records...',
-                'delete': 'Search records...',
-                'checkout': 'Search records...',
-                'discogs_orders': 'Search orders...',
-                'refund': 'Search sold records by artist, title, or barcode...'
-            };
-            searchInput.placeholder = placeholders[mode] || 'Search...';
-            console.log('📐 Search placeholder set to: ' + searchInput.placeholder);
-        }
-
-        updateCompleteButton(mode);
-
-        if (mode === 'add') {
-            loadAllDrafts();
+    for (var key in panelElements) {
+        var element = panelElements[key];
+        if (element) {
+            element.style.display = 'none';
+            console.log('📐 Hidden panel: ' + key);
         }
     }
+
+    var modeConfig = MODE_PANELS[mode];
+    if (modeConfig) {
+        console.log('📐 modeConfig found for ' + mode + ':', modeConfig);
+        modeConfig.panels.forEach(function(panelKey) {
+            var element = panelElements[panelKey];
+            if (element) {
+                element.style.display = 'block';
+                console.log('📐 Showing panel: ' + panelKey);
+            } else {
+                console.warn('📐 Panel element not found: ' + panelKey);
+            }
+        });
+    } else {
+        console.warn('📐 No modeConfig found for ' + mode);
+    }
+
+    if (mode === 'scan' && scanLocationBuilder) {
+        populateScanGenreDropdown();
+        updateScanLocationPreview();
+        updateScanCounter();
+    }
+
+    if (mode === 'discogs' && discogsMarkupUi) {
+        discogsMarkupUi.style.display = 'block';
+    }
+
+    // ========== SHOW/HIDE CHECKOUT MODE CONTROLS ==========
+    var checkoutControls = document.getElementById('checkout-mode-controls');
+    if (checkoutControls) {
+        if (mode === 'checkout') {
+            checkoutControls.style.display = 'block';
+            console.log('📐 Checkout controls shown');
+        } else {
+            checkoutControls.style.display = 'none';
+            console.log('📐 Checkout controls hidden');
+        }
+    }
+
+    if (searchInput) {
+        var placeholders = {
+            'add': 'Search Discogs...',
+            'scan': 'Scan barcode here...',
+            'discogs': 'Search within records...',
+            'delete': 'Search records...',
+            'checkout': 'Search records...',
+            'discogs_orders': 'Search orders...',
+            'refund': 'Search sold records by artist, title, or barcode...'
+        };
+        searchInput.placeholder = placeholders[mode] || 'Search...';
+        console.log('📐 Search placeholder set to: ' + searchInput.placeholder);
+    }
+
+    updateCompleteButton(mode);
+
+    if (mode === 'add') {
+        loadAllDrafts();
+    }
+}
+
 
     function updateCompleteButton(mode) {
         console.log('🔘 updateCompleteButton called with mode: ' + mode);

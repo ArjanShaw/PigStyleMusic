@@ -1894,6 +1894,22 @@
             </div>
         </div>
 
+        <!-- ========== CHECKOUT MODE CONTROLS (only visible in checkout mode) ========== -->
+        <div id="checkout-mode-controls" class="search-section" style="display: none; margin-bottom: 15px; background: #e3f2fd; border-left: 4px solid #007bff;">
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <span style="font-weight: 600; color: #004085;"><i class="fas fa-shopping-cart"></i> Checkout Actions:</span>
+                <button class="btn btn-info" onclick="window.showCustomItemModal()">
+                    <i class="fas fa-plus-circle"></i> Custom Item
+                </button>
+                <button class="btn btn-primary" onclick="window.addBernieItem()">
+                    <i class="fas fa-donate"></i> Bernie ($0.99)
+                </button>
+                <span style="font-size: 12px; color: #666; margin-left: 10px;">
+                    <i class="fas fa-info-circle"></i> Add custom items or Bernie donations to the checkout cart
+                </span>
+            </div>
+        </div>
+
         <!-- FILTER GROUP (mode-specific) -->
         <div id="filter-group" style="display: none; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
             <div id="discogs-filters" style="display: none;">
