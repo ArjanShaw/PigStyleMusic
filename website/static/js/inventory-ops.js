@@ -34,7 +34,7 @@
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
     // ========== Mode Control Panels ==========
-    const paramsPurchasePanel = document.getElementById('params-purchase-panel');
+    const inventorySetupPanel = document.getElementById('inventory-setup-panel');
     const scanLocationBuilder = document.getElementById('scan-location-builder');
     const filterGroup = document.getElementById('filter-group');
     const discogsFilters = document.getElementById('discogs-filters');
@@ -43,23 +43,8 @@
     const checkoutFilters = document.getElementById('checkout-filters');
     const discogsOrdersFilters = document.getElementById('discogs-orders-filters');
 
-    console.log('🔍 DOM Elements found:', {
-        paramsPurchasePanel: !!paramsPurchasePanel,
-        scanLocationBuilder: !!scanLocationBuilder,
-        filterGroup: !!filterGroup,
-        discogsFilters: !!discogsFilters,
-        discogsMarkupUi: !!discogsMarkupUi,
-        deleteFilters: !!deleteFilters,
-        checkoutFilters: !!checkoutFilters,
-        discogsOrdersFilters: !!discogsOrdersFilters,
-        completeActionBtn: !!completeActionBtn
-    });
-
-    // ========== Draft Purchase Panel Elements ==========
-    const draftPanelBody = document.getElementById('params-purchase-body');
-    const draftToggleIcon = document.getElementById('params-purchase-toggle-icon');
-    const draftFormSection = document.getElementById('draft-form-section');
-    const activeDraftSection = document.getElementById('active-draft-section');
+    // ========== Draft Dropdown Elements ==========
+    const draftDropdown = document.getElementById('draft-dropdown');
     const draftSellerName = document.getElementById('draft-seller-name');
     const draftSellerContact = document.getElementById('draft-seller-contact');
     const draftDescription = document.getElementById('draft-description');
@@ -71,6 +56,9 @@
     const draftOfferAmount = document.getElementById('draft-offer-amount');
     const draftStatusMessage = document.getElementById('draft-status-message');
     const draftActionStatus = document.getElementById('draft-action-status');
+    const activeDraftSection = document.getElementById('active-draft-section');
+    const draftFormSection = document.getElementById('draft-form-section');
+    const purchaseBadge = document.getElementById('purchase-badge');
 
     // ========== Scan Location Builder Elements ==========
     const scanGenreSelect = document.getElementById('scan-genre');
@@ -182,9 +170,8 @@
     let scanCounter = 0;
 
     // ========== Draft Purchase State ==========
-    let activeDraft = null;
-    let draftLinkedRecordIds = [];
-    let draftPanelExpanded = true;
+    let currentDraftId = null;
+    let currentDraftRecords = [];
 
     // ========== Audio ==========
     let audioContext = null;
@@ -192,7 +179,7 @@
     // ========== Mode Panel Configuration ==========
     const MODE_PANELS = {
         add: {
-            panels: ['paramsPurchasePanel'],
+            panels: ['inventorySetupPanel'],
             visible: true
         },
         scan: {
@@ -223,7 +210,7 @@
 
     // Panel visibility map
     const panelElements = {
-        paramsPurchasePanel: paramsPurchasePanel,
+        inventorySetupPanel: inventorySetupPanel,
         scanLocationBuilder: scanLocationBuilder,
         filterGroup: filterGroup,
         discogsFilters: discogsFilters,
@@ -247,61 +234,61 @@
         el.textContent = message;
         el.className = 'status-message status-' + (type || 'info');
         el.style.display = 'block';
-        setTimeout(() => { el.style.display = 'none'; }, 5000);
+        setTimeout(function() { el.style.display = 'none'; }, 5000);
     }
 
     function showToast(message, type) {
-        console.log(`🍞 TOAST [${type}]: ${message}`);
+        console.log('🍞 TOAST [' + type + ']: ' + message);
         showStatus(message, type);
     }
 
     function showDiscogsStatus(message, type) {
-        const el = document.getElementById('discogs-status-message');
+        var el = document.getElementById('discogs-status-message');
         if (!el) return;
         type = type || 'info';
-        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
         el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
         el.className = 'status-message status-' + type;
         el.style.display = 'block';
-        setTimeout(() => { if (el) el.style.display = 'none'; }, 8000);
+        setTimeout(function() { if (el) el.style.display = 'none'; }, 8000);
     }
 
     function updateDiscogsOrdersStatus(message, type) {
         if (!discogsOrdersStatus) return;
         type = type || 'info';
-        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
         discogsOrdersStatus.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        discogsOrdersStatus.className = `status-message status-${type}`;
+        discogsOrdersStatus.className = 'status-message status-' + type;
         discogsOrdersStatus.style.display = 'block';
-        setTimeout(() => {
+        setTimeout(function() {
             if (discogsOrdersStatus) discogsOrdersStatus.style.display = 'none';
         }, 8000);
     }
 
     function getStatusName(statusId) {
-        const map = { 1: 'New', 2: 'Active', 3: 'Sold', 4: 'Sold on Discogs' };
+        var map = { 1: 'New', 2: 'Active', 3: 'Sold', 4: 'Sold on Discogs' };
         return map[statusId] || 'Unknown';
     }
 
     function getStatusClass(statusId) {
-        const map = { 1: 'new', 2: 'active', 3: 'sold', 4: 'discogs' };
+        var map = { 1: 'new', 2: 'active', 3: 'sold', 4: 'discogs' };
         return map[statusId] || '';
     }
 
     function generateOrderId() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            var r = Math.random() * 16 | 0;
+            var v = c === 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
     }
 
     function getLocalMSTDate() {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+        var now = new Date();
+        var year = now.getFullYear();
+        var month = String(now.getMonth() + 1).padStart(2, '0');
+        var day = String(now.getDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
     }
 
     function hasConsignor(record) {
@@ -316,11 +303,11 @@
     }
 
     function meetsLastSeenFilter(record) {
-        const cutoffDate = getLastSeenCutoffDate();
+        var cutoffDate = getLastSeenCutoffDate();
         if (!cutoffDate) return true;
         if (!record.last_seen) return false;
         try {
-            const lastSeenDate = record.last_seen.split('T')[0];
+            var lastSeenDate = record.last_seen.split('T')[0];
             return lastSeenDate >= cutoffDate;
         } catch (e) {
             return false;
@@ -330,21 +317,21 @@
     function formatLastSeen(lastSeen) {
         if (!lastSeen) return '<span style="color: #dc3545;">Never</span>';
         try {
-            const lastSeenDate = new Date(lastSeen);
-            const today = new Date();
-            const daysSince = Math.floor((today - lastSeenDate) / (1000 * 60 * 60 * 24));
-            const cutoffDate = getLastSeenCutoffDate();
+            var lastSeenDate = new Date(lastSeen);
+            var today = new Date();
+            var daysSince = Math.floor((today - lastSeenDate) / (1000 * 60 * 60 * 24));
+            var cutoffDate = getLastSeenCutoffDate();
             if (cutoffDate) {
-                const cutoffDateObj = new Date(cutoffDate);
+                var cutoffDateObj = new Date(cutoffDate);
                 if (lastSeenDate < cutoffDateObj) {
-                    return `<span style="color: #dc3545;" title="Before cutoff date">${daysSince} days ago (⚠️)</span>`;
+                    return '<span style="color: #dc3545;" title="Before cutoff date">' + daysSince + ' days ago (⚠️)</span>';
                 }
             }
             if (daysSince === 0) return '<span style="color: #28a745;">Today</span>';
             if (daysSince === 1) return '<span style="color: #28a745;">Yesterday</span>';
-            if (daysSince <= 7) return `<span style="color: #ffc107;">${daysSince} days ago</span>`;
-            if (daysSince <= 30) return `<span style="color: #fd7e14;">${daysSince} days ago</span>`;
-            return `<span style="color: #dc3545;">${daysSince} days ago</span>`;
+            if (daysSince <= 7) return '<span style="color: #ffc107;">' + daysSince + ' days ago</span>';
+            if (daysSince <= 30) return '<span style="color: #fd7e14;">' + daysSince + ' days ago</span>';
+            return '<span style="color: #dc3545;">' + daysSince + ' days ago</span>';
         } catch (e) {
             return lastSeen;
         }
@@ -357,20 +344,20 @@
             }
             if (audioContext.state === 'suspended') audioContext.resume();
 
-            const configs = {
+            var configs = {
                 beep: { freq: 800, duration: 200, type: 'sine', gain: 0.3 },
                 error: { freq: 220, duration: 600, type: 'sawtooth', gain: 0.4 },
                 success: { freq: 523.25, duration: 200, type: 'sine', gain: 0.2, notes: [523.25, 659.25, 783.99] }
             };
 
-            const config = configs[type];
+            var config = configs[type];
             if (!config) return;
 
             if (config.notes) {
-                config.notes.forEach((freq, i) => {
-                    setTimeout(() => {
-                        const osc = audioContext.createOscillator();
-                        const gain = audioContext.createGain();
+                config.notes.forEach(function(freq, i) {
+                    setTimeout(function() {
+                        var osc = audioContext.createOscillator();
+                        var gain = audioContext.createGain();
                         osc.connect(gain);
                         gain.connect(audioContext.destination);
                         osc.frequency.value = freq;
@@ -382,8 +369,8 @@
                     }, i * 100);
                 });
             } else {
-                const osc = audioContext.createOscillator();
-                const gain = audioContext.createGain();
+                var osc = audioContext.createOscillator();
+                var gain = audioContext.createGain();
                 osc.connect(gain);
                 gain.connect(audioContext.destination);
                 osc.frequency.value = config.freq;
@@ -397,11 +384,12 @@
     }
 
     // ========== Helper: Download receipt as .txt ==========
-    function downloadReceipt(text, filename = 'receipt.txt') {
-        console.log(`📄 downloadReceipt: filename=${filename}, text length=${text.length}`);
-        const blob = new Blob([text], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
+    function downloadReceipt(text, filename) {
+        filename = filename || 'receipt.txt';
+        console.log('📄 downloadReceipt: filename=' + filename + ', text length=' + text.length);
+        var blob = new Blob([text], { type: 'text/plain' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
         a.href = url;
         a.download = filename;
         document.body.appendChild(a);
@@ -413,8 +401,8 @@
 
     // ========== Consolidated API ==========
     async function apiRequest(method, endpoint, body) {
-        console.log(`🌐 apiRequest: ${method} ${endpoint}`, body || '');
-        const options = {
+        console.log('🌐 apiRequest: ' + method + ' ' + endpoint, body || '');
+        var options = {
             method: method,
             credentials: 'include',
             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -422,39 +410,39 @@
         if (body && (method === 'POST' || method === 'PUT')) {
             options.body = JSON.stringify(body);
         }
-        const res = await fetch(window.AppConfig.baseUrl + endpoint, options);
-        if (!res.ok) throw new Error(`HTTP ${res.status} on ${method} ${endpoint}`);
+        var res = await fetch(window.AppConfig.baseUrl + endpoint, options);
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' on ' + method + ' ' + endpoint);
         return res.json();
     }
 
     // ========== Config Loaders ==========
     async function loadMinimumPrice() {
-        const data = await apiRequest('GET', '/config/MIN_STORE_PRICE');
+        var data = await apiRequest('GET', '/config/MIN_STORE_PRICE');
         minimumPrice = parseFloat(data.config_value);
     }
 
     async function loadStorePriceMultiplier() {
-        const data = await apiRequest('GET', '/config/STORE_PRICE_ESTIMATED_MULTIPLIER');
+        var data = await apiRequest('GET', '/config/STORE_PRICE_ESTIMATED_MULTIPLIER');
         storePriceMultiplier = parseFloat(data.config_value);
     }
 
     async function loadConditions() {
-        const data = await apiRequest('GET', '/api/conditions');
+        var data = await apiRequest('GET', '/api/conditions');
         conditions = data.conditions;
     }
 
     async function loadConsignors() {
-        const data = await apiRequest('GET', '/users');
-        consignors = data.users.filter(u => u.role === 'consignor');
+        var data = await apiRequest('GET', '/users');
+        consignors = data.users.filter(function(u) { return u.role === 'consignor'; });
         consignorMap = {};
-        data.users.forEach(u => { consignorMap[u.id] = { initials: u.initials || '', name: u.full_name || u.username }; });
+        data.users.forEach(function(u) { consignorMap[u.id] = { initials: u.initials || '', name: u.full_name || u.username }; });
     }
 
     async function loadAccounts() {
         try {
-            const data = await apiRequest('GET', '/api/accounting/accounts');
+            var data = await apiRequest('GET', '/api/accounting/accounts');
             accounts = data.accounts || [];
-            accounts = accounts.filter(acc => acc && acc.code && acc.name);
+            accounts = accounts.filter(function(acc) { return acc && acc.code && acc.name; });
             console.log('✅ Loaded accounts:', accounts.length);
         } catch (e) {
             console.warn('Could not load accounts:', e);
@@ -464,7 +452,7 @@
 
     async function loadGenres() {
         try {
-            const data = await apiRequest('GET', '/api/genres');
+            var data = await apiRequest('GET', '/api/genres');
             genres = data.genres || [];
         } catch (e) {
             console.warn('Could not load genres:', e);
@@ -473,41 +461,40 @@
     }
 
     async function loadStats() {
-        const total = await apiRequest('GET', '/records/count');
+        var total = await apiRequest('GET', '/records/count');
         document.getElementById('total-records').textContent = total.count;
-        const newCount = await apiRequest('GET', '/records/count?status_id=1');
+        var newCount = await apiRequest('GET', '/records/count?status_id=1');
         document.getElementById('new-records-count').textContent = newCount.count;
 
-        const lastRecordData = await apiRequest('GET', '/records?limit=1&order_by=created_at&order=desc');
-        const lastRecord = lastRecordData.records && lastRecordData.records.length > 0 ? lastRecordData.records[0] : null;
+        var lastRecordData = await apiRequest('GET', '/records?limit=1&order_by=created_at&order=desc');
+        var lastRecord = lastRecordData.records && lastRecordData.records.length > 0 ? lastRecordData.records[0] : null;
         if (lastRecord) {
-            const artist = lastRecord.artist || 'Unknown';
-            const title = lastRecord.title || 'Unknown';
-            const price = lastRecord.store_price ? `$${lastRecord.store_price.toFixed(2)}` : '';
-            const shortArtist = artist.length > 20 ? artist.substring(0, 20) + '…' : artist;
-            const shortTitle = title.length > 20 ? title.substring(0, 20) + '…' : title;
-            let display = `${shortArtist} - ${shortTitle}`;
-            if (price) display += ` - ${price}`;
+            var artist = lastRecord.artist || 'Unknown';
+            var title = lastRecord.title || 'Unknown';
+            var price = lastRecord.store_price ? '$' + lastRecord.store_price.toFixed(2) : '';
+            var shortArtist = artist.length > 20 ? artist.substring(0, 20) + '…' : artist;
+            var shortTitle = title.length > 20 ? title.substring(0, 20) + '…' : title;
+            var display = shortArtist + ' - ' + shortTitle;
+            if (price) display += ' - ' + price;
             document.getElementById('last-added-record').textContent = display;
         } else {
             document.getElementById('last-added-record').textContent = 'None';
         }
 
-        const commission = await apiRequest('GET', '/api/commission-rate');
+        var commission = await apiRequest('GET', '/api/commission-rate');
         document.getElementById('commission-rate').textContent = commission.commission_rate_percent;
     }
 
     // ========== Default Parameters ==========
     function toggleDefaultParams() {
-        // This is now handled by toggleParamsPurchasePanel
-        toggleParamsPurchasePanel();
+        toggleDefaultParamsSub();
     }
 
     function loadDefaultParamsFromStorage() {
         try {
-            const stored = localStorage.getItem('defaultParams');
+            var stored = localStorage.getItem('defaultParams');
             if (stored) {
-                const params = JSON.parse(stored);
+                var params = JSON.parse(stored);
                 if (params.sleeveConditionId && defaultSleeveSelect) {
                     defaultSleeveSelect.value = params.sleeveConditionId;
                 }
@@ -538,10 +525,10 @@
     }
 
     function applyDefaultParams() {
-        const sleeveId = defaultSleeveSelect ? parseInt(defaultSleeveSelect.value) : null;
-        const discId = defaultDiscSelect ? parseInt(defaultDiscSelect.value) : null;
-        const price = defaultPriceInput ? parseFloat(defaultPriceInput.value) : null;
-        const consignorId = defaultConsignorSelect ? parseInt(defaultConsignorSelect.value) : null;
+        var sleeveId = defaultSleeveSelect ? parseInt(defaultSleeveSelect.value) : null;
+        var discId = defaultDiscSelect ? parseInt(defaultDiscSelect.value) : null;
+        var price = defaultPriceInput ? parseFloat(defaultPriceInput.value) : null;
+        var consignorId = defaultConsignorSelect ? parseInt(defaultConsignorSelect.value) : null;
 
         defaultParams = {
             sleeveConditionId: sleeveId || null,
@@ -552,19 +539,19 @@
         defaultParamsActive = true;
         saveDefaultParamsToStorage();
 
-        const rows = document.querySelectorAll('.btn-add-record-from-search');
+        var rows = document.querySelectorAll('.btn-add-record-from-search');
         if (rows.length === 0) {
             updateDefaultParamsStatus('No search results to apply defaults to', 'warning');
             return;
         }
 
-        rows.forEach(btn => {
-            const row = btn.closest('tr');
+        rows.forEach(function(btn) {
+            var row = btn.closest('tr');
             if (!row) return;
-            const sleeveSelect = row.querySelector('.sleeve-condition-select');
-            const discSelect = row.querySelector('.disc-condition-select');
-            const priceInput = row.querySelector('.price-input');
-            const consignorSelect = row.querySelector('.consignor-select');
+            var sleeveSelect = row.querySelector('.sleeve-condition-select');
+            var discSelect = row.querySelector('.disc-condition-select');
+            var priceInput = row.querySelector('.price-input');
+            var consignorSelect = row.querySelector('.consignor-select');
 
             if (sleeveSelect && defaultParams.sleeveConditionId) sleeveSelect.value = defaultParams.sleeveConditionId;
             if (discSelect && defaultParams.discConditionId) discSelect.value = defaultParams.discConditionId;
@@ -572,7 +559,7 @@
             if (consignorSelect && defaultParams.consignorId) consignorSelect.value = defaultParams.consignorId;
         });
 
-        updateDefaultParamsStatus(`Defaults applied to ${rows.length} search results`, 'success');
+        updateDefaultParamsStatus('Defaults applied to ' + rows.length + ' search results', 'success');
         renderTablePage();
     }
 
@@ -594,14 +581,14 @@
     }
 
     function updateDefaultParamsStatus(message, type) {
-        const el = document.getElementById('default-params-status');
+        var el = document.getElementById('default-params-status');
         if (!el) return;
         type = type || 'info';
-        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
         el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
         el.className = 'status-message status-' + type;
         el.style.display = 'block';
-        setTimeout(() => { if (el) el.style.display = 'none'; }, 5000);
+        setTimeout(function() { if (el) el.style.display = 'none'; }, 5000);
     }
 
     function getDefaultParamsForRecord() {
@@ -615,10 +602,10 @@
 
     function populateDefaultParamSelects() {
         if (defaultSleeveSelect) {
-            const currentVal = defaultSleeveSelect.value;
+            var currentVal = defaultSleeveSelect.value;
             defaultSleeveSelect.innerHTML = '<option value="">Select...</option>';
-            conditions.forEach(c => {
-                const opt = document.createElement('option');
+            conditions.forEach(function(c) {
+                var opt = document.createElement('option');
                 opt.value = c.id;
                 opt.textContent = c.display_name || c.condition_name;
                 defaultSleeveSelect.appendChild(opt);
@@ -626,10 +613,10 @@
             if (currentVal) defaultSleeveSelect.value = currentVal;
         }
         if (defaultDiscSelect) {
-            const currentVal = defaultDiscSelect.value;
+            var currentVal = defaultDiscSelect.value;
             defaultDiscSelect.innerHTML = '<option value="">Select...</option>';
-            conditions.forEach(c => {
-                const opt = document.createElement('option');
+            conditions.forEach(function(c) {
+                var opt = document.createElement('option');
                 opt.value = c.id;
                 opt.textContent = c.display_name || c.condition_name;
                 defaultDiscSelect.appendChild(opt);
@@ -637,12 +624,12 @@
             if (currentVal) defaultDiscSelect.value = currentVal;
         }
         if (defaultConsignorSelect) {
-            const currentVal = defaultConsignorSelect.value;
+            var currentVal = defaultConsignorSelect.value;
             defaultConsignorSelect.innerHTML = '<option value="">None</option>';
-            consignors.forEach(c => {
-                const opt = document.createElement('option');
+            consignors.forEach(function(c) {
+                var opt = document.createElement('option');
                 opt.value = c.id;
-                opt.textContent = c.username + (c.full_name ? ` (${c.full_name})` : '');
+                opt.textContent = c.username + (c.full_name ? ' (' + c.full_name + ')' : '');
                 defaultConsignorSelect.appendChild(opt);
             });
             if (currentVal) defaultConsignorSelect.value = currentVal;
@@ -651,49 +638,44 @@
 
     // ========== UNIFIED MODE PANEL MANAGEMENT ==========
     function showPanelsForMode(mode) {
-        console.log(`📐 showPanelsForMode called with mode: ${mode}`);
+        console.log('📐 showPanelsForMode called with mode: ' + mode);
 
-        // Hide all panels first
-        for (const key in panelElements) {
-            const element = panelElements[key];
+        for (var key in panelElements) {
+            var element = panelElements[key];
             if (element) {
                 element.style.display = 'none';
-                console.log(`📐 Hidden panel: ${key}`);
+                console.log('📐 Hidden panel: ' + key);
             }
         }
 
-        // Show panels for the current mode
-        const modeConfig = MODE_PANELS[mode];
+        var modeConfig = MODE_PANELS[mode];
         if (modeConfig) {
-            console.log(`📐 modeConfig found for ${mode}:`, modeConfig);
-            modeConfig.panels.forEach(panelKey => {
-                const element = panelElements[panelKey];
+            console.log('📐 modeConfig found for ' + mode + ':', modeConfig);
+            modeConfig.panels.forEach(function(panelKey) {
+                var element = panelElements[panelKey];
                 if (element) {
                     element.style.display = 'block';
-                    console.log(`📐 Showing panel: ${panelKey}`);
+                    console.log('📐 Showing panel: ' + panelKey);
                 } else {
-                    console.warn(`📐 Panel element not found: ${panelKey}`);
+                    console.warn('📐 Panel element not found: ' + panelKey);
                 }
             });
         } else {
-            console.warn(`📐 No modeConfig found for ${mode}`);
+            console.warn('📐 No modeConfig found for ' + mode);
         }
 
-        // Special handling for scan mode - populate genres
         if (mode === 'scan' && scanLocationBuilder) {
             populateScanGenreDropdown();
             updateScanLocationPreview();
             updateScanCounter();
         }
 
-        // Special handling for discogs mode - show markup UI
         if (mode === 'discogs' && discogsMarkupUi) {
             discogsMarkupUi.style.display = 'block';
         }
 
-        // Search placeholder - controlled by mode
         if (searchInput) {
-            const placeholders = {
+            var placeholders = {
                 'add': 'Search Discogs...',
                 'scan': 'Scan barcode here...',
                 'discogs': 'Search within records...',
@@ -703,27 +685,25 @@
                 'refund': 'Search sold records by artist, title, or barcode...'
             };
             searchInput.placeholder = placeholders[mode] || 'Search...';
-            console.log(`📐 Search placeholder set to: ${searchInput.placeholder}`);
+            console.log('📐 Search placeholder set to: ' + searchInput.placeholder);
         }
 
-        // Update Complete button
         updateCompleteButton(mode);
 
-        // Load draft if in add mode
-        if (mode === 'add' && !activeDraft) {
-            loadActiveDraft();
+        if (mode === 'add') {
+            loadAllDrafts();
         }
     }
 
     function updateCompleteButton(mode) {
-        console.log(`🔘 updateCompleteButton called with mode: ${mode}`);
+        console.log('🔘 updateCompleteButton called with mode: ' + mode);
         if (!completeActionBtn) {
             console.error('🔘 completeActionBtn is null!');
             return;
         }
 
-        console.log(`🔘 completeActionBtn current display: ${completeActionBtn.style.display}`);
-        console.log(`🔘 completeActionBtn current disabled: ${completeActionBtn.disabled}`);
+        console.log('🔘 completeActionBtn current display: ' + completeActionBtn.style.display);
+        console.log('🔘 completeActionBtn current disabled: ' + completeActionBtn.disabled);
 
         if (mode === 'add') {
             completeActionBtn.style.display = 'none';
@@ -757,17 +737,14 @@
             completeActionBtn.style.display = 'none';
             console.log('🔘 Unknown mode: hiding complete button');
         }
-
-        // Ensure the click handler is attached
-        console.log('🔘 completeActionBtn onclick:', completeActionBtn.onclick);
-        console.log('🔘 completeActionBtn listeners:', completeActionBtn._listeners || 'none');
     }
 
     // ========== Unified Record Loader ==========
-    async function loadRecords(options = {}) {
+    async function loadRecords(options) {
+        options = options || {};
         console.log('🔵 loadRecords called with options:', options);
         try {
-            const {
+            var {
                 statusIds,
                 location,
                 search,
@@ -783,11 +760,12 @@
                 filterBySearch = true,
                 showAllStatuses = false,
                 format = null,
-                excludeBatch = false
+                excludeBatch = false,
+                batchId = null
             } = options;
 
-            let url = '/records';
-            let params = new URLSearchParams();
+            var url = '/records';
+            var params = new URLSearchParams();
 
             if (location) {
                 url = '/api/records/by-location';
@@ -819,51 +797,54 @@
                 if (excludeBatch) {
                     params.append('exclude_batch', 'true');
                 }
+                if (batchId) {
+                    params.append('batch_id', batchId);
+                }
             }
 
-            const queryString = params.toString();
-            const fullUrl = window.AppConfig.baseUrl + url + (queryString ? '?' + queryString : '');
-            console.log(`🔵 loadRecords: fetching ${fullUrl}`);
+            var queryString = params.toString();
+            var fullUrl = window.AppConfig.baseUrl + url + (queryString ? '?' + queryString : '');
+            console.log('🔵 loadRecords: fetching ' + fullUrl);
 
-            const response = await fetch(fullUrl, {
+            var response = await fetch(fullUrl, {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             if (!response.ok) throw new Error('HTTP ' + response.status);
-            const data = await response.json();
+            var data = await response.json();
             if (data.status !== 'success') throw new Error(data.error || 'Failed to load records');
 
-            let records = data.records || [];
-            console.log(`🔵 loadRecords: API returned ${records.length} records`);
+            var records = data.records || [];
+            console.log('🔵 loadRecords: API returned ' + records.length + ' records');
 
             if (location && search && filterBySearch) {
-                const term = search.toLowerCase();
-                const before = records.length;
-                records = records.filter(r =>
-                    (r.artist && r.artist.toLowerCase().includes(term)) ||
-                    (r.title && r.title.toLowerCase().includes(term)) ||
-                    (r.barcode && r.barcode.toLowerCase().includes(term)) ||
-                    (r.catalog_number && r.catalog_number.toLowerCase().includes(term))
-                );
-                console.log(`🔵 loadRecords: location search filtered from ${before} to ${records.length}`);
+                var term = search.toLowerCase();
+                var before = records.length;
+                records = records.filter(function(r) {
+                    return (r.artist && r.artist.toLowerCase().includes(term)) ||
+                           (r.title && r.title.toLowerCase().includes(term)) ||
+                           (r.barcode && r.barcode.toLowerCase().includes(term)) ||
+                           (r.catalog_number && r.catalog_number.toLowerCase().includes(term));
+                });
+                console.log('🔵 loadRecords: location search filtered from ' + before + ' to ' + records.length);
             }
 
             if (!location && search && !filterBySearch) {
-                const term = search.toLowerCase();
-                const before = records.length;
-                records = records.filter(r =>
-                    (r.artist && r.artist.toLowerCase().includes(term)) ||
-                    (r.title && r.title.toLowerCase().includes(term)) ||
-                    (r.barcode && r.barcode.toLowerCase().includes(term)) ||
-                    (r.catalog_number && r.catalog_number.toLowerCase().includes(term))
-                );
-                console.log(`🔵 loadRecords: client search filtered from ${before} to ${records.length}`);
+                var term = search.toLowerCase();
+                var before = records.length;
+                records = records.filter(function(r) {
+                    return (r.artist && r.artist.toLowerCase().includes(term)) ||
+                           (r.title && r.title.toLowerCase().includes(term)) ||
+                           (r.barcode && r.barcode.toLowerCase().includes(term)) ||
+                           (r.catalog_number && r.catalog_number.toLowerCase().includes(term));
+                });
+                console.log('🔵 loadRecords: client search filtered from ' + before + ' to ' + records.length);
             }
 
             if (mode === 'discogs' && lastSeenCutoffDate) {
-                const before = records.length;
-                records = records.filter(r => meetsLastSeenFilter(r));
-                console.log(`🔵 loadRecords: last-seen filter reduced from ${before} to ${records.length}`);
+                var before = records.length;
+                records = records.filter(function(r) { return meetsLastSeenFilter(r); });
+                console.log('🔵 loadRecords: last-seen filter reduced from ' + before + ' to ' + records.length);
             }
 
             allRecords = records;
@@ -876,16 +857,17 @@
                 currentResults = [];
             }
 
-            console.log(`🔵 loadRecords: about to render with ${filteredRecords.length} records`);
+            console.log('🔵 loadRecords: about to render with ' + filteredRecords.length + ' records');
             renderPagination();
             renderTablePage();
 
-            let statusMsg = `Showing ${totalRecords} records`;
-            if (statusIds && statusIds.length === 1) statusMsg += ` with status_id=${statusIds[0]}`;
-            else if (statusIds && statusIds.length > 1) statusMsg += ` with status_ids ${statusIds.join(', ')}`;
-            if (location) statusMsg += ` in location "${location}"`;
-            if (search) statusMsg += ` matching "${search}"`;
-            if (excludeBatch) statusMsg += ` (excluding linked records)`;
+            var statusMsg = 'Showing ' + totalRecords + ' records';
+            if (statusIds && statusIds.length === 1) statusMsg += ' with status_id=' + statusIds[0];
+            else if (statusIds && statusIds.length > 1) statusMsg += ' with status_ids ' + statusIds.join(', ');
+            if (location) statusMsg += ' in location "' + location + '"';
+            if (search) statusMsg += ' matching "' + search + '"';
+            if (excludeBatch) statusMsg += ' (excluding linked records)';
+            if (batchId) statusMsg += ' (draft ' + batchId + ')';
             showStatus(statusMsg, 'info');
             updateSelectionCount();
 
@@ -893,7 +875,7 @@
                 if (location) {
                     currentLocationRecords = records;
                 }
-                console.log(`🔵 loadRecords: calling populateDiscogsPrices for ${records.length} records`);
+                console.log('🔵 loadRecords: calling populateDiscogsPrices for ' + records.length + ' records');
                 await populateDiscogsPrices(records);
             }
 
@@ -905,11 +887,526 @@
         }
     }
 
+    // ========== DRAFT MANAGEMENT FUNCTIONS ==========
+
+    async function loadAllDrafts() {
+        console.log('📋 loadAllDrafts: fetching all drafts...');
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/drafts', {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            console.log('📋 loadAllDrafts: response', data);
+
+            if (data.status === 'success') {
+                var drafts = data.drafts || [];
+                console.log('📋 loadAllDrafts: loaded ' + drafts.length + ' drafts');
+                console.log('📋 Drafts data:', drafts);
+                
+                populateDraftDropdown(drafts);
+                
+                if (drafts.length > 0 && !currentDraftId) {
+                    var firstDraft = drafts[0];
+                    console.log('📋 Auto-selecting first draft: ' + firstDraft.draft_id);
+                    selectDraft(firstDraft.draft_id);
+                } else if (drafts.length === 0) {
+                    showDraftFormUI();
+                } else if (currentDraftId) {
+                    var stillExists = drafts.some(function(d) { return String(d.draft_id) === String(currentDraftId); });
+                    if (!stillExists) {
+                        console.log('📋 Current draft ' + currentDraftId + ' no longer exists, selecting first');
+                        if (drafts.length > 0) {
+                            selectDraft(drafts[0].draft_id);
+                        } else {
+                            showDraftFormUI();
+                        }
+                    }
+                }
+            } else {
+                console.error('❌ Failed to load drafts:', data.error);
+                populateDraftDropdown([]);
+                showDraftFormUI();
+            }
+        } catch (error) {
+            console.error('❌ loadAllDrafts error:', error);
+            populateDraftDropdown([]);
+            showDraftFormUI();
+        }
+    }
+
+    function populateDraftDropdown(drafts) {
+        if (!draftDropdown) return;
+
+        var currentVal = draftDropdown.value;
+        console.log('📋 populateDraftDropdown: current value = ' + currentVal + ', drafts count = ' + (drafts ? drafts.length : 0));
+        
+        draftDropdown.innerHTML = '<option value="">-- Select a draft --</option>';
+
+        if (!drafts || drafts.length === 0) {
+            console.log('📋 No drafts available');
+            return;
+        }
+
+        drafts.forEach(function(d) {
+            var option = document.createElement('option');
+            option.value = String(d.draft_id);
+            
+            var seller = d.seller_name || 'Unknown Seller';
+            var date = d.date || 'Unknown Date';
+            var status = d.status || 'draft';
+            var recordCount = d.record_count || 0;
+            var label = seller + ' - ' + date;
+            
+            // Add status indicator
+            if (status === 'complete') {
+                label += ' ✅ Complete';
+            } else if (recordCount === 0) {
+                label += ' 📄 Complete (No records)';
+            } else {
+                label += ' 📝 Draft (' + recordCount + ' records)';
+            }
+            
+            option.textContent = label;
+            
+            // Store status and offer amount as data attributes for later use
+            option.dataset.status = status;
+            option.dataset.offerAmount = d.offer_amount || 0;
+            
+            draftDropdown.appendChild(option);
+        });
+
+        if (currentVal && drafts.some(function(d) { return String(d.draft_id) === String(currentVal); })) {
+            draftDropdown.value = String(currentVal);
+            console.log('📋 Restored selection: ' + currentVal);
+        } else if (drafts.length > 0) {
+            var firstId = String(drafts[0].draft_id);
+            draftDropdown.value = firstId;
+            console.log('📋 Selected first draft: ' + firstId);
+        }
+        
+        // Trigger the change event to update the UI
+        if (draftDropdown.onchange) {
+            draftDropdown.onchange();
+        }
+    }
+
+    async function selectDraft(draftId) {
+        console.log('📋 selectDraft called with draftId: ' + draftId + ' (type: ' + typeof draftId + ')');
+        
+        if (!draftId || draftId === '') {
+            console.log('📋 No draft ID provided, showing form');
+            showDraftFormUI();
+            return;
+        }
+
+        var draftIdStr = String(draftId);
+        
+        try {
+            if (draftDropdown) {
+                draftDropdown.value = draftIdStr;
+            }
+            
+            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + draftIdStr, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            
+            if (!response.ok) {
+                console.error('❌ Failed to fetch draft ' + draftIdStr + ': HTTP ' + response.status);
+                showDraftFormUI();
+                return;
+            }
+            
+            var data = await response.json();
+            console.log('📋 selectDraft: server response', data);
+            
+            if (data.status !== 'success' || !data.draft) {
+                console.error('❌ Draft not found:', draftIdStr);
+                showDraftFormUI();
+                return;
+            }
+            
+            var draft = data.draft;
+            console.log('📋 Found draft: ' + draft.seller_name + ' - ' + draft.date + ' (Status: ' + draft.status + ')');
+            
+            currentDraftId = draftIdStr;
+
+            // Use the values from the API - DON'T RE-PARSE
+            if (draftSellerName) draftSellerName.value = draft.seller_name || '';
+            if (draftSellerContact) draftSellerContact.value = draft.seller_contact || '';
+            if (draftDescription) draftDescription.value = draft.description_text || draft.description || '';
+            
+            // Set offer amount if complete, otherwise leave editable
+            if (draftOfferAmount) {
+                if (draft.status === 'complete' && draft.offer_amount > 0) {
+                    draftOfferAmount.value = draft.offer_amount.toFixed(2);
+                    draftOfferAmount.readOnly = true;
+                    draftOfferAmount.style.background = '#e9ecef';
+                    draftOfferAmount.style.cursor = 'not-allowed';
+                } else {
+                    draftOfferAmount.value = '';
+                    draftOfferAmount.readOnly = false;
+                    draftOfferAmount.style.background = 'white';
+                    draftOfferAmount.style.cursor = 'text';
+                }
+            }
+
+            showActiveDraftUI(draft);
+
+            // Only load records if status is draft (has records to show)
+            if (draft.status === 'draft') {
+                await loadRecordsForDraft(draftIdStr);
+            } else {
+                // For complete drafts, show a message instead of trying to load records
+                filteredRecords = [];
+                totalRecords = 0;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                if (draft.record_count === 0) {
+                    showStatus('✅ This purchase is complete. No records are linked to it (historical purchase).', 'info');
+                } else {
+                    showStatus('✅ This purchase is complete. All records have been activated.', 'info');
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ selectDraft error:', error);
+            showDraftFormUI();
+        }
+    }
+
+    async function loadRecordsForDraft(draftId) {
+        console.log('📋 loadRecordsForDraft: ' + draftId);
+        try {
+            await loadRecords({ 
+                batchId: draftId,
+                excludeBatch: false,
+                mode: 'add'
+            });
+            
+            updateDraftLinkedCount(filteredRecords.length);
+            console.log('📋 Loaded ' + filteredRecords.length + ' records for draft ' + draftId);
+        } catch (error) {
+            console.error('❌ loadRecordsForDraft error:', error);
+            filteredRecords = [];
+            totalRecords = 0;
+            renderPagination();
+            renderTablePage();
+        }
+    }
+
+    function showDraftFormUI() {
+        if (draftFormSection) draftFormSection.style.display = 'block';
+        if (activeDraftSection) activeDraftSection.style.display = 'none';
+        if (purchaseBadge) {
+            purchaseBadge.textContent = 'No Draft';
+            purchaseBadge.className = 'draft-badge no-draft';
+        }
+        if (draftDropdown) draftDropdown.value = '';
+        currentDraftId = null;
+        currentDraftRecords = [];
+        filteredRecords = [];
+        totalRecords = 0;
+        renderPagination();
+        renderTablePage();
+    }
+
+    function showActiveDraftUI(draft) {
+        if (draftFormSection) draftFormSection.style.display = 'none';
+        if (activeDraftSection) activeDraftSection.style.display = 'block';
+        if (purchaseBadge) {
+            purchaseBadge.textContent = 'Draft Active';
+            purchaseBadge.className = 'draft-badge active';
+        }
+
+        var sellerName = draft.seller_name || '—';
+        var sellerContact = draft.seller_contact || '—';
+        var description = draft.description_text || draft.description || '—';
+        var draftId = draft.draft_id || '—';
+        var status = draft.status || 'draft';
+        var offerAmount = draft.offer_amount || 0;
+
+        if (draftDisplaySeller) draftDisplaySeller.textContent = sellerName;
+        if (draftDisplayContact) draftDisplayContact.textContent = sellerContact;
+        if (draftDisplayDescription) draftDisplayDescription.textContent = description;
+        if (draftDisplayId) draftDisplayId.textContent = draftId;
+        if (draftDropdown) draftDropdown.value = draftId;
+
+        updateDraftLinkedCount(draft.record_count || 0);
+
+        // Show status badge
+        var statusBadge = document.getElementById('draft-status-badge');
+        if (statusBadge) {
+            if (status === 'complete') {
+                statusBadge.textContent = '✅ COMPLETE';
+                statusBadge.className = 'draft-badge complete';
+                statusBadge.style.background = '#28a745';
+                statusBadge.style.color = 'white';
+            } else {
+                statusBadge.textContent = '📝 DRAFT';
+                statusBadge.className = 'draft-badge draft';
+                statusBadge.style.background = '#ffc107';
+                statusBadge.style.color = '#333';
+            }
+            statusBadge.style.display = 'inline-block';
+        }
+
+        // Handle bill of sale preview
+        var billPath = draft.bill_of_sale_path || '';
+        var previewImg = document.getElementById('bill-preview-image');
+        var placeholder = document.getElementById('bill-preview-placeholder');
+        var container = document.getElementById('bill-preview-container');
+
+        if (billPath && billPath !== '') {
+            var fullUrl = window.AppConfig.baseUrl + '/' + billPath.replace(/^\/+/, '');
+            
+            if (billPath.toLowerCase().endsWith('.pdf')) {
+                if (previewImg) {
+                    previewImg.style.display = 'none';
+                }
+                if (placeholder) {
+                    placeholder.innerHTML = '<i class="fas fa-file-pdf" style="font-size: 32px; color: #dc3545;"></i><br><span style="font-size: 12px;">PDF Bill</span>';
+                    placeholder.style.display = 'block';
+                }
+                if (container) {
+                    container.dataset.billPath = fullUrl;
+                    container.dataset.billType = 'pdf';
+                }
+            } else {
+                if (previewImg) {
+                    previewImg.src = fullUrl;
+                    previewImg.style.display = 'block';
+                    previewImg.onerror = function() {
+                        this.style.display = 'none';
+                        if (placeholder) {
+                            placeholder.textContent = '⚠️ Image not found';
+                            placeholder.style.display = 'block';
+                        }
+                    };
+                }
+                if (placeholder) {
+                    placeholder.style.display = 'none';
+                }
+                if (container) {
+                    container.dataset.billPath = fullUrl;
+                    container.dataset.billType = 'image';
+                }
+            }
+        } else {
+            if (previewImg) {
+                previewImg.style.display = 'none';
+                previewImg.src = '';
+            }
+            if (placeholder) {
+                placeholder.style.display = 'block';
+                placeholder.textContent = 'No bill uploaded';
+            }
+            if (container) {
+                container.dataset.billPath = '';
+                container.dataset.billType = '';
+            }
+        }
+        
+        // Update Accept/Decline buttons based on status
+        var acceptBtn = document.querySelector('.btn-draft-success');
+        var declineBtn = document.querySelector('.btn-draft-danger');
+        var offerInput = document.getElementById('draft-offer-amount');
+        
+        if (status === 'complete') {
+            if (acceptBtn) {
+                acceptBtn.style.display = 'none';
+            }
+            if (declineBtn) {
+                declineBtn.style.display = 'none';
+            }
+            if (offerInput) {
+                offerInput.readOnly = true;
+                offerInput.style.background = '#e9ecef';
+                offerInput.style.cursor = 'not-allowed';
+                if (offerAmount > 0) {
+                    offerInput.value = offerAmount.toFixed(2);
+                }
+            }
+        } else {
+            if (acceptBtn) {
+                acceptBtn.style.display = '';
+            }
+            if (declineBtn) {
+                declineBtn.style.display = '';
+            }
+            if (offerInput) {
+                offerInput.readOnly = false;
+                offerInput.style.background = 'white';
+                offerInput.style.cursor = 'text';
+                offerInput.value = '';
+            }
+        }
+    }
+
+    function updateDraftLinkedCount(count) {
+        if (draftLinkedCount) {
+            draftLinkedCount.textContent = count || currentDraftRecords.length || 0;
+        }
+    }
+
+    async function createNewDraft() {
+        console.log('📋 createNewDraft: creating new draft...');
+        if (draftSellerName) draftSellerName.value = '';
+        if (draftSellerContact) draftSellerContact.value = '';
+        if (draftDescription) draftDescription.value = '';
+        if (draftOfferAmount) draftOfferAmount.value = '';
+
+        showDraftFormUI();
+
+        if (draftSellerName) draftSellerName.focus();
+
+        showToast('📝 Enter seller details and click Save Draft.', 'info');
+    }
+
+    async function saveDraft() {
+        console.log('📋 saveDraft: saving draft...');
+
+        var sellerName = draftSellerName ? draftSellerName.value.trim() : '';
+        var sellerContact = draftSellerContact ? draftSellerContact.value.trim() : '';
+        var description = draftDescription ? draftDescription.value.trim() : '';
+
+        if (!sellerName) {
+            showToast('Please enter the seller name.', 'error');
+            showDraftStatus('Please enter the seller name.', 'error');
+            return;
+        }
+        if (!description) {
+            showToast('Please enter a description.', 'error');
+            showDraftStatus('Please enter a description.', 'error');
+            return;
+        }
+
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
+                method: 'POST',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    seller_name: sellerName,
+                    seller_contact: sellerContact,
+                    description: description
+                })
+            });
+            var data = await response.json();
+            console.log('📋 saveDraft: response', data);
+
+            if (data.status === 'success') {
+                showToast('✅ Draft saved successfully!', 'success');
+                showDraftStatus('✅ Draft saved successfully!', 'success');
+                playSound('success');
+
+                await loadAllDrafts();
+
+                if (data.draft && data.draft.id) {
+                    selectDraft(data.draft.id);
+                } else {
+                    await loadAllDrafts();
+                }
+            } else {
+                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                playSound('error');
+            }
+        } catch (error) {
+            console.error('❌ saveDraft error:', error);
+            showToast('❌ Error: ' + error.message, 'error');
+            showDraftStatus('❌ Error: ' + error.message, 'error');
+            playSound('error');
+        }
+    }
+
+    function clearDraftForm() {
+        if (draftSellerName) draftSellerName.value = '';
+        if (draftSellerContact) draftSellerContact.value = '';
+        if (draftDescription) draftDescription.value = '';
+        if (draftOfferAmount) draftOfferAmount.value = '';
+        var statusEl = document.getElementById('draft-status-message');
+        if (statusEl) statusEl.style.display = 'none';
+        var actionEl = document.getElementById('draft-action-status');
+        if (actionEl) actionEl.style.display = 'none';
+    }
+
+    function showDraftStatus(message, type) {
+        var el = draftStatusMessage || document.getElementById('draft-status-message');
+        if (!el) return;
+        type = type || 'info';
+        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        el.className = 'status-message status-' + type;
+        el.style.display = 'block';
+        setTimeout(function() { el.style.display = 'none'; }, 5000);
+    }
+
+    function refreshDraftDropdown() {
+        loadAllDrafts();
+        showToast('🔄 Drafts refreshed.', 'info');
+    }
+
+    // ========== Toggle Functions for Sub-Panels ==========
+
+    function toggleInventorySetupPanel() {
+        console.log('📋 toggleInventorySetupPanel called');
+        var body = document.getElementById('inventory-setup-body');
+        var icon = document.getElementById('inventory-setup-toggle-icon');
+        if (!body || !icon) return;
+
+        if (body.classList.contains('expanded')) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+        } else {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+        }
+    }
+
+    function toggleDefaultParamsSub() {
+        console.log('📋 toggleDefaultParamsSub called');
+        var body = document.getElementById('default-params-sub-body');
+        var icon = document.getElementById('default-params-sub-toggle');
+        if (!body || !icon) return;
+
+        if (body.classList.contains('expanded')) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+        } else {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+        }
+    }
+
+    function togglePurchaseSub() {
+        console.log('📋 togglePurchaseSub called');
+        var body = document.getElementById('purchase-sub-body');
+        var icon = document.getElementById('purchase-sub-toggle');
+        if (!body || !icon) return;
+
+        if (body.classList.contains('expanded')) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+        } else {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+        }
+    }
+
     // ========== Discogs Locations ==========
     async function loadDiscogsLocations() {
         console.log('📍 Loading discogs locations...');
         try {
-            const data = await apiRequest('GET', '/api/locations');
+            var data = await apiRequest('GET', '/api/locations');
             if (data.status === 'success') {
                 renderDiscogsLocationSelect(data.locations);
             } else {
@@ -924,13 +1421,10 @@
 
     function renderDiscogsLocationSelect(locations) {
         if (!discogsLocationSelect) return;
-        discogsLocationSelect.innerHTML = `
-            <option value="all">-- All (no filter) --</option>
-            <option value="all_with_location">-- All with Location --</option>
-        `;
+        discogsLocationSelect.innerHTML = '<option value="all">-- All (no filter) --</option><option value="all_with_location">-- All with Location --</option>';
         if (!locations || locations.length === 0) return;
         locations.forEach(function(location) {
-            const option = document.createElement('option');
+            var option = document.createElement('option');
             option.value = location;
             option.textContent = location;
             discogsLocationSelect.appendChild(option);
@@ -938,56 +1432,56 @@
     }
 
     function refreshDiscogsRecords() {
-        const selectedValue = discogsLocationSelect ? discogsLocationSelect.value : null;
-        const baseOptions = { mode: 'discogs' };
+        var selectedValue = discogsLocationSelect ? discogsLocationSelect.value : null;
+        var baseOptions = { mode: 'discogs' };
 
-        console.log(`🔄 refreshDiscogsRecords: selectedValue = ${selectedValue}`);
+        console.log('🔄 refreshDiscogsRecords: selectedValue = ' + selectedValue);
         if (!selectedValue || selectedValue === 'all') {
-            loadRecords({ showAllStatuses: true, ...baseOptions });
+            loadRecords({ showAllStatuses: true, mode: 'discogs' });
         } else if (selectedValue === 'all_with_location') {
-            loadRecords({ showAllStatuses: true, requireLocation: true, ...baseOptions });
+            loadRecords({ showAllStatuses: true, requireLocation: true, mode: 'discogs' });
         } else {
             currentLocation = selectedValue;
-            loadRecords({ showAllStatuses: true, location: selectedValue, ...baseOptions });
+            loadRecords({ showAllStatuses: true, location: selectedValue, mode: 'discogs' });
         }
     }
 
     // ========== Discogs Prices ==========
     async function populateDiscogsPrices(records) {
-        // Only run in discogs mode
         if (currentSearchMode !== 'discogs') {
             console.log('💰 populateDiscogsPrices: skipping - not in discogs mode');
             return;
         }
 
-        console.log(`💰 populateDiscogsPrices: received ${records.length} records`);
+        console.log('💰 populateDiscogsPrices: received ' + records.length + ' records');
         if (!records || records.length === 0) {
             console.log('💰 populateDiscogsPrices: no records, returning');
             return;
         }
 
-        const eligibleRecords = records.filter(r => {
-            const eligible = r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at;
-            return eligible;
+        var eligibleRecords = records.filter(function(r) {
+            return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at;
         });
-        console.log(`💰 populateDiscogsPrices: ${eligibleRecords.length} eligible out of ${records.length}`);
+        console.log('💰 populateDiscogsPrices: ' + eligibleRecords.length + ' eligible out of ' + records.length);
 
         if (eligibleRecords.length === 0) {
             console.log('💰 No eligible records, skipping price calculation');
             return;
         }
 
-        const priceRequests = eligibleRecords.map(r => ({
-            id: r.id,
-            created_at: r.created_at,
-            store_price: r.store_price
-        }));
+        var priceRequests = eligibleRecords.map(function(r) {
+            return {
+                id: r.id,
+                created_at: r.created_at,
+                store_price: r.store_price
+            };
+        });
 
-        let pricesMap = {};
+        var pricesMap = {};
         try {
-            const batchResults = await calculateMarkupBatch(priceRequests);
-            console.log(`💰 populateDiscogsPrices: got ${batchResults.length} price results`);
-            batchResults.forEach(item => {
+            var batchResults = await calculateMarkupBatch(priceRequests);
+            console.log('💰 populateDiscogsPrices: got ' + batchResults.length + ' price results');
+            batchResults.forEach(function(item) {
                 if (item.id) {
                     pricesMap[item.id] = item;
                 }
@@ -997,8 +1491,8 @@
             return;
         }
 
-        let updatedCount = 0;
-        records.forEach(record => {
+        var updatedCount = 0;
+        records.forEach(function(record) {
             if (pricesMap[record.id]) {
                 record._discogsPrice = pricesMap[record.id].discogs_price;
                 record._markupPercent = pricesMap[record.id].markup_percent;
@@ -1008,7 +1502,7 @@
                 record._markupPercent = null;
             }
         });
-        console.log(`💰 populateDiscogsPrices: updated ${updatedCount} records with price data`);
+        console.log('💰 populateDiscogsPrices: updated ' + updatedCount + ' records with price data');
 
         renderTablePage();
         updateSelectionCount();
@@ -1016,28 +1510,28 @@
 
     // ========== Price Estimation ==========
     async function estimatePriceForRow(row, catalogNumber) {
-        const sleeveSelect = row.querySelector('.sleeve-condition-select');
-        const discSelect = row.querySelector('.disc-condition-select');
-        const priceInput = row.querySelector('.price-input');
+        var sleeveSelect = row.querySelector('.sleeve-condition-select');
+        var discSelect = row.querySelector('.disc-condition-select');
+        var priceInput = row.querySelector('.price-input');
 
-        const sleeveId = parseInt(sleeveSelect.value);
-        const discId = parseInt(discSelect.value);
+        var sleeveId = parseInt(sleeveSelect.value);
+        var discId = parseInt(discSelect.value);
         if (!sleeveId || !discId) return;
 
-        const sleeve = conditions.find(c => c.id === sleeveId);
-        const disc = conditions.find(c => c.id === discId);
+        var sleeve = conditions.find(function(c) { return c.id === sleeveId; });
+        var disc = conditions.find(function(c) { return c.id === discId; });
         if (!sleeve || !disc) return;
 
         try {
-            const data = await apiRequest('POST', '/api/price-estimate-v3', {
+            var data = await apiRequest('POST', '/api/price-estimate-v3', {
                 catalog_number: catalogNumber || '',
                 media_condition: disc.display_name || disc.condition_name,
                 sleeve_condition: sleeve.display_name || sleeve.condition_name
             });
             if (data.status === 'success' && data.estimated_price) {
-                let price = data.estimated_price;
+                var price = data.estimated_price;
                 if (storePriceMultiplier) price = price * storePriceMultiplier;
-                const dollars = Math.floor(price);
+                var dollars = Math.floor(price);
                 price = dollars < 1 ? 0.99 : (dollars - 1) + 0.99;
                 if (minimumPrice !== null && price < minimumPrice) price = minimumPrice;
                 priceInput.value = price.toFixed(2);
@@ -1052,7 +1546,7 @@
     async function calculateMarkupBatch(records) {
         if (!records || records.length === 0) return [];
         try {
-            const result = await apiRequest('POST', '/api/discogs/calculate-markup-batch', { records: records });
+            var result = await apiRequest('POST', '/api/discogs/calculate-markup-batch', { records: records });
             if (result.status === 'success') {
                 return result.results;
             } else {
@@ -1067,81 +1561,82 @@
 
     // ========== Discogs Orders ==========
     async function loadDiscogsOrdersList(status, dateFrom, dateTo, search) {
-        console.log(`📦 loadDiscogsOrdersList() called with: status=${status || 'all'}, dateFrom=${dateFrom}, dateTo=${dateTo}, search=${search}`);
+        console.log('📦 loadDiscogsOrdersList() called with: status=' + (status || 'all') + ', dateFrom=' + dateFrom + ', dateTo=' + dateTo + ', search=' + search);
         try {
-            let url = window.AppConfig.baseUrl + '/api/discogs/orders?per_page=200';
+            var url = window.AppConfig.baseUrl + '/api/discogs/orders?per_page=200';
             
             if (status && status !== '') {
-                url += `&status=${encodeURIComponent(status)}`;
+                url += '&status=' + encodeURIComponent(status);
             }
             if (dateFrom) {
-                url += `&date_from=${encodeURIComponent(dateFrom)}`;
+                url += '&date_from=' + encodeURIComponent(dateFrom);
             }
             if (dateTo) {
-                url += `&date_to=${encodeURIComponent(dateTo)}`;
+                url += '&date_to=' + encodeURIComponent(dateTo);
             }
             if (search && search.trim() !== '') {
-                url += `&search=${encodeURIComponent(search.trim())}`;
+                url += '&search=' + encodeURIComponent(search.trim());
             }
             
-            url += `&all=true`;
+            url += '&all=true';
 
-            console.log(`📦 Fetching orders from: ${url}`);
+            console.log('📦 Fetching orders from: ' + url);
 
-            const response = await fetch(url, {
+            var response = await fetch(url, {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
 
             if (!response.ok) {
-                let errorMsg = `HTTP ${response.status}`;
+                var errorMsg = 'HTTP ' + response.status;
                 try {
-                    const errData = await response.json();
+                    var errData = await response.json();
                     if (errData.error) errorMsg = errData.error;
                 } catch (e) {}
                 throw new Error(errorMsg);
             }
 
-            const data = await response.json();
+            var data = await response.json();
             if (data.status !== 'success') {
                 throw new Error(data.error || 'Failed to load orders');
             }
 
             ordersList = data.orders || [];
-            ordersList.sort((a, b) => {
-                const dateA = new Date(a.created_at);
-                const dateB = new Date(b.created_at);
+            ordersList.sort(function(a, b) {
+                var dateA = new Date(a.created_at);
+                var dateB = new Date(b.created_at);
                 return dateB - dateA;
             });
-            console.log(`📦 Loaded ${ordersList.length} orders (newest first)`);
+            console.log('📦 Loaded ' + ordersList.length + ' orders (newest first)');
 
             if (discogsOrderSelect) {
                 discogsOrderSelect.innerHTML = '<option value="">-- Select an order --</option>';
-                for (const order of ordersList) {
-                    const option = document.createElement('option');
+                for (var i = 0; i < ordersList.length; i++) {
+                    var order = ordersList[i];
+                    var option = document.createElement('option');
                     option.value = order.order_id || order.id;
-                    const buyer = order.buyer_username || order.buyer_name || 'Unknown buyer';
-                    const date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '';
-                    const total = order.total_amount ? `$${order.total_amount.toFixed(2)}` : '';
-                    const itemCount = order.items ? order.items.length : 0;
-                    option.textContent = `${order.order_id} - ${buyer} ${date} ${total} (${itemCount} items)`;
+                    var buyer = order.buyer_username || order.buyer_name || 'Unknown buyer';
+                    var date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '';
+                    var total = order.total_amount ? '$' + order.total_amount.toFixed(2) : '';
+                    var itemCount = order.items ? order.items.length : 0;
+                    option.textContent = order.order_id + ' - ' + buyer + ' ' + date + ' ' + total + ' (' + itemCount + ' items)';
                     discogsOrderSelect.appendChild(option);
                 }
             }
 
-            updateDiscogsOrdersStatus(`✅ Loaded ${ordersList.length} orders`, 'success');
+            updateDiscogsOrdersStatus('✅ Loaded ' + ordersList.length + ' orders', 'success');
 
         } catch (error) {
             console.error('❌ Error loading orders:', error);
-            updateDiscogsOrdersStatus(`❌ Error: ${error.message}`, 'error');
+            updateDiscogsOrdersStatus('❌ Error: ' + error.message, 'error');
         }
     }
 
     async function applyDiscogsOrdersFilters() {
-        const status = document.getElementById('discogs-orders-status-filter')?.value || '';
-        const dateFrom = document.getElementById('discogs-orders-date-from')?.value || '';
-        const dateTo = document.getElementById('discogs-orders-date-to')?.value || '';
-        const search = document.getElementById('discogs-orders-search')?.value || '';
+        var status = document.getElementById('discogs-orders-status-filter')?.value || '';
+        var dateFrom = document.getElementById('discogs-orders-date-from')?.value || '';
+        var dateTo = document.getElementById('discogs-orders-date-to')?.value || '';
+        var search = document.getElementById('discogs-orders-search')?.value || '';
         
         ordersStatusFilter = status;
         
@@ -1161,12 +1656,12 @@
     }
 
     function refreshDiscogsOrders() {
-        const dateFrom = document.getElementById('discogs-orders-date-from');
-        const dateTo = document.getElementById('discogs-orders-date-to');
-        const search = document.getElementById('discogs-orders-search');
+        var dateFrom = document.getElementById('discogs-orders-date-from');
+        var dateTo = document.getElementById('discogs-orders-date-to');
+        var search = document.getElementById('discogs-orders-search');
         
         if (!dateFrom.value) {
-            const thirtyDaysAgo = new Date();
+            var thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
             dateFrom.value = thirtyDaysAgo.toISOString().split('T')[0];
         }
@@ -1186,22 +1681,23 @@
             applyDiscogsOrdersFilters();
             return;
         }
-        const termLower = term.toLowerCase().trim();
-        const filtered = ordersList.filter(order => {
-            const buyer = (order.buyer_username || order.buyer_name || '').toLowerCase();
-            const email = (order.buyer_email || '').toLowerCase();
+        var termLower = term.toLowerCase().trim();
+        var filtered = ordersList.filter(function(order) {
+            var buyer = (order.buyer_username || order.buyer_name || '').toLowerCase();
+            var email = (order.buyer_email || '').toLowerCase();
             return buyer.includes(termLower) || email.includes(termLower);
         });
         if (discogsOrderSelect) {
             discogsOrderSelect.innerHTML = '<option value="">-- Select an order --</option>';
-            for (const order of filtered) {
-                const option = document.createElement('option');
+            for (var i = 0; i < filtered.length; i++) {
+                var order = filtered[i];
+                var option = document.createElement('option');
                 option.value = order.order_id || order.id;
-                const buyer = order.buyer_username || order.buyer_name || 'Unknown buyer';
-                const date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '';
-                const total = order.total_amount ? `$${order.total_amount.toFixed(2)}` : '';
-                const itemCount = order.items ? order.items.length : 0;
-                option.textContent = `${order.order_id} - ${buyer} ${date} ${total} (${itemCount} items)`;
+                var buyer = order.buyer_username || order.buyer_name || 'Unknown buyer';
+                var date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '';
+                var total = order.total_amount ? '$' + order.total_amount.toFixed(2) : '';
+                var itemCount = order.items ? order.items.length : 0;
+                option.textContent = order.order_id + ' - ' + buyer + ' ' + date + ' ' + total + ' (' + itemCount + ' items)';
                 discogsOrderSelect.appendChild(option);
             }
             discogsOrderSelect.value = '';
@@ -1212,13 +1708,13 @@
             renderPagination();
             renderTablePage();
             updateSelectionCount();
-            updateDiscogsOrdersStatus(`🔍 Found ${filtered.length} orders matching "${term}"`, 'info');
+            updateDiscogsOrdersStatus('🔍 Found ' + filtered.length + ' orders matching "' + term + '"', 'info');
         }
     }
 
     // ========== loadOrderItems ==========
     async function loadOrderItems(orderId) {
-        console.log(`📦 loadOrderItems() for order ${orderId}`);
+        console.log('📦 loadOrderItems() for order ' + orderId);
         if (!orderId) {
             currentOrderItems = [];
             filteredRecords = [];
@@ -1230,58 +1726,59 @@
         }
 
         try {
-            const url = window.AppConfig.baseUrl + '/api/discogs/orders/' + orderId;
-            const response = await fetch(url, {
+            var url = window.AppConfig.baseUrl + '/api/discogs/orders/' + orderId;
+            var response = await fetch(url, {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
 
             if (!response.ok) {
-                let errorMsg = `HTTP ${response.status}`;
+                var errorMsg = 'HTTP ' + response.status;
                 try {
-                    const errData = await response.json();
+                    var errData = await response.json();
                     if (errData.error) errorMsg = errData.error;
                 } catch (e) {}
                 throw new Error(errorMsg);
             }
 
-            const data = await response.json();
+            var data = await response.json();
             if (data.status !== 'success' || !data.order) {
                 throw new Error(data.error || 'Failed to load order details');
             }
 
-            const order = data.order;
-            const items = order.items || [];
+            var order = data.order;
+            var items = order.items || [];
 
-            const enrichedItems = [];
-            for (const item of items) {
-                let pigstyleId = null;
+            var enrichedItems = [];
+            for (var i = 0; i < items.length; i++) {
+                var item = items[i];
+                var pigstyleId = null;
                 
                 if (item.condition_comments) {
-                    const match = item.condition_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
+                    var match = item.condition_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
                     if (match) pigstyleId = parseInt(match[1], 10);
                 }
                 if (!pigstyleId && item.private_comments) {
-                    const match = item.private_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
+                    var match = item.private_comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
                     if (match) pigstyleId = parseInt(match[1], 10);
                 }
                 if (!pigstyleId && item.release_description) {
-                    const match = item.release_description.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
+                    var match = item.release_description.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
                     if (match) pigstyleId = parseInt(match[1], 10);
                 }
 
-                let record = null;
-                let recordStatus = null;
-                let barcode = null;
-                let catalog = null;
+                var record = null;
+                var recordStatus = null;
+                var barcode = null;
+                var catalog = null;
                 if (pigstyleId) {
                     try {
-                        const recRes = await fetch(window.AppConfig.baseUrl + '/records/' + pigstyleId, {
+                        var recRes = await fetch(window.AppConfig.baseUrl + '/records/' + pigstyleId, {
                             credentials: 'include',
                             headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
                         });
                         if (recRes.ok) {
-                            const recData = await recRes.json();
+                            var recData = await recRes.json();
                             record = recData;
                             recordStatus = recData.status_id;
                             barcode = recData.barcode || null;
@@ -1290,7 +1787,7 @@
                             recordStatus = null;
                         }
                     } catch (e) {
-                        console.warn(`Could not fetch record ${pigstyleId}:`, e);
+                        console.warn('Could not fetch record ' + pigstyleId + ':', e);
                         recordStatus = null;
                     }
                 }
@@ -1319,7 +1816,7 @@
             renderPagination();
             renderTablePage();
             updateSelectionCount();
-            updateDiscogsOrdersStatus(`✅ Order ${orderId}: ${enrichedItems.length} items loaded`, 'success');
+            updateDiscogsOrdersStatus('✅ Order ' + orderId + ': ' + enrichedItems.length + ' items loaded', 'success');
 
         } catch (error) {
             console.error('❌ Error loading order items:', error);
@@ -1329,7 +1826,7 @@
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            updateDiscogsOrdersStatus(`❌ Error: ${error.message}`, 'error');
+            updateDiscogsOrdersStatus('❌ Error: ' + error.message, 'error');
         }
     }
 
@@ -1339,12 +1836,12 @@
             return;
         }
         
-        if (!confirm(`Mark record #${recordId} as sold on Discogs?\n\nThis will:\n- Search Discogs orders for this record\n- Auto-fetch the sale price\n- Mark the record as sold (status_id=4)\n- Set the sale date to today`)) {
+        if (!confirm('Mark record #' + recordId + ' as sold on Discogs?\n\nThis will:\n- Search Discogs orders for this record\n- Auto-fetch the sale price\n- Mark the record as sold (status_id=4)\n- Set the sale date to today')) {
             return;
         }
         
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/records/' + recordId + '/mark-discogs-sold', {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/records/' + recordId + '/mark-discogs-sold', {
                 method: 'POST',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {
@@ -1352,11 +1849,11 @@
                 }
             });
             
-            const data = await response.json();
+            var data = await response.json();
             
             if (data.status === 'success') {
-                const price = data.record ? data.record.store_price : 'unknown';
-                showStatus(`✅ Record #${recordId} marked as sold on Discogs for $${price}`, 'success');
+                var price = data.record ? data.record.store_price : 'unknown';
+                showStatus('✅ Record #' + recordId + ' marked as sold on Discogs for $' + price, 'success');
                 playSound('success');
                 
                 if (currentSearchMode === 'discogs_orders' && selectedOrderId) {
@@ -1366,7 +1863,7 @@
                     updateSelectionCount();
                 }
             } else {
-                showStatus(`❌ Error: ${data.error || 'Failed to mark record as sold'}`, 'error');
+                showStatus('❌ Error: ' + (data.error || 'Failed to mark record as sold'), 'error');
                 playSound('error');
             }
         } catch (error) {
@@ -1377,30 +1874,31 @@
     }
 
     async function processDiscogsOrder() {
-        const items = filteredRecords;
+        var items = filteredRecords;
         if (items.length === 0) {
             showStatus('No items to process.', 'warning');
             return;
         }
 
-        const validItems = items.filter(item => item.pigstyle_id && !isNaN(item.pigstyle_id));
+        var validItems = items.filter(function(item) { return item.pigstyle_id && !isNaN(item.pigstyle_id); });
         if (validItems.length === 0) {
             showStatus('No items have a valid PigStyle ID. Please assign IDs first.', 'warning');
             return;
         }
 
-        const confirmMsg = `Mark ${validItems.length} item(s) as sold on Discogs?\n\nThis will:\n- Mark each record as sold (status_id=4)\n- Set the sale price from the order\n- Link the Discogs order ID`;
+        var confirmMsg = 'Mark ' + validItems.length + ' item(s) as sold on Discogs?\n\nThis will:\n- Mark each record as sold (status_id=4)\n- Set the sale price from the order\n- Link the Discogs order ID';
         if (!confirm(confirmMsg)) return;
 
-        let posted = 0;
-        let failed = 0;
-        for (const item of validItems) {
-            const recordId = item.pigstyle_id;
-            const salePrice = item.price;
-            const orderId = selectedOrderId;
+        var posted = 0;
+        var failed = 0;
+        for (var i = 0; i < validItems.length; i++) {
+            var item = validItems[i];
+            var recordId = item.pigstyle_id;
+            var salePrice = item.price;
+            var orderId = selectedOrderId;
 
             try {
-                const response = await fetch(window.AppConfig.baseUrl + '/api/records/mark-sold-on-discogs', {
+                var response = await fetch(window.AppConfig.baseUrl + '/api/records/mark-sold-on-discogs', {
                     method: 'POST',
                     credentials: 'include',
                     headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
@@ -1410,7 +1908,7 @@
                         discogs_order_id: orderId
                     })
                 });
-                const data = await response.json();
+                var data = await response.json();
                 if (data.status === 'success') {
                     posted++;
                     item.record_status_id = 4;
@@ -1424,7 +1922,7 @@
             }
         }
 
-        showStatus(`✅ ${posted} marked sold, ${failed} failed.`, posted > 0 ? 'success' : 'error');
+        showStatus('✅ ' + posted + ' marked sold, ' + failed + ' failed.', posted > 0 ? 'success' : 'error');
         if (selectedOrderId) {
             await loadOrderItems(selectedOrderId);
         }
@@ -1432,80 +1930,44 @@
 
     // ========== REFUND MODE ==========
     async function processRefund() {
-        const selected = getSelectedRecords();
+        var selected = getSelectedRecords();
         if (selected.length === 0) {
             showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
             return;
         }
 
-        const soldRecords = selected.filter(r => r.status_id === 3 || r.status_id === 4);
+        var soldRecords = selected.filter(function(r) { return r.status_id === 3 || r.status_id === 4; });
         if (soldRecords.length === 0) {
             showStatus('No sold records selected. Only records with status "Sold" or "Sold on Discogs" can be refunded.', 'warning');
             return;
         }
 
         if (soldRecords.length < selected.length) {
-            const nonSold = selected.length - soldRecords.length;
-            if (!confirm(`${nonSold} selected record(s) are not sold and will be skipped. Continue with ${soldRecords.length} sold record(s)?`)) {
+            var nonSold = selected.length - soldRecords.length;
+            if (!confirm(nonSold + ' selected record(s) are not sold and will be skipped. Continue with ' + soldRecords.length + ' sold record(s)?')) {
                 return;
             }
         }
 
-        const totalAmount = soldRecords.reduce((sum, r) => sum + (r.store_price || 0), 0);
+        var totalAmount = soldRecords.reduce(function(sum, r) { return sum + (r.store_price || 0); }, 0);
         showRefundModal(soldRecords, totalAmount);
     }
 
     function showRefundModal(records, totalAmount) {
-        const existingModal = document.getElementById('refund-modal');
+        var existingModal = document.getElementById('refund-modal');
         if (existingModal) {
             existingModal.remove();
         }
 
-        const modal = document.createElement('div');
+        var modal = document.createElement('div');
         modal.id = 'refund-modal';
         modal.className = 'modal-overlay';
         modal.style.display = 'flex';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 500px; width: 95%;">
-                <div class="modal-header" style="background: #dc3545; color: white;">
-                    <h3 class="modal-title"><i class="fas fa-undo-alt"></i> Process Refund</h3>
-                    <button class="modal-close" onclick="closeRefundModal()" style="color: white;">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p><strong>${records.length}</strong> record(s) selected for refund.</p>
-                    <div style="margin-bottom: 15px; max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 13px;">
-                        ${records.map(r => `<div>${escapeHtml(r.artist)} - ${escapeHtml(r.title)} (${getStatusName(r.status_id)}) - $${(r.store_price || 0).toFixed(2)}</div>`).join('')}
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label for="refund-amount" style="display:block; font-weight:500; margin-bottom:4px;">Refund Amount ($)</label>
-                        <input type="number" id="refund-amount" class="form-control" step="0.01" min="0.01" value="${totalAmount.toFixed(2)}" style="width:100%; padding:8px; font-size:16px;">
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label for="refund-method" style="display:block; font-weight:500; margin-bottom:4px;">Refund Method</label>
-                        <select id="refund-method" class="form-control" style="width:100%; padding:8px;">
-                            <option value="cash">Cash</option>
-                            <option value="square">Square</option>
-                            <option value="discogs">Discogs</option>
-                        </select>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label for="refund-reason" style="display:block; font-weight:500; margin-bottom:4px;">Reason (optional)</label>
-                        <input type="text" id="refund-reason" class="form-control" placeholder="e.g., Customer returned item" style="width:100%; padding:8px;">
-                    </div>
-                    <div id="refund-status" style="margin-top:10px; display:none;"></div>
-                </div>
-                <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
-                    <button class="btn btn-secondary" onclick="closeRefundModal()">Cancel</button>
-                    <button class="btn btn-danger" id="refund-confirm-btn">
-                        <i class="fas fa-undo-alt"></i> Process Refund
-                    </button>
-                </div>
-            </div>
-        `;
+        modal.innerHTML = '<div class="modal-content" style="max-width: 500px; width: 95%;"><div class="modal-header" style="background: #dc3545; color: white;"><h3 class="modal-title"><i class="fas fa-undo-alt"></i> Process Refund</h3><button class="modal-close" onclick="closeRefundModal()" style="color: white;">&times;</button></div><div class="modal-body"><p><strong>' + records.length + '</strong> record(s) selected for refund.</p><div style="margin-bottom: 15px; max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 13px;">' + records.map(function(r) { return '<div>' + escapeHtml(r.artist) + ' - ' + escapeHtml(r.title) + ' (' + getStatusName(r.status_id) + ') - $' + (r.store_price || 0).toFixed(2) + '</div>'; }).join('') + '</div><div style="margin-bottom: 15px;"><label for="refund-amount" style="display:block; font-weight:500; margin-bottom:4px;">Refund Amount ($)</label><input type="number" id="refund-amount" class="form-control" step="0.01" min="0.01" value="' + totalAmount.toFixed(2) + '" style="width:100%; padding:8px; font-size:16px;"></div><div style="margin-bottom: 15px;"><label for="refund-method" style="display:block; font-weight:500; margin-bottom:4px;">Refund Method</label><select id="refund-method" class="form-control" style="width:100%; padding:8px;"><option value="cash">Cash</option><option value="square">Square</option><option value="discogs">Discogs</option></select></div><div style="margin-bottom: 15px;"><label for="refund-reason" style="display:block; font-weight:500; margin-bottom:4px;">Reason (optional)</label><input type="text" id="refund-reason" class="form-control" placeholder="e.g., Customer returned item" style="width:100%; padding:8px;"></div><div id="refund-status" style="margin-top:10px; display:none;"></div></div><div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;"><button class="btn btn-secondary" onclick="closeRefundModal()">Cancel</button><button class="btn btn-danger" id="refund-confirm-btn"><i class="fas fa-undo-alt"></i> Process Refund</button></div></div>';
         document.body.appendChild(modal);
 
-        setTimeout(() => {
-            const amountInput = document.getElementById('refund-amount');
+        setTimeout(function() {
+            var amountInput = document.getElementById('refund-amount');
             if (amountInput) amountInput.focus();
         }, 200);
 
@@ -1522,7 +1984,7 @@
     }
 
     function closeRefundModal() {
-        const modal = document.getElementById('refund-modal');
+        var modal = document.getElementById('refund-modal');
         if (modal) {
             modal.style.display = 'none';
             modal.remove();
@@ -1530,23 +1992,23 @@
     }
 
     async function confirmRefund(records) {
-        const amountInput = document.getElementById('refund-amount');
-        const methodSelect = document.getElementById('refund-method');
-        const reasonInput = document.getElementById('refund-reason');
-        const statusDiv = document.getElementById('refund-status');
-        const confirmBtn = document.getElementById('refund-confirm-btn');
+        var amountInput = document.getElementById('refund-amount');
+        var methodSelect = document.getElementById('refund-method');
+        var reasonInput = document.getElementById('refund-reason');
+        var statusDiv = document.getElementById('refund-status');
+        var confirmBtn = document.getElementById('refund-confirm-btn');
 
-        const amount = parseFloat(amountInput.value);
-        const method = methodSelect.value;
-        const reason = reasonInput.value.trim() || 'Customer refund';
+        var amount = parseFloat(amountInput.value);
+        var method = methodSelect.value;
+        var reason = reasonInput.value.trim() || 'Customer refund';
 
         if (isNaN(amount) || amount <= 0) {
             showRefundStatus('Please enter a valid refund amount.', 'error');
             return;
         }
 
-        const recordSummary = records.map(r => `${r.artist} - ${r.title}`).join('\n');
-        if (!confirm(`Process refund for ${records.length} record(s)?\n\n${recordSummary}\n\nAmount: $${amount.toFixed(2)}\nMethod: ${method}\nReason: ${reason}\n\n⚠️ Records will be DELETED from the database.`)) {
+        var recordSummary = records.map(function(r) { return r.artist + ' - ' + r.title; }).join('\n');
+        if (!confirm('Process refund for ' + records.length + ' record(s)?\n\n' + recordSummary + '\n\nAmount: $' + amount.toFixed(2) + '\nMethod: ' + method + '\nReason: ' + reason + '\n\n⚠️ Records will be DELETED from the database.')) {
             return;
         }
 
@@ -1555,8 +2017,8 @@
         showRefundStatus('⏳ Processing refund...', 'info');
 
         try {
-            const recordIds = records.map(r => r.id);
-            const result = await apiRequest('POST', '/api/refund/process', {
+            var recordIds = records.map(function(r) { return r.id; });
+            var result = await apiRequest('POST', '/api/refund/process', {
                 record_ids: recordIds,
                 amount: amount,
                 method: method,
@@ -1564,11 +2026,11 @@
             });
 
             if (result.status === 'success') {
-                showRefundStatus(`✅ ${result.message}`, 'success');
+                showRefundStatus('✅ ' + result.message, 'success');
                 playSound('success');
-                const refundedIds = new Set(recordIds);
-                filteredRecords = filteredRecords.filter(r => !refundedIds.has(r.id));
-                allRecords = allRecords.filter(r => !refundedIds.has(r.id));
+                var refundedIds = new Set(recordIds);
+                filteredRecords = filteredRecords.filter(function(r) { return !refundedIds.has(r.id); });
+                allRecords = allRecords.filter(function(r) { return !refundedIds.has(r.id); });
                 totalRecords = filteredRecords.length;
                 currentPage = 1;
                 renderPagination();
@@ -1577,13 +2039,13 @@
                 cancelRangeSelection();
                 setTimeout(closeRefundModal, 1500);
             } else {
-                showRefundStatus(`❌ Error: ${result.error || 'Unknown error'}`, 'error');
+                showRefundStatus('❌ Error: ' + (result.error || 'Unknown error'), 'error');
                 playSound('error');
                 confirmBtn.disabled = false;
                 confirmBtn.textContent = 'Process Refund';
             }
         } catch (error) {
-            showRefundStatus(`❌ Error: ${error.message}`, 'error');
+            showRefundStatus('❌ Error: ' + error.message, 'error');
             playSound('error');
             confirmBtn.disabled = false;
             confirmBtn.textContent = 'Process Refund';
@@ -1591,10 +2053,10 @@
     }
 
     function showRefundStatus(message, type) {
-        const el = document.getElementById('refund-status');
+        var el = document.getElementById('refund-status');
         if (!el) return;
         type = type || 'info';
-        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
         el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
         el.className = 'status-message status-' + type;
         el.style.display = 'block';
@@ -1602,157 +2064,63 @@
 
     // ========== RENDER TABLE PAGE ==========
     function renderTablePage() {
-        console.log(`🔄 renderTablePage() – mode: ${currentSearchMode}, records: ${filteredRecords.length}`);
-        const start = (currentPage - 1) * pageSize;
-        const end = Math.min(start + pageSize, filteredRecords.length);
-        const pageRecords = filteredRecords.slice(start, end);
+        console.log('🔄 renderTablePage() – mode: ' + currentSearchMode + ', records: ' + filteredRecords.length);
+        var start = (currentPage - 1) * pageSize;
+        var end = Math.min(start + pageSize, filteredRecords.length);
+        var pageRecords = filteredRecords.slice(start, end);
 
-        let theadHtml = '';
+        var theadHtml = '';
         
         if (currentSearchMode === 'add') {
-            const isSearchResult = currentMode === 'search' && currentResults.length > 0;
+            var isSearchResult = currentMode === 'search' && currentResults.length > 0;
             if (isSearchResult) {
-                const showDefaultInputs = !defaultParamsActive;
-                const condOptions = conditions.map(c =>
-                    `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
-                ).join('');
-                const consignorOptions = consignors.map(c =>
-                    `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
-                ).join('');
+                var showDefaultInputs = !defaultParamsActive;
+                var condOptions = conditions.map(function(c) {
+                    return '<option value="' + c.id + '">' + (c.display_name || c.condition_name) + '</option>';
+                }).join('');
+                var consignorOptions = consignors.map(function(c) {
+                    return '<option value="' + c.id + '" ' + (c.id === selectedConsignorId ? 'selected' : '') + '>' + c.username + '</option>';
+                }).join('');
 
                 if (showDefaultInputs) {
-                    theadHtml = `
-                        <tr>
-                            <th style="width:60px;">Range</th>
-                            <th style="width:60px;">Image</th>
-                            <th>Artist</th>
-                            <th>Title</th>
-                            <th>Catalog #</th>
-                            <th>Sleeve</th>
-                            <th>Disc</th>
-                            <th>Price</th>
-                            <th>Consignor</th>
-                            <th>Notes</th>
-                            <th>Action</th>
-                        </tr>
-                    `;
+                    theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Price</th><th>Consignor</th><th>Notes</th><th>Action</th></tr>';
                 } else {
-                    theadHtml = `
-                        <tr>
-                            <th style="width:60px;">Range</th>
-                            <th style="width:60px;">Image</th>
-                            <th>Artist</th>
-                            <th>Title</th>
-                            <th>Catalog #</th>
-                            <th>Action</th>
-                        </tr>
-                    `;
+                    theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Action</th></tr>';
                 }
             } else {
-                theadHtml = `
-                    <tr>
-                        <th style="width:100px;">Range</th>
-                        <th>ID</th>
-                        <th>Artist</th>
-                        <th>Title</th>
-                        <th>Price</th>
-                        <th>Catalog #</th>
-                        <th>Sleeve</th>
-                        <th>Disc</th>
-                        <th>Barcode</th>
-                        <th>Created At</th>
-                    </tr>
-                `;
+                if (currentDraftId && currentDraftRecords.length > 0) {
+                    theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th></tr>';
+                } else {
+                    theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th></tr>';
+                }
             }
         } else if (currentSearchMode === 'scan') {
-            theadHtml = `
-                <tr>
-                    <th style="width:100px;">Range</th>
-                    <th>ID</th>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>Price</th>
-                    <th>Barcode</th>
-                    <th>Last Seen</th>
-                </tr>
-            `;
+            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Last Seen</th></tr>';
         } else if (currentSearchMode === 'discogs') {
-            theadHtml = `
-                <tr>
-                    <th style="width:60px;">Range</th>
-                    <th>Image</th>
-                    <th>ID</th>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>Catalog #</th>
-                    <th>Media Cond</th>
-                    <th>Sleeve Cond</th>
-                    <th>Store Price</th>
-                    <th>Discogs Price</th>
-                    <th>Markup %</th>
-                    <th>Location</th>
-                    <th>Post</th>
-                </tr>
-            `;
+            theadHtml = '<tr><th style="width:60px;">Range</th><th>Image</th><th>ID</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Media Cond</th><th>Sleeve Cond</th><th>Store Price</th><th>Discogs Price</th><th>Markup %</th><th>Location</th><th>Post</th></tr>';
         } else if (currentSearchMode === 'delete') {
-            theadHtml = `
-                <tr>
-                    <th style="width:100px;">Range</th>
-                    <th>ID</th>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>Price</th>
-                    <th>Status</th>
-                </tr>
-            `;
+            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Status</th></tr>';
         } else if (currentSearchMode === 'checkout') {
-            theadHtml = `
-                <tr>
-                    <th style="width:100px;">Range</th>
-                    <th>ID</th>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>Price</th>
-                    <th>Barcode</th>
-                    <th>Action</th>
-                </tr>
-            `;
+            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Action</th></tr>';
         } else if (currentSearchMode === 'discogs_orders') {
-            theadHtml = `
-                <tr>
-                    <th>#</th>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>Catalog</th>
-                    <th>Barcode</th>
-                    <th>Price</th>
-                    <th>Condition</th>
-                    <th>PigStyle ID</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                </tr>
-            `;
+            theadHtml = '<tr><th>#</th><th>Artist</th><th>Title</th><th>Catalog</th><th>Barcode</th><th>Price</th><th>Condition</th><th>PigStyle ID</th><th>Status</th><th>Action</th></tr>';
         } else if (currentSearchMode === 'refund') {
-            theadHtml = `
-                <tr>
-                    <th style="width:100px;">Range</th>
-                    <th>ID</th>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>Sale Price</th>
-                    <th>Status</th>
-                    <th>Date Sold</th>
-                </tr>
-            `;
+            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Sale Price</th><th>Status</th><th>Date Sold</th></tr>';
         }
 
         recordsTableHead.innerHTML = theadHtml;
 
-        let tbodyHtml = '';
+        var tbodyHtml = '';
 
         if (pageRecords.length === 0) {
-            let msg = 'No records found';
-            if (currentSearchMode === 'add' && currentMode !== 'search') msg = 'No new records (status_id=1). Search Discogs to add records.';
+            var msg = 'No records found';
+            if (currentSearchMode === 'add' && currentMode !== 'search') {
+                if (currentDraftId) {
+                    msg = 'No records linked to this draft. Search Discogs to add records.';
+                } else {
+                    msg = 'No records linked to a draft. Create or select a draft above.';
+                }
+            }
             if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records.';
             if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
             if (currentSearchMode === 'delete') msg = 'No records to delete.';
@@ -1769,366 +2137,292 @@
                 else if (!selectedOrderId) msg = 'Select an order from the dropdown.';
                 else msg = 'This order has no items.';
             }
-            const colCount = currentSearchMode === 'discogs_orders' ? 10 :
+            var colCount = currentSearchMode === 'discogs_orders' ? 10 :
                              (currentSearchMode === 'refund' ? 7 :
                              (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : 10) :
                              (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
                              (currentSearchMode === 'delete' ? 6 : 7)))));
-            tbodyHtml = `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;">${msg}</td></tr>`;
+            tbodyHtml = '<tr><td colspan="' + colCount + '" style="text-align:center;padding:40px;">' + msg + '</td></tr>';
         } else {
-            pageRecords.forEach((record, idx) => {
-                const globalIndex = start + idx;
-                const isSelected = (rangeFromIndex !== null && rangeToIndex !== null &&
+            for (var idx = 0; idx < pageRecords.length; idx++) {
+                var record = pageRecords[idx];
+                var globalIndex = start + idx;
+                var isSelected = (rangeFromIndex !== null && rangeToIndex !== null &&
                                     globalIndex >= Math.min(rangeFromIndex, rangeToIndex) &&
                                     globalIndex <= Math.max(rangeFromIndex, rangeToIndex));
 
-                let rowClass = isSelected ? 'record-selected' : '';
-                let rangeButtons = '';
-                const showRange = currentSearchMode !== 'discogs_orders';
+                var rowClass = isSelected ? 'record-selected' : '';
+                var rangeButtons = '';
+                var showRange = currentSearchMode !== 'discogs_orders';
                 
                 if (showRange) {
                     if (!isRangeMode) {
-                        rangeButtons = `
-                            <button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>
-                            <span style="color:#999; margin:0 4px;">to</span>
-                        `;
+                        rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><span style="color:#999; margin:0 4px;">to</span>';
                     } else {
                         if (rangeFromIndex === globalIndex && rangeToIndex === globalIndex) {
-                            rangeButtons = `
-                                <span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span>
-                                <span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>
-                            `;
+                            rangeButtons = '<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span><span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>';
                         } else if (rangeFromIndex === globalIndex) {
-                            rangeButtons = `
-                                <span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span>
-                                <button class="btn-to" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>
-                            `;
+                            rangeButtons = '<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span><button class="btn-to" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>';
                         } else if (rangeToIndex === globalIndex) {
-                            rangeButtons = `
-                                <button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>
-                                <span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>
-                            `;
+                            rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>';
                         } else {
-                            rangeButtons = `
-                                <button class="btn-from" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button>
-                                <button class="btn-to" data-index="${globalIndex}" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>
-                            `;
+                            rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><button class="btn-to" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>';
                         }
                     }
                 }
 
-                let rowHtml = `<tr class="${rowClass}" data-index="${globalIndex}">`;
+                var rowHtml = '<tr class="' + rowClass + '" data-index="' + globalIndex + '">';
 
                 if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const catalog = record.catalog_number || '';
-                    const condOptions = conditions.map(c =>
-                        `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
-                    ).join('');
-                    const consignorOptions = consignors.map(c =>
-                        `<option value="${c.id}" ${c.id === selectedConsignorId ? 'selected' : ''}>${c.username}</option>`
-                    ).join('');
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var catalog = record.catalog_number || '';
+                    var condOptions = conditions.map(function(c) {
+                        return '<option value="' + c.id + '">' + (c.display_name || c.condition_name) + '</option>';
+                    }).join('');
+                    var consignorOptions = consignors.map(function(c) {
+                        return '<option value="' + c.id + '" ' + (c.id === selectedConsignorId ? 'selected' : '') + '>' + c.username + '</option>';
+                    }).join('');
 
-                    const imageUrl = record.image_url || record.thumb || '';
-                    const imageHtml = imageUrl ?
-                        `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage('${escapeHtml(imageUrl)}', '${escapeHtml(artist)} - ${escapeHtml(title)}')" title="Click to expand">` :
-                        `<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>`;
+                    var imageUrl = record.image_url || record.thumb || '';
+                    var imageHtml = imageUrl ?
+                        '<img src="' + escapeHtml(imageUrl) + '" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage(\'' + escapeHtml(imageUrl) + '\', \'' + escapeHtml(artist) + ' - ' + escapeHtml(title) + '\')" title="Click to expand">' :
+                        '<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>';
 
-                    const showDefaultInputs = !defaultParamsActive;
+                    var showDefaultInputs = !defaultParamsActive;
 
-                    rowHtml += `<td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>`;
-                    rowHtml += `<td style="text-align:center;">${imageHtml}</td>`;
-                    rowHtml += `<td>${escapeHtml(artist)}</td>`;
-                    rowHtml += `<td>${escapeHtml(title)}</td>`;
-                    rowHtml += `<td>${escapeHtml(catalog)}</td>`;
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td style="text-align:center;">' + imageHtml + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
                     
                     if (showDefaultInputs) {
-                        rowHtml += `
-                            <td>
-                                <select class="sleeve-condition-select" style="width:100px; padding:4px;">
-                                    <option value="">Select...</option>
-                                    ${condOptions}
-                                </select>
-                            </td>
-                            <td>
-                                <select class="disc-condition-select" style="width:100px; padding:4px;">
-                                    <option value="">Select...</option>
-                                    ${condOptions}
-                                </select>
-                            </td>
-                            <td>
-                                <input type="number" class="price-input" step="1" min="${minimumPrice !== null ? minimumPrice : 0}" value="" style="width:80px; padding:4px;">
-                            </td>
-                            <td>
-                                <select class="consignor-select" style="width:100px; padding:4px;">
-                                    <option value="">None</option>
-                                    ${consignorOptions}
-                                </select>
-                            </td>
-                            <td>
-                                <input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;">
-                            </td>
-                        `;
+                        rowHtml += '<td><select class="sleeve-condition-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + condOptions + '</select></td>';
+                        rowHtml += '<td><select class="disc-condition-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + condOptions + '</select></td>';
+                        rowHtml += '<td><input type="number" class="price-input" step="1" min="' + (minimumPrice !== null ? minimumPrice : 0) + '" value="" style="width:80px; padding:4px;"></td>';
+                        rowHtml += '<td><select class="consignor-select" style="width:100px; padding:4px;"><option value="">None</option>' + consignorOptions + '</select></td>';
+                        rowHtml += '<td><input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;"></td>';
                     } else {
-                        const def = getDefaultParamsForRecord();
-                        const sleeveName = def.sleeveConditionId ? conditions.find(c => c.id === def.sleeveConditionId)?.display_name || '—' : '—';
-                        const discName = def.discConditionId ? conditions.find(c => c.id === def.discConditionId)?.display_name || '—' : '—';
-                        const priceDisplay = def.price ? `$${def.price}` : '—';
-                        const consignorDisplay = def.consignorId ? consignors.find(c => c.id === def.consignorId)?.username || 'None' : 'None';
+                        var def = getDefaultParamsForRecord();
+                        var sleeveName = def.sleeveConditionId ? (conditions.find(function(c) { return c.id === def.sleeveConditionId; })?.display_name || '—') : '—';
+                        var discName = def.discConditionId ? (conditions.find(function(c) { return c.id === def.discConditionId; })?.display_name || '—') : '—';
+                        var priceDisplay = def.price ? '$' + def.price : '—';
+                        var consignorDisplay = def.consignorId ? (consignors.find(function(c) { return c.id === def.consignorId; })?.username || 'None') : 'None';
                         
-                        rowHtml += `
-                            <td style="font-size:12px; color:#666;" title="Using defaults">S: ${escapeHtml(sleeveName)}</td>
-                            <td style="font-size:12px; color:#666;" title="Using defaults">D: ${escapeHtml(discName)}</td>
-                            <td style="font-size:12px; color:#666;" title="Using defaults">${priceDisplay}</td>
-                            <td style="font-size:12px; color:#666;" title="Using defaults">${escapeHtml(consignorDisplay)}</td>
-                            <td>
-                                <input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;">
-                            </td>
-                        `;
+                        rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">S: ' + escapeHtml(sleeveName) + '</td>';
+                        rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">D: ' + escapeHtml(discName) + '</td>';
+                        rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">' + priceDisplay + '</td>';
+                        rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">' + escapeHtml(consignorDisplay) + '</td>';
+                        rowHtml += '<td><input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;"></td>';
                     }
                     
-                    rowHtml += `
-                        <td>
-                            <button class="btn-add-record-from-search" data-index="${globalIndex}" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">
-                                <i class="fas fa-plus"></i> Add
-                            </button>
-                        </td>
-                    `;
+                    rowHtml += '<td><button class="btn-add-record-from-search" data-index="' + globalIndex + '" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;"><i class="fas fa-plus"></i> Add</button></td>';
                 } else if (currentSearchMode === 'add' && currentMode !== 'search') {
-                    const id = record.id;
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                    const catalog = record.catalog_number || '—';
-                    const sleeveCondition = record.sleeve_condition_name || '—';
-                    const discCondition = record.disc_condition_name || '—';
-                    const barcode = record.barcode || record.id;
-                    const created = record.created_at ? new Date(record.created_at).toLocaleString() : 'Unknown';
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
+                    var catalog = record.catalog_number || '—';
+                    var sleeveCondition = record.sleeve_condition_name || '—';
+                    var discCondition = record.disc_condition_name || '—';
+                    var barcode = record.barcode || record.id;
+                    var created = record.created_at ? new Date(record.created_at).toLocaleString() : 'Unknown';
                     
-                    rowHtml += `
-                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
-                        <td>${id}</td>
-                        <td>${escapeHtml(artist)}</td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${price}</td>
-                        <td>${escapeHtml(catalog)}</td>
-                        <td>${escapeHtml(sleeveCondition)}</td>
-                        <td>${escapeHtml(discCondition)}</td>
-                        <td><span class="barcode-value">${barcode}</span></td>
-                        <td>${created}</td>
-                    `;
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td>' + id + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + price + '</td>';
+                    rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(sleeveCondition) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(discCondition) + '</td>';
+                    rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
+                    rowHtml += '<td>' + created + '</td>';
                 } else if (currentSearchMode === 'scan') {
-                    const id = record.id;
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                    const barcode = record.barcode || record.id;
-                    const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
-                    rowHtml += `
-                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
-                        <td>${id}</td>
-                        <td>${escapeHtml(artist)}</td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${price}</td>
-                        <td><span class="barcode-value">${barcode}</span></td>
-                        <td>${lastSeen}</td>
-                    `;
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
+                    var barcode = record.barcode || record.id;
+                    var lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td>' + id + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + price + '</td>';
+                    rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
+                    rowHtml += '<td>' + lastSeen + '</td>';
                 } else if (currentSearchMode === 'discogs') {
-                    const id = record.id;
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const catalog = record.catalog_number || '—';
-                    const mediaCond = record.disc_condition_name || '—';
-                    const sleeveCond = record.sleeve_condition_name || '—';
-                    const storePrice = record.store_price ? `$${parseFloat(record.store_price).toFixed(2)}` : '—';
-                    const imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
-                    const location = record.location || '—';
-                    const discogsPrice = record._discogsPrice !== undefined ? record._discogsPrice : null;
-                    const markupPercent = record._markupPercent !== undefined ? record._markupPercent : null;
-                    const displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
-                    const markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
-                    const displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var catalog = record.catalog_number || '—';
+                    var mediaCond = record.disc_condition_name || '—';
+                    var sleeveCond = record.sleeve_condition_name || '—';
+                    var storePrice = record.store_price ? '$' + parseFloat(record.store_price).toFixed(2) : '—';
+                    var imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
+                    var location = record.location || '—';
+                    var discogsPrice = record._discogsPrice !== undefined ? record._discogsPrice : null;
+                    var markupPercent = record._markupPercent !== undefined ? record._markupPercent : null;
+                    var displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
+                    var markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
+                    var displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
 
-                    const imgHtml = imageUrl ? 
-                        `<img src="${escapeHtml(imageUrl)}" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage('${escapeHtml(imageUrl)}', '${escapeHtml(artist)} - ${escapeHtml(title)}')" title="Click to expand">` : 
+                    var imgHtml = imageUrl ? 
+                        '<img src="' + escapeHtml(imageUrl) + '" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage(\'' + escapeHtml(imageUrl) + '\', \'' + escapeHtml(artist) + ' - ' + escapeHtml(title) + '\')" title="Click to expand">' : 
                         '<div style="width:80px; height:80px; background:#e0e0e0; border-radius:4px;"></div>';
 
-                    rowHtml += `
-                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
-                        <td style="text-align:center;">${imgHtml}</td>
-                        <td>${id}</td>
-                        <td><strong>${escapeHtml(artist)}</strong></td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${escapeHtml(catalog)}</td>
-                        <td>${escapeHtml(mediaCond)}</td>
-                        <td>${escapeHtml(sleeveCond)}</td>
-                        <td>${storePrice}</td>
-                        <td class="discogs-price-cell" style="${discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;'}">${displayDiscogsPrice}</td>
-                        <td class="markup-cell ${markupClass}">${displayMarkup}</td>
-                        <td title="${escapeHtml(location)}" style="font-size: 12px;">${escapeHtml(location.length > 30 ? location.substring(0,27)+'...' : location)}</td>
-                        <td style="text-align: center;">
-                            ${discogsPrice ? `<button class="post-single-btn" data-record-id="${record.id}" data-artist="${escapeHtml(artist)}" data-title="${escapeHtml(title)}" data-price="${record.store_price}" data-discogs-price="${discogsPrice}" data-markup-percent="${markupPercent}" data-media-condition="${mediaCond}" data-sleeve-condition="${sleeveCond}" data-catalog="${escapeHtml(catalog)}" data-location="${escapeHtml(location)}" data-notes="${escapeHtml(record.notes || '')}"><i class="fab fa-discogs"></i> Post</button>` :
-                                    '<span style="color: #999;">—</span>'}
-                        </td>
-                    `;
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td style="text-align:center;">' + imgHtml + '</td>';
+                    rowHtml += '<td>' + id + '</td>';
+                    rowHtml += '<td><strong>' + escapeHtml(artist) + '</strong></td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(mediaCond) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(sleeveCond) + '</td>';
+                    rowHtml += '<td>' + storePrice + '</td>';
+                    rowHtml += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + '</td>';
+                    rowHtml += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
+                    rowHtml += '<td title="' + escapeHtml(location) + '" style="font-size: 12px;">' + escapeHtml(location.length > 30 ? location.substring(0,27)+'...' : location) + '</td>';
+                    rowHtml += '<td style="text-align: center;">' + (discogsPrice ? '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(artist) + '" data-title="' + escapeHtml(title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + mediaCond + '" data-sleeve-condition="' + sleeveCond + '" data-catalog="' + escapeHtml(catalog) + '" data-location="' + escapeHtml(location) + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>' : '<span style="color: #999;">—</span>') + '</td>';
                 } else if (currentSearchMode === 'delete') {
-                    const id = record.id;
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                    const statusName = getStatusName(record.status_id);
-                    const statusClass = getStatusClass(record.status_id);
-                    rowHtml += `
-                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
-                        <td>${id}</td>
-                        <td>${escapeHtml(artist)}</td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${price}</td>
-                        <td><span class="status-badge ${statusClass}">${statusName}</span></td>
-                    `;
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
+                    var statusName = getStatusName(record.status_id);
+                    var statusClass = getStatusClass(record.status_id);
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td>' + id + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + price + '</td>';
+                    rowHtml += '<td><span class="status-badge ' + statusClass + '">' + statusName + '</span></td>';
                 } else if (currentSearchMode === 'checkout') {
-                    const id = record.id;
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                    const barcode = record.barcode || record.id;
-                    const inSelected = checkoutSelectedItems.some(r => r.id === record.id);
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
+                    var barcode = record.barcode || record.id;
+                    var inSelected = checkoutSelectedItems.some(function(r) { return r.id === record.id; });
                     
-                    let actionHtml;
+                    var actionHtml;
                     if (checkoutViewMode === 'list') {
-                        actionHtml = `<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="${record.id}"><i class="fas fa-minus"></i> Remove</button>`;
+                        actionHtml = '<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="' + record.id + '"><i class="fas fa-minus"></i> Remove</button>';
                     } else {
                         if (inSelected) {
-                            actionHtml = `<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="${record.id}"><i class="fas fa-minus"></i> Remove</button>`;
+                            actionHtml = '<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="' + record.id + '"><i class="fas fa-minus"></i> Remove</button>';
                         } else {
-                            actionHtml = `<button class="btn btn-sm btn-success add-checkout-item" data-record-id="${record.id}"><i class="fas fa-plus"></i> Add</button>`;
+                            actionHtml = '<button class="btn btn-sm btn-success add-checkout-item" data-record-id="' + record.id + '"><i class="fas fa-plus"></i> Add</button>';
                         }
                     }
                     
-                    const isCustom = record.isCustom === true;
-                    const customBadge = isCustom ? '<span class="status-badge" style="background:#17a2b8; color:white; margin-left:5px;">Custom</span>' : '';
+                    var isCustom = record.isCustom === true;
+                    var customBadge = isCustom ? '<span class="status-badge" style="background:#17a2b8; color:white; margin-left:5px;">Custom</span>' : '';
                     
-                    rowHtml += `
-                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
-                        <td>${id}${customBadge}</td>
-                        <td>${escapeHtml(artist)}</td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${price}</td>
-                        <td><span class="barcode-value">${barcode}</span></td>
-                        <td>${actionHtml}</td>
-                    `;
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td>' + id + customBadge + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + price + '</td>';
+                    rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
+                    rowHtml += '<td>' + actionHtml + '</td>';
                 } else if (currentSearchMode === 'discogs_orders') {
-                    const orderItem = record;
-                    const idxNum = globalIndex + 1;
-                    const artist = orderItem.artist || 'Unknown';
-                    const title = orderItem.title || 'Unknown';
-                    const catalog = orderItem.catalog_number || '—';
-                    const barcode = orderItem.barcode || '—';
-                    const price = orderItem.price || 0;
-                    const condition = orderItem.media_condition || '—';
-                    const pigstyleId = orderItem.pigstyle_id || '';
-                    const recordStatus = orderItem.record_status_id;
-                    let statusText = '—';
-                    let statusClass = '';
+                    var orderItem = record;
+                    var idxNum = globalIndex + 1;
+                    var artist = orderItem.artist || 'Unknown';
+                    var title = orderItem.title || 'Unknown';
+                    var catalog = orderItem.catalog_number || '—';
+                    var barcode = orderItem.barcode || '—';
+                    var price = orderItem.price || 0;
+                    var condition = orderItem.media_condition || '—';
+                    var pigstyleId = orderItem.pigstyle_id || '';
+                    var recordStatus = orderItem.record_status_id;
+                    var statusText = '—';
+                    var statusClass = '';
                     if (recordStatus === 2) { statusText = 'Active'; statusClass = 'active'; }
                     else if (recordStatus === 3 || recordStatus === 4) { statusText = 'Sold'; statusClass = 'sold'; }
                     else if (recordStatus === 1) { statusText = 'New'; statusClass = 'new'; }
                     else { statusText = 'Not found'; statusClass = ''; }
 
-                    let actionButton = '';
+                    var actionButton = '';
                     if (pigstyleId && recordStatus !== 3 && recordStatus !== 4) {
-                        actionButton = `
-                            <button class="btn btn-sm btn-success mark-discogs-sold-btn" 
-                                    data-record-id="${pigstyleId}"
-                                    style="padding:2px 6px; font-size:11px; margin-top:4px;">
-                                <i class="fab fa-discogs"></i> Mark Sold
-                            </button>
-                        `;
+                        actionButton = '<button class="btn btn-sm btn-success mark-discogs-sold-btn" data-record-id="' + pigstyleId + '" style="padding:2px 6px; font-size:11px; margin-top:4px;"><i class="fab fa-discogs"></i> Mark Sold</button>';
                     }
 
-                    rowHtml += `
-                        <td>${idxNum}</td>
-                        <td>${escapeHtml(artist)}</td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${escapeHtml(catalog)}</td>
-                        <td>${escapeHtml(barcode)}</td>
-                        <td>$${price.toFixed(2)}</td>
-                        <td>${escapeHtml(condition)}</td>
-                        <td>
-                            <input type="text" class="pigstyle-id-input" value="${escapeHtml(pigstyleId)}" 
-                                   placeholder="ID or barcode" style="width:100px; padding:4px; border:1px solid #ddd; border-radius:4px;">
-                            <button class="btn btn-sm btn-secondary scan-pigstyle-btn" style="padding:2px 6px; font-size:12px;">
-                                <i class="fas fa-qrcode"></i>
-                            </button>
-                        </td>
-                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                        <td>${actionButton}</td>
-                    `;
+                    rowHtml += '<td>' + idxNum + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(barcode) + '</td>';
+                    rowHtml += '<td>$' + price.toFixed(2) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(condition) + '</td>';
+                    rowHtml += '<td><input type="text" class="pigstyle-id-input" value="' + escapeHtml(pigstyleId) + '" placeholder="ID or barcode" style="width:100px; padding:4px; border:1px solid #ddd; border-radius:4px;"><button class="btn btn-sm btn-secondary scan-pigstyle-btn" style="padding:2px 6px; font-size:12px;"><i class="fas fa-qrcode"></i></button></td>';
+                    rowHtml += '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>';
+                    rowHtml += '<td>' + actionButton + '</td>';
                 } else if (currentSearchMode === 'refund') {
-                    const id = record.id;
-                    const artist = record.artist || 'Unknown';
-                    const title = record.title || 'Unknown';
-                    const price = record.store_price ? `$${record.store_price.toFixed(2)}` : 'N/A';
-                    const statusName = getStatusName(record.status_id);
-                    const statusClass = getStatusClass(record.status_id);
-                    const dateSold = record.date_sold ? new Date(record.date_sold).toLocaleDateString() : 'Unknown';
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
+                    var statusName = getStatusName(record.status_id);
+                    var statusClass = getStatusClass(record.status_id);
+                    var dateSold = record.date_sold ? new Date(record.date_sold).toLocaleDateString() : 'Unknown';
                     
-                    rowHtml += `
-                        <td style="text-align:center; white-space:nowrap;">${rangeButtons}</td>
-                        <td>${id}</td>
-                        <td>${escapeHtml(artist)}</td>
-                        <td>${escapeHtml(title)}</td>
-                        <td>${price}</td>
-                        <td><span class="status-badge ${statusClass}">${statusName}</span></td>
-                        <td>${dateSold}</td>
-                    `;
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td>' + id + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + price + '</td>';
+                    rowHtml += '<td><span class="status-badge ' + statusClass + '">' + statusName + '</span></td>';
+                    rowHtml += '<td>' + dateSold + '</td>';
                 }
 
-                rowHtml += `</tr>`;
+                rowHtml += '</tr>';
                 tbodyHtml += rowHtml;
-            });
+            }
         }
         recordsTableBody.innerHTML = tbodyHtml;
 
-        document.querySelectorAll('.btn-from').forEach(btn => {
+        document.querySelectorAll('.btn-from').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                const index = parseInt(this.dataset.index);
+                var index = parseInt(this.dataset.index);
                 startRangeFrom(index);
             });
         });
-        document.querySelectorAll('.btn-to').forEach(btn => {
+        document.querySelectorAll('.btn-to').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                const index = parseInt(this.dataset.index);
+                var index = parseInt(this.dataset.index);
                 endRangeTo(index);
             });
         });
 
         if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
-            document.querySelectorAll('.btn-add-record-from-search').forEach(btn => {
+            document.querySelectorAll('.btn-add-record-from-search').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    const index = parseInt(this.dataset.index);
-                    const row = this.closest('tr');
-                    const record = currentResults[index];
+                    var index = parseInt(this.dataset.index);
+                    var row = this.closest('tr');
+                    var record = currentResults[index];
                     if (record) addRecordFromDiscogs(row, record);
                 });
             });
 
             if (!defaultParamsActive) {
-                document.querySelectorAll('.sleeve-condition-select').forEach(sel => {
+                document.querySelectorAll('.sleeve-condition-select').forEach(function(sel) {
                     sel.addEventListener('change', function() {
-                        const row = this.closest('tr');
-                        const discSelect = row.querySelector('.disc-condition-select');
+                        var row = this.closest('tr');
+                        var discSelect = row.querySelector('.disc-condition-select');
                         if (this.value) discSelect.value = this.value;
-                        const catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
+                        var catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
                         estimatePriceForRow(row, catalog);
                     });
                 });
-                document.querySelectorAll('.disc-condition-select').forEach(sel => {
+                document.querySelectorAll('.disc-condition-select').forEach(function(sel) {
                     sel.addEventListener('change', function() {
-                        const row = this.closest('tr');
-                        const catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
+                        var row = this.closest('tr');
+                        var catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
                         estimatePriceForRow(row, catalog);
                     });
                 });
@@ -2136,49 +2430,49 @@
         }
 
         if (currentSearchMode === 'discogs') {
-            document.querySelectorAll('.post-single-btn').forEach(btn => {
+            document.querySelectorAll('.post-single-btn').forEach(function(btn) {
                 btn.addEventListener('click', function(e) {
                     e.preventDefault();
-                    const recordId = parseInt(this.dataset.recordId);
-                    const artist = this.dataset.artist;
-                    const title = this.dataset.title;
-                    const price = parseFloat(this.dataset.price);
-                    const discogsPrice = parseFloat(this.dataset.discogsPrice);
-                    const markupPercent = parseFloat(this.dataset.markupPercent);
-                    const mediaCondition = this.dataset.mediaCondition;
-                    const sleeveCondition = this.dataset.sleeveCondition;
-                    const catalog = this.dataset.catalog;
-                    const location = this.dataset.location;
-                    const notes = this.dataset.notes;
+                    var recordId = parseInt(this.dataset.recordId);
+                    var artist = this.dataset.artist;
+                    var title = this.dataset.title;
+                    var price = parseFloat(this.dataset.price);
+                    var discogsPrice = parseFloat(this.dataset.discogsPrice);
+                    var markupPercent = parseFloat(this.dataset.markupPercent);
+                    var mediaCondition = this.dataset.mediaCondition;
+                    var sleeveCondition = this.dataset.sleeveCondition;
+                    var catalog = this.dataset.catalog;
+                    var location = this.dataset.location;
+                    var notes = this.dataset.notes;
                     postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalog, location, notes);
                 });
             });
         }
 
         if (currentSearchMode === 'checkout') {
-            document.querySelectorAll('.add-checkout-item').forEach(btn => {
+            document.querySelectorAll('.add-checkout-item').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    const recordId = parseInt(this.dataset.recordId);
+                    var recordId = parseInt(this.dataset.recordId);
                     addToCheckout(recordId);
                 });
             });
-            document.querySelectorAll('.remove-checkout-item').forEach(btn => {
+            document.querySelectorAll('.remove-checkout-item').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    const recordId = parseInt(this.dataset.recordId);
+                    var recordId = parseInt(this.dataset.recordId);
                     removeFromCheckout(recordId);
                 });
             });
         }
 
         if (currentSearchMode === 'discogs_orders') {
-            document.querySelectorAll('.pigstyle-id-input').forEach(input => {
+            document.querySelectorAll('.pigstyle-id-input').forEach(function(input) {
                 input.addEventListener('change', function() {
-                    const row = this.closest('tr');
-                    const index = parseInt(row.dataset.index);
-                    const item = filteredRecords[index];
+                    var row = this.closest('tr');
+                    var index = parseInt(row.dataset.index);
+                    var item = filteredRecords[index];
                     if (item) {
-                        const val = this.value.trim();
-                        const newId = parseInt(val);
+                        var val = this.value.trim();
+                        var newId = parseInt(val);
                         if (!isNaN(newId)) {
                             item.pigstyle_id = newId;
                             fetchRecordForOrderItem(item, row);
@@ -2190,7 +2484,7 @@
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
-                        const val = this.value.trim();
+                        var val = this.value.trim();
                         if (val.length > 0) {
                             lookupBarcodeForOrderItem(this, val);
                         }
@@ -2198,14 +2492,14 @@
                 });
             });
 
-            document.querySelectorAll('.scan-pigstyle-btn').forEach(btn => {
+            document.querySelectorAll('.scan-pigstyle-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    const input = this.closest('td').querySelector('.pigstyle-id-input');
+                    var input = this.closest('td').querySelector('.pigstyle-id-input');
                     if (input) {
-                        const barcode = prompt('Enter or scan barcode:');
+                        var barcode = prompt('Enter or scan barcode:');
                         if (barcode && barcode.trim().length > 0) {
                             input.value = barcode.trim();
-                            const event = new Event('change');
+                            var event = new Event('change');
                             input.dispatchEvent(event);
                             lookupBarcodeForOrderItem(input, barcode.trim());
                         }
@@ -2213,34 +2507,29 @@
                 });
             });
 
-            document.querySelectorAll('.mark-discogs-sold-btn').forEach(btn => {
+            document.querySelectorAll('.mark-discogs-sold-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    const recordId = parseInt(this.dataset.recordId);
+                    var recordId = parseInt(this.dataset.recordId);
                     markRecordSoldOnDiscogs(recordId);
                 });
             });
         }
 
         updateSelectionCount();
-
-        // Update draft linked count if in Add mode
-        if (currentSearchMode === 'add') {
-            updateDraftLinkedCount();
-        }
     }
 
     // ========== Helper: lookup barcode for order item ==========
     async function lookupBarcodeForOrderItem(input, barcode) {
         try {
-            const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(barcode));
+            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(barcode));
             if (data.status === 'success' && data.records && data.records.length === 1) {
-                const record = data.records[0];
+                var record = data.records[0];
                 input.value = record.id;
-                const event = new Event('change');
+                var event = new Event('change');
                 input.dispatchEvent(event);
-                const row = input.closest('tr');
-                const index = parseInt(row.dataset.index);
-                const item = filteredRecords[index];
+                var row = input.closest('tr');
+                var index = parseInt(row.dataset.index);
+                var item = filteredRecords[index];
                 if (item) {
                     item.pigstyle_id = record.id;
                     item.barcode = record.barcode;
@@ -2249,9 +2538,9 @@
                     renderTablePage();
                 }
                 playSound('success');
-                showStatus(`✅ Record #${record.id} assigned to this order item.`, 'success');
+                showStatus('✅ Record #' + record.id + ' assigned to this order item.', 'success');
             } else if (data.records && data.records.length > 1) {
-                showStatus(`⚠️ Multiple records (${data.records.length}) found for barcode. Please be more specific.`, 'warning');
+                showStatus('⚠️ Multiple records (' + data.records.length + ') found for barcode. Please be more specific.', 'warning');
             } else {
                 showStatus('❌ No record found for this barcode.', 'error');
                 playSound('error');
@@ -2266,27 +2555,27 @@
     async function fetchRecordForOrderItem(item, row) {
         if (!item.pigstyle_id) return;
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/records/' + item.pigstyle_id, {
+            var response = await fetch(window.AppConfig.baseUrl + '/records/' + item.pigstyle_id, {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             if (response.ok) {
-                const record = await response.json();
+                var record = await response.json();
                 item.barcode = record.barcode || null;
                 item.catalog_number = record.catalog_number || null;
                 item.record_status_id = record.status_id;
-                const cells = row.querySelectorAll('td');
+                var cells = row.querySelectorAll('td');
                 if (cells.length >= 5) {
                     cells[4].textContent = item.barcode || '—';
                     cells[3].textContent = item.catalog_number || '—';
-                    const statusCell = cells[8];
-                    let statusText = '—';
-                    let statusClass = '';
+                    var statusCell = cells[8];
+                    var statusText = '—';
+                    var statusClass = '';
                     if (item.record_status_id === 2) { statusText = 'Active'; statusClass = 'active'; }
                     else if (item.record_status_id === 3 || item.record_status_id === 4) { statusText = 'Sold'; statusClass = 'sold'; }
                     else if (item.record_status_id === 1) { statusText = 'New'; statusClass = 'new'; }
                     else { statusText = 'Not found'; statusClass = ''; }
-                    statusCell.innerHTML = `<span class="status-badge ${statusClass}">${statusText}</span>`;
+                    statusCell.innerHTML = '<span class="status-badge ' + statusClass + '">' + statusText + '</span>';
                 }
             }
         } catch (error) {
@@ -2297,10 +2586,10 @@
     // ========== Scan Location Builder Functions ==========
     function populateScanGenreDropdown() {
         if (!scanGenreSelect) return;
-        const currentVal = scanGenreSelect.value;
+        var currentVal = scanGenreSelect.value;
         scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-        genres.forEach(g => {
-            const opt = document.createElement('option');
+        genres.forEach(function(g) {
+            var opt = document.createElement('option');
             opt.value = g;
             opt.textContent = g;
             scanGenreSelect.appendChild(opt);
@@ -2312,21 +2601,21 @@
     }
 
     function updateScanLocationPreview() {
-        const genre = scanGenreSelect ? scanGenreSelect.value : '';
-        const mainType = scanMainLocationType ? scanMainLocationType.value : 'Bin';
-        const mainNumber = scanMainLocationNumber ? scanMainLocationNumber.value : '1';
-        const sublocation = scanSublocation ? scanSublocation.value : '';
+        var genre = scanGenreSelect ? scanGenreSelect.value : '';
+        var mainType = scanMainLocationType ? scanMainLocationType.value : 'Bin';
+        var mainNumber = scanMainLocationNumber ? scanMainLocationNumber.value : '1';
+        var sublocation = scanSublocation ? scanSublocation.value : '';
 
-        let mainLocation = mainType + ' ' + mainNumber;
-        let sublocStr = '';
+        var mainLocation = mainType + ' ' + mainNumber;
+        var sublocStr = '';
         if (sublocation === 'CUSTOM') {
             sublocStr = scanCustomSublocation ? scanCustomSublocation.value.trim() : 'Custom';
         } else if (sublocation && sublocation !== 'NA') {
-            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
+            var names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
             sublocStr = names[sublocation] || '';
         }
 
-        let parts = [];
+        var parts = [];
         if (genre) parts.push(genre);
         if (mainLocation) parts.push(mainLocation);
         if (sublocStr) parts.push(sublocStr);
@@ -2337,10 +2626,10 @@
 
         updateScanCounter();
 
-        const hasGenre = !!genre;
-        const hasSublocation = sublocation && sublocation !== '';
-        const isValid = hasGenre && hasSublocation;
-        const hasRecords = filteredRecords.length > 0;
+        var hasGenre = !!genre;
+        var hasSublocation = sublocation && sublocation !== '';
+        var isValid = hasGenre && hasSublocation;
+        var hasRecords = filteredRecords.length > 0;
 
         if (completeActionBtn) {
             completeActionBtn.disabled = !(isValid && hasRecords);
@@ -2366,16 +2655,16 @@
     }
 
     function applyScanLocation() {
-        const records = filteredRecords;
+        var records = filteredRecords;
         if (records.length === 0) {
             showStatus('No scanned records to process.', 'warning');
             return;
         }
 
-        const genre = scanGenreSelect ? scanGenreSelect.value : '';
-        const mainType = scanMainLocationType ? scanMainLocationType.value : 'Bin';
-        const mainNumber = scanMainLocationNumber ? scanMainLocationNumber.value : '1';
-        const sublocation = scanSublocation ? scanSublocation.value : '';
+        var genre = scanGenreSelect ? scanGenreSelect.value : '';
+        var mainType = scanMainLocationType ? scanMainLocationType.value : 'Bin';
+        var mainNumber = scanMainLocationNumber ? scanMainLocationNumber.value : '1';
+        var sublocation = scanSublocation ? scanSublocation.value : '';
 
         if (!genre) {
             showStatus('Please select or add a genre.', 'warning');
@@ -2386,41 +2675,41 @@
             return;
         }
 
-        let mainLocation = mainType + ' ' + mainNumber;
-        let sublocStr = '';
+        var mainLocation = mainType + ' ' + mainNumber;
+        var sublocStr = '';
         if (sublocation === 'CUSTOM') {
-            const custom = scanCustomSublocation ? scanCustomSublocation.value.trim() : '';
+            var custom = scanCustomSublocation ? scanCustomSublocation.value.trim() : '';
             if (!custom) {
                 showStatus('Please enter custom sublocation text.', 'warning');
                 return;
             }
             sublocStr = custom;
         } else if (sublocation !== 'NA') {
-            const names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
+            var names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
             sublocStr = names[sublocation] || '';
         }
 
-        const today = getLocalMSTDate();
+        var today = getLocalMSTDate();
 
-        let updated = 0;
-        for (let i = records.length - 1; i >= 0; i--) {
-            const record = records[i];
-            const counter = records.length - i;
-            let parts = [];
+        var updated = 0;
+        for (var i = records.length - 1; i >= 0; i--) {
+            var record = records[i];
+            var counter = records.length - i;
+            var parts = [];
             if (genre) parts.push(genre);
             if (mainLocation) parts.push(mainLocation);
             if (sublocStr) parts.push(sublocStr);
             parts.push(String(counter));
-            const locationString = parts.join(' | ');
+            var locationString = parts.join(' | ');
 
             try {
                 apiRequest('PUT', '/records/' + record.id, {
                     location: locationString,
                     last_seen: today
-                }).then(() => {
+                }).then(function() {
                     record.location = locationString;
                     record.last_seen = today;
-                }).catch(e => {
+                }).catch(function(e) {
                     console.error('Failed to update record', record.id, e);
                 });
                 updated++;
@@ -2430,9 +2719,9 @@
         }
 
         if (updated > 0) {
-            const firstRecord = records[0];
-            const firstCounter = records.length;
-            let firstParts = [];
+            var firstRecord = records[0];
+            var firstCounter = records.length;
+            var firstParts = [];
             if (genre) firstParts.push(genre);
             if (mainLocation) firstParts.push(mainLocation);
             if (sublocStr) firstParts.push(sublocStr);
@@ -2447,14 +2736,14 @@
         renderPagination();
         renderTablePage();
 
-        showStatus(`✅ Applied location to ${updated} of ${records.length} scanned records.`, 'success');
+        showStatus('✅ Applied location to ' + updated + ' of ' + records.length + ' scanned records.', 'success');
         playSound('success');
         resetScanCounter();
         updateScanLocationPreview();
     }
 
     // ========== Custom Item Modal ==========
-    let customItemModal = null;
+    var customItemModal = null;
 
     function showCustomItemModal() {
         if (customItemModal) {
@@ -2466,33 +2755,11 @@
         customItemModal.id = 'custom-item-modal';
         customItemModal.className = 'modal-overlay';
         customItemModal.style.display = 'flex';
-        customItemModal.innerHTML = `
-            <div class="modal-content" style="max-width: 400px; width: 95%;">
-                <div class="modal-header" style="background: #17a2b8; color: white;">
-                    <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
-                    <button class="modal-close" onclick="closeCustomItemModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div style="margin-bottom: 15px;">
-                        <label for="custom-item-desc" style="display:block; font-weight:500; margin-bottom:4px;">Description *</label>
-                        <input type="text" id="custom-item-desc" class="form-control" placeholder="e.g., Merchandise, Gift Card, etc." style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label for="custom-item-price" style="display:block; font-weight:500; margin-bottom:4px;">Price ($) *</label>
-                        <input type="number" id="custom-item-price" class="form-control" step="0.01" min="0.01" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
-                    </div>
-                    <div id="custom-item-status" style="margin-top:10px; display:none;"></div>
-                </div>
-                <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
-                    <button class="btn btn-secondary" onclick="closeCustomItemModal()" style="padding:8px 16px; border:none; border-radius:4px; cursor:pointer; background:#6c757d; color:white;">Cancel</button>
-                    <button class="btn btn-success" id="custom-item-add-btn" style="padding:8px 16px; border:none; border-radius:4px; cursor:pointer; background:#28a745; color:white;"><i class="fas fa-check"></i> Add to Checkout</button>
-                </div>
-            </div>
-        `;
+        customItemModal.innerHTML = '<div class="modal-content" style="max-width: 400px; width: 95%;"><div class="modal-header" style="background: #17a2b8; color: white;"><h3 class="modal-title"><i class="fas fa-plus-circle"></i> Add Custom Item</h3><button class="modal-close" onclick="closeCustomItemModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button></div><div class="modal-body"><div style="margin-bottom: 15px;"><label for="custom-item-desc" style="display:block; font-weight:500; margin-bottom:4px;">Description *</label><input type="text" id="custom-item-desc" class="form-control" placeholder="e.g., Merchandise, Gift Card, etc." style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;"></div><div style="margin-bottom: 15px;"><label for="custom-item-price" style="display:block; font-weight:500; margin-bottom:4px;">Price ($) *</label><input type="number" id="custom-item-price" class="form-control" step="0.01" min="0.01" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;"></div><div id="custom-item-status" style="margin-top:10px; display:none;"></div></div><div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;"><button class="btn btn-secondary" onclick="closeCustomItemModal()" style="padding:8px 16px; border:none; border-radius:4px; cursor:pointer; background:#6c757d; color:white;">Cancel</button><button class="btn btn-success" id="custom-item-add-btn" style="padding:8px 16px; border:none; border-radius:4px; cursor:pointer; background:#28a745; color:white;"><i class="fas fa-check"></i> Add to Checkout</button></div></div>';
         document.body.appendChild(customItemModal);
 
-        setTimeout(() => {
-            const descInput = document.getElementById('custom-item-desc');
+        setTimeout(function() {
+            var descInput = document.getElementById('custom-item-desc');
             if (descInput) descInput.focus();
         }, 100);
 
@@ -2528,22 +2795,22 @@
     }
 
     function addCustomItemFromModal() {
-        const descInput = document.getElementById('custom-item-desc');
-        const priceInput = document.getElementById('custom-item-price');
-        const statusDiv = document.getElementById('custom-item-status');
+        var descInput = document.getElementById('custom-item-desc');
+        var priceInput = document.getElementById('custom-item-price');
+        var statusDiv = document.getElementById('custom-item-status');
 
         function showStatus(msg, type) {
             if (statusDiv) {
                 statusDiv.textContent = msg;
-                statusDiv.className = `status-message status-${type}`;
+                statusDiv.className = 'status-message status-' + type;
                 statusDiv.style.display = 'block';
             } else {
                 showStatus(msg, type);
             }
         }
 
-        const desc = descInput.value.trim();
-        const price = parseFloat(priceInput.value);
+        var desc = descInput.value.trim();
+        var price = parseFloat(priceInput.value);
 
         if (!desc) {
             showStatus('Please enter a description.', 'warning');
@@ -2554,7 +2821,7 @@
             return;
         }
 
-        const customItem = {
+        var customItem = {
             id: -Date.now(),
             artist: 'Custom',
             title: desc,
@@ -2564,7 +2831,7 @@
         };
 
         checkoutSelectedItems.push(customItem);
-        showStatus(`Added custom item: "${desc}" for $${price.toFixed(2)}`, 'success');
+        showStatus('Added custom item: "' + desc + '" for $' + price.toFixed(2), 'success');
         closeCustomItemModal();
 
         checkoutViewMode = 'list';
@@ -2575,13 +2842,13 @@
         renderTablePage();
         updateSelectionCount();
         if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+            checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
         }
     }
 
     // ========== Bernie Item ==========
     function addBernieItem() {
-        const bernieItem = {
+        var bernieItem = {
             id: -Date.now() - 1,
             artist: 'Bernie',
             title: 'Bern It',
@@ -2592,7 +2859,7 @@
         };
 
         checkoutSelectedItems.push(bernieItem);
-        showStatus(`Added Bernie donation: "Bern It" for $0.99`, 'success');
+        showStatus('Added Bernie donation: "Bern It" for $0.99', 'success');
         playSound('success');
 
         checkoutViewMode = 'list';
@@ -2603,37 +2870,37 @@
         renderTablePage();
         updateSelectionCount();
         if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+            checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
         }
     }
 
     // ========== Range Selection ==========
     function startRangeFrom(index) {
-        console.log(`🔵 startRangeFrom: index=${index}`);
+        console.log('🔵 startRangeFrom: index=' + index);
         rangeFromIndex = index;
         rangeToIndex = index;
         isRangeMode = true;
         renderTablePage();
-        const selected = getSelectedRecords();
-        showStatus(`Selected ${selected.length} record(s)`, 'info');
+        var selected = getSelectedRecords();
+        showStatus('Selected ' + selected.length + ' record(s)', 'info');
         updateSelectionCount();
     }
 
     function endRangeTo(index) {
-        console.log(`🔵 endRangeTo: index=${index}`);
+        console.log('🔵 endRangeTo: index=' + index);
         if (rangeFromIndex === null) {
             showStatus('Select "from" first', 'warning');
             return;
         }
         rangeToIndex = index;
         renderTablePage();
-        const selected = getSelectedRecords();
-        showStatus(`Selected ${selected.length} record(s)`, 'success');
+        var selected = getSelectedRecords();
+        showStatus('Selected ' + selected.length + ' record(s)', 'success');
         updateSelectionCount();
     }
 
     function cancelRangeSelection() {
-        console.log(`🔵 cancelRangeSelection`);
+        console.log('🔵 cancelRangeSelection');
         rangeFromIndex = null;
         rangeToIndex = null;
         isRangeMode = false;
@@ -2644,17 +2911,17 @@
 
     // ========== Add Record from Discogs ==========
     async function addRecordFromDiscogs(row, discogsRecord) {
-        const priceInput = row.querySelector('.price-input');
-        const consignorSelect = row.querySelector('.consignor-select');
-        const sleeveSelect = row.querySelector('.sleeve-condition-select');
-        const discSelect = row.querySelector('.disc-condition-select');
-        const notesInput = row.querySelector('.notes-input');
+        var priceInput = row.querySelector('.price-input');
+        var consignorSelect = row.querySelector('.consignor-select');
+        var sleeveSelect = row.querySelector('.sleeve-condition-select');
+        var discSelect = row.querySelector('.disc-condition-select');
+        var notesInput = row.querySelector('.notes-input');
 
-        let price = null;
-        let consignorId = null;
-        let sleeveId = null;
-        let discId = null;
-        let notes = notesInput ? notesInput.value.trim() : '';
+        var price = null;
+        var consignorId = null;
+        var sleeveId = null;
+        var discId = null;
+        var notes = notesInput ? notesInput.value.trim() : '';
 
         if (defaultParamsActive) {
             sleeveId = defaultParams.sleeveConditionId;
@@ -2664,19 +2931,19 @@
         }
 
         if (priceInput && priceInput.value) {
-            const val = parseFloat(priceInput.value);
+            var val = parseFloat(priceInput.value);
             if (!isNaN(val) && val > 0) price = val;
         }
         if (consignorSelect && consignorSelect.value) {
-            const val = parseInt(consignorSelect.value);
+            var val = parseInt(consignorSelect.value);
             if (!isNaN(val)) consignorId = val;
         }
         if (sleeveSelect && sleeveSelect.value) {
-            const val = parseInt(sleeveSelect.value);
+            var val = parseInt(sleeveSelect.value);
             if (!isNaN(val)) sleeveId = val;
         }
         if (discSelect && discSelect.value) {
-            const val = parseInt(discSelect.value);
+            var val = parseInt(discSelect.value);
             if (!isNaN(val)) discId = val;
         }
 
@@ -2689,7 +2956,7 @@
             return;
         }
 
-        const recordData = {
+        var recordData = {
             artist: discogsRecord.artist,
             title: discogsRecord.title,
             discogs_genre_raw: discogsRecord.genre_raw || '',
@@ -2703,19 +2970,16 @@
             notes: notes
         };
 
-        // If there's an active draft, link the record to it via batch_id
-        if (activeDraft && activeDraft.id) {
-            recordData.batch_id = activeDraft.id;
-            console.log(`🔗 Linking record to draft #${activeDraft.id} via batch_id`);
+        if (currentDraftId) {
+            recordData.batch_id = currentDraftId;
+            console.log('🔗 Linking record to draft #' + currentDraftId + ' via batch_id');
         }
 
-        const result = await apiRequest('POST', '/records', recordData);
-        showStatus(`✅ Record #${result.record.id} added successfully!`, 'success');
+        var result = await apiRequest('POST', '/records', recordData);
+        showStatus('✅ Record #' + result.record.id + ' added successfully!', 'success');
         
-        // If linked to draft, add to linked records list
-        if (activeDraft && activeDraft.id) {
-            draftLinkedRecordIds.push(result.record.id);
-            updateDraftLinkedCount();
+        if (currentDraftId) {
+            await loadRecordsForDraft(currentDraftId);
         }
         
         if (searchInput) {
@@ -2724,14 +2988,13 @@
         }
         
         clearSearch();
-        await loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
         await loadStats();
     }
 
     // ========== CONSOLIDATED SEARCH ==========
     function performSearch(term) {
         if (!term) { clearSearch(); return; }
-        const mode = currentSearchMode;
+        var mode = currentSearchMode;
 
         if (mode === 'add') {
             performDiscogsSearch(term);
@@ -2761,10 +3024,10 @@
 
     // ========== Unified Local Search (Delete & Checkout) ==========
     function performLocalSearch(term) {
-        const termLower = term.trim().toLowerCase();
-        const isNumeric = /^\d+$/.test(termLower);
+        var termLower = term.trim().toLowerCase();
+        var isNumeric = /^\d+$/.test(termLower);
 
-        let source = [];
+        var source = [];
         if (currentSearchMode === 'checkout') {
             source = allRecords;
         } else if (currentSearchMode === 'delete') {
@@ -2776,29 +3039,29 @@
             return;
         }
 
-        let filtered;
+        var filtered;
         if (isNumeric) {
-            const numericTerm = termLower;
-            filtered = source.filter(r => {
-                const idMatch = r.id && r.id.toString() === numericTerm;
-                const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === numericTerm;
+            var numericTerm = termLower;
+            filtered = source.filter(function(r) {
+                var idMatch = r.id && r.id.toString() === numericTerm;
+                var barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === numericTerm;
                 return idMatch || barcodeMatch;
             });
             if (filtered.length === 0) {
-                filtered = source.filter(r => {
-                    const artistMatch = r.artist && r.artist.toLowerCase().includes(numericTerm);
-                    const titleMatch = r.title && r.title.toLowerCase().includes(numericTerm);
-                    const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(numericTerm);
+                filtered = source.filter(function(r) {
+                    var artistMatch = r.artist && r.artist.toLowerCase().includes(numericTerm);
+                    var titleMatch = r.title && r.title.toLowerCase().includes(numericTerm);
+                    var catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(numericTerm);
                     return artistMatch || titleMatch || catalogMatch;
                 });
             }
         } else {
-            filtered = source.filter(r => {
-                const artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
-                const titleMatch = r.title && r.title.toLowerCase().includes(termLower);
-                const catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
-                const barcodeMatch = r.barcode && r.barcode.trim().toLowerCase().includes(termLower);
-                const idMatch = r.id && r.id.toString().includes(termLower);
+            filtered = source.filter(function(r) {
+                var artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
+                var titleMatch = r.title && r.title.toLowerCase().includes(termLower);
+                var catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
+                var barcodeMatch = r.barcode && r.barcode.trim().toLowerCase().includes(termLower);
+                var idMatch = r.id && r.id.toString().includes(termLower);
                 return artistMatch || titleMatch || catalogMatch || barcodeMatch || idMatch;
             });
         }
@@ -2810,14 +3073,14 @@
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+            showStatus('Found ' + totalRecords + ' records matching "' + term + '"', 'info');
         } else if (currentSearchMode === 'delete') {
             filteredRecords = filtered;
             totalRecords = filtered.length;
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+            showStatus('Found ' + totalRecords + ' records matching "' + term + '"', 'info');
         }
 
         updateSelectionCount();
@@ -2826,17 +3089,17 @@
     // ========== SCAN MODE with Duplicate Scoring ==========
     function getArtistSortKey(artistName) {
         if (!artistName) return '';
-        let name = artistName.trim();
+        var name = artistName.trim();
         name = name.replace(/^the\s+/i, '');
-        const numberMap = {
+        var numberMap = {
             '10,000': 'ten thousand',
             '10000': 'ten thousand',
             '1000': 'one thousand',
             '100': 'one hundred'
         };
-        const numberMatch = name.match(/^(\d{1,5}(?:,\d{3})?)\s+/);
+        var numberMatch = name.match(/^(\d{1,5}(?:,\d{3})?)\s+/);
         if (numberMatch) {
-            const numberStr = numberMatch[1];
+            var numberStr = numberMatch[1];
             if (numberMap[numberStr]) {
                 name = numberMap[numberStr] + ' ' + name.substring(numberMatch[0].length);
             }
@@ -2846,18 +3109,18 @@
 
     function calculateMatchScore(record, recentScansList) {
         if (!recentScansList || recentScansList.length === 0) return 0;
-        const recordSortKey = getArtistSortKey(record.artist);
-        let score = 0;
-        for (let i = 0; i < recentScansList.length; i++) {
-            const recent = recentScansList[i];
-            const weight = Math.pow(0.5, i);
+        var recordSortKey = getArtistSortKey(record.artist);
+        var score = 0;
+        for (var i = 0; i < recentScansList.length; i++) {
+            var recent = recentScansList[i];
+            var weight = Math.pow(0.5, i);
             if (recent.sortKey === recordSortKey) {
                 score += 100 * weight;
             }
-            const recentArtistLower = recent.artist.toLowerCase();
-            const recordArtistLower = record.artist.toLowerCase();
-            const recentFirstWord = recentArtistLower.replace(/^the\s+/, '').split(' ')[0];
-            const recordFirstWord = recordArtistLower.replace(/^the\s+/, '').split(' ')[0];
+            var recentArtistLower = recent.artist.toLowerCase();
+            var recordArtistLower = record.artist.toLowerCase();
+            var recentFirstWord = recentArtistLower.replace(/^the\s+/, '').split(' ')[0];
+            var recordFirstWord = recordArtistLower.replace(/^the\s+/, '').split(' ')[0];
             if (recentFirstWord === recordFirstWord && recentFirstWord.length > 2) {
                 score += 30 * weight;
             }
@@ -2884,27 +3147,31 @@
             recentScans.pop();
         }
         try {
-            const serialized = recentScans.map(s => ({
-                recordId: s.record.id,
-                artist: s.record.artist,
-                location: s.location,
-                timestamp: s.timestamp
-            }));
+            var serialized = recentScans.map(function(s) {
+                return {
+                    recordId: s.record.id,
+                    artist: s.record.artist,
+                    location: s.location,
+                    timestamp: s.timestamp
+                };
+            });
             localStorage.setItem('recentScans', JSON.stringify(serialized));
         } catch (e) {}
     }
 
     function loadRecentScansFromStorage() {
         try {
-            const stored = localStorage.getItem('recentScans');
+            var stored = localStorage.getItem('recentScans');
             if (stored) {
-                const parsed = JSON.parse(stored);
-                recentScans = parsed.map(item => ({
-                    record: { id: item.recordId, artist: item.artist || 'Unknown' },
-                    location: item.location,
-                    timestamp: item.timestamp
-                }));
-                console.log(`📋 Loaded ${recentScans.length} recent scans from storage`);
+                var parsed = JSON.parse(stored);
+                recentScans = parsed.map(function(item) {
+                    return {
+                        record: { id: item.recordId, artist: item.artist || 'Unknown' },
+                        location: item.location,
+                        timestamp: item.timestamp
+                    };
+                });
+                console.log('📋 Loaded ' + recentScans.length + ' recent scans from storage');
             }
         } catch (e) {
             console.warn('Could not load recent scans from storage:', e);
@@ -2913,7 +3180,7 @@
 
     async function performScanSearch(term) {
         try {
-            const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
+            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
             if (!data.records || !data.records.length) {
                 playSound('error');
                 showStatus('No record found with that barcode or ID', 'error');
@@ -2921,77 +3188,81 @@
                 return;
             }
 
-            const records = data.records;
+            var records = data.records;
 
             if (records.length === 1) {
-                const record = records[0];
+                var record = records[0];
                 await processScannedRecord(record);
                 return;
             }
 
-            const recentScansList = recentScans.map(s => ({
-                artist: s.record.artist,
-                sortKey: getArtistSortKey(s.record.artist)
-            }));
+            var recentScansList = recentScans.map(function(s) {
+                return {
+                    artist: s.record.artist,
+                    sortKey: getArtistSortKey(s.record.artist)
+                };
+            });
 
-            const scored = records.map(record => ({
-                record: record,
-                score: calculateMatchScore(record, recentScansList)
-            }));
+            var scored = records.map(function(record) {
+                return {
+                    record: record,
+                    score: calculateMatchScore(record, recentScansList)
+                };
+            });
 
-            scored.sort((a, b) => b.score - a.score);
+            scored.sort(function(a, b) { return b.score - a.score; });
 
-            const best = scored[0];
-            const secondBest = scored.length > 1 ? scored[1] : null;
-            const bestScore = best.score;
-            const secondScore = secondBest ? secondBest.score : 0;
+            var best = scored[0];
+            var secondBest = scored.length > 1 ? scored[1] : null;
+            var bestScore = best.score;
+            var secondScore = secondBest ? secondBest.score : 0;
 
-            const HIGH_CONFIDENCE_SCORE = 100;
-            const GAP_THRESHOLD = 40;
-            const AUTO_SELECT_SCORE = 80;
-            const AUTO_SELECT_GAP = 30;
+            var HIGH_CONFIDENCE_SCORE = 100;
+            var GAP_THRESHOLD = 40;
+            var AUTO_SELECT_SCORE = 80;
+            var AUTO_SELECT_GAP = 30;
 
-            let selectedRecord = null;
-            let confidence = 'low';
+            var selectedRecord = null;
+            var confidence = 'low';
 
             if (bestScore > HIGH_CONFIDENCE_SCORE && (bestScore - secondScore) > GAP_THRESHOLD) {
                 selectedRecord = best.record;
                 confidence = 'high';
-                console.log(`🎯 High confidence auto-select: ${selectedRecord.artist} - ${selectedRecord.title} (score ${bestScore})`);
+                console.log('🎯 High confidence auto-select: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (score ' + bestScore + ')');
             } else if (bestScore > AUTO_SELECT_SCORE && (bestScore - secondScore) > AUTO_SELECT_GAP) {
                 selectedRecord = best.record;
                 confidence = 'medium';
-                console.log(`🎯 Medium confidence auto-select: ${selectedRecord.artist} - ${selectedRecord.title} (score ${bestScore})`);
+                console.log('🎯 Medium confidence auto-select: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (score ' + bestScore + ')');
             }
 
             if (selectedRecord) {
                 playSound('success');
-                showStatus(`🎯 Auto-selected: ${selectedRecord.artist} - ${selectedRecord.title} (${confidence} confidence)`, 'success');
+                showStatus('🎯 Auto-selected: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (' + confidence + ' confidence)', 'success');
                 await processScannedRecord(selectedRecord);
                 return;
             }
 
             playSound('error');
-            showStatus(`⚠️ Multiple records (${records.length}) found for barcode. Confidence too low to auto-select. Please use a unique barcode or ID.`, 'error');
+            showStatus('⚠️ Multiple records (' + records.length + ') found for barcode. Confidence too low to auto-select. Please use a unique barcode or ID.', 'error');
             if (searchInput) searchInput.value = '';
 
         } catch (error) {
             playSound('error');
-            showStatus(`Error scanning: ${error.message}`, 'error');
+            showStatus('Error scanning: ' + error.message, 'error');
             console.error('Scan search error:', error);
             if (searchInput) searchInput.value = '';
         }
     }
 
     async function processScannedRecord(record) {
-        const existing = filteredRecords.find(r => r.id === record.id);
+        var existing = filteredRecords.find(function(r) { return r.id === record.id; });
         if (existing) {
-            const today = getLocalMSTDate();
+            var today = getLocalMSTDate();
             existing.last_seen = today;
             renderPagination();
             renderTablePage();
             playSound('success');
-            showStatus(`✅ Updated last_seen for #${record.id}: ${record.artist} - ${record.title}`, 'success');
+            showStatus('✅ Updated last_seen for #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
             if (searchInput) searchInput.value = '';
             addToRecentScans(record, record.location || '');
             return;
@@ -3003,7 +3274,7 @@
         renderPagination();
         renderTablePage();
         playSound('success');
-        showStatus(`✅ Added #${record.id}: ${record.artist} - ${record.title}`, 'success');
+        showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
         updateSelectionCount();
         if (searchInput) searchInput.value = '';
         addToRecentScans(record, record.location || '');
@@ -3013,48 +3284,48 @@
     // ========== Discogs search, etc. ==========
     async function performDiscogsSearch(term) {
         currentMode = 'search';
-        recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>`;
+        recordsTableBody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>';
         try {
-            const formatFilterEl = document.getElementById('discogs-format-filter');
-            const format = formatFilterEl ? formatFilterEl.value : 'all';
+            var formatFilterEl = document.getElementById('discogs-format-filter');
+            var format = formatFilterEl ? formatFilterEl.value : 'all';
             
-            const data = await apiRequest('GET', '/api/discogs/search?q=' + encodeURIComponent(term) + (format && format !== 'all' ? '&format=' + encodeURIComponent(format) : ''));
+            var data = await apiRequest('GET', '/api/discogs/search?q=' + encodeURIComponent(term) + (format && format !== 'all' ? '&format=' + encodeURIComponent(format) : ''));
             if (!data.results || !data.results.length) {
-                recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;">No Discogs results found</td></tr>`;
+                recordsTableBody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;">No Discogs results found</td></tr>';
                 return;
             }
-            currentResults = data.results.map(r => {
-                let artist = r.artist || 'Unknown';
-                let title = r.title || 'Unknown';
+            currentResults = data.results.map(function(r) {
+                var artist = r.artist || 'Unknown';
+                var title = r.title || 'Unknown';
                 if (artist === 'Unknown' && title.includes(' - ')) {
-                    const parts = title.split(' - ');
+                    var parts = title.split(' - ');
                     artist = parts[0].trim();
                     title = parts.slice(1).join(' - ').trim();
                 }
                 if (Array.isArray(artist)) artist = artist[0] || 'Unknown';
-                return { ...r, artist, title };
+                return { ...r, artist: artist, title: title };
             });
             filteredRecords = currentResults.slice();
             totalRecords = filteredRecords.length;
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            showStatus(`Found ${totalRecords} Discogs results`, 'success');
+            showStatus('Found ' + totalRecords + ' Discogs results', 'success');
         } catch (error) {
             console.error('Discogs search error:', error);
-            recordsTableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;">Error searching Discogs: ${error.message}</td></tr>`;
+            recordsTableBody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;">Error searching Discogs: ' + error.message + '</td></tr>';
         }
     }
 
     async function performRefundSearch(term) {
         try {
-            const data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
+            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
             if (!data.records || !data.records.length) {
                 playSound('error');
                 showStatus('No sold record found with that search term', 'error');
                 return;
             }
-            const soldRecords = data.records.filter(r => r.status_id === 3 || r.status_id === 4);
+            var soldRecords = data.records.filter(function(r) { return r.status_id === 3 || r.status_id === 4; });
             if (soldRecords.length === 0) {
                 playSound('error');
                 showStatus('No sold records found matching that term', 'error');
@@ -3066,19 +3337,19 @@
             renderPagination();
             renderTablePage();
             playSound('success');
-            showStatus(`Found ${totalRecords} sold record(s)`, 'success');
+            showStatus('Found ' + totalRecords + ' sold record(s)', 'success');
             updateSelectionCount();
         } catch (error) {
             playSound('error');
-            showStatus(`Error searching: ${error.message}`, 'error');
+            showStatus('Error searching: ' + error.message, 'error');
             console.error('Refund search error:', error);
         }
     }
 
     function performDiscogsFilterSearch(term) {
-        const termLower = term.toLowerCase();
-        let source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
-        const filtered = source.filter(r => {
+        var termLower = term.toLowerCase();
+        var source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
+        var filtered = source.filter(function(r) {
             return (r.artist && r.artist.toLowerCase().indexOf(termLower) !== -1) ||
                    (r.title && r.title.toLowerCase().indexOf(termLower) !== -1) ||
                    (r.barcode && r.barcode.toLowerCase().indexOf(termLower) !== -1) ||
@@ -3089,7 +3360,7 @@
         currentPage = 1;
         renderPagination();
         renderTablePage();
-        showStatus(`Found ${totalRecords} records matching "${term}"`, 'info');
+        showStatus('Found ' + totalRecords + ' records matching "' + term + '"', 'info');
     }
 
     function clearSearch() {
@@ -3097,7 +3368,15 @@
         if (currentSearchMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
-            loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
+            if (currentDraftId) {
+                loadRecordsForDraft(currentDraftId);
+            } else {
+                filteredRecords = [];
+                totalRecords = 0;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+            }
         } else if (currentSearchMode === 'scan') {
             // keep list
         } else if (currentSearchMode === 'refund') {
@@ -3139,17 +3418,17 @@
     }
 
     function applyDiscogsSearchFilter() {
-        const searchTerm = searchInput.value.trim().toLowerCase();
-        let records = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
-        records = records.filter(r => {
+        var searchTerm = searchInput.value.trim().toLowerCase();
+        var records = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
+        records = records.filter(function(r) {
             return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at && r.location && r.location.trim() !== '';
         });
         if (searchTerm) {
-            records = records.filter(r => {
-                const matchesArtist = r.artist && r.artist.toLowerCase().indexOf(searchTerm) !== -1;
-                const matchesTitle = r.title && r.title.toLowerCase().indexOf(searchTerm) !== -1;
-                const matchesCatalog = r.catalog_number && r.catalog_number.toLowerCase().indexOf(searchTerm) !== -1;
-                const matchesBarcode = r.barcode && r.barcode.toLowerCase().indexOf(searchTerm) !== -1;
+            records = records.filter(function(r) {
+                var matchesArtist = r.artist && r.artist.toLowerCase().indexOf(searchTerm) !== -1;
+                var matchesTitle = r.title && r.title.toLowerCase().indexOf(searchTerm) !== -1;
+                var matchesCatalog = r.catalog_number && r.catalog_number.toLowerCase().indexOf(searchTerm) !== -1;
+                var matchesBarcode = r.barcode && r.barcode.toLowerCase().indexOf(searchTerm) !== -1;
                 return matchesArtist || matchesTitle || matchesCatalog || matchesBarcode;
             });
         }
@@ -3167,29 +3446,18 @@
     window.expandImage = function(imageUrl, title) {
         if (!imageUrl) return;
         
-        const existingModal = document.getElementById('image-expand-modal');
+        var existingModal = document.getElementById('image-expand-modal');
         if (existingModal) {
             existingModal.remove();
         }
 
-        const modal = document.createElement('div');
+        var modal = document.createElement('div');
         modal.id = 'image-expand-modal';
         modal.className = 'modal-overlay';
         modal.style.display = 'flex';
         modal.style.background = 'rgba(0,0,0,0.85)';
         modal.style.zIndex = '10000';
-        modal.innerHTML = `
-            <div style="max-width: 90vw; max-height: 90vh; position: relative; display: flex; flex-direction: column; align-items: center;">
-                <button onclick="document.getElementById('image-expand-modal').remove()" 
-                        style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 24px; cursor: pointer; z-index: 10;">
-                    ×
-                </button>
-                ${title ? `<div style="color: white; font-size: 16px; padding: 10px; text-align: center; background: rgba(0,0,0,0.5); border-radius: 8px; margin-bottom: 10px; max-width: 100%;">${escapeHtml(title)}</div>` : ''}
-                <img src="${escapeHtml(imageUrl)}" 
-                     style="max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 30px rgba(0,0,0,0.5);">
-                <div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 10px;">Click outside to close</div>
-            </div>
-        `;
+        modal.innerHTML = '<div style="max-width: 90vw; max-height: 90vh; position: relative; display: flex; flex-direction: column; align-items: center;"><button onclick="document.getElementById(\'image-expand-modal\').remove()" style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 24px; cursor: pointer; z-index: 10;">×</button>' + (title ? '<div style="color: white; font-size: 16px; padding: 10px; text-align: center; background: rgba(0,0,0,0.5); border-radius: 8px; margin-bottom: 10px; max-width: 100%;">' + escapeHtml(title) + '</div>' : '') + '<img src="' + escapeHtml(imageUrl) + '" style="max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 30px rgba(0,0,0,0.5);"><div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 10px;">Click outside to close</div></div>';
         document.body.appendChild(modal);
 
         modal.addEventListener('click', function(e) {
@@ -3210,8 +3478,8 @@
 
     // ========== Markup Rules ==========
     window.toggleMarkupRules = function() {
-        const content = document.getElementById('markup-rules-content');
-        const icon = document.getElementById('markup-rules-toggle-icon');
+        var content = document.getElementById('markup-rules-content');
+        var icon = document.getElementById('markup-rules-toggle-icon');
         if (!content || !icon) return;
         if (content.style.display === 'none' || content.style.display === '') {
             content.style.display = 'block';
@@ -3224,8 +3492,8 @@
     };
 
     window.toggleMarkupCharts = function() {
-        const content = document.getElementById('markup-charts-content');
-        const icon = document.getElementById('markup-charts-toggle-icon');
+        var content = document.getElementById('markup-charts-content');
+        var icon = document.getElementById('markup-charts-toggle-icon');
         if (!content || !icon) return;
         if (content.style.display === 'none' || content.style.display === '') {
             content.style.display = 'block';
@@ -3240,7 +3508,7 @@
     // ========== Markup Rules Management ==========
     async function loadMarkupRules() {
         try {
-            const data = await apiRequest('GET', '/api/markup-rules');
+            var data = await apiRequest('GET', '/api/markup-rules');
             if (data.status === 'success') {
                 renderMarkupRules(data.rules);
             }
@@ -3250,16 +3518,16 @@
     }
 
     function renderMarkupRules(rules) {
-        const tbody = document.getElementById('markup-rules-body');
+        var tbody = document.getElementById('markup-rules-body');
         if (!tbody) return;
         if (!rules || rules.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" style="padding: 30px; text-align: center; color: #999;">⚠️ No rules configured. Add your first rule above.</td></tr>';
             return;
         }
-        rules.sort((a, b) => a.days_old - b.days_old);
-        let html = '';
-        for (let i = 0; i < rules.length; i++) {
-            const rule = rules[i];
+        rules.sort(function(a, b) { return a.days_old - b.days_old; });
+        var html = '';
+        for (var i = 0; i < rules.length; i++) {
+            var rule = rules[i];
             html += '<tr style="border-bottom: 1px solid #dee2e6;">';
             html += '<td style="padding: 12px;">' + rule.days_old + '+ days</td>';
             html += '<td style="padding: 12px;"><input type="number" id="rule-percent-' + rule.id + '" value="' + rule.markup_percent + '" step="1" style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;"><span>%</span></td>';
@@ -3274,19 +3542,19 @@
     }
 
     window.addMarkupRule = async function() {
-        const daysInput = document.getElementById('new-rule-days');
-        const percentInput = document.getElementById('new-rule-percent');
-        const descInput = document.getElementById('new-rule-desc');
+        var daysInput = document.getElementById('new-rule-days');
+        var percentInput = document.getElementById('new-rule-percent');
+        var descInput = document.getElementById('new-rule-desc');
         if (!daysInput || !percentInput || !descInput) return;
-        const days_old = parseInt(daysInput.value);
-        const markup_percent = parseFloat(percentInput.value);
-        const description = descInput.value;
+        var days_old = parseInt(daysInput.value);
+        var markup_percent = parseFloat(percentInput.value);
+        var description = descInput.value;
         if (isNaN(days_old) || isNaN(markup_percent)) {
             showDiscogsStatus('Please enter valid days and percentage', 'error');
             return;
         }
         try {
-            const result = await apiRequest('POST', '/api/markup-rules', {
+            var result = await apiRequest('POST', '/api/markup-rules', {
                 days_old: days_old,
                 markup_percent: markup_percent,
                 description: description
@@ -3307,17 +3575,17 @@
     };
 
     window.updateMarkupRule = async function(ruleId) {
-        const percentInput = document.getElementById('rule-percent-' + ruleId);
-        const descInput = document.getElementById('rule-desc-' + ruleId);
+        var percentInput = document.getElementById('rule-percent-' + ruleId);
+        var descInput = document.getElementById('rule-desc-' + ruleId);
         if (!percentInput || !descInput) return;
-        const markup_percent = parseFloat(percentInput.value);
-        const description = descInput.value;
+        var markup_percent = parseFloat(percentInput.value);
+        var description = descInput.value;
         if (isNaN(markup_percent)) {
             showDiscogsStatus('Please enter a valid percentage', 'error');
             return;
         }
         try {
-            const result = await apiRequest('PUT', '/api/markup-rules/' + ruleId, {
+            var result = await apiRequest('PUT', '/api/markup-rules/' + ruleId, {
                 markup_percent: markup_percent,
                 description: description
             });
@@ -3336,7 +3604,7 @@
     window.deleteMarkupRule = async function(ruleId) {
         if (!confirm('Are you sure you want to delete this markup rule?')) return;
         try {
-            const result = await apiRequest('DELETE', '/api/markup-rules/' + ruleId);
+            var result = await apiRequest('DELETE', '/api/markup-rules/' + ruleId);
             if (result.status === 'success') {
                 showDiscogsStatus('Markup rule deleted successfully', 'success');
                 loadMarkupRules();
@@ -3352,27 +3620,27 @@
     // ========== Markup Analysis Charts ==========
     async function loadMarkupAnalysisCharts() {
         try {
-            const cutoffInput = document.getElementById('last-seen-cutoff-date');
-            let cutoff = '';
+            var cutoffInput = document.getElementById('last-seen-cutoff-date');
+            var cutoff = '';
             if (cutoffInput && cutoffInput.value) {
                 cutoff = cutoffInput.value;
             } else {
                 cutoff = '';
             }
-            const url = window.AppConfig.baseUrl + '/api/markup-analysis' + (cutoff ? '?cutoff=' + cutoff : '');
-            const response = await fetch(url, {
+            var url = window.AppConfig.baseUrl + '/api/markup-analysis' + (cutoff ? '?cutoff=' + cutoff : '');
+            var response = await fetch(url, {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             if (!response.ok) throw new Error('Failed to load markup analysis data');
-            const data = await response.json();
+            var data = await response.json();
             if (data.status === 'success') {
                 renderMarkupCurveChart(data);
                 renderMarkupDistributionChart(data);
                 renderAgeDistributionChart(data);
-                const countEl = document.getElementById('chart-record-count');
+                var countEl = document.getElementById('chart-record-count');
                 if (countEl) {
-                    countEl.textContent = `📊 ${data.active_records_count || 0} active records analyzed (cutoff: ${data.cutoff_date || 'N/A'}) | ${data.rules_count || 0} markup rules applied`;
+                    countEl.textContent = '📊 ' + (data.active_records_count || 0) + ' active records analyzed (cutoff: ' + (data.cutoff_date || 'N/A') + ') | ' + (data.rules_count || 0) + ' markup rules applied';
                 }
             } else {
                 console.error('Error loading markup analysis:', data.error);
@@ -3385,11 +3653,11 @@
     }
 
     function renderMarkupCurveChart(data) {
-        const canvas = document.getElementById('markup-curve-chart');
+        var canvas = document.getElementById('markup-curve-chart');
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+        var ctx = canvas.getContext('2d');
         if (markupCurveChart) { markupCurveChart.destroy(); markupCurveChart = null; }
-        const points = data.curve_points || [];
+        var points = data.curve_points || [];
         if (points.length === 0) {
             markupCurveChart = new Chart(ctx, {
                 type: 'line',
@@ -3398,13 +3666,13 @@
             });
             return;
         }
-        const days = points.map(p => p.days);
-        const markups = points.map(p => p.markup_percent);
-        const minMarkup = Math.min(...markups);
-        const maxMarkup = Math.max(...markups);
-        const yPadding = Math.max(5, Math.abs(maxMarkup - minMarkup) * 0.1);
-        const xMax = data.chart_max_days || Math.max(...days);
-        let xStepSize = 30;
+        var days = points.map(function(p) { return p.days; });
+        var markups = points.map(function(p) { return p.markup_percent; });
+        var minMarkup = Math.min.apply(null, markups);
+        var maxMarkup = Math.max.apply(null, markups);
+        var yPadding = Math.max(5, Math.abs(maxMarkup - minMarkup) * 0.1);
+        var xMax = data.chart_max_days || Math.max.apply(null, days);
+        var xStepSize = 30;
         if (xMax > 730) xStepSize = 90;
         else if (xMax > 365) xStepSize = 60;
         markupCurveChart = new Chart(ctx, {
@@ -3431,7 +3699,7 @@
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                return `Markup: ${context.parsed.y}% at ${context.parsed.x} days`;
+                                return 'Markup: ' + context.parsed.y + '% at ' + context.parsed.x + ' days';
                             }
                         }
                     }
@@ -3466,11 +3734,11 @@
     }
 
     function renderMarkupDistributionChart(data) {
-        const canvas = document.getElementById('markup-distribution-chart');
+        var canvas = document.getElementById('markup-distribution-chart');
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+        var ctx = canvas.getContext('2d');
         if (markupDistributionChart) { markupDistributionChart.destroy(); markupDistributionChart = null; }
-        const distribution = data.distribution || {};
+        var distribution = data.distribution || {};
         if (Object.keys(distribution).length === 0) {
             markupDistributionChart = new Chart(ctx, {
                 type: 'bar',
@@ -3479,12 +3747,12 @@
             });
             return;
         }
-        const sortedKeys = Object.keys(distribution).sort((a, b) => parseFloat(a) - parseFloat(b));
-        const labels = sortedKeys;
-        const counts = sortedKeys.map(key => distribution[key]);
-        const totalRecords = data.active_records_count || 0;
-        const colors = labels.map(label => {
-            const value = parseFloat(label);
+        var sortedKeys = Object.keys(distribution).sort(function(a, b) { return parseFloat(a) - parseFloat(b); });
+        var labels = sortedKeys;
+        var counts = sortedKeys.map(function(key) { return distribution[key]; });
+        var totalRecords = data.active_records_count || 0;
+        var colors = labels.map(function(label) {
+            var value = parseFloat(label);
             if (value > 0) return 'rgba(40,167,69,0.8)';
             if (value < 0) return 'rgba(220,53,69,0.8)';
             return 'rgba(255,193,7,0.8)';
@@ -3497,7 +3765,7 @@
                     label: 'Records',
                     data: counts,
                     backgroundColor: colors,
-                    borderColor: colors.map(c => c.replace('0.8', '1')),
+                    borderColor: colors.map(function(c) { return c.replace('0.8', '1'); }),
                     borderWidth: 1
                 }]
             },
@@ -3509,9 +3777,9 @@
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                const count = context.parsed.y;
-                                const pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(1) : 0;
-                                return `${count} records (${pct}%)`;
+                                var count = context.parsed.y;
+                                var pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(1) : 0;
+                                return count + ' records (' + pct + '%)';
                             }
                         }
                     }
@@ -3525,11 +3793,11 @@
     }
 
     function renderAgeDistributionChart(data) {
-        const canvas = document.getElementById('age-distribution-chart');
+        var canvas = document.getElementById('age-distribution-chart');
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+        var ctx = canvas.getContext('2d');
         if (ageDistributionChart) { ageDistributionChart.destroy(); ageDistributionChart = null; }
-        const ageData = data.age_distribution || {};
+        var ageData = data.age_distribution || {};
         if (Object.keys(ageData).length === 0) {
             ageDistributionChart = new Chart(ctx, {
                 type: 'bar',
@@ -3538,15 +3806,17 @@
             });
             return;
         }
-        const sortedKeys = Object.keys(ageData).sort((a, b) => parseInt(a) - parseInt(b));
-        const labels = sortedKeys.map(key => {
-            const parts = key.split('-');
-            if (parts.length === 2) return `${parts[0]}-${parts[1]}d`;
+        var sortedKeys = Object.keys(ageData).sort(function(a, b) { return parseInt(a) - parseInt(b); });
+        var labels = sortedKeys.map(function(key) {
+            var parts = key.split('-');
+            if (parts.length === 2) return parts[0] + '-' + parts[1] + 'd';
             return key + 'd';
         });
-        const counts = sortedKeys.map(key => ageData[key]);
-        const totalRecords = data.active_records_count || 0;
-        const colors = sortedKeys.map((_, index) => `rgba(23,162,184,${0.6 + (index / sortedKeys.length) * 0.3})`);
+        var counts = sortedKeys.map(function(key) { return ageData[key]; });
+        var totalRecords = data.active_records_count || 0;
+        var colors = sortedKeys.map(function(_, index) {
+            return 'rgba(23,162,184,' + (0.6 + (index / sortedKeys.length) * 0.3) + ')';
+        });
         ageDistributionChart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -3567,9 +3837,9 @@
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                const count = context.parsed.y;
-                                const pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(1) : 0;
-                                return `${count} records (${pct}%)`;
+                                var count = context.parsed.y;
+                                var pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(1) : 0;
+                                return count + ' records (' + pct + '%)';
                             }
                         }
                     }
@@ -3580,9 +3850,9 @@
                 }
             }
         });
-        const statsEl = document.getElementById('age-chart-stats');
+        var statsEl = document.getElementById('age-chart-stats');
         if (statsEl && data.age_stats) {
-            statsEl.textContent = `| Avg: ${data.age_stats.avg_days}d | Min: ${data.age_stats.min_days} | Max: ${data.age_stats.max_days}`;
+            statsEl.textContent = '| Avg: ' + data.age_stats.avg_days + 'd | Min: ' + data.age_stats.min_days + ' | Max: ' + data.age_stats.max_days;
         }
     }
 
@@ -3593,9 +3863,9 @@
         } else {
             lastSeenCutoffDate = null;
         }
-        console.log(`📅 Last seen cutoff date set to: ${lastSeenCutoffDate || 'none'}`);
+        console.log('📅 Last seen cutoff date set to: ' + (lastSeenCutoffDate || 'none'));
         refreshDiscogsRecords();
-        showDiscogsStatus(`Last seen filter set to: ${lastSeenCutoffDate || 'disabled'}`, 'info');
+        showDiscogsStatus('Last seen filter set to: ' + (lastSeenCutoffDate || 'disabled'), 'info');
         loadMarkupAnalysisCharts();
     }
 
@@ -3605,11 +3875,11 @@
             showDiscogsStatus('Missing required information', 'error');
             return;
         }
-        if (!confirm(`📋 Post "${artist} - ${title}" to Discogs?\n\nStore Price: $${price}\nDiscogs Price: $${discogsPrice} (${markupPercent > 0 ? '+' : ''}${markupPercent}%)\nMedia: ${mediaCondition}\nSleeve: ${sleeveCondition}`)) {
+        if (!confirm('📋 Post "' + artist + ' - ' + title + '" to Discogs?\n\nStore Price: $' + price + '\nDiscogs Price: $' + discogsPrice + ' (' + (markupPercent > 0 ? '+' : '') + markupPercent + '%)\nMedia: ' + mediaCondition + '\nSleeve: ' + sleeveCondition)) {
             return;
         }
 
-        const listingData = {
+        var listingData = {
             record: {
                 id: recordId,
                 artist: artist,
@@ -3624,13 +3894,13 @@
         };
 
         try {
-            const result = await apiRequest('POST', '/api/discogs/create-listing-single', listingData);
+            var result = await apiRequest('POST', '/api/discogs/create-listing-single', listingData);
             if (result.success) {
-                let discogsUrl = result.listing_url;
+                var discogsUrl = result.listing_url;
                 if (!discogsUrl && result.listing_id) {
                     discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
                 }
-                showDiscogsStatus(`✅ Successfully posted "${artist} - ${title}" to Discogs! ${discogsUrl ? '<a href="' + discogsUrl + '" target="_blank">View</a>' : ''}`, 'success');
+                showDiscogsStatus('✅ Successfully posted "' + artist + ' - ' + title + '" to Discogs! ' + (discogsUrl ? '<a href="' + discogsUrl + '" target="_blank">View</a>' : ''), 'success');
                 refreshDiscogsRecords();
             } else {
                 showDiscogsStatus('Error: ' + result.error, 'error');
@@ -3642,80 +3912,26 @@
 
     // ========== Discogs Post Modal ==========
     function showDiscogsPostModal() {
-        const records = getSelectedRecords();
+        var records = getSelectedRecords();
         if (records.length === 0) {
             showDiscogsStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
             return;
         }
 
-        const existingModal = document.getElementById('discogs-post-modal');
+        var existingModal = document.getElementById('discogs-post-modal');
         if (existingModal) {
             existingModal.remove();
         }
 
-        const modal = document.createElement('div');
+        var modal = document.createElement('div');
         modal.id = 'discogs-post-modal';
         modal.className = 'modal-overlay';
         modal.style.display = 'flex';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 600px; width: 95%;">
-                <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                    <h3 class="modal-title"><i class="fab fa-discogs"></i> Post Records to Discogs</h3>
-                    <button class="modal-close" onclick="closeDiscogsPostModal()" style="color: white;">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div style="margin-bottom: 15px;">
-                        <p><strong>${records.length}</strong> record(s) selected for posting.</p>
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <label for="discogs-post-location" style="display:block; font-weight:600; margin-bottom:4px;">
-                            <i class="fas fa-map-marker-alt"></i> Location <span style="color:#dc3545;">*</span>
-                        </label>
-                        <input type="text" id="discogs-post-location" class="form-control" 
-                               placeholder="e.g., Bin 24 | Left Top" 
-                               style="width:100%; padding:10px; font-size:16px; border:1px solid #ddd; border-radius:4px;">
-                        <p style="font-size:12px; color:#666; margin-top:5px;">
-                            <i class="fas fa-info-circle"></i> This location will be saved to all selected records before posting.
-                        </p>
-                    </div>
-
-                    <div style="margin-bottom: 20px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <span style="font-weight:600;">Progress</span>
-                            <span id="discogs-post-progress-text">0%</span>
-                        </div>
-                        <div style="width:100%; height:24px; background:#e9ecef; border-radius:12px; overflow:hidden;">
-                            <div id="discogs-post-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #28a745, #20c997); transition:width 0.3s ease; border-radius:12px;"></div>
-                        </div>
-                    </div>
-
-                    <div style="margin-bottom:15px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-weight:600;"><i class="fas fa-list"></i> Status Log</span>
-                            <span id="discogs-post-log-count" style="font-size:12px; color:#666;">0 / ${records.length}</span>
-                        </div>
-                        <div id="discogs-post-log" style="max-height:200px; overflow-y:auto; background:#f8f9fa; border:1px solid #ddd; border-radius:4px; padding:10px; font-family:monospace; font-size:13px; margin-top:5px;">
-                            <div style="color:#999; text-align:center; padding:20px;">Ready to start posting...</div>
-                        </div>
-                    </div>
-
-                    <div id="discogs-post-status" style="margin-top:10px; display:none;"></div>
-                </div>
-                <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;">
-                    <button class="btn btn-secondary" id="discogs-post-cancel-btn" onclick="closeDiscogsPostModal()">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-                    <button class="btn btn-success" id="discogs-post-start-btn">
-                        <i class="fab fa-discogs"></i> Start Posting
-                    </button>
-                </div>
-            </div>
-        `;
+        modal.innerHTML = '<div class="modal-content" style="max-width: 600px; width: 95%;"><div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;"><h3 class="modal-title"><i class="fab fa-discogs"></i> Post Records to Discogs</h3><button class="modal-close" onclick="closeDiscogsPostModal()" style="color: white;">&times;</button></div><div class="modal-body"><div style="margin-bottom: 15px;"><p><strong>' + records.length + '</strong> record(s) selected for posting.</p></div><div style="margin-bottom: 20px;"><label for="discogs-post-location" style="display:block; font-weight:600; margin-bottom:4px;"><i class="fas fa-map-marker-alt"></i> Location <span style="color:#dc3545;">*</span></label><input type="text" id="discogs-post-location" class="form-control" placeholder="e.g., Bin 24 | Left Top" style="width:100%; padding:10px; font-size:16px; border:1px solid #ddd; border-radius:4px;"><p style="font-size:12px; color:#666; margin-top:5px;"><i class="fas fa-info-circle"></i> This location will be saved to all selected records before posting.</p></div><div style="margin-bottom: 20px;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><span style="font-weight:600;">Progress</span><span id="discogs-post-progress-text">0%</span></div><div style="width:100%; height:24px; background:#e9ecef; border-radius:12px; overflow:hidden;"><div id="discogs-post-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #28a745, #20c997); transition:width 0.3s ease; border-radius:12px;"></div></div></div><div style="margin-bottom:15px;"><div style="display:flex; justify-content:space-between; align-items:center;"><span style="font-weight:600;"><i class="fas fa-list"></i> Status Log</span><span id="discogs-post-log-count" style="font-size:12px; color:#666;">0 / ' + records.length + '</span></div><div id="discogs-post-log" style="max-height:200px; overflow-y:auto; background:#f8f9fa; border:1px solid #ddd; border-radius:4px; padding:10px; font-family:monospace; font-size:13px; margin-top:5px;"><div style="color:#999; text-align:center; padding:20px;">Ready to start posting...</div></div></div><div id="discogs-post-status" style="margin-top:10px; display:none;"></div></div><div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;"><button class="btn btn-secondary" id="discogs-post-cancel-btn" onclick="closeDiscogsPostModal()"><i class="fas fa-times"></i> Cancel</button><button class="btn btn-success" id="discogs-post-start-btn"><i class="fab fa-discogs"></i> Start Posting</button></div></div>';
         document.body.appendChild(modal);
 
-        setTimeout(() => {
-            const locationInput = document.getElementById('discogs-post-location');
+        setTimeout(function() {
+            var locationInput = document.getElementById('discogs-post-location');
             if (locationInput) locationInput.focus();
         }, 200);
 
@@ -3734,7 +3950,7 @@
     }
 
     function closeDiscogsPostModal() {
-        const modal = document.getElementById('discogs-post-modal');
+        var modal = document.getElementById('discogs-post-modal');
         if (modal) {
             modal.style.display = 'none';
             modal.remove();
@@ -3745,53 +3961,53 @@
     }
 
     function updateDiscogsPostProgress(current, total) {
-        const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+        var percent = total > 0 ? Math.round((current / total) * 100) : 0;
         postProgress = percent;
-        const bar = document.getElementById('discogs-post-progress-bar');
-        const text = document.getElementById('discogs-post-progress-text');
+        var bar = document.getElementById('discogs-post-progress-bar');
+        var text = document.getElementById('discogs-post-progress-text');
         if (bar) bar.style.width = percent + '%';
         if (text) text.textContent = percent + '%';
     }
 
     function updateDiscogsPostLog(type, message) {
-        const logContainer = document.getElementById('discogs-post-log');
-        const logCount = document.getElementById('discogs-post-log-count');
+        var logContainer = document.getElementById('discogs-post-log');
+        var logCount = document.getElementById('discogs-post-log-count');
         if (!logContainer) return;
 
-        const placeholder = logContainer.querySelector('div[style*="color:#999"]');
+        var placeholder = logContainer.querySelector('div[style*="color:#999"]');
         if (placeholder) {
             placeholder.remove();
         }
 
-        const timestamp = new Date().toLocaleTimeString();
-        const entry = document.createElement('div');
+        var timestamp = new Date().toLocaleTimeString();
+        var entry = document.createElement('div');
         entry.style.padding = '4px 0';
         entry.style.borderBottom = '1px solid #f0f0f0';
         entry.style.fontSize = '12px';
 
-        let color = '#333';
-        let icon = 'ℹ️';
+        var color = '#333';
+        var icon = 'ℹ️';
         if (type === 'success') { color = '#28a745'; icon = '✅'; }
         else if (type === 'error') { color = '#dc3545'; icon = '❌'; }
         else if (type === 'warning') { color = '#ffc107'; icon = '⚠️'; }
         else { color = '#007bff'; icon = 'ℹ️'; }
 
-        entry.innerHTML = `<span style="color:#999;">[${timestamp}]</span> <span style="color:${color};">${icon} ${escapeHtml(message)}</span>`;
+        entry.innerHTML = '<span style="color:#999;">[' + timestamp + ']</span> <span style="color:' + color + ';">' + icon + ' ' + escapeHtml(message) + '</span>';
         logContainer.appendChild(entry);
         logContainer.scrollTop = logContainer.scrollHeight;
 
-        const entries = logContainer.querySelectorAll('div:not([style*="color:#999"])');
+        var entries = logContainer.querySelectorAll('div:not([style*="color:#999"])');
         if (logCount) {
-            const total = document.querySelector('#discogs-post-progress-text')?.textContent?.replace('%', '') || '0';
-            logCount.textContent = `${entries.length} / ${Math.round((postProgress / 100) * (entries.length || 1))}`;
+            var total = document.querySelector('#discogs-post-progress-text')?.textContent?.replace('%', '') || '0';
+            logCount.textContent = entries.length + ' / ' + Math.round((postProgress / 100) * (entries.length || 1));
         }
     }
 
     function showDiscogsPostStatus(message, type) {
-        const el = document.getElementById('discogs-post-status');
+        var el = document.getElementById('discogs-post-status');
         if (el) {
             el.textContent = message;
-            el.className = `status-message status-${type}`;
+            el.className = 'status-message status-' + type;
             el.style.display = 'block';
         }
     }
@@ -3803,8 +4019,8 @@
             return;
         }
 
-        const locationInput = document.getElementById('discogs-post-location');
-        const location = locationInput ? locationInput.value.trim() : '';
+        var locationInput = document.getElementById('discogs-post-location');
+        var location = locationInput ? locationInput.value.trim() : '';
 
         if (!location) {
             showDiscogsPostStatus('Please enter a location before posting.', 'error');
@@ -3812,39 +4028,39 @@
             return;
         }
 
-        const startBtn = document.getElementById('discogs-post-start-btn');
-        const cancelBtn = document.getElementById('discogs-post-cancel-btn');
+        var startBtn = document.getElementById('discogs-post-start-btn');
+        var cancelBtn = document.getElementById('discogs-post-cancel-btn');
         if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Posting...'; }
         if (cancelBtn) { cancelBtn.disabled = true; }
 
         isPosting = true;
         postResults = [];
-        let successCount = 0;
-        let failCount = 0;
+        var successCount = 0;
+        var failCount = 0;
 
         updateDiscogsPostLog('info', '📍 Location set to: ' + location);
         updateDiscogsPostLog('info', '🚀 Starting to post ' + records.length + ' records...');
 
-        for (let i = 0; i < records.length; i++) {
-            const record = records[i];
-            const current = i + 1;
+        for (var i = 0; i < records.length; i++) {
+            var record = records[i];
+            var current = i + 1;
 
             updateDiscogsPostProgress(current, records.length);
 
             try {
-                updateDiscogsPostLog('info', `📝 Updating location for #${record.id}: ${record.artist} - ${record.title}`);
+                updateDiscogsPostLog('info', '📝 Updating location for #' + record.id + ': ' + record.artist + ' - ' + record.title);
                 await apiRequest('PUT', '/records/' + record.id, { location: location });
 
-                updateDiscogsPostLog('info', `💰 Calculating price for #${record.id}...`);
-                const priceRequests = [{
+                updateDiscogsPostLog('info', '💰 Calculating price for #' + record.id + '...');
+                var priceRequests = [{
                     id: record.id,
                     created_at: record.created_at,
                     store_price: record.store_price
                 }];
-                const batchResults = await calculateMarkupBatch(priceRequests);
+                var batchResults = await calculateMarkupBatch(priceRequests);
                 
-                let discogsPrice = null;
-                let markupPercent = null;
+                var discogsPrice = null;
+                var markupPercent = null;
                 if (batchResults.length > 0 && batchResults[0].id) {
                     discogsPrice = batchResults[0].discogs_price;
                     markupPercent = batchResults[0].markup_percent;
@@ -3854,9 +4070,9 @@
                     throw new Error('Could not calculate Discogs price');
                 }
 
-                updateDiscogsPostLog('info', `📤 Posting #${record.id}: ${record.artist} - ${record.title} at $${discogsPrice}...`);
+                updateDiscogsPostLog('info', '📤 Posting #' + record.id + ': ' + record.artist + ' - ' + record.title + ' at $' + discogsPrice + '...');
                 
-                const listingData = {
+                var listingData = {
                     record: {
                         id: record.id,
                         artist: record.artist,
@@ -3870,40 +4086,40 @@
                     }
                 };
 
-                const result = await apiRequest('POST', '/api/discogs/create-listing-single', listingData);
+                var result = await apiRequest('POST', '/api/discogs/create-listing-single', listingData);
 
                 if (result.success) {
                     successCount++;
-                    updateDiscogsPostLog('success', `✅ #${record.id}: ${record.artist} - ${record.title} posted successfully!`);
+                    updateDiscogsPostLog('success', '✅ #' + record.id + ': ' + record.artist + ' - ' + record.title + ' posted successfully!');
                 } else {
                     throw new Error(result.error || 'Discogs API returned error');
                 }
 
             } catch (error) {
                 failCount++;
-                updateDiscogsPostLog('error', `❌ #${record.id}: ${record.artist} - ${record.title} failed - ${error.message}`);
+                updateDiscogsPostLog('error', '❌ #' + record.id + ': ' + record.artist + ' - ' + record.title + ' failed - ' + error.message);
                 console.error('Error posting record #' + record.id, error);
             }
 
             if (i < records.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await new Promise(function(resolve) { setTimeout(resolve, 2000); });
             }
         }
 
         isPosting = false;
         updateDiscogsPostProgress(records.length, records.length);
 
-        const summary = `✅ ${successCount} posted successfully, ❌ ${failCount} failed.`;
+        var summary = '✅ ' + successCount + ' posted successfully, ❌ ' + failCount + ' failed.';
         updateDiscogsPostLog('info', '📊 ' + summary);
 
         if (failCount === 0) {
-            showDiscogsPostStatus(`🎉 All ${records.length} records posted successfully!`, 'success');
+            showDiscogsPostStatus('🎉 All ' + records.length + ' records posted successfully!', 'success');
             playSound('success');
         } else if (successCount > 0) {
-            showDiscogsPostStatus(`⚠️ ${successCount} posted, ${failCount} failed. Check log for details.`, 'warning');
+            showDiscogsPostStatus('⚠️ ' + successCount + ' posted, ' + failCount + ' failed. Check log for details.', 'warning');
             playSound('error');
         } else {
-            showDiscogsPostStatus(`❌ All ${records.length} records failed to post.`, 'error');
+            showDiscogsPostStatus('❌ All ' + records.length + ' records failed to post.', 'error');
             playSound('error');
         }
 
@@ -3920,17 +4136,18 @@
 
     // ========== Delete Selected ==========
     async function deleteSelected() {
-        const records = getSelectedRecords();
-        console.log(`🗑️ deleteSelected: selected ${records.length} records out of ${filteredRecords.length} total filtered`);
+        var records = getSelectedRecords();
+        console.log('🗑️ deleteSelected: selected ' + records.length + ' records out of ' + filteredRecords.length + ' total filtered');
         if (records.length === 0) {
             showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
             return;
         }
-        if (!confirm(`Delete ${records.length} record(s) permanently? This cannot be undone.`)) {
+        if (!confirm('Delete ' + records.length + ' record(s) permanently? This cannot be undone.')) {
             return;
         }
-        let deleted = 0;
-        for (const record of records) {
+        var deleted = 0;
+        for (var i = 0; i < records.length; i++) {
+            var record = records[i];
             try {
                 await apiRequest('DELETE', '/records/' + record.id);
                 deleted++;
@@ -3938,23 +4155,23 @@
                 console.error('Delete failed for record', record.id, e);
             }
         }
-        showStatus(`Deleted ${deleted} of ${records.length} records`, 'success');
+        showStatus('Deleted ' + deleted + ' of ' + records.length + ' records', 'success');
         await loadRecords({ statusIds: [1,2], mode: 'delete' });
         cancelRangeSelection();
     }
 
     // ========== Apply Delete Filter ==========
     function applyDeleteFilter() {
-        const statusFilter = deleteStatusFilter ? deleteStatusFilter.value : '1,2';
-        const searchTerm = searchInput.value.trim().toLowerCase();
-        let statuses = statusFilter.split(',').map(s => parseInt(s.trim())).filter(s => !isNaN(s));
+        var statusFilter = deleteStatusFilter ? deleteStatusFilter.value : '1,2';
+        var searchTerm = searchInput.value.trim().toLowerCase();
+        var statuses = statusFilter.split(',').map(function(s) { return parseInt(s.trim()); }).filter(function(s) { return !isNaN(s); });
         if (statuses.length === 0) statuses = [1,2];
         loadRecords({ statusIds: statuses, mode: 'delete', search: searchTerm });
     }
 
     // ========== Print Price Tags ==========
     function printPriceTags() {
-        let records = [];
+        var records = [];
         
         if (rangeFromIndex !== null && rangeToIndex !== null) {
             records = getSelectedRecords();
@@ -3973,18 +4190,18 @@
 
     // ========== Checkout functions ==========
     function addToCheckout(recordId) {
-        console.log(`🛒 addToCheckout called with recordId: ${recordId}`);
-        const record = allRecords.find(r => r.id === recordId);
+        console.log('🛒 addToCheckout called with recordId: ' + recordId);
+        var record = allRecords.find(function(r) { return r.id === recordId; });
         if (!record) {
-            console.warn(`🛒 Record ${recordId} not found in allRecords`);
+            console.warn('🛒 Record ' + recordId + ' not found in allRecords');
             return;
         }
-        console.log(`🛒 Found record: ${record.artist} - ${record.title}`);
+        console.log('🛒 Found record: ' + record.artist + ' - ' + record.title);
         
-        if (!checkoutSelectedItems.some(r => r.id === recordId)) {
+        if (!checkoutSelectedItems.some(function(r) { return r.id === recordId; })) {
             checkoutSelectedItems.push(record);
-            console.log(`🛒 Added to checkout. Now ${checkoutSelectedItems.length} items.`);
-            showStatus(`Added "${record.artist} - ${record.title}" to checkout`, 'success');
+            console.log('🛒 Added to checkout. Now ' + checkoutSelectedItems.length + ' items.');
+            showStatus('Added "' + record.artist + ' - ' + record.title + '" to checkout', 'success');
             checkoutViewMode = 'list';
             filteredRecords = checkoutSelectedItems.slice();
             totalRecords = filteredRecords.length;
@@ -3993,21 +4210,21 @@
             renderTablePage();
             updateSelectionCount();
             if (checkoutShowSelectedBtn) {
-                checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+                checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
             }
         } else {
-            console.log(`🛒 Record ${recordId} already in checkout`);
+            console.log('🛒 Record ' + recordId + ' already in checkout');
             showStatus('Record already in checkout list', 'info');
         }
     }
 
     function removeFromCheckout(recordId) {
-        console.log(`🛒 removeFromCheckout called with recordId: ${recordId}`);
-        const index = checkoutSelectedItems.findIndex(r => r.id === recordId);
+        console.log('🛒 removeFromCheckout called with recordId: ' + recordId);
+        var index = checkoutSelectedItems.findIndex(function(r) { return r.id === recordId; });
         if (index !== -1) {
-            const removed = checkoutSelectedItems.splice(index, 1)[0];
-            console.log(`🛒 Removed ${removed.artist} - ${removed.title} from checkout. Now ${checkoutSelectedItems.length} items.`);
-            showStatus(`Removed "${removed.artist} - ${removed.title}" from checkout`, 'info');
+            var removed = checkoutSelectedItems.splice(index, 1)[0];
+            console.log('🛒 Removed ' + removed.artist + ' - ' + removed.title + ' from checkout. Now ' + checkoutSelectedItems.length + ' items.');
+            showStatus('Removed "' + removed.artist + ' - ' + removed.title + '" from checkout', 'info');
             filteredRecords = checkoutSelectedItems.slice();
             totalRecords = filteredRecords.length;
             currentPage = 1;
@@ -4015,7 +4232,7 @@
             renderTablePage();
             updateSelectionCount();
             if (checkoutShowSelectedBtn) {
-                checkoutShowSelectedBtn.textContent = `Checkout List (${checkoutSelectedItems.length})`;
+                checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
             }
             if (checkoutSelectedItems.length === 0) {
                 filteredRecords = [];
@@ -4024,22 +4241,22 @@
                 renderTablePage();
             }
         } else {
-            console.warn(`🛒 Record ${recordId} not found in checkout`);
+            console.warn('🛒 Record ' + recordId + ' not found in checkout');
         }
     }
 
     // ========== Square Payment Processing ==========
     async function checkSquareAvailability() {
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/square/terminals', {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/square/terminals', {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             if (!response.ok) throw new Error('Failed to fetch terminals');
-            const data = await response.json();
+            var data = await response.json();
             squareAvailable = data.terminals && data.terminals.length > 0;
             availableTerminals = data.terminals || [];
-            console.log(`📟 Square terminals available: ${squareAvailable}, terminals:`, availableTerminals);
+            console.log('📟 Square terminals available: ' + squareAvailable + ', terminals:', availableTerminals);
         } catch (error) {
             console.warn('Square not available:', error);
             squareAvailable = false;
@@ -4049,8 +4266,8 @@
     }
 
     async function processSquarePayment() {
-        const statusDiv = document.getElementById('checkout-square-status');
-        const completeBtn = document.getElementById('checkout-complete-payment');
+        var statusDiv = document.getElementById('checkout-square-status');
+        var completeBtn = document.getElementById('checkout-complete-payment');
         if (!statusDiv) return;
 
         completeBtn.disabled = true;
@@ -4068,15 +4285,15 @@
                 }
             }
 
-            const deviceId = availableTerminals[0].id;
+            var deviceId = availableTerminals[0].id;
             console.log('Using Square Terminal device ID:', deviceId);
 
-            const records = checkoutSelectedItems;
-            const totalCents = Math.round(checkoutTotal * 100);
-            const recordIds = records.map(r => r.id);
-            const titles = records.map(r => `${r.artist} - ${r.title}`);
+            var records = checkoutSelectedItems;
+            var totalCents = Math.round(checkoutTotal * 100);
+            var recordIds = records.map(function(r) { return r.id; });
+            var titles = records.map(function(r) { return r.artist + ' - ' + r.title; });
 
-            const response = await fetch(window.AppConfig.baseUrl + '/api/square/terminal/checkout', {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/square/terminal/checkout', {
                 method: 'POST',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
@@ -4089,12 +4306,12 @@
                 })
             });
 
-            const data = await response.json();
+            var data = await response.json();
             if (data.status !== 'success') {
                 throw new Error(data.message || 'Failed to create Square checkout');
             }
 
-            const checkout = data.checkout;
+            var checkout = data.checkout;
             squareCheckoutId = checkout.id;
 
             statusDiv.textContent = '💳 Payment request sent to POS. Waiting for customer to complete payment...';
@@ -4104,7 +4321,7 @@
 
         } catch (error) {
             console.error('Square checkout error:', error);
-            statusDiv.textContent = `❌ Error: ${error.message}`;
+            statusDiv.textContent = '❌ Error: ' + error.message;
             statusDiv.className = 'status-message status-error';
             completeBtn.disabled = false;
             completeBtn.textContent = 'Complete Payment';
@@ -4116,24 +4333,24 @@
             clearInterval(squarePollInterval);
         }
 
-        const statusDiv = document.getElementById('checkout-square-status');
-        let attempts = 0;
-        const maxAttempts = 60;
+        var statusDiv = document.getElementById('checkout-square-status');
+        var attempts = 0;
+        var maxAttempts = 60;
 
-        squarePollInterval = setInterval(async () => {
+        squarePollInterval = setInterval(async function() {
             attempts++;
             try {
-                const response = await fetch(window.AppConfig.baseUrl + `/api/square/terminal/checkout/${checkoutId}/status`, {
+                var response = await fetch(window.AppConfig.baseUrl + '/api/square/terminal/checkout/' + checkoutId + '/status', {
                     credentials: 'include',
                     headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
                 });
-                const data = await response.json();
+                var data = await response.json();
                 if (data.status !== 'success') {
                     return;
                 }
 
-                const checkout = data.checkout;
-                const status = checkout.status;
+                var checkout = data.checkout;
+                var status = checkout.status;
 
                 if (status === 'COMPLETED') {
                     clearInterval(squarePollInterval);
@@ -4141,20 +4358,20 @@
                     statusDiv.textContent = '✅ Payment completed successfully!';
                     statusDiv.className = 'status-message status-success';
                     await completeCheckout();
-                    setTimeout(() => {
-                        const modal = document.getElementById('checkout-payment-modal');
+                    setTimeout(function() {
+                        var modal = document.getElementById('checkout-payment-modal');
                         if (modal) modal.style.display = 'none';
                     }, 1500);
                 } else if (status === 'CANCELED' || status === 'FAILED') {
                     clearInterval(squarePollInterval);
                     squarePollInterval = null;
-                    statusDiv.textContent = `❌ Payment ${status.toLowerCase()}. Please try again.`;
+                    statusDiv.textContent = '❌ Payment ' + status.toLowerCase() + '. Please try again.';
                     statusDiv.className = 'status-message status-error';
-                    const completeBtn = document.getElementById('checkout-complete-payment');
+                    var completeBtn = document.getElementById('checkout-complete-payment');
                     completeBtn.disabled = false;
                     completeBtn.textContent = 'Complete Payment';
                 } else if (status === 'PENDING' || status === 'IN_PROGRESS') {
-                    statusDiv.textContent = `⏳ Waiting for payment... (${attempts}s)`;
+                    statusDiv.textContent = '⏳ Waiting for payment... (' + attempts + 's)';
                     statusDiv.className = 'status-message status-info';
                 }
 
@@ -4163,7 +4380,7 @@
                     squarePollInterval = null;
                     statusDiv.textContent = '⏰ Payment timed out. Please try again.';
                     statusDiv.className = 'status-message status-warning';
-                    const completeBtn = document.getElementById('checkout-complete-payment');
+                    var completeBtn = document.getElementById('checkout-complete-payment');
                     completeBtn.disabled = false;
                     completeBtn.textContent = 'Complete Payment';
                 }
@@ -4176,8 +4393,8 @@
   
     async function completeCheckout() {
         console.log('🛒 completeCheckout called');
-        console.log(`🛒 checkoutRemaining: ${checkoutRemaining}`);
-        console.log(`🛒 checkoutSelectedItems length: ${checkoutSelectedItems.length}`);
+        console.log('🛒 checkoutRemaining: ' + checkoutRemaining);
+        console.log('🛒 checkoutSelectedItems length: ' + checkoutSelectedItems.length);
         
         if (checkoutRemaining > 0.01) {
             console.log('🛒 Remaining balance not covered');
@@ -4185,23 +4402,24 @@
             return;
         }
 
-        const selected = checkoutSelectedItems;
+        var selected = checkoutSelectedItems;
         if (selected.length === 0) {
             console.log('🛒 No items in checkout');
             return;
         }
-        console.log(`🛒 Processing ${selected.length} items`);
+        console.log('🛒 Processing ' + selected.length + ' items');
 
-        const today = getLocalMSTDate();
-        let success = 0;
-        let bernieTotal = 0;
-        let consignorTransactions = [];
+        var today = getLocalMSTDate();
+        var success = 0;
+        var bernieTotal = 0;
+        var consignorTransactions = [];
 
-        const regularRecords = [];
-        const bernieItems = [];
-        const consignorRecords = [];
+        var regularRecords = [];
+        var bernieItems = [];
+        var consignorRecords = [];
 
-        for (const record of selected) {
+        for (var i = 0; i < selected.length; i++) {
+            var record = selected[i];
             if (record.isBernie === true) {
                 bernieItems.push(record);
             } else if (record.isCustom === true) {
@@ -4213,12 +4431,13 @@
             }
         }
 
-        bernieTotal = bernieItems.reduce((sum, r) => sum + (r.store_price || 0), 0);
-        console.log(`🛒 Bernie total: ${bernieTotal}`);
-        console.log(`🛒 Regular records: ${regularRecords.length}`);
-        console.log(`🛒 Consignor records: ${consignorRecords.length}`);
+        bernieTotal = bernieItems.reduce(function(sum, r) { return sum + (r.store_price || 0); }, 0);
+        console.log('🛒 Bernie total: ' + bernieTotal);
+        console.log('🛒 Regular records: ' + regularRecords.length);
+        console.log('🛒 Consignor records: ' + consignorRecords.length);
 
-        for (const record of regularRecords) {
+        for (var i = 0; i < regularRecords.length; i++) {
+            var record = regularRecords[i];
             try {
                 await apiRequest('PUT', '/records/' + record.id, {
                     status_id: 3,
@@ -4231,11 +4450,12 @@
             }
         }
 
-        for (const record of consignorRecords) {
+        for (var i = 0; i < consignorRecords.length; i++) {
+            var record = consignorRecords[i];
             try {
-                let consignorName = 'Unknown Consignor';
+                var consignorName = 'Unknown Consignor';
                 try {
-                    const userRes = await apiRequest('GET', '/users/' + record.consignor_id);
+                    var userRes = await apiRequest('GET', '/users/' + record.consignor_id);
                     if (userRes && userRes.id) {
                         consignorName = userRes.full_name || userRes.username || 'Consignor-' + record.consignor_id;
                     }
@@ -4244,10 +4464,10 @@
                     consignorName = 'Consignor-' + record.consignor_id;
                 }
 
-                const salePrice = record.store_price || 0;
-                const commissionRate = record.commission_rate || 0.3;
-                const consignorShare = salePrice * (1 - commissionRate);
-                const storeCommission = salePrice * commissionRate;
+                var salePrice = record.store_price || 0;
+                var commissionRate = record.commission_rate || 0.3;
+                var consignorShare = salePrice * (1 - commissionRate);
+                var storeCommission = salePrice * commissionRate;
 
                 consignorTransactions.push({
                     record_id: record.id,
@@ -4271,13 +4491,14 @@
             }
         }
 
-        for (const tx of consignorTransactions) {
+        for (var i = 0; i < consignorTransactions.length; i++) {
+            var tx = consignorTransactions[i];
             try {
-                const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
-                const accounts = accountsRes.accounts || [];
-                const cashAccount = accounts.find(a => a.code === '1015');
-                const revenueAccount = accounts.find(a => a.code === '4000');
-                const payableAccount = accounts.find(a => a.code === '2015');
+                var accountsRes = await apiRequest('GET', '/api/accounting/accounts');
+                var accounts = accountsRes.accounts || [];
+                var cashAccount = accounts.find(function(a) { return a.code === '1015'; });
+                var revenueAccount = accounts.find(function(a) { return a.code === '4000'; });
+                var payableAccount = accounts.find(function(a) { return a.code === '2015'; });
 
                 if (!cashAccount || !revenueAccount || !payableAccount) {
                     console.error('Required accounts not found for consignor transaction');
@@ -4285,18 +4506,18 @@
                     continue;
                 }
 
-                const entryData = {
+                var entryData = {
                     date: today,
-                    description: `${tx.consignor_name} | ISSUE | Record #${tx.record_id} sold - $${tx.sale_price.toFixed(2)} (${(tx.commission_rate * 100).toFixed(0)}% commission)`,
+                    description: tx.consignor_name + ' | ISSUE | Record #' + tx.record_id + ' sold - $' + tx.sale_price.toFixed(2) + ' (' + (tx.commission_rate * 100).toFixed(0) + '% commission)',
                     lines: [
                         { account_id: cashAccount.id, debit: tx.sale_price, credit: 0 },
                         { account_id: revenueAccount.id, debit: 0, credit: tx.store_commission },
                         { account_id: payableAccount.id, debit: 0, credit: tx.consignor_share }
                     ]
                 };
-                const result = await apiRequest('POST', '/api/accounting/manual', entryData);
+                var result = await apiRequest('POST', '/api/accounting/manual', entryData);
                 if (result.status === 'success') {
-                    console.log(`✅ Consignor ${tx.consignor_name} credited $${tx.consignor_share.toFixed(2)}`);
+                    console.log('✅ Consignor ' + tx.consignor_name + ' credited $' + tx.consignor_share.toFixed(2));
                 } else {
                     console.error('Failed to create consignor journal entry:', result.error);
                 }
@@ -4307,33 +4528,33 @@
 
         if (bernieTotal > 0) {
             try {
-                const accountsRes = await apiRequest('GET', '/api/accounting/accounts');
-                const accounts = accountsRes.accounts || [];
+                var accountsRes = await apiRequest('GET', '/api/accounting/accounts');
+                var accounts = accountsRes.accounts || [];
 
-                const paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
-                const accountMap = {
+                var paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
+                var accountMap = {
                     'Cash': '1015',
                     'Card (Square)': '1030',
                     'Gift Card': '1015',
                     'Store Credit': '1015'
                 };
-                const accountCode = accountMap[paymentMethod] || '1015';
+                var accountCode = accountMap[paymentMethod] || '1015';
 
-                const cashAccount = accounts.find(a => a.code === accountCode);
-                const payableAccount = accounts.find(a => a.code === '2015');
+                var cashAccount = accounts.find(function(a) { return a.code === accountCode; });
+                var payableAccount = accounts.find(function(a) { return a.code === '2015'; });
 
                 if (cashAccount && payableAccount) {
-                    const entryData = {
+                    var entryData = {
                         date: today,
-                        description: `BERNIE | ISSUE | Donation - $${bernieTotal.toFixed(2)} (${bernieItems.length} items)`,
+                        description: 'BERNIE | ISSUE | Donation - $' + bernieTotal.toFixed(2) + ' (' + bernieItems.length + ' items)',
                         lines: [
                             { account_id: cashAccount.id, debit: bernieTotal, credit: 0 },
                             { account_id: payableAccount.id, debit: 0, credit: bernieTotal }
                         ]
                     };
-                    const result = await apiRequest('POST', '/api/accounting/manual', entryData);
+                    var result = await apiRequest('POST', '/api/accounting/manual', entryData);
                     if (result.status === 'success') {
-                        console.log(`✅ Bernie donation journal entry created: $${bernieTotal.toFixed(2)}`);
+                        console.log('✅ Bernie donation journal entry created: $' + bernieTotal.toFixed(2));
                     } else {
                         console.error('Failed to create Bernie journal entry:', result.error);
                     }
@@ -4343,51 +4564,53 @@
             }
         }
 
-        let receiptError = null;
-        let receiptDownloaded = false;
+        var receiptError = null;
+        var receiptDownloaded = false;
 
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        var now = new Date();
+        var dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        var timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-        let receipt = 'PigStyle Music\n';
+        var receipt = 'PigStyle Music\n';
         receipt += '====================\n';
-        receipt += `${dateStr} ${timeStr}\n\n`;
+        receipt += dateStr + ' ' + timeStr + '\n\n';
         receipt += 'ITEMS:\n';
         receipt += '--------------------\n';
 
-        let subtotal = 0;
-        for (const item of selected) {
-            const price = item.store_price || 0;
-            const desc = item.isCustom ? item.title : `${item.artist} - ${item.title}`;
+        var subtotal = 0;
+        for (var i = 0; i < selected.length; i++) {
+            var item = selected[i];
+            var price = item.store_price || 0;
+            var desc = item.isCustom ? item.title : item.artist + ' - ' + item.title;
             if (item.isBernie) {
-                receipt += `[Bernie] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
+                receipt += '[Bernie] ' + desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
             } else if (item.consignor_id && item.consignor_id !== 1) {
-                receipt += `[Consignor] ${desc.padEnd(25)}$${price.toFixed(2)}\n`;
+                receipt += '[Consignor] ' + desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
             } else {
-                receipt += `${desc.padEnd(25)}$${price.toFixed(2)}\n`;
+                receipt += desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
             }
             subtotal += price;
         }
 
-        const taxRate = 0.08;
-        const tax = subtotal * taxRate;
-        const grandTotal = subtotal + tax;
+        var taxRate = 0.08;
+        var tax = subtotal * taxRate;
+        var grandTotal = subtotal + tax;
 
         receipt += '--------------------\n';
-        receipt += `${'Subtotal'.padEnd(25)}$${subtotal.toFixed(2)}\n`;
-        receipt += `${'Tax'.padEnd(25)}$${tax.toFixed(2)}\n`;
-        receipt += `${'Total'.padEnd(25)}$${grandTotal.toFixed(2)}\n\n`;
+        receipt += 'Subtotal'.padEnd(25) + '$' + subtotal.toFixed(2) + '\n';
+        receipt += 'Tax'.padEnd(25) + '$' + tax.toFixed(2) + '\n';
+        receipt += 'Total'.padEnd(25) + '$' + grandTotal.toFixed(2) + '\n\n';
 
         receipt += 'PAYMENT:\n';
         receipt += '--------------------\n';
-        let totalPaid = 0;
-        for (const entry of checkoutPaymentEntries) {
-            receipt += `${entry.method.padEnd(25)}$${entry.amount.toFixed(2)}\n`;
+        var totalPaid = 0;
+        for (var i = 0; i < checkoutPaymentEntries.length; i++) {
+            var entry = checkoutPaymentEntries[i];
+            receipt += entry.method.padEnd(25) + '$' + entry.amount.toFixed(2) + '\n';
             totalPaid += entry.amount;
         }
         if (totalPaid < grandTotal) {
-            receipt += `${'Unpaid'.padEnd(25)}$${(grandTotal - totalPaid).toFixed(2)}\n`;
+            receipt += 'Unpaid'.padEnd(25) + '$' + (grandTotal - totalPaid).toFixed(2) + '\n';
         }
         receipt += '--------------------\n';
 
@@ -4395,7 +4618,7 @@
         receipt += 'PigStyle Music\n';
         receipt += 'Come back soon!\n\n\n\n';
 
-        const filename = `receipt_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.txt`;
+        var filename = 'receipt_' + now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0') + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0') + '.txt';
 
         try {
             downloadReceipt(receipt, filename);
@@ -4405,21 +4628,21 @@
             console.error('Receipt download error:', error);
         }
 
-        const consignorCount = consignorTransactions.length;
-        const consignorTotal = consignorTransactions.reduce((sum, t) => sum + t.consignor_share, 0);
+        var consignorCount = consignorTransactions.length;
+        var consignorTotal = consignorTransactions.reduce(function(sum, t) { return sum + t.consignor_share; }, 0);
 
-        let statusMsg = `${success} records marked as sold`;
+        var statusMsg = success + ' records marked as sold';
         if (consignorCount > 0) {
-            statusMsg += `, ${consignorCount} consignor(s) credited $${consignorTotal.toFixed(2)}`;
+            statusMsg += ', ' + consignorCount + ' consignor(s) credited $' + consignorTotal.toFixed(2);
         }
         if (bernieTotal > 0) {
-            statusMsg += `, Bernie donations: $${bernieTotal.toFixed(2)}`;
+            statusMsg += ', Bernie donations: $' + bernieTotal.toFixed(2);
         }
 
         if (receiptDownloaded) {
             statusMsg += ' ✅ Receipt downloaded.';
         } else if (receiptError) {
-            statusMsg += ` ⚠️ Receipt could not be downloaded (${receiptError}). Purchase completed anyway.`;
+            statusMsg += ' ⚠️ Receipt could not be downloaded (' + receiptError + '). Purchase completed anyway.';
         }
 
         showCheckoutStatus('✅ ' + statusMsg, receiptError ? 'warning' : 'success');
@@ -4429,7 +4652,7 @@
         checkoutPaymentEntries = [];
         checkoutRemaining = 0;
 
-        const modal = document.getElementById('checkout-payment-modal');
+        var modal = document.getElementById('checkout-payment-modal');
         if (modal) {
             modal.style.display = 'none';
         }
@@ -4440,7 +4663,7 @@
         renderTablePage();
 
         if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
+            checkoutShowSelectedBtn.textContent = 'Checkout List (0)';
         }
         updateSelectionCount();
 
@@ -4451,107 +4674,44 @@
     // ========== Show Checkout Modal ==========
     function showCheckoutModal() {
         console.log('🛒 showCheckoutModal called');
-        console.log(`🛒 checkoutSelectedItems length: ${checkoutSelectedItems.length}`);
+        console.log('🛒 checkoutSelectedItems length: ' + checkoutSelectedItems.length);
         console.log('🛒 checkoutSelectedItems:', checkoutSelectedItems);
         
-        const oldModal = document.getElementById('checkout-payment-modal');
+        var oldModal = document.getElementById('checkout-payment-modal');
         if (oldModal) {
             console.log('🛒 Removing existing modal');
             oldModal.parentNode.removeChild(oldModal);
         }
 
-        const selected = checkoutSelectedItems;
+        var selected = checkoutSelectedItems;
         if (selected.length === 0) { 
             console.log('🛒 No items in checkout');
             showStatus('No records in checkout list', 'warning'); 
             return; 
         }
         
-        const total = selected.reduce((sum, r) => sum + (r.store_price || 0), 0);
-        const tax = total * 0.08;
-        const grandTotal = total + tax;
-        console.log(`🛒 Total: ${total}, Tax: ${tax}, Grand Total: ${grandTotal}`);
+        var total = selected.reduce(function(sum, r) { return sum + (r.store_price || 0); }, 0);
+        var tax = total * 0.08;
+        var grandTotal = total + tax;
+        console.log('🛒 Total: ' + total + ', Tax: ' + tax + ', Grand Total: ' + grandTotal);
         
         checkoutTotal = grandTotal;
         checkoutRemaining = grandTotal;
         checkoutPaymentEntries = [];
 
-        const orderId = generateOrderId();
+        var orderId = generateOrderId();
 
-        let modal = document.createElement('div');
+        var modal = document.createElement('div');
         modal.id = 'checkout-payment-modal';
         modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 550px; width: 95%;">
-                <div class="modal-header" style="background: #007bff; color: white;">
-                    <h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3>
-                    <button class="modal-close" onclick="document.getElementById('checkout-payment-modal').style.display='none'" style="color: white;">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p><strong>${selected.length}</strong> item(s) selected.</p>
-                    <div style="font-size: 20px; font-weight: bold; margin: 10px 0;">
-                        Total: $${grandTotal.toFixed(2)}
-                    </div>
-                    <div style="font-size: 16px; margin: 10px 0; color: #28a745;">
-                        Remaining: $<span id="checkout-remaining">${grandTotal.toFixed(2)}</span>
-                    </div>
-                    
-                    <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;">
-                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                            <input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                            <button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;">
-                                <i class="fas fa-search"></i> Lookup
-                            </button>
-                        </div>
-                        <div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-                                <span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span>
-                                <span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span>
-                            </div>
-                            <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-                                <button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;">
-                                    <i class="fas fa-check"></i> Apply Credit
-                                </button>
-                                <button class="btn btn-sm btn-secondary" onclick="document.getElementById('checkout-debtor-info').style.display='none'">
-                                    <i class="fas fa-times"></i> Cancel
-                                </button>
-                            </div>
-                            <div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div>
-                        </div>
-                        <div style="font-size: 12px; color: #666; margin-top: 6px;">
-                            <i class="fas fa-info-circle"></i> Enter a gift card code (GIFT-XXXXX) or a store credit debtor name. Click Apply to use the balance.
-                        </div>
-                    </div>
-                    
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0;">
-                        <input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;">
-                        <select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;">
-                            <option value="Cash" selected>Cash</option>
-                            <option value="Card (Square)">Card (Square)</option>
-                        </select>
-                        <button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button>
-                    </div>
-                    
-                    <div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">
-                        ⚠️ Square POS is not available. Card option is disabled.
-                    </div>
-                    <div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div>
-                    <div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div>
-                    <div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div>
-                    <button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="document.getElementById('checkout-payment-modal').style.display='none'">Cancel</button>
-                </div>
-            </div>
-        `;
+        modal.innerHTML = '<div class="modal-content" style="max-width: 550px; width: 95%;"><div class="modal-header" style="background: #007bff; color: white;"><h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3><button class="modal-close" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'" style="color: white;">&times;</button></div><div class="modal-body"><p><strong>' + selected.length + '</strong> item(s) selected.</p><div style="font-size: 20px; font-weight: bold; margin: 10px 0;">Total: $' + grandTotal.toFixed(2) + '</div><div style="font-size: 16px; margin: 10px 0; color: #28a745;">Remaining: $<span id="checkout-remaining">' + grandTotal.toFixed(2) + '</span></div><div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;"><div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"><input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;"><i class="fas fa-search"></i> Lookup</button></div><div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;"><div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;"><span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span><span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span></div><div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"><button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;"><i class="fas fa-check"></i> Apply Credit</button><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'checkout-debtor-info\').style.display=\'none\'"><i class="fas fa-times"></i> Cancel</button></div><div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div></div><div style="font-size: 12px; color: #666; margin-top: 6px;"><i class="fas fa-info-circle"></i> Enter a gift card code (GIFT-XXXXX) or a store credit debtor name. Click Apply to use the balance.</div></div><div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0;"><input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;"><select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;"><option value="Cash" selected>Cash</option><option value="Card (Square)">Card (Square)</option></select><button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button></div><div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">⚠️ Square POS is not available. Card option is disabled.</div><div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div><div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div><div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div><button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'">Cancel</button></div></div>';
         document.body.appendChild(modal);
         console.log('🛒 Modal created and appended');
 
-        checkSquareAvailability().then(avail => {
-            const methodSelect = document.getElementById('checkout-payment-method');
-            const cardOption = methodSelect.querySelector('option[value="Card (Square)"]');
-            const warning = document.getElementById('checkout-square-warning');
+        checkSquareAvailability().then(function(avail) {
+            var methodSelect = document.getElementById('checkout-payment-method');
+            var cardOption = methodSelect.querySelector('option[value="Card (Square)"]');
+            var warning = document.getElementById('checkout-square-warning');
             if (!avail) {
                 if (cardOption) cardOption.disabled = true;
                 if (warning) warning.style.display = 'block';
@@ -4566,9 +4726,9 @@
         renderCheckoutEntries();
 
         document.getElementById('checkout-add-payment').onclick = function() {
-            const amountInput = document.getElementById('checkout-payment-amount');
-            const methodSelect2 = document.getElementById('checkout-payment-method');
-            let amount = parseFloat(amountInput.value);
+            var amountInput = document.getElementById('checkout-payment-amount');
+            var methodSelect2 = document.getElementById('checkout-payment-method');
+            var amount = parseFloat(amountInput.value);
             if (isNaN(amount) || amount <= 0) {
                 amount = checkoutRemaining;
                 if (amount <= 0) {
@@ -4577,7 +4737,7 @@
                 }
                 amountInput.value = amount.toFixed(2);
             }
-            const method = methodSelect2.value;
+            var method = methodSelect2.value;
 
             if (method === 'Card (Square)' && !squareAvailable) {
                 showCheckoutStatus('Square POS is not available. Please use Cash.', 'error');
@@ -4590,13 +4750,13 @@
         document.getElementById('checkout-complete-payment').onclick = function() {
             console.log('🛒 Complete Payment button clicked');
             if (checkoutRemaining > 0.01) {
-                console.log(`🛒 Remaining: ${checkoutRemaining}`);
+                console.log('🛒 Remaining: ' + checkoutRemaining);
                 showCheckoutStatus('Remaining balance not covered', 'error');
                 return;
             }
-            const methodSelect3 = document.getElementById('checkout-payment-method');
-            const method = methodSelect3.value;
-            console.log(`🛒 Payment method: ${method}`);
+            var methodSelect3 = document.getElementById('checkout-payment-method');
+            var method = methodSelect3.value;
+            console.log('🛒 Payment method: ' + method);
             if (method === 'Card (Square)') {
                 processSquarePayment();
             } else {
@@ -4607,7 +4767,7 @@
         modal.style.display = 'flex';
         updateCheckoutCompleteButton();
 
-        const statusDiv = document.getElementById('checkout-square-status');
+        var statusDiv = document.getElementById('checkout-square-status');
         if (statusDiv) {
             statusDiv.style.display = 'none';
             statusDiv.textContent = '';
@@ -4617,7 +4777,7 @@
 
     // ========== Add Payment Entry ==========
     function addPaymentEntry(method, amount) {
-        console.log(`💳 addPaymentEntry: ${method} $${amount}`);
+        console.log('💳 addPaymentEntry: ' + method + ' $' + amount);
         if (amount > checkoutRemaining && checkoutRemaining > 0) {
             // allow overpayment
         }
@@ -4626,39 +4786,33 @@
         document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
         renderCheckoutEntries();
         updateCheckoutCompleteButton();
-        showCheckoutStatus(`Added $${amount.toFixed(2)} ${method}`, 'success');
+        showCheckoutStatus('Added $' + amount.toFixed(2) + ' ' + method, 'success');
         document.getElementById('checkout-payment-amount').value = '';
     }
 
     function renderCheckoutEntries() {
-        const container = document.getElementById('checkout-payment-entries');
+        var container = document.getElementById('checkout-payment-entries');
         if (!container) return;
         if (checkoutPaymentEntries.length === 0) {
             container.innerHTML = '<div style="color: #999; text-align: center; padding: 10px;">No payments added yet.</div>';
             return;
         }
-        let html = '';
-        checkoutPaymentEntries.forEach((entry, idx) => {
-            html += `
-                <div style="display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: 1px solid #eee;">
-                    <span>${entry.method}</span>
-                    <span>$${entry.amount.toFixed(2)}</span>
-                    <button class="btn btn-sm btn-danger checkout-remove-entry" data-index="${idx}" style="padding: 2px 6px;"><i class="fas fa-times"></i></button>
-                </div>
-            `;
+        var html = '';
+        checkoutPaymentEntries.forEach(function(entry, idx) {
+            html += '<div style="display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: 1px solid #eee;"><span>' + entry.method + '</span><span>$' + entry.amount.toFixed(2) + '</span><button class="btn btn-sm btn-danger checkout-remove-entry" data-index="' + idx + '" style="padding: 2px 6px;"><i class="fas fa-times"></i></button></div>';
         });
         container.innerHTML = html;
 
-        container.querySelectorAll('.checkout-remove-entry').forEach(btn => {
+        container.querySelectorAll('.checkout-remove-entry').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                const index = parseInt(this.dataset.index);
+                var index = parseInt(this.dataset.index);
                 removeCheckoutEntry(index);
             });
         });
     }
 
     function removeCheckoutEntry(index) {
-        const entry = checkoutPaymentEntries[index];
+        var entry = checkoutPaymentEntries[index];
         if (entry) {
             checkoutRemaining += entry.amount;
             checkoutPaymentEntries.splice(index, 1);
@@ -4670,34 +4824,36 @@
     }
 
     function updateCheckoutCompleteButton() {
-        const btn = document.getElementById('checkout-complete-payment');
+        var btn = document.getElementById('checkout-complete-payment');
         if (btn) {
             btn.disabled = checkoutRemaining > 0.01;
         }
     }
 
     function showCheckoutStatus(message, type) {
-        const el = document.getElementById('checkout-payment-status');
+        var el = document.getElementById('checkout-payment-status');
         if (el) {
             el.textContent = message;
-            el.className = `status-message status-${type}`;
+            el.className = 'status-message status-' + type;
             el.style.display = 'block';
         }
     }
 
     // ========== UNIFIED DEBTOR LOOKUP FOR CHECKOUT ==========
 
+    var checkoutDebtorData = null;
+
     async function lookupDebtorForCheckout() {
-        const input = document.getElementById('checkout-debtor-code');
-        const infoDiv = document.getElementById('checkout-debtor-info');
-        const statusEl = document.getElementById('checkout-debtor-status');
-        const nameEl = document.getElementById('checkout-debtor-name');
-        const typeEl = document.getElementById('checkout-debtor-type');
-        const balanceEl = document.getElementById('checkout-debtor-balance');
+        var input = document.getElementById('checkout-debtor-code');
+        var infoDiv = document.getElementById('checkout-debtor-info');
+        var statusEl = document.getElementById('checkout-debtor-status');
+        var nameEl = document.getElementById('checkout-debtor-name');
+        var typeEl = document.getElementById('checkout-debtor-type');
+        var balanceEl = document.getElementById('checkout-debtor-balance');
         
         if (!input) return;
         
-        const code = input.value.trim().toUpperCase();
+        var code = input.value.trim().toUpperCase();
         if (!code) {
             if (statusEl) {
                 statusEl.textContent = '⚠️ Please enter a code or name.';
@@ -4710,20 +4866,20 @@
         statusEl.style.color = '#666';
         
         try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/debtor/lookup`, {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/debtor/lookup', {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: code })
             });
             
-            const data = await response.json();
+            var data = await response.json();
             
             if (data.status === 'success' && data.balance !== undefined) {
                 checkoutDebtorData = data;
-                const balance = data.balance || 0;
-                const isGiftCard = data.is_gift_card;
-                const isBernie = data.is_bernie;
+                var balance = data.balance || 0;
+                var isGiftCard = data.is_gift_card;
+                var isBernie = data.is_bernie;
                 
                 infoDiv.style.display = 'block';
                 nameEl.textContent = data.debtor;
@@ -4746,7 +4902,7 @@
                     statusEl.textContent = '⚠️ Bernie funds cannot be redeemed for purchases. Use the Donate button in Creditors.';
                     statusEl.style.color = '#856404';
                 } else {
-                    statusEl.textContent = `✅ Balance available: $${balance.toFixed(2)}. Click Apply to use it.`;
+                    statusEl.textContent = '✅ Balance available: $' + balance.toFixed(2) + '. Click Apply to use it.';
                     statusEl.style.color = '#28a745';
                 }
             } else {
@@ -4771,8 +4927,8 @@
             return;
         }
         
-        const statusEl = document.getElementById('checkout-debtor-status');
-        const balance = checkoutDebtorData.balance;
+        var statusEl = document.getElementById('checkout-debtor-status');
+        var balance = checkoutDebtorData.balance;
         
         if (balance <= 0) {
             statusEl.textContent = '⚠️ This account has no balance.';
@@ -4786,37 +4942,37 @@
             return;
         }
         
-        const amount = Math.min(balance, checkoutRemaining);
+        var amount = Math.min(balance, checkoutRemaining);
         
         try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/debtor/redeem`, {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/debtor/redeem', {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: checkoutDebtorData.debtor,
                     amount: amount,
-                    description: `Checkout redemption - ${checkoutSelectedItems.length} items`
+                    description: 'Checkout redemption - ' + checkoutSelectedItems.length + ' items'
                 })
             });
             
-            const data = await response.json();
+            var data = await response.json();
             
             if (data.status === 'success') {
-                const method = checkoutDebtorData.is_gift_card ? 'Gift Card' : 'Store Credit';
+                var method = checkoutDebtorData.is_gift_card ? 'Gift Card' : 'Store Credit';
                 addPaymentEntry(method + ' (' + checkoutDebtorData.debtor + ')', amount);
                 
                 checkoutDebtorData.balance -= amount;
                 document.getElementById('checkout-debtor-balance').textContent = checkoutDebtorData.balance.toFixed(2);
                 
                 if (checkoutDebtorData.balance <= 0.01) {
-                    statusEl.textContent = `✅ Applied $${amount.toFixed(2)} from ${checkoutDebtorData.debtor}. Card is now empty.`;
+                    statusEl.textContent = '✅ Applied $' + amount.toFixed(2) + ' from ' + checkoutDebtorData.debtor + '. Card is now empty.';
                     statusEl.style.color = '#28a745';
-                    setTimeout(() => {
+                    setTimeout(function() {
                         document.getElementById('checkout-debtor-info').style.display = 'none';
                     }, 2000);
                 } else {
-                    statusEl.textContent = `✅ Applied $${amount.toFixed(2)} from ${checkoutDebtorData.debtor}. Remaining balance: $${checkoutDebtorData.balance.toFixed(2)}`;
+                    statusEl.textContent = '✅ Applied $' + amount.toFixed(2) + ' from ' + checkoutDebtorData.debtor + '. Remaining balance: $' + checkoutDebtorData.balance.toFixed(2);
                     statusEl.style.color = '#28a745';
                 }
                 
@@ -4837,9 +4993,9 @@
 
     // ========== Complete Action Handler ==========
     function handleCompleteAction() {
-        const mode = currentSearchMode;
-        console.log(`🔵 handleCompleteAction called for mode: ${mode}`);
-        console.log(`🔵 completeActionBtn element:`, completeActionBtn);
+        var mode = currentSearchMode;
+        console.log('🔵 handleCompleteAction called for mode: ' + mode);
+        console.log('🔵 completeActionBtn element:', completeActionBtn);
         
         if (mode === 'add') {
             console.log('🔵 Add mode - showing info');
@@ -4849,14 +5005,14 @@
             applyScanLocation();
         } else if (mode === 'discogs') {
             console.log('🔵 Discogs mode - showing post modal');
-            console.log(`🔵 handleCompleteAction: calling showDiscogsPostModal`);
+            console.log('🔵 handleCompleteAction: calling showDiscogsPostModal');
             showDiscogsPostModal();
         } else if (mode === 'delete') {
             console.log('🔵 Delete mode - deleting selected');
             deleteSelected();
         } else if (mode === 'checkout') {
             console.log('🔵 Checkout mode - showing checkout modal');
-            console.log(`🔵 checkoutSelectedItems length: ${checkoutSelectedItems.length}`);
+            console.log('🔵 checkoutSelectedItems length: ' + checkoutSelectedItems.length);
             if (checkoutSelectedItems.length === 0) {
                 console.log('🔵 No items in checkout');
                 showStatus('No items in checkout.', 'warning');
@@ -4872,339 +5028,182 @@
             console.log('🔵 Refund mode - processing refund');
             processRefund();
         } else {
-            console.log(`🔵 Unknown mode: ${mode}`);
+            console.log('🔵 Unknown mode: ' + mode);
             showStatus('No action available for this mode', 'warning');
         }
     }
 
-    // ========== DRAFT PURCHASE FUNCTIONS ==========
+    // ========== DRAFT PURCHASE FUNCTIONS (Accept/Decline) ==========
 
-    function updateDraftLinkedCount() {
-        if (draftLinkedCount) {
-            draftLinkedCount.textContent = draftLinkedRecordIds.length;
-        }
-    }
-
-    async function loadActiveDraft() {
-        console.log('📋 loadActiveDraft: loading active draft...');
-        try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            const data = await response.json();
-            console.log('📋 loadActiveDraft: response received', data);
-            
-            if (data.status === 'success' && data.draft) {
-                activeDraft = data.draft;
-                draftLinkedRecordIds = data.draft.record_ids || [];
-                console.log(`📋 loadActiveDraft: active draft found ID: ${activeDraft.id}, records: ${draftLinkedRecordIds.length}`);
-                showActiveDraftUI();
-                updateDraftLinkedCount();
-            } else {
-                activeDraft = null;
-                draftLinkedRecordIds = [];
-                console.log('📋 loadActiveDraft: no active draft found');
-                showDraftFormUI();
-                updateDraftLinkedCount();
-            }
-        } catch (error) {
-            console.error('❌ loadActiveDraft error:', error);
-            activeDraft = null;
-            draftLinkedRecordIds = [];
-            showDraftFormUI();
-            updateDraftLinkedCount();
-        }
-    }
-
-    function showDraftFormUI() {
-        console.log('📋 showDraftFormUI: showing draft form');
-        if (draftFormSection) {
-            draftFormSection.style.display = 'block';
-        }
-        if (activeDraftSection) {
-            activeDraftSection.style.display = 'none';
-        }
-        if (draftSellerName) draftSellerName.value = '';
-        if (draftSellerContact) draftSellerContact.value = '';
-        if (draftDescription) draftDescription.value = '';
-    }
-
-    function showActiveDraftUI() {
-        console.log('📋 showActiveDraftUI: showing active draft');
-        if (draftFormSection) {
-            draftFormSection.style.display = 'none';
-        }
-        if (activeDraftSection) {
-            activeDraftSection.style.display = 'block';
-        }
-        if (draftDisplaySeller && activeDraft) {
-            draftDisplaySeller.textContent = activeDraft.seller_name || '—';
-        }
-        if (draftDisplayContact && activeDraft) {
-            draftDisplayContact.textContent = activeDraft.seller_contact || '—';
-        }
-        if (draftDisplayDescription && activeDraft) {
-            draftDisplayDescription.textContent = activeDraft.description || '—';
-        }
-        if (draftDisplayId && activeDraft) {
-            draftDisplayId.textContent = activeDraft.id || '—';
-        }
-        updateDraftLinkedCount();
-    }
-
-    function toggleParamsPurchasePanel() {
-        console.log('📋 toggleParamsPurchasePanel called');
-        const body = document.getElementById('params-purchase-body');
-        const icon = document.getElementById('params-purchase-toggle-icon');
-        if (!body || !icon) return;
-        
-        if (body.classList.contains('expanded')) {
-            body.classList.remove('expanded');
-            body.style.display = 'none';
-            icon.classList.add('collapsed');
-        } else {
-            body.classList.add('expanded');
-            body.style.display = 'block';
-            icon.classList.remove('collapsed');
-        }
-    }
-
-    async function createDraftPurchase() {
-        console.log('📋 createDraftPurchase: START');
-        const sellerName = draftSellerName ? draftSellerName.value.trim() : '';
-        const sellerContact = draftSellerContact ? draftSellerContact.value.trim() : '';
-        const description = draftDescription ? draftDescription.value.trim() : '';
-        
-        console.log(`📋 createDraftPurchase: sellerName="${sellerName}", contact="${sellerContact}", description="${description}"`);
-        
-        if (!sellerName) {
-            console.log('❌ createDraftPurchase: seller name required');
-            showToast('Please enter the seller name.', 'error');
-            showDraftStatus('Please enter the seller name.', 'error');
+    async function acceptDraft() {
+        if (!currentDraftId) {
+            showToast('No draft selected.', 'error');
+            showDraftStatus('No draft selected.', 'error');
             return;
         }
-        if (!description) {
-            console.log('❌ createDraftPurchase: description required');
-            showToast('Please enter a description of the items.', 'error');
-            showDraftStatus('Please enter a description of the items.', 'error');
+
+        var draft = await fetchDraftDetails(currentDraftId);
+        if (!draft) {
+            showToast('Draft not found.', 'error');
             return;
         }
-        
-        const requestBody = {
-            seller_name: sellerName,
-            seller_contact: sellerContact,
-            description: description
-        };
-        console.log('📋 createDraftPurchase: request body', requestBody);
-        
-        try {
-            console.log('📋 createDraftPurchase: sending POST to /api/purchases/draft');
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-            });
-            console.log(`📋 createDraftPurchase: response status ${response.status}`);
-            
-            const data = await response.json();
-            console.log('📋 createDraftPurchase: response data', data);
-            
-            if (data.status === 'success') {
-                activeDraft = data.draft;
-                draftLinkedRecordIds = [];
-                showActiveDraftUI();
-                updateDraftLinkedCount();
-                showToast('✅ Draft purchase created successfully! Receipt downloaded.', 'success');
-                showDraftStatus('✅ Draft purchase created successfully! Receipt downloaded.', 'success');
-                playSound('success');
-                
-                const receiptText = generateDraftReceipt(activeDraft);
-                console.log(`📋 createDraftPurchase: receipt length ${receiptText.length}, downloading...`);
-                downloadReceipt(receiptText, `draft_receipt_${activeDraft.id}.txt`);
-                console.log('📋 createDraftPurchase: receipt downloaded');
-            } else {
-                console.error('❌ createDraftPurchase: API returned error', data);
-                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                playSound('error');
-            }
-        } catch (error) {
-            console.error('❌ createDraftPurchase: exception caught', error);
-            showToast('❌ Error: ' + error.message, 'error');
-            showDraftStatus('❌ Error: ' + error.message, 'error');
-            playSound('error');
-        }
-        console.log('📋 createDraftPurchase: END');
-    }
 
-    function generateDraftReceipt(draft) {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        
-        let receipt = 'PIGSTYLE MUSIC\n';
-        receipt += '====================\n';
-        receipt += 'DRAFT PURCHASE RECEIPT\n';
-        receipt += `${dateStr} ${timeStr}\n\n`;
-        receipt += `Draft ID: ${draft.id}\n`;
-        receipt += `Seller: ${draft.seller_name}\n`;
-        if (draft.seller_contact) {
-            receipt += `Contact: ${draft.seller_contact}\n`;
-        }
-        receipt += `Description: ${draft.description}\n`;
-        receipt += '\n';
-        receipt += 'This is a draft receipt for items received.\n';
-        receipt += 'Records will be added and final offer will be determined.\n\n';
-        receipt += '---\n';
-        receipt += 'PigStyle Music\n';
-        receipt += 'Thank you!\n';
-        
-        return receipt;
-    }
-
-    async function acceptDraftWithSignature() {
-        console.log('📋 acceptDraftWithSignature: START');
-        console.log('📋 acceptDraftWithSignature: activeDraft =', activeDraft);
-        console.log('📋 acceptDraftWithSignature: draftLinkedRecordIds =', draftLinkedRecordIds);
-        
-        if (!activeDraft) {
-            console.log('❌ acceptDraftWithSignature: no active draft');
-            showToast('No active draft to accept.', 'error');
-            showDraftStatus('No active draft to accept.', 'error');
-            return;
-        }
-        
-        const offerAmount = draftOfferAmount ? parseFloat(draftOfferAmount.value) : 0;
-        console.log(`📋 acceptDraftWithSignature: offerAmount = ${offerAmount}, raw value = "${draftOfferAmount ? draftOfferAmount.value : 'null'}"`);
-        
+        var offerAmount = draftOfferAmount ? parseFloat(draftOfferAmount.value) : 0;
         if (isNaN(offerAmount) || offerAmount <= 0) {
-            console.log('❌ acceptDraftWithSignature: invalid offer amount');
             showToast('Please enter a valid offer amount.', 'error');
             showDraftStatus('Please enter a valid offer amount.', 'error');
             return;
         }
-        
-        if (draftLinkedRecordIds.length === 0) {
-            console.log('❌ acceptDraftWithSignature: no records linked');
-            showToast('No records linked to this draft. Add records first.', 'error');
-            showDraftStatus('No records linked to this draft. Add records first.', 'error');
+
+        var signatureMethod = confirm('Square POS signature? Click OK for Square POS, Cancel for Print & Upload.');
+        console.log('📋 acceptDraft: signatureMethod = ' + (signatureMethod ? 'square' : 'upload'));
+
+        var recordIds = currentDraftRecords.map(function(r) { return r.id; });
+        if (recordIds.length === 0) {
+            showToast('No records linked to this draft.', 'error');
+            showDraftStatus('No records linked to this draft.', 'error');
             return;
         }
-        
-        const signatureMethod = confirm('Square POS signature? Click OK for Square POS, Cancel for Print & Upload.');
-        console.log(`📋 acceptDraftWithSignature: signatureMethod = ${signatureMethod ? 'square' : 'upload'}`);
-        
-        const requestBody = {
+
+        var requestBody = {
             offer_amount: offerAmount,
             signature_method: signatureMethod ? 'square' : 'upload',
-            record_ids: draftLinkedRecordIds
+            record_ids: recordIds
         };
-        console.log('📋 acceptDraftWithSignature: request body', requestBody);
-        
+
         try {
-            console.log(`📋 acceptDraftWithSignature: sending PUT to /api/purchases/draft/${activeDraft.id}`);
-            const response = await fetch(window.AppConfig.baseUrl + `/api/purchases/draft/${activeDraft.id}`, {
+            console.log('📋 acceptDraft: sending PUT to /api/purchases/draft/' + currentDraftId);
+            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + currentDraftId, {
                 method: 'PUT',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
             });
-            console.log(`📋 acceptDraftWithSignature: response status ${response.status}`);
-            
-            const data = await response.json();
-            console.log('📋 acceptDraftWithSignature: response data', data);
-            
+            var data = await response.json();
+            console.log('📋 acceptDraft: response', data);
+
             if (data.status === 'success') {
-                // Get the record IDs from the response
-                const recordIds = data.record_ids || draftLinkedRecordIds;
-                
-                // Generate price tags PDF
-                console.log('📋 acceptDraftWithSignature: generating price tags for', recordIds.length, 'records');
-                const recordsToPrint = [];
-                for (const id of recordIds) {
-                    const record = filteredRecords.find(r => r.id === id) || allRecords.find(r => r.id === id);
-                    if (record) {
-                        recordsToPrint.push(record);
-                    }
+                if (currentDraftRecords.length > 0) {
+                    await generatePDF(currentDraftRecords);
+                    showToast('📄 Price tags generated for ' + currentDraftRecords.length + ' records.', 'success');
                 }
-                
-                if (recordsToPrint.length > 0) {
-                    await generatePDF(recordsToPrint);
-                    console.log('📋 acceptDraftWithSignature: price tags generated');
-                    showToast(`📄 Price tags generated for ${recordsToPrint.length} records.`, 'success');
-                }
-                
-                showToast(`✅ Draft accepted! Offer: $${offerAmount.toFixed(2)}`, 'success');
-                showDraftStatus(`✅ Draft accepted! Offer: $${offerAmount.toFixed(2)}`, 'success');
+
+                showToast('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
+                showDraftStatus('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
                 playSound('success');
-                
+
                 if (signatureMethod) {
-                    console.log('📋 acceptDraftWithSignature: sending to Square POS');
-                    await sendBillToSquarePOS(activeDraft, offerAmount, draftLinkedRecordIds);
+                    await sendBillToSquarePOS(draft, offerAmount, currentDraftRecords);
                 } else {
-                    console.log('📋 acceptDraftWithSignature: generating bill of sale');
-                    const billText = generateBillOfSale(activeDraft, offerAmount, draftLinkedRecordIds);
-                    downloadReceipt(billText, `bill_of_sale_${activeDraft.id}.txt`);
+                    var billText = generateBillOfSale(draft, offerAmount, currentDraftRecords);
+                    downloadReceipt(billText, 'bill_of_sale_' + currentDraftId + '.txt');
                     showToast('📄 Bill of Sale downloaded. Have customer sign, take photo, and upload.', 'info');
                     showDraftStatus('📄 Bill of Sale downloaded. Have customer sign, take photo, and upload.', 'info');
                 }
-                
-                activeDraft = null;
-                draftLinkedRecordIds = [];
+
+                await loadAllDrafts();
                 showDraftFormUI();
-                updateDraftLinkedCount();
-                if (draftOfferAmount) draftOfferAmount.value = '';
-                
-                // Reload records - exclude batch records
-                await loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
+
             } else {
-                console.error('❌ acceptDraftWithSignature: API returned error', data);
                 showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
                 showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
                 playSound('error');
             }
         } catch (error) {
-            console.error('❌ acceptDraftWithSignature: exception caught', error);
+            console.error('❌ acceptDraft error:', error);
             showToast('❌ Error: ' + error.message, 'error');
             showDraftStatus('❌ Error: ' + error.message, 'error');
             playSound('error');
         }
-        console.log('📋 acceptDraftWithSignature: END');
     }
 
-    async function sendBillToSquarePOS(draft, offerAmount, recordIds) {
+    async function fetchDraftDetails(draftId) {
         try {
-            const recordDetails = [];
-            for (const id of recordIds) {
-                const record = filteredRecords.find(r => r.id === id) || allRecords.find(r => r.id === id);
-                if (record) {
-                    recordDetails.push({
-                        id: record.id,
-                        artist: record.artist || 'Unknown',
-                        title: record.title || 'Unknown',
-                        price: record.store_price || 0
-                    });
-                }
+            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + draftId, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            if (!response.ok) return null;
+            var data = await response.json();
+            return data.status === 'success' ? data.draft : null;
+        } catch (error) {
+            console.error('Error fetching draft details:', error);
+            return null;
+        }
+    }
+
+    async function declineDraft() {
+        if (!currentDraftId) {
+            showToast('No draft selected.', 'error');
+            showDraftStatus('No draft selected.', 'error');
+            return;
+        }
+
+        var recordCount = currentDraftRecords.length;
+
+        if (!confirm('Decline this draft? This will delete ALL ' + recordCount + ' linked records. This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            console.log('📋 declineDraft: sending DELETE to /api/purchases/draft/' + currentDraftId);
+            var response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + currentDraftId, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            console.log('📋 declineDraft: response', data);
+
+            if (data.status === 'success') {
+                showToast('✅ Draft declined. ' + (data.deleted_count || 0) + ' records deleted.', 'success');
+                showDraftStatus('✅ Draft declined. ' + (data.deleted_count || 0) + ' records deleted.', 'success');
+                playSound('success');
+
+                currentDraftRecords = [];
+                await loadAllDrafts();
+                showDraftFormUI();
+
+            } else {
+                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
+                playSound('error');
             }
-            
+        } catch (error) {
+            console.error('❌ declineDraft error:', error);
+            showToast('❌ Error: ' + error.message, 'error');
+            showDraftStatus('❌ Error: ' + error.message, 'error');
+            playSound('error');
+        }
+    }
+
+    async function sendBillToSquarePOS(draft, offerAmount, records) {
+        try {
+            var recordDetails = records.map(function(r) {
+                return {
+                    id: r.id,
+                    artist: r.artist || 'Unknown',
+                    title: r.title || 'Unknown',
+                    price: r.store_price || 0
+                };
+            });
+
             console.log('📋 sendBillToSquarePOS: sending request');
-            const response = await fetch(window.AppConfig.baseUrl + '/api/square/bill-of-sale', {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/square/bill-of-sale', {
                 method: 'POST',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    draft_id: draft.id,
-                    seller_name: draft.seller_name,
+                    draft_id: currentDraftId,
+                    seller_name: draft.seller_name || '',
                     offer_amount: offerAmount,
                     records: recordDetails,
                     signature_method: 'square'
                 })
             });
-            const data = await response.json();
+            var data = await response.json();
             console.log('📋 sendBillToSquarePOS: response', data);
-            
+
             if (data.status === 'success') {
                 showToast('✅ Bill of Sale sent to Square POS. Customer can sign on terminal.', 'success');
                 showDraftStatus('✅ Bill of Sale sent to Square POS. Customer can sign on terminal.', 'success');
@@ -5220,42 +5219,40 @@
         }
     }
 
-    function generateBillOfSale(draft, offerAmount, recordIds) {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        
-        let bill = 'PIGSTYLE MUSIC\n';
+    function generateBillOfSale(draft, offerAmount, records) {
+        var now = new Date();
+        var dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        var timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+        var bill = 'PIGSTYLE MUSIC\n';
         bill += '====================\n';
         bill += 'BILL OF SALE\n';
-        bill += `${dateStr} ${timeStr}\n\n`;
-        bill += `Draft ID: ${draft.id}\n`;
-        bill += `Seller: ${draft.seller_name}\n`;
+        bill += dateStr + ' ' + timeStr + '\n\n';
+        bill += 'Draft ID: ' + currentDraftId + '\n';
+        bill += 'Seller: ' + (draft.seller_name || '—') + '\n';
         if (draft.seller_contact) {
-            bill += `Contact: ${draft.seller_contact}\n`;
+            bill += 'Contact: ' + draft.seller_contact + '\n';
         }
-        bill += `Description: ${draft.description}\n`;
+        bill += 'Description: ' + (draft.description || '—') + '\n';
         bill += '\n';
         bill += 'ITEMS:\n';
         bill += '--------------------\n';
-        
-        let totalValue = 0;
-        for (const id of recordIds) {
-            const record = filteredRecords.find(r => r.id === id) || allRecords.find(r => r.id === id);
-            if (record) {
-                const price = record.store_price || 0;
-                const itemLine = `${record.artist} - ${record.title}`;
-                const padding = Math.max(1, 30 - itemLine.length);
-                bill += itemLine;
-                bill += ' '.repeat(padding);
-                bill += `$${price.toFixed(2)}\n`;
-                totalValue += price;
-            }
+
+        var totalValue = 0;
+        for (var i = 0; i < records.length; i++) {
+            var record = records[i];
+            var price = record.store_price || 0;
+            var itemLine = record.artist + ' - ' + record.title;
+            var padding = Math.max(1, 30 - itemLine.length);
+            bill += itemLine;
+            bill += ' '.repeat(padding);
+            bill += '$' + price.toFixed(2) + '\n';
+            totalValue += price;
         }
-        
+
         bill += '--------------------\n';
-        bill += `${'Total Value'.padEnd(25)} $${totalValue.toFixed(2)}\n`;
-        bill += `${'Offer Amount'.padEnd(25)} $${offerAmount.toFixed(2)}\n`;
+        bill += 'Total Value'.padEnd(25) + ' $' + totalValue.toFixed(2) + '\n';
+        bill += 'Offer Amount'.padEnd(25) + ' $' + offerAmount.toFixed(2) + '\n';
         bill += '\n';
         bill += 'Seller Signature: ____________________\n';
         bill += 'Store Rep: ____________________\n';
@@ -5263,93 +5260,19 @@
         bill += '---\n';
         bill += 'PigStyle Music\n';
         bill += 'Thank you for your business!\n';
-        
+
         return bill;
-    }
-
-    async function declineDraft() {
-        console.log('📋 declineDraft: START');
-        console.log('📋 declineDraft: activeDraft =', activeDraft);
-        
-        if (!activeDraft) {
-            console.log('❌ declineDraft: no active draft');
-            showToast('No active draft to decline.', 'error');
-            showDraftStatus('No active draft to decline.', 'error');
-            return;
-        }
-        
-        if (!confirm(`Decline this draft? This will delete ALL ${draftLinkedRecordIds.length} linked records. This cannot be undone.`)) {
-            console.log('📋 declineDraft: cancelled by user');
-            return;
-        }
-        
-        try {
-            console.log(`📋 declineDraft: sending DELETE to /api/purchases/draft/${activeDraft.id}`);
-            const response = await fetch(window.AppConfig.baseUrl + `/api/purchases/draft/${activeDraft.id}`, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            console.log(`📋 declineDraft: response status ${response.status}`);
-            
-            const data = await response.json();
-            console.log('📋 declineDraft: response data', data);
-            
-            if (data.status === 'success') {
-                showToast(`✅ Draft declined. ${data.deleted_count || 0} records deleted.`, 'success');
-                showDraftStatus(`✅ Draft declined. ${data.deleted_count || 0} records deleted.`, 'success');
-                playSound('success');
-                
-                activeDraft = null;
-                draftLinkedRecordIds = [];
-                showDraftFormUI();
-                updateDraftLinkedCount();
-                if (draftOfferAmount) draftOfferAmount.value = '';
-                
-                await loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
-            } else {
-                console.error('❌ declineDraft: API returned error', data);
-                showToast('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                showDraftStatus('❌ Error: ' + (data.error || 'Unknown error'), 'error');
-                playSound('error');
-            }
-        } catch (error) {
-            console.error('❌ declineDraft: exception caught', error);
-            showToast('❌ Error: ' + error.message, 'error');
-            showDraftStatus('❌ Error: ' + error.message, 'error');
-            playSound('error');
-        }
-        console.log('📋 declineDraft: END');
-    }
-
-    function showDraftStatus(message, type) {
-        const el = draftStatusMessage || document.getElementById('draft-status-message');
-        if (!el) return;
-        type = type || 'info';
-        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        el.className = `status-message status-${type}`;
-        el.style.display = 'block';
-        setTimeout(() => { el.style.display = 'none'; }, 5000);
-    }
-
-    function clearDraftForm() {
-        if (draftSellerName) draftSellerName.value = '';
-        if (draftSellerContact) draftSellerContact.value = '';
-        if (draftDescription) draftDescription.value = '';
-        const statusEl = document.getElementById('draft-status-message');
-        if (statusEl) statusEl.style.display = 'none';
     }
 
     // ========== Pagination ==========
     function renderPagination() {
-        const paginationEl = document.querySelector('.pagination');
+        var paginationEl = document.querySelector('.pagination');
         if (paginationEl) paginationEl.style.display = 'flex';
-        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+        var totalPages = Math.ceil(totalRecords / pageSize) || 1;
         if (currentPage > totalPages) currentPage = totalPages;
         if (currentPage < 1) currentPage = 1;
-        const start = (currentPage - 1) * pageSize + 1;
-        const end = Math.min(currentPage * pageSize, totalRecords);
+        var start = (currentPage - 1) * pageSize + 1;
+        var end = Math.min(currentPage * pageSize, totalRecords);
         showingStartSpan.textContent = start;
         showingEndSpan.textContent = end;
         totalFilteredSpan.textContent = totalRecords;
@@ -5374,31 +5297,31 @@
             console.log('🔍 getSelectedRecords: no range selected');
             return [];
         }
-        const start = Math.min(rangeFromIndex, rangeToIndex);
-        const end = Math.max(rangeFromIndex, rangeToIndex);
-        const data = getCurrentData();
-        const selected = data.slice(start, end + 1);
-        console.log(`🔍 getSelectedRecords: start=${start}, end=${end}, selected=${selected.length}`);
+        var start = Math.min(rangeFromIndex, rangeToIndex);
+        var end = Math.max(rangeFromIndex, rangeToIndex);
+        var data = getCurrentData();
+        var selected = data.slice(start, end + 1);
+        console.log('🔍 getSelectedRecords: start=' + start + ', end=' + end + ', selected=' + selected.length);
         return selected;
     }
 
     function updateSelectionCount() {
-        const selected = getSelectedRecords();
-        const count = selected.length;
+        var selected = getSelectedRecords();
+        var count = selected.length;
         selectedCountSpan.textContent = count;
 
-        const mode = currentSearchMode;
-        const hasRecords = filteredRecords.length > 0;
-        const hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
+        var mode = currentSearchMode;
+        var hasRecords = filteredRecords.length > 0;
+        var hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
 
-        const isAddMode = mode === 'add';
-        const isRefundMode = mode === 'refund';
+        var isAddMode = mode === 'add';
+        var isRefundMode = mode === 'refund';
         
         if (isAddMode) {
-            const hasTargets = hasSelection || hasRecords;
+            var hasTargets = hasSelection || hasRecords;
             printBtn.disabled = !hasTargets;
             if (hasSelection) {
-                printBtn.textContent = `🖨️ Print (${count} selected)`;
+                printBtn.textContent = '🖨️ Print (' + count + ' selected)';
             } else {
                 printBtn.textContent = '🖨️ Print (all)';
             }
@@ -5407,13 +5330,11 @@
             printBtn.style.display = 'none';
         }
 
-        // Complete button is controlled by showPanelsForMode
-        // Only update disabled state and text here
         if (completeActionBtn && mode !== 'add') {
             if (mode === 'scan') {
-                const genre = scanGenreSelect ? scanGenreSelect.value : '';
-                const sublocation = scanSublocation ? scanSublocation.value : '';
-                const isValid = genre && sublocation && hasRecords;
+                var genre = scanGenreSelect ? scanGenreSelect.value : '';
+                var sublocation = scanSublocation ? scanSublocation.value : '';
+                var isValid = genre && sublocation && hasRecords;
                 completeActionBtn.disabled = !isValid;
             } else if (mode === 'discogs') {
                 completeActionBtn.disabled = !hasSelection;
@@ -5421,10 +5342,10 @@
                 completeActionBtn.disabled = !hasSelection;
             } else if (mode === 'checkout') {
                 completeActionBtn.disabled = checkoutSelectedItems.length === 0;
-                console.log(`🔘 updateSelectionCount: checkout mode, disabled=${completeActionBtn.disabled}, items=${checkoutSelectedItems.length}`);
+                console.log('🔘 updateSelectionCount: checkout mode, disabled=' + completeActionBtn.disabled + ', items=' + checkoutSelectedItems.length);
             } else if (mode === 'discogs_orders') {
-                const hasOrder = selectedOrderId !== null;
-                const hasItems = filteredRecords.length > 0;
+                var hasOrder = selectedOrderId !== null;
+                var hasItems = filteredRecords.length > 0;
                 completeActionBtn.disabled = !(hasOrder && hasItems);
             } else if (mode === 'refund') {
                 completeActionBtn.disabled = !hasSelection;
@@ -5444,7 +5365,7 @@
             filteredRecords = allRecords.slice();
         }
         totalRecords = filteredRecords.length;
-        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+        var totalPages = Math.ceil(totalRecords / pageSize) || 1;
         if (currentPage > totalPages) currentPage = totalPages;
         if (currentPage < 1) currentPage = 1;
         renderPagination();
@@ -5457,43 +5378,44 @@
             console.log('📄 generatePDF: no records to print');
             return; 
         }
-        console.log(`📄 generatePDF: generating PDF for ${records.length} records`);
-        const { jsPDF } = window.jspdf;
+        console.log('📄 generatePDF: generating PDF for ' + records.length + ' records');
+        var jsPDF = window.jspdf.jsPDF;
 
-        const labelWidthMM = parseFloat((await apiRequest('GET', '/config/LABEL_WIDTH_MM')).config_value);
-        const labelHeightMM = parseFloat((await apiRequest('GET', '/config/LABEL_HEIGHT_MM')).config_value);
-        const leftMarginMM = parseFloat((await apiRequest('GET', '/config/LEFT_MARGIN_MM')).config_value);
-        const gutterSpacingMM = parseFloat((await apiRequest('GET', '/config/GUTTER_SPACING_MM')).config_value);
-        const topMarginMM = parseFloat((await apiRequest('GET', '/config/TOP_MARGIN_MM')).config_value);
-        const priceFontSize = parseInt((await apiRequest('GET', '/config/PRICE_FONT_SIZE')).config_value);
-        const textFontSize = parseInt((await apiRequest('GET', '/config/TEXT_FONT_SIZE')).config_value);
-        const barcodeHeightMM = parseFloat((await apiRequest('GET', '/config/BARCODE_HEIGHT')).config_value);
-        const printBorders = (await apiRequest('GET', '/config/PRINT_BORDERS')).config_value === 'true';
-        const priceYPosMM = parseFloat((await apiRequest('GET', '/config/PRICE_Y_POS')).config_value);
-        const barcodeYPosMM = parseFloat((await apiRequest('GET', '/config/BARCODE_Y_POS')).config_value);
-        const infoYPosMM = parseFloat((await apiRequest('GET', '/config/INFO_Y_POS')).config_value);
+        var labelWidthMM = parseFloat((await apiRequest('GET', '/config/LABEL_WIDTH_MM')).config_value);
+        var labelHeightMM = parseFloat((await apiRequest('GET', '/config/LABEL_HEIGHT_MM')).config_value);
+        var leftMarginMM = parseFloat((await apiRequest('GET', '/config/LEFT_MARGIN_MM')).config_value);
+        var gutterSpacingMM = parseFloat((await apiRequest('GET', '/config/GUTTER_SPACING_MM')).config_value);
+        var topMarginMM = parseFloat((await apiRequest('GET', '/config/TOP_MARGIN_MM')).config_value);
+        var priceFontSize = parseInt((await apiRequest('GET', '/config/PRICE_FONT_SIZE')).config_value);
+        var textFontSize = parseInt((await apiRequest('GET', '/config/TEXT_FONT_SIZE')).config_value);
+        var barcodeHeightMM = parseFloat((await apiRequest('GET', '/config/BARCODE_HEIGHT')).config_value);
+        var printBorders = (await apiRequest('GET', '/config/PRINT_BORDERS')).config_value === 'true';
+        var priceYPosMM = parseFloat((await apiRequest('GET', '/config/PRICE_Y_POS')).config_value);
+        var barcodeYPosMM = parseFloat((await apiRequest('GET', '/config/BARCODE_Y_POS')).config_value);
+        var infoYPosMM = parseFloat((await apiRequest('GET', '/config/INFO_Y_POS')).config_value);
 
-        const mmToPt = 2.83465;
-        const labelWidthPt = labelWidthMM * mmToPt;
-        const labelHeightPt = labelHeightMM * mmToPt;
-        const leftMarginPt = leftMarginMM * mmToPt;
-        const gutterSpacingPt = gutterSpacingMM * mmToPt;
-        const topMarginPt = topMarginMM * mmToPt;
-        const barcodeHeightPt = barcodeHeightMM * mmToPt;
+        var mmToPt = 2.83465;
+        var labelWidthPt = labelWidthMM * mmToPt;
+        var labelHeightPt = labelHeightMM * mmToPt;
+        var leftMarginPt = leftMarginMM * mmToPt;
+        var gutterSpacingPt = gutterSpacingMM * mmToPt;
+        var topMarginPt = topMarginMM * mmToPt;
+        var barcodeHeightPt = barcodeHeightMM * mmToPt;
 
-        const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-        const rows = 15, cols = 4, labelsPerPage = rows * cols;
-        let currentLabel = 0, pageNumber = 0;
+        var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+        var rows = 15, cols = 4, labelsPerPage = rows * cols;
+        var currentLabel = 0, pageNumber = 0;
 
-        for (const record of records) {
-            const pageIndex = currentLabel % labelsPerPage;
-            const pageNum = Math.floor(currentLabel / labelsPerPage);
+        for (var i = 0; i < records.length; i++) {
+            var record = records[i];
+            var pageIndex = currentLabel % labelsPerPage;
+            var pageNum = Math.floor(currentLabel / labelsPerPage);
             if (pageNum > pageNumber) { doc.addPage(); pageNumber = pageNum; }
 
-            const row = Math.floor(pageIndex / cols);
-            const col = pageIndex % cols;
-            const x = leftMarginPt + col * (labelWidthPt + gutterSpacingPt);
-            const y = topMarginPt + row * labelHeightPt;
+            var row = Math.floor(pageIndex / cols);
+            var col = pageIndex % cols;
+            var x = leftMarginPt + col * (labelWidthPt + gutterSpacingPt);
+            var y = topMarginPt + row * labelHeightPt;
 
             if (printBorders) {
                 doc.setDrawColor(0);
@@ -5501,60 +5423,63 @@
                 doc.rect(x, y, labelWidthPt, labelHeightPt);
             }
 
-            const genre = (record.discogs_genre_raw || '').split(',')[0].trim();
-            const consignor = record.consignor_id && consignorMap[record.consignor_id] ? consignorMap[record.consignor_id].initials : '';
-            let infoText = record.artist || 'Unknown';
+            var genre = (record.discogs_genre_raw || '').split(',')[0].trim();
+            var consignor = record.consignor_id && consignorMap[record.consignor_id] ? consignorMap[record.consignor_id].initials : '';
+            var infoText = record.artist || 'Unknown';
             if (genre) infoText = genre + ' | ' + infoText;
             if (consignor) infoText += ' (' + consignor + ')';
 
             doc.setFontSize(textFontSize);
             doc.setFont('helvetica', 'normal');
-            let displayText = infoText;
-            const maxWidth = labelWidthPt - 10;
+            var displayText = infoText;
+            var maxWidth = labelWidthPt - 10;
             if (doc.getTextWidth(displayText) > maxWidth) {
                 while (doc.getTextWidth(displayText + '…') > maxWidth && displayText.length > 0) displayText = displayText.slice(0, -1);
                 displayText += '…';
             }
-            const infoWidth = doc.getTextWidth(displayText);
+            var infoWidth = doc.getTextWidth(displayText);
             doc.text(displayText, x + (labelWidthPt - infoWidth)/2, y + infoYPosMM * mmToPt);
 
-            const priceText = '$' + (record.store_price || 0).toFixed(2);
+            var priceText = '$' + (record.store_price || 0).toFixed(2);
             doc.setFontSize(priceFontSize);
             doc.setFont('helvetica', 'bold');
-            const priceWidth = doc.getTextWidth(priceText);
+            var priceWidth = doc.getTextWidth(priceText);
             doc.text(priceText, x + (labelWidthPt - priceWidth)/2, y + priceYPosMM * mmToPt);
 
-            const barcodeNum = record.barcode || record.id;
+            var barcodeNum = record.barcode || record.id;
             if (barcodeNum) {
-                const canvas = document.createElement('canvas');
+                var canvas = document.createElement('canvas');
                 JsBarcode(canvas, barcodeNum.toString(), { format: 'CODE128', displayValue: false, height: 30, width: 2, margin: 0 });
-                const barcodeData = canvas.toDataURL('image/png');
-                const barcodeWidth = 40;
+                var barcodeData = canvas.toDataURL('image/png');
+                var barcodeWidth = 40;
                 doc.addImage(barcodeData, 'PNG', x + (labelWidthPt - barcodeWidth)/2, y + barcodeYPosMM * mmToPt, barcodeWidth, barcodeHeightPt);
             }
             currentLabel++;
         }
 
-        const pdfBlob = doc.output('blob');
-        const pdfUrl = URL.createObjectURL(pdfBlob);
+        var pdfBlob = doc.output('blob');
+        var pdfUrl = URL.createObjectURL(pdfBlob);
         window.open(pdfUrl, '_blank');
-        console.log(`📄 generatePDF: PDF generated with ${records.length} labels`);
-        showStatus(`PDF generated with ${records.length} labels`, 'success');
+        console.log('📄 generatePDF: PDF generated with ' + records.length + ' labels');
+        showStatus('PDF generated with ' + records.length + ' labels', 'success');
     }
 
     // ========== MODE CHANGE ==========
     function onModeChange() {
-        const newMode = searchModeSelect.value;
+        var newMode = searchModeSelect.value;
         currentSearchMode = newMode;
-        console.log(`🔄 onModeChange: switching to ${newMode}`);
+        console.log('🔄 onModeChange: switching to ' + newMode);
 
         cancelRangeSelection();
 
         if (newMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
-            loadRecords({ statusIds: [1], mode: 'add', excludeBatch: true });
             populateDefaultParamSelects();
+            loadAllDrafts();
+            if (!currentDraftId) {
+                showDraftFormUI();
+            }
         } else if (newMode === 'scan') {
             filteredRecords = [];
             totalRecords = 0;
@@ -5573,11 +5498,11 @@
             console.log('🔄 onModeChange: loading discogs records');
             loadRecords({ showAllStatuses: true, mode: 'discogs' });
             loadDiscogsLocations();
-            const rulesContent = document.getElementById('markup-rules-content');
+            var rulesContent = document.getElementById('markup-rules-content');
             if (rulesContent && rulesContent.style.display === 'block') {
                 loadMarkupRules();
             }
-            const chartsContent = document.getElementById('markup-charts-content');
+            var chartsContent = document.getElementById('markup-charts-content');
             if (chartsContent && chartsContent.style.display === 'block') {
                 setTimeout(loadMarkupAnalysisCharts, 300);
             }
@@ -5590,7 +5515,7 @@
             renderTablePage();
             showStatus('Delete mode: Use filters to find records to delete.', 'info');
             allRecords = [];
-            loadRecords({ statusIds: [1,2], mode: 'delete' }).then(() => {
+            loadRecords({ statusIds: [1,2], mode: 'delete' }).then(function() {
                 renderTablePage();
             });
         } else if (newMode === 'refund') {
@@ -5612,7 +5537,7 @@
             renderTablePage();
             showStatus('Checkout mode: Search to add records, or use "Custom Item".', 'info');
             console.log('🔄 onModeChange: loading records for checkout');
-            loadRecords({ statusIds: [2], mode: 'checkout' }).then(() => {
+            loadRecords({ statusIds: [2], mode: 'checkout' }).then(function() {
                 checkoutViewMode = 'list';
                 filteredRecords = checkoutSelectedItems.slice();
                 totalRecords = filteredRecords.length;
@@ -5620,11 +5545,11 @@
                 renderPagination();
                 renderTablePage();
                 updateSelectionCount();
-                console.log(`🔄 Checkout loaded: ${checkoutSelectedItems.length} items`);
+                console.log('🔄 Checkout loaded: ' + checkoutSelectedItems.length + ' items');
             });
             if (checkoutShowSelectedBtn) {
                 checkoutShowSelectedBtn.style.display = 'inline-block';
-                checkoutShowSelectedBtn.textContent = `Checkout List (0)`;
+                checkoutShowSelectedBtn.textContent = 'Checkout List (0)';
                 checkoutShowSelectedBtn.onclick = function() {
                     checkoutViewMode = 'list';
                     filteredRecords = checkoutSelectedItems.slice();
@@ -5656,10 +5581,10 @@
             renderTablePage();
             showStatus('Discogs Orders mode: Select an order to fulfill.', 'info');
             
-            const dateFrom = document.getElementById('discogs-orders-date-from');
-            const dateTo = document.getElementById('discogs-orders-date-to');
+            var dateFrom = document.getElementById('discogs-orders-date-from');
+            var dateTo = document.getElementById('discogs-orders-date-to');
             if (dateFrom && !dateFrom.value) {
-                const thirtyDaysAgo = new Date();
+                var thirtyDaysAgo = new Date();
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
                 dateFrom.value = thirtyDaysAgo.toISOString().split('T')[0];
             }
@@ -5667,12 +5592,12 @@
                 dateTo.value = new Date().toISOString().split('T')[0];
             }
             
-            const search = document.getElementById('discogs-orders-search');
+            var search = document.getElementById('discogs-orders-search');
             if (search) {
                 search.value = '';
             }
             
-            const statusFilter = document.getElementById('discogs-orders-status-filter');
+            var statusFilter = document.getElementById('discogs-orders-status-filter');
             if (statusFilter) {
                 statusFilter.value = 'Payment Received';
             }
@@ -5686,7 +5611,6 @@
             currentOrderItems = [];
         }
 
-        // Update panels based on mode
         showPanelsForMode(newMode);
         updateSelectionCount();
         renderTablePage();
@@ -5726,7 +5650,6 @@
         console.log('📥 Populating default param selects...');
         populateDefaultParamSelects();
 
-        // Set up event listeners for the scan location builder
         if (scanGenreSelect) {
             scanGenreSelect.addEventListener('change', updateScanLocationPreview);
         }
@@ -5738,7 +5661,7 @@
         }
         if (scanSublocation) {
             scanSublocation.addEventListener('change', function() {
-                const customContainer = document.getElementById('scan-custom-sublocation-container');
+                var customContainer = document.getElementById('scan-custom-sublocation-container');
                 if (this.value === 'CUSTOM') {
                     if (customContainer) customContainer.style.display = 'block';
                 } else {
@@ -5752,17 +5675,17 @@
         }
         if (scanAddGenreBtn) {
             scanAddGenreBtn.addEventListener('click', function() {
-                const genreName = scanNewGenreInput ? scanNewGenreInput.value.trim() : '';
+                var genreName = scanNewGenreInput ? scanNewGenreInput.value.trim() : '';
                 if (!genreName) {
                     showScanGenreStatus('Please enter a genre name.', 'warning');
                     return;
                 }
-                const formattedName = genreName.split(' ').map(word => 
-                    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-                ).join(' ');
+                var formattedName = genreName.split(' ').map(function(word) {
+                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                }).join(' ');
                 
                 if (genres.includes(formattedName)) {
-                    showScanGenreStatus(`Genre "${formattedName}" already exists.`, 'warning');
+                    showScanGenreStatus('Genre "' + formattedName + '" already exists.', 'warning');
                     if (scanGenreSelect) scanGenreSelect.value = formattedName;
                     if (scanNewGenreInput) scanNewGenreInput.value = '';
                     updateScanLocationPreview();
@@ -5773,10 +5696,10 @@
                 genres.sort();
                 
                 if (scanGenreSelect) {
-                    const currentVal = scanGenreSelect.value;
+                    var currentVal = scanGenreSelect.value;
                     scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-                    genres.forEach(g => {
-                        const opt = document.createElement('option');
+                    genres.forEach(function(g) {
+                        var opt = document.createElement('option');
                         opt.value = g;
                         opt.textContent = g;
                         scanGenreSelect.appendChild(opt);
@@ -5784,7 +5707,7 @@
                     scanGenreSelect.value = formattedName;
                 }
                 if (scanNewGenreInput) scanNewGenreInput.value = '';
-                showScanGenreStatus(`✅ Genre "${formattedName}" added.`, 'success');
+                showScanGenreStatus('✅ Genre "' + formattedName + '" added.', 'success');
                 playSound('success');
                 updateScanLocationPreview();
             });
@@ -5803,7 +5726,7 @@
 
         searchModeSelect.addEventListener('change', onModeChange);
 
-        let searchButton = document.getElementById('searchButton');
+        var searchButton = document.getElementById('searchButton');
         if (!searchButton) {
             searchButton = document.createElement('button');
             searchButton.id = 'searchButton';
@@ -5811,7 +5734,7 @@
             searchButton.className = 'btn btn-primary';
             searchButton.innerHTML = '<i class="fas fa-search"></i> Search';
             searchButton.style.marginLeft = '8px';
-            const parent = searchInput.parentNode;
+            var parent = searchInput.parentNode;
             if (parent) {
                 parent.insertBefore(searchButton, clearSearchBtn);
                 console.log('✅ Search button created and inserted.');
@@ -5821,14 +5744,14 @@
         }
 
         searchButton.addEventListener('click', function() {
-            const term = searchInput.value.trim();
+            var term = searchInput.value.trim();
             performSearch(term);
         });
 
         searchInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                const term = this.value.trim();
+                var term = this.value.trim();
                 performSearch(term);
             }
         });
@@ -5841,26 +5764,37 @@
             applyFilters();
         });
         currentPageInput.addEventListener('change', function() {
-            let page = parseInt(this.value);
-            const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+            var page = parseInt(this.value);
+            var totalPages = Math.ceil(totalRecords / pageSize) || 1;
             if (isNaN(page) || page < 1) page = 1;
             if (page > totalPages) page = totalPages;
             currentPage = page;
             renderPagination();
             renderTablePage();
         });
-        firstPageBtn.addEventListener('click', () => { currentPage = 1; renderPagination(); renderTablePage(); });
-        prevPageBtn.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderPagination(); renderTablePage(); } });
-        nextPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; if (currentPage < totalPages) { currentPage++; renderPagination(); renderTablePage(); } });
-        lastPageBtn.addEventListener('click', () => { const totalPages = Math.ceil(totalRecords / pageSize) || 1; currentPage = totalPages; renderPagination(); renderTablePage(); });
+        firstPageBtn.addEventListener('click', function() { currentPage = 1; renderPagination(); renderTablePage(); });
+        prevPageBtn.addEventListener('click', function() { if (currentPage > 1) { currentPage--; renderPagination(); renderTablePage(); } });
+        nextPageBtn.addEventListener('click', function() { var totalPages = Math.ceil(totalRecords / pageSize) || 1; if (currentPage < totalPages) { currentPage++; renderPagination(); renderTablePage(); } });
+        lastPageBtn.addEventListener('click', function() { var totalPages = Math.ceil(totalRecords / pageSize) || 1; currentPage = totalPages; renderPagination(); renderTablePage(); });
 
         printBtn.addEventListener('click', printPriceTags);
 
-        const oldGlobalBtn = document.getElementById('global-set-active-btn');
+        var oldGlobalBtn = document.getElementById('global-set-active-btn');
         if (oldGlobalBtn) oldGlobalBtn.remove();
 
         completeActionBtn.addEventListener('click', handleCompleteAction);
         console.log('🔘 completeActionBtn click handler attached in init');
+
+        if (draftDropdown) {
+            draftDropdown.addEventListener('change', function() {
+                var draftId = this.value;
+                if (draftId) {
+                    selectDraft(draftId);
+                } else {
+                    showDraftFormUI();
+                }
+            });
+        }
 
         if (discogsLocationSelect) {
             discogsLocationSelect.addEventListener('change', function() {
@@ -5880,7 +5814,7 @@
             });
         }
 
-        const checkoutStatusFilter = document.getElementById('checkout-status-filter');
+        var checkoutStatusFilter = document.getElementById('checkout-status-filter');
         if (checkoutStatusFilter) {
             checkoutStatusFilter.addEventListener('change', function() {
                 loadRecords({ statusIds: [2], mode: 'checkout' });
@@ -5910,7 +5844,7 @@
 
         if (discogsOrderSelect) {
             discogsOrderSelect.addEventListener('change', function() {
-                const orderId = this.value;
+                var orderId = this.value;
                 selectedOrderId = orderId || null;
                 if (orderId) {
                     loadOrderItems(orderId);
@@ -5929,7 +5863,7 @@
         if (discogsOrdersStatusFilter) {
             discogsOrdersStatusFilter.addEventListener('change', function() {
                 ordersStatusFilter = this.value || '';
-                console.log(`📦 Status filter changed to: ${ordersStatusFilter || 'all'}`);
+                console.log('📦 Status filter changed to: ' + (ordersStatusFilter || 'all'));
                 applyDiscogsOrdersFilters();
             });
         }
@@ -5944,14 +5878,14 @@
     }
 
     function showScanGenreStatus(message, type) {
-        const el = document.getElementById('scan-genre-status');
+        var el = document.getElementById('scan-genre-status');
         if (!el) return;
         type = type || 'info';
-        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
         el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        el.className = `status-message status-${type}`;
+        el.className = 'status-message status-' + type;
         el.style.display = 'block';
-        setTimeout(() => { el.style.display = 'none'; }, 3000);
+        setTimeout(function() { el.style.display = 'none'; }, 3000);
     }
 
     // ========== EXPOSE INIT FUNCTION FOR TABMANAGER ==========
@@ -5964,15 +5898,11 @@
         }
     };
 
-    // Also expose it as initInventoryOpsTab for compatibility
     window.initInventoryOpsTab = window.initAddRecordsTab;
 
     console.log('✅ initAddRecordsTab exposed to window');
 
-    // ========== AUTO-INITIALIZE ==========
-    // Only initialize if DOM is already ready and TabManager hasn't called us yet
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        // Check if we should auto-init (only if TabManager hasn't already)
         setTimeout(function() {
             if (!_initialized) {
                 console.log('🔄 Auto-initializing inventory-ops (fallback)');
@@ -5980,6 +5910,93 @@
             }
         }, 1000);
     }
+
+    // ========== BILL MODAL FUNCTIONS ==========
+
+    function openBillModal() {
+        var container = document.getElementById('bill-preview-container');
+        if (!container) return;
+        
+        var billPath = container.dataset.billPath || '';
+        var billType = container.dataset.billType || '';
+        
+        var modal = document.getElementById('bill-modal');
+        var modalImg = document.getElementById('bill-modal-image');
+        var modalPlaceholder = document.getElementById('bill-modal-placeholder');
+        var modalPdf = document.getElementById('bill-modal-pdf');
+        var modalPdfIframe = document.getElementById('bill-modal-pdf-iframe');
+        var modalFilename = document.getElementById('bill-modal-filename');
+        var downloadLink = document.getElementById('bill-modal-download');
+        
+        if (!modal) return;
+        
+        modalImg.style.display = 'none';
+        modalPdf.style.display = 'none';
+        modalPlaceholder.style.display = 'none';
+        downloadLink.style.display = 'none';
+        modalImg.src = '';
+        modalPdfIframe.src = '';
+        
+        if (!billPath) {
+            modalPlaceholder.style.display = 'block';
+            modalPlaceholder.innerHTML = '<i class="fas fa-receipt" style="font-size: 48px; display: block; margin-bottom: 15px;"></i>No bill of sale uploaded for this draft.';
+            modal.style.display = 'flex';
+            return;
+        }
+        
+        var filename = billPath.split('/').pop();
+        modalFilename.textContent = 'File: ' + filename;
+        
+        downloadLink.href = billPath;
+        downloadLink.download = filename;
+        downloadLink.style.display = 'inline-block';
+        
+        if (billType === 'pdf' || billPath.toLowerCase().endsWith('.pdf')) {
+            modalPdf.style.display = 'block';
+            modalPdfIframe.src = billPath;
+            modalPlaceholder.style.display = 'none';
+            modalImg.style.display = 'none';
+        } else {
+            modalImg.src = billPath;
+            modalImg.style.display = 'block';
+            modalImg.onerror = function() {
+                this.style.display = 'none';
+                modalPlaceholder.style.display = 'block';
+                modalPlaceholder.innerHTML = '<i class="fas fa-exclamation-triangle" style="font-size: 48px; display: block; margin-bottom: 15px; color: #dc3545;"></i>Could not load image. The file may be missing or corrupted.';
+            };
+            modalPdf.style.display = 'none';
+            modalPlaceholder.style.display = 'none';
+        }
+        
+        modal.style.display = 'flex';
+    }
+
+    function closeBillModal() {
+        var modal = document.getElementById('bill-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            var iframe = document.getElementById('bill-modal-pdf-iframe');
+            if (iframe) {
+                iframe.src = '';
+            }
+        }
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeBillModal();
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        var modal = document.getElementById('bill-modal');
+        if (modal && e.target === modal) {
+            closeBillModal();
+        }
+    });
+
+    window.openBillModal = openBillModal;
+    window.closeBillModal = closeBillModal;
 
     // ========== Expose globals ==========
     window.refreshDiscogsLocations = loadDiscogsLocations;
@@ -6002,17 +6019,19 @@
     window.closeCustomItemModal = closeCustomItemModal;
     window.addBernieItem = addBernieItem;
 
-    // Draft functions exposed to global scope
-    window.toggleDraftPanel = toggleParamsPurchasePanel;
-    window.createDraftPurchase = createDraftPurchase;
-    window.acceptDraftWithSignature = acceptDraftWithSignature;
-    window.declineDraft = declineDraft;
+    window.toggleInventorySetupPanel = toggleInventorySetupPanel;
+    window.toggleDefaultParamsSub = toggleDefaultParamsSub;
+    window.togglePurchaseSub = togglePurchaseSub;
+    window.createNewDraft = createNewDraft;
+    window.saveDraft = saveDraft;
+    window.refreshDraftDropdown = refreshDraftDropdown;
     window.clearDraftForm = clearDraftForm;
+    window.acceptDraft = acceptDraft;
+    window.declineDraft = declineDraft;
+    window.selectDraft = selectDraft;
 
-    // Explicitly expose checkout modal for debugging
     window.showCheckoutModal = showCheckoutModal;
 
     console.log('✅ All functions exposed to window');
-    console.log('🔘 completeActionBtn click handler attached:', completeActionBtn.onclick);
 
 })();
