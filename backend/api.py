@@ -9872,5 +9872,837 @@ def delete_draft_purchase(draft_id):
         return jsonify({'status': 'error', 'error': str(e)}), 500
  
 
+# ==================== ACCOUNTING: SALE ENTRY ====================
+
+@app.route('/api/accounting/sale', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_create_sale():
+    """Create a sale journal entry from checkout"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        # Required fields
+        order_id = data.get('order_id')
+        payment_method = data.get('payment_method', 'cash')
+        total_amount = float(data.get('total_amount', 0))
+        items = data.get('items', [])
+        transaction_date = data.get('transaction_date', datetime.now().strftime('%Y-%m-%d'))
+        
+        if not order_id:
+            return jsonify({'status': 'error', 'error': 'order_id required'}), 400
+        if total_amount <= 0:
+            return jsonify({'status': 'error', 'error': 'total_amount must be greater than 0'}), 400
+        if not items:
+            return jsonify({'status': 'error', 'error': 'items required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Map payment method to accounts
+        account_map = {
+            'cash': {'debit': '1015', 'credit': '4001'},
+            'square': {'debit': '1030', 'credit': '4000'},
+            'paypal': {'debit': '1020', 'credit': '4003'},
+            'discogs': {'debit': '1020', 'credit': '4003'},
+            'giftcard': {'debit': '2015', 'credit': '4001'},
+            'store_credit': {'debit': '2015', 'credit': '4001'}
+        }
+        
+        mapping = account_map.get(payment_method, account_map['cash'])
+        
+        # Get account IDs
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', (mapping['debit'],))
+        debit_account = cursor.fetchone()
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', (mapping['credit'],))
+        credit_account = cursor.fetchone()
+        
+        if not debit_account or not credit_account:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
+        
+        amount_cents = int(round(total_amount * 100))
+        
+        # Create journal entry
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (transaction_date, f"Sale - Order {order_id} - {payment_method}", 'order', str(order_id)))
+        entry_id = cursor.lastrowid
+        
+        # Debit (asset/cash account)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, debit_account['id'], amount_cents, 0))
+        
+        # Credit (revenue account)
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, credit_account['id'], 0, amount_cents))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Sale entry created',
+            'entry_id': entry_id,
+            'order_id': order_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Sale entry error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== ACCOUNTING: SQUARE BATCH ====================
+
+@app.route('/api/accounting/square-batch', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_create_square_batch():
+    """Create a Square batch journal entry"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        batch_id = data.get('batch_id')
+        date_str = data.get('date')
+        amount = float(data.get('amount', 0))
+        description = data.get('description', '').strip()
+        matched_sales = data.get('matched_sales', [])
+        
+        if not batch_id:
+            return jsonify({'status': 'error', 'error': 'batch_id required'}), 400
+        if not date_str:
+            return jsonify({'status': 'error', 'error': 'date required'}), 400
+        if amount <= 0:
+            return jsonify({'status': 'error', 'error': 'amount must be greater than 0'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get Square Asset account (1030) and Revenue account (4000)
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1030',))
+        square_account = cursor.fetchone()
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
+        revenue_account = cursor.fetchone()
+        
+        if not square_account or not revenue_account:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
+        
+        amount_cents = int(round(amount * 100))
+        
+        # Create journal entry
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (date_str, f"Square Batch {batch_id} - {description}", 'square_batch', str(batch_id)))
+        entry_id = cursor.lastrowid
+        
+        # Debit Square Asset
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, square_account['id'], amount_cents, 0))
+        
+        # Credit Revenue
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, revenue_account['id'], 0, amount_cents))
+        
+        # Link matched sales
+        for sale_id in matched_sales:
+            cursor.execute('''
+                UPDATE journal_entries 
+                SET square_batch_id = ? 
+                WHERE source_type = 'order' AND source_id = ?
+            ''', (entry_id, str(sale_id)))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Square batch entry created',
+            'entry_id': entry_id,
+            'batch_id': batch_id,
+            'matched_count': len(matched_sales)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Square batch error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== ACCOUNTING: RECONCILE BANK DEPOSIT ====================
+
+@app.route('/api/accounting/reconcile-bank-deposit', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def accounting_reconcile_bank_deposit():
+    """Match a bank deposit with a Square batch"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        bank_transaction_id = data.get('bank_transaction_id')
+        square_batch_id = data.get('square_batch_id')
+        amount = float(data.get('amount', 0))
+        notes = data.get('notes', '').strip()
+        
+        if not bank_transaction_id:
+            return jsonify({'status': 'error', 'error': 'bank_transaction_id required'}), 400
+        if not square_batch_id:
+            return jsonify({'status': 'error', 'error': 'square_batch_id required'}), 400
+        if amount <= 0:
+            return jsonify({'status': 'error', 'error': 'amount must be greater than 0'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if bank transaction exists
+        cursor.execute('SELECT id, amount FROM bank_transactions WHERE id = ?', (bank_transaction_id,))
+        bank_tx = cursor.fetchone()
+        if not bank_tx:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Bank transaction not found'}), 404
+        
+        # Check if square batch exists
+        cursor.execute('SELECT id FROM journal_entries WHERE id = ? AND source_type = ?', (square_batch_id, 'square_batch'))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Square batch not found'}), 404
+        
+        # Check if already reconciled
+        cursor.execute('SELECT id FROM reconciliation WHERE bank_transaction_id = ?', (bank_transaction_id,))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Bank transaction already reconciled'}), 400
+        
+        # Create reconciliation record
+        cursor.execute('''
+            INSERT INTO reconciliation (bank_transaction_id, square_batch_id, amount, reconciliation_date, status, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (bank_transaction_id, square_batch_id, amount, datetime.now().strftime('%Y-%m-%d'), 'matched', notes))
+        recon_id = cursor.lastrowid
+        
+        # Update journal_entries with bank_transaction_id for square_batch
+        cursor.execute('''
+            UPDATE journal_entries 
+            SET bank_transaction_id = ?, reconciled = 1
+            WHERE id = ?
+        ''', (bank_transaction_id, square_batch_id))
+        
+        # Also update any linked sale entries
+        cursor.execute('''
+            UPDATE journal_entries 
+            SET bank_transaction_id = ?, reconciled = 1
+            WHERE square_batch_id = ?
+        ''', (bank_transaction_id, square_batch_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Bank deposit reconciled',
+            'reconciliation_id': recon_id,
+            'bank_transaction_id': bank_transaction_id,
+            'square_batch_id': square_batch_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Reconcile bank deposit error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== ACCOUNTING: RECONCILIATION REPORT ====================
+
+@app.route('/api/accounting/reconciliation-report', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_reconciliation_report():
+    """Get full reconciliation report"""
+    try:
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all reconciliation records
+        query = '''
+            SELECT 
+                r.*,
+                bt.transaction_date as bank_date,
+                bt.amount as bank_amount,
+                bt.description as bank_description,
+                je.transaction_date as batch_date,
+                je.description as batch_description,
+                je.source_id as batch_source_id
+            FROM reconciliation r
+            LEFT JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
+            LEFT JOIN journal_entries je ON r.square_batch_id = je.id
+            WHERE 1=1
+        '''
+        params = []
+        
+        if date_from:
+            query += ' AND r.reconciliation_date >= ?'
+            params.append(date_from)
+        if date_to:
+            query += ' AND r.reconciliation_date <= ?'
+            params.append(date_to)
+        
+        query += ' ORDER BY r.reconciliation_date DESC'
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        reconciliations = []
+        for row in rows:
+            reconciliations.append({
+                'id': row['id'],
+                'bank_transaction_id': row['bank_transaction_id'],
+                'square_batch_id': row['square_batch_id'],
+                'amount': float(row['amount']) if row['amount'] else 0,
+                'reconciliation_date': row['reconciliation_date'],
+                'status': row['status'],
+                'notes': row['notes'],
+                'bank_date': row['bank_date'],
+                'bank_amount': float(row['bank_amount']) if row['bank_amount'] else 0,
+                'bank_description': row['bank_description'],
+                'batch_date': row['batch_date'],
+                'batch_description': row['batch_description'],
+                'batch_source_id': row['batch_source_id']
+            })
+        
+        # Get summary stats
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_reconciled,
+                COALESCE(SUM(amount), 0) as total_amount
+            FROM reconciliation
+        ''')
+        stats = cursor.fetchone()
+        
+        # Get unreconciled sales
+        cursor.execute('''
+            SELECT COUNT(*) as count, COALESCE(SUM(jl.debit_amount) / 100.0, 0) as amount
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            WHERE je.source_type = 'order' 
+            AND (je.reconciled IS NULL OR je.reconciled = 0)
+            AND jl.debit_amount > 0
+        ''')
+        unreconciled_sales = cursor.fetchone()
+        
+        # Get unreconciled square batches
+        cursor.execute('''
+            SELECT COUNT(*) as count, COALESCE(SUM(jl.debit_amount) / 100.0, 0) as amount
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            WHERE je.source_type = 'square_batch' 
+            AND (je.reconciled IS NULL OR je.reconciled = 0)
+            AND jl.debit_amount > 0
+        ''')
+        unreconciled_batches = cursor.fetchone()
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'reconciliations': reconciliations,
+            'summary': {
+                'total_reconciled': stats['total_reconciled'] or 0,
+                'total_amount': float(stats['total_amount'] or 0),
+                'unreconciled_sales': {
+                    'count': unreconciled_sales['count'] or 0,
+                    'amount': float(unreconciled_sales['amount'] or 0)
+                },
+                'unreconciled_batches': {
+                    'count': unreconciled_batches['count'] or 0,
+                    'amount': float(unreconciled_batches['amount'] or 0)
+                }
+            },
+            'date_from': date_from,
+            'date_to': date_to
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Reconciliation report error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== ACCOUNTING: UNRECONCILED ITEMS ====================
+
+@app.route('/api/accounting/unreconciled-items', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_unreconciled_items():
+    """Get list of items needing reconciliation"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        items = []
+        
+        # Unreconciled sales
+        cursor.execute('''
+            SELECT 
+                je.id,
+                je.transaction_date,
+                je.description,
+                je.source_id,
+                COALESCE(jl.debit_amount / 100.0, 0) as amount,
+                'sale' as type
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            WHERE je.source_type = 'order' 
+            AND (je.reconciled IS NULL OR je.reconciled = 0)
+            AND jl.debit_amount > 0
+            ORDER BY je.transaction_date DESC
+        ''')
+        sales = cursor.fetchall()
+        
+        for row in sales:
+            items.append({
+                'id': row['id'],
+                'type': 'sale',
+                'source_id': row['source_id'],
+                'date': row['transaction_date'],
+                'description': row['description'],
+                'amount': float(row['amount'] or 0)
+            })
+        
+        # Unreconciled square batches
+        cursor.execute('''
+            SELECT 
+                je.id,
+                je.transaction_date,
+                je.description,
+                je.source_id,
+                COALESCE(jl.debit_amount / 100.0, 0) as amount,
+                'square_batch' as type
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            WHERE je.source_type = 'square_batch' 
+            AND (je.reconciled IS NULL OR je.reconciled = 0)
+            AND jl.debit_amount > 0
+            ORDER BY je.transaction_date DESC
+        ''')
+        batches = cursor.fetchall()
+        
+        for row in batches:
+            items.append({
+                'id': row['id'],
+                'type': 'square_batch',
+                'source_id': row['source_id'],
+                'date': row['transaction_date'],
+                'description': row['description'],
+                'amount': float(row['amount'] or 0)
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'items': items,
+            'count': len(items)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Unreconciled items error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== RECONCILIATION: INITIALIZE ====================
+
+@app.route('/api/accounting/reconcile/init', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_reconcile_init():
+    """Initialize reconciliation: fetch Square transactions, bank transactions, and match them"""
+    from datetime import datetime, timedelta
+    import requests
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # ============================================================
+    # 1. FETCH SQUARE TRANSACTIONS
+    # ============================================================
+    access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+    if not access_token:
+        raise Exception("SQUARE_ACCESS_TOKEN not configured in environment variables")
+    
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json',
+        'Square-Version': '2026-01-22'
+    }
+    
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=90)
+    
+    url = 'https://connect.squareup.com/v2/payments'
+    params = {
+        'begin_time': start_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'end_time': end_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'limit': 100
+    }
+    
+    app.logger.info(f"[SQUARE] Fetching payments from {params['begin_time']} to {params['end_time']}")
+    
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    
+    app.logger.info(f"[SQUARE] Response status: {response.status_code}")
+    app.logger.info(f"[SQUARE] Response body: {response.text[:500]}")
+    
+    if response.status_code != 200:
+        raise Exception(f"Square API error: {response.status_code} - {response.text}")
+    
+    data = response.json()
+    payments = data.get('payments', [])
+    square_found = len(payments)
+    
+    app.logger.info(f"[SQUARE] Found {square_found} payments")
+    
+    # Get accounts
+    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1030',))
+    square_account = cursor.fetchone()
+    if not square_account:
+        raise Exception("Account with code '1030' (Square Asset) not found")
+    
+    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
+    revenue_account = cursor.fetchone()
+    if not revenue_account:
+        raise Exception("Account with code '4000' (Sales Revenue - Square) not found")
+    
+    square_imported = 0
+    for payment in payments:
+        if payment.get('status') != 'COMPLETED':
+            continue
+            
+        batch_id = payment.get('id')
+        if not batch_id:
+            continue
+        
+        # Check if already imported
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = "square_batch" AND source_id = ?', (batch_id,))
+        if cursor.fetchone():
+            continue
+        
+        amount_money = payment.get('amount_money', {})
+        amount = amount_money.get('amount', 0) / 100.0
+        if amount <= 0:
+            continue
+        
+        settled_at = payment.get('updated_at') or payment.get('created_at', '')
+        date_str = settled_at.split('T')[0] if settled_at else datetime.now().strftime('%Y-%m-%d')
+        
+        amount_cents = int(round(amount * 100))
+        
+        # Create journal entry
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (date_str, f"Square Batch {batch_id}", 'square_batch', str(batch_id)))
+        entry_id = cursor.lastrowid
+        
+        # Debit Square Asset
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, square_account['id'], amount_cents, 0))
+        
+        # Credit Revenue
+        cursor.execute('''
+            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+            VALUES (?, ?, ?, ?)
+        ''', (entry_id, revenue_account['id'], 0, amount_cents))
+        
+        square_imported += 1
+    
+    conn.commit()
+    app.logger.info(f"✅ Imported {square_imported} Square batches")
+    
+    # ============================================================
+    # 2. GET ALL SQUARE BATCHES FROM JOURNAL
+    # ============================================================
+    cursor.execute('''
+        SELECT je.id, je.transaction_date, je.source_id,
+               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
+               je.reconciled,
+               je.bank_transaction_id
+        FROM journal_entries je
+        JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        WHERE je.source_type = 'square_batch'
+          AND jl.debit_amount > 0
+        ORDER BY je.transaction_date DESC
+    ''')
+    square_batches = cursor.fetchall()
+    
+    batches_list = []
+    total_batches_amount = 0
+    for b in square_batches:
+        amount = float(b['amount'])
+        total_batches_amount += amount
+        batches_list.append({
+            'id': b['id'],
+            'date': b['transaction_date'],
+            'amount': amount,
+            'source_id': b['source_id'],
+            'reconciled': bool(b['reconciled']),
+            'bank_transaction_id': b['bank_transaction_id']
+        })
+    
+    app.logger.info(f"[RECONCILE] Found {len(batches_list)} Square batches in journal_entries")
+    
+    # ============================================================
+    # 3. GET BANK TRANSACTIONS
+    # ============================================================
+    cursor.execute('''
+        SELECT id, transaction_date, amount, description 
+        FROM bank_transactions 
+        WHERE amount > 0 
+        ORDER BY transaction_date DESC
+    ''')
+    bank_transactions = cursor.fetchall()
+    bank_count = len(bank_transactions)
+    
+    # ============================================================
+    # 4. GET EXPECTED PAYMENTS (Sales)
+    # ============================================================
+    cursor.execute('''
+        SELECT je.id, je.transaction_date, je.source_id, 
+               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
+               je.reconciled,
+               je.bank_transaction_id
+        FROM journal_entries je
+        JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        WHERE je.source_type = 'order' 
+          AND jl.debit_amount > 0
+        ORDER BY je.transaction_date DESC
+    ''')
+    sales = cursor.fetchall()
+    
+    sales_list = []
+    total_sales_amount = 0
+    for s in sales:
+        amount = float(s['amount'])
+        total_sales_amount += amount
+        sales_list.append({
+            'id': s['id'],
+            'date': s['transaction_date'],
+            'amount': amount,
+            'source_id': s['source_id'],
+            'status': 'matched' if s['reconciled'] else 'pending',
+            'bank_transaction_id': s['bank_transaction_id']
+        })
+    
+    # ============================================================
+    # 5. AUTO-MATCH SQUARE BATCHES TO BANK DEPOSITS
+    # ============================================================
+    matched_count = 0
+    
+    # Get all unreconciled square batches
+    cursor.execute('''
+        SELECT je.id, je.transaction_date, 
+               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
+               je.source_id
+        FROM journal_entries je
+        JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        WHERE je.source_type = 'square_batch' 
+          AND jl.debit_amount > 0
+          AND (je.reconciled IS NULL OR je.reconciled = 0)
+        ORDER BY je.transaction_date DESC
+    ''')
+    unreconciled_batches = cursor.fetchall()
+    
+    # Get all unreconciled bank deposits
+    cursor.execute('''
+        SELECT bt.id, bt.transaction_date, bt.amount
+        FROM bank_transactions bt
+        LEFT JOIN reconciliation_matches rm ON rm.bank_transaction_id = bt.id
+        WHERE rm.id IS NULL AND bt.amount > 0
+        ORDER BY bt.transaction_date DESC
+    ''')
+    unreconciled_deposits = cursor.fetchall()
+    
+    # Match batches to deposits
+    for batch in unreconciled_batches:
+        batch_date_str = batch['transaction_date']
+        if isinstance(batch_date_str, str):
+            batch_date_str = batch_date_str.split('T')[0] if 'T' in batch_date_str else batch_date_str
+            batch_date = datetime.strptime(batch_date_str, '%Y-%m-%d')
+        else:
+            batch_date = batch_date_str
+        
+        batch_amount = batch['amount']
+        
+        for deposit in unreconciled_deposits:
+            dep_date_str = deposit['transaction_date']
+            if isinstance(dep_date_str, str):
+                dep_date_str = dep_date_str.split('T')[0] if 'T' in dep_date_str else dep_date_str
+                dep_date = datetime.strptime(dep_date_str, '%Y-%m-%d')
+            else:
+                dep_date = dep_date_str
+            
+            delta = abs((batch_date - dep_date).days)
+            if delta <= 3 and abs(deposit['amount'] - batch_amount) < 0.01:
+                cursor.execute('''
+                    INSERT INTO reconciliation_matches (square_batch_id, bank_transaction_id, amount, reconciliation_date, status)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (batch['id'], deposit['id'], batch_amount, datetime.now().strftime('%Y-%m-%d'), 'matched'))
+                
+                cursor.execute('''
+                    UPDATE journal_entries 
+                    SET reconciled = 1, bank_transaction_id = ?
+                    WHERE id = ?
+                ''', (deposit['id'], batch['id']))
+                
+                matched_count += 1
+                unreconciled_deposits = [d for d in unreconciled_deposits if d['id'] != deposit['id']]
+                break
+    
+    conn.commit()
+    
+    # ============================================================
+    # 6. GET FINAL RECONCILIATION STATUS
+    # ============================================================
+    cursor.execute('''
+        SELECT je.id, je.transaction_date, je.source_id, 
+               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
+               je.reconciled,
+               je.bank_transaction_id,
+               je.square_batch_id
+        FROM journal_entries je
+        JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        WHERE je.source_type = 'order' 
+          AND jl.debit_amount > 0
+        ORDER BY je.transaction_date DESC
+    ''')
+    all_sales = cursor.fetchall()
+    
+    cursor.execute('''
+        SELECT bt.id, bt.transaction_date, bt.amount, bt.description,
+               CASE WHEN rm.id IS NOT NULL THEN 1 ELSE 0 END as matched
+        FROM bank_transactions bt
+        LEFT JOIN reconciliation_matches rm ON rm.bank_transaction_id = bt.id
+        WHERE bt.amount > 0
+        ORDER BY bt.transaction_date DESC
+    ''')
+    all_deposits = cursor.fetchall()
+    
+    cursor.execute('''
+        SELECT je.id, je.transaction_date, je.source_id,
+               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
+               je.reconciled,
+               je.bank_transaction_id
+        FROM journal_entries je
+        JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        WHERE je.source_type = 'square_batch'
+          AND jl.debit_amount > 0
+        ORDER BY je.transaction_date DESC
+    ''')
+    updated_batches = cursor.fetchall()
+    
+    cursor.execute('''
+        SELECT je.id, je.transaction_date, je.source_type,
+               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
+               je.source_id
+        FROM journal_entries je
+        JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        WHERE je.source_type IN ('order', 'square_batch')
+          AND jl.debit_amount > 0
+          AND (je.reconciled IS NULL OR je.reconciled = 0)
+        ORDER BY je.transaction_date DESC
+    ''')
+    unmatched_items = cursor.fetchall()
+    
+    conn.close()
+    
+    # Build response
+    final_sales = []
+    for s in all_sales:
+        final_sales.append({
+            'id': s['id'],
+            'date': s['transaction_date'],
+            'amount': float(s['amount']),
+            'source_id': s['source_id'],
+            'status': 'matched' if s['reconciled'] else 'pending',
+            'bank_transaction_id': s['bank_transaction_id'],
+            'square_batch_id': s['square_batch_id']
+        })
+    
+    final_deposits = []
+    for d in all_deposits:
+        final_deposits.append({
+            'id': d['id'],
+            'date': d['transaction_date'],
+            'amount': float(d['amount']),
+            'description': d['description'],
+            'matched': bool(d['matched'])
+        })
+    
+    final_batches = []
+    for b in updated_batches:
+        final_batches.append({
+            'id': b['id'],
+            'date': b['transaction_date'],
+            'amount': float(b['amount']),
+            'source_id': b['source_id'],
+            'reconciled': bool(b['reconciled']),
+            'bank_transaction_id': b['bank_transaction_id']
+        })
+    
+    final_unmatched = []
+    for u in unmatched_items:
+        final_unmatched.append({
+            'id': u['id'],
+            'type': u['source_type'],
+            'date': u['transaction_date'],
+            'amount': float(u['amount']),
+            'source_id': u['source_id']
+        })
+    
+    total_sales_final = sum(s['amount'] for s in final_sales)
+    total_deposits_final = sum(d['amount'] for d in final_deposits)
+    total_batches_final = sum(b['amount'] for b in final_batches)
+    variance = total_deposits_final - total_batches_final
+    
+    return jsonify({
+        'status': 'success',
+        'summary': {
+            'total_sales': len(final_sales),
+            'total_sales_amount': total_sales_final,
+            'total_batches': len(final_batches),
+            'total_batches_amount': total_batches_final,
+            'total_deposits': len(final_deposits),
+            'total_deposits_amount': total_deposits_final,
+            'unmatched_count': len(final_unmatched),
+            'variance': variance,
+            'matched_count': matched_count,
+            'square_imported': square_imported,
+            'square_found': square_found,
+            'bank_count': bank_count
+        },
+        'sales': final_sales,
+        'batches': final_batches,
+        'deposits': final_deposits,
+        'unmatched': final_unmatched
+    })
+
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
