@@ -958,7 +958,6 @@
             var recordCount = d.record_count || 0;
             var label = seller + ' - ' + date;
             
-            // Add status indicator
             if (status === 'complete') {
                 label += ' ✅ Complete';
             } else if (recordCount === 0) {
@@ -969,7 +968,6 @@
             
             option.textContent = label;
             
-            // Store status and offer amount as data attributes for later use
             option.dataset.status = status;
             option.dataset.offerAmount = d.offer_amount || 0;
             
@@ -985,7 +983,6 @@
             console.log('📋 Selected first draft: ' + firstId);
         }
         
-        // Trigger the change event to update the UI
         if (draftDropdown.onchange) {
             draftDropdown.onchange();
         }
@@ -1032,12 +1029,10 @@
             
             currentDraftId = draftIdStr;
 
-            // Use the values from the API - DON'T RE-PARSE
             if (draftSellerName) draftSellerName.value = draft.seller_name || '';
             if (draftSellerContact) draftSellerContact.value = draft.seller_contact || '';
             if (draftDescription) draftDescription.value = draft.description_text || draft.description || '';
             
-            // Set offer amount if complete, otherwise leave editable
             if (draftOfferAmount) {
                 if (draft.status === 'complete' && draft.offer_amount > 0) {
                     draftOfferAmount.value = draft.offer_amount.toFixed(2);
@@ -1054,11 +1049,9 @@
 
             showActiveDraftUI(draft);
 
-            // Only load records if status is draft (has records to show)
             if (draft.status === 'draft') {
                 await loadRecordsForDraft(draftIdStr);
             } else {
-                // For complete drafts, show a message instead of trying to load records
                 filteredRecords = [];
                 totalRecords = 0;
                 currentPage = 1;
@@ -1136,7 +1129,6 @@
 
         updateDraftLinkedCount(draft.record_count || 0);
 
-        // Show status badge
         var statusBadge = document.getElementById('draft-status-badge');
         if (statusBadge) {
             if (status === 'complete') {
@@ -1153,7 +1145,6 @@
             statusBadge.style.display = 'inline-block';
         }
 
-        // Handle bill of sale preview
         var billPath = draft.bill_of_sale_path || '';
         var previewImg = document.getElementById('bill-preview-image');
         var placeholder = document.getElementById('bill-preview-placeholder');
@@ -1209,7 +1200,6 @@
             }
         }
         
-        // Update Accept/Decline buttons based on status
         var acceptBtn = document.querySelector('.btn-draft-success');
         var declineBtn = document.querySelector('.btn-draft-danger');
         var offerInput = document.getElementById('draft-offer-amount');
@@ -4293,6 +4283,11 @@
             var recordIds = records.map(function(r) { return r.id; });
             var titles = records.map(function(r) { return r.artist + ' - ' + r.title; });
 
+            // ========== ADD PAYMENT ENTRY FOR SQUARE ==========
+            var squareAmount = checkoutTotal;
+            addPaymentEntry('Card (Square)', squareAmount);
+            // ========== END ADD PAYMENT ENTRY ==========
+
             var response = await fetch(window.AppConfig.baseUrl + '/api/square/terminal/checkout', {
                 method: 'POST',
                 credentials: 'include',
@@ -4308,6 +4303,17 @@
 
             var data = await response.json();
             if (data.status !== 'success') {
+                // If Square fails, remove the payment entry we just added
+                if (checkoutPaymentEntries.length > 0) {
+                    var lastEntry = checkoutPaymentEntries[checkoutPaymentEntries.length - 1];
+                    if (lastEntry.method === 'Card (Square)') {
+                        checkoutPaymentEntries.pop();
+                        checkoutRemaining += lastEntry.amount;
+                        document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
+                        renderCheckoutEntries();
+                        updateCheckoutCompleteButton();
+                    }
+                }
                 throw new Error(data.message || 'Failed to create Square checkout');
             }
 
@@ -4390,7 +4396,8 @@
             }
         }, 2000);
     }
-  
+
+    // ========== MODIFIED: Complete Checkout with Sale Recording ==========
     async function completeCheckout() {
         console.log('🛒 completeCheckout called');
         console.log('🛒 checkoutRemaining: ' + checkoutRemaining);
@@ -4435,6 +4442,58 @@
         console.log('🛒 Bernie total: ' + bernieTotal);
         console.log('🛒 Regular records: ' + regularRecords.length);
         console.log('🛒 Consignor records: ' + consignorRecords.length);
+
+        var orderId = generateOrderId();
+        var totalAmount = 0;
+
+        // ========== NEW: Create sale journal entry ==========
+        var paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
+        var paymentMethodMap = {
+            'Cash': 'cash',
+            'Card (Square)': 'square',
+            'Gift Card': 'giftcard',
+            'Store Credit': 'store_credit'
+        };
+        var salePaymentMethod = paymentMethodMap[paymentMethod] || 'cash';
+        
+        // Calculate total amount from all items (excluding tax for the sale entry)
+        for (var i = 0; i < selected.length; i++) {
+            totalAmount += (selected[i].store_price || 0);
+        }
+
+        // Prepare sale items for accounting
+        var saleItems = selected.map(function(item) {
+            return {
+                id: item.id,
+                artist: item.artist || 'Custom',
+                title: item.title || 'Item',
+                price: item.store_price || 0,
+                isCustom: item.isCustom || false,
+                isBernie: item.isBernie || false,
+                consignor_id: item.consignor_id || null
+            };
+        });
+
+        // Create the sale journal entry
+        try {
+            console.log('🛒 Creating sale journal entry for order:', orderId, 'total:', totalAmount);
+            var saleResult = await apiRequest('POST', '/api/accounting/sale', {
+                order_id: orderId,
+                payment_method: salePaymentMethod,
+                total_amount: totalAmount,
+                items: saleItems,
+                transaction_date: today
+            });
+            if (saleResult.status === 'success') {
+                console.log('✅ Sale journal entry created:', saleResult.entry_id);
+            } else {
+                console.warn('⚠️ Failed to create sale journal entry:', saleResult.error);
+            }
+        } catch (err) {
+            console.error('❌ Error creating sale journal entry:', err);
+            // Continue with checkout even if accounting fails
+        }
+        // ========== END NEW SECTION ==========
 
         for (var i = 0; i < regularRecords.length; i++) {
             var record = regularRecords[i];
@@ -4531,14 +4590,14 @@
                 var accountsRes = await apiRequest('GET', '/api/accounting/accounts');
                 var accounts = accountsRes.accounts || [];
 
-                var paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
+                var paymentMethod2 = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
                 var accountMap = {
                     'Cash': '1015',
                     'Card (Square)': '1030',
                     'Gift Card': '1015',
                     'Store Credit': '1015'
                 };
-                var accountCode = accountMap[paymentMethod] || '1015';
+                var accountCode = accountMap[paymentMethod2] || '1015';
 
                 var cashAccount = accounts.find(function(a) { return a.code === accountCode; });
                 var payableAccount = accounts.find(function(a) { return a.code === '2015'; });
@@ -4573,7 +4632,8 @@
 
         var receipt = 'PigStyle Music\n';
         receipt += '====================\n';
-        receipt += dateStr + ' ' + timeStr + '\n\n';
+        receipt += dateStr + ' ' + timeStr + '\n';
+        receipt += 'Order: ' + orderId + '\n\n';
         receipt += 'ITEMS:\n';
         receipt += '--------------------\n';
 

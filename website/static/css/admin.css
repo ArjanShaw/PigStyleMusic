@@ -3508,3 +3508,438 @@ select.form-control option {
     padding: 40px;
     font-style: italic;
 }
+
+/* ============================================================
+   RECONCILIATION TAB STYLES
+   ============================================================ */
+
+/* Reconciliation Stats Grid */
+.reconciliation-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.recon-stat-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 18px 15px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: all 0.3s;
+}
+
+.recon-stat-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.recon-stat-card.warning {
+    border-left: 4px solid #ffc107;
+    background: #fffdf0;
+}
+
+.recon-stat-card.success {
+    border-left: 4px solid #28a745;
+    background: #f0fff4;
+}
+
+.recon-stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: #007bff;
+    margin-bottom: 4px;
+}
+
+.recon-stat-card.warning .recon-stat-value {
+    color: #ffc107;
+}
+
+.recon-stat-card.success .recon-stat-value {
+    color: #28a745;
+}
+
+.recon-stat-label {
+    font-size: 13px;
+    color: #666;
+    font-weight: 500;
+}
+
+.recon-stat-sub {
+    font-size: 12px;
+    color: #999;
+    margin-top: 4px;
+}
+
+/* Reconciliation Tab Buttons */
+.recon-tab-btn {
+    padding: 8px 16px;
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-weight: 500;
+    color: #333;
+    transition: all 0.2s;
+    margin-right: 4px;
+}
+
+.recon-tab-btn:hover {
+    background: #e9ecef;
+}
+
+.recon-tab-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.recon-tab-content {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 0 6px 6px 6px;
+    padding: 20px;
+    display: none;
+}
+
+.recon-tab-content.active {
+    display: block;
+}
+
+/* Match Status Badges */
+.match-status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.match-status-badge.matched {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.match-status-badge.pending {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
+.match-status-badge.discrepancy {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.match-status-badge.reconciled {
+    background: #cce5ff;
+    color: #004085;
+    border: 1px solid #b8daff;
+}
+
+/* Match Modal Styles */
+#match-modal .modal-content {
+    max-width: 650px;
+}
+
+#match-modal .modal-body {
+    padding: 20px;
+}
+
+.match-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.match-item:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+}
+
+.match-item.selected {
+    background: #e3f2fd;
+    border-color: #007bff;
+    border-width: 2px;
+}
+
+.match-item .match-amount {
+    font-weight: bold;
+    color: #28a745;
+    font-size: 16px;
+}
+
+.match-item .match-date {
+    color: #666;
+    font-size: 13px;
+}
+
+.match-item .match-description {
+    color: #333;
+    font-size: 14px;
+    flex: 1;
+    margin: 0 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.match-item .match-select {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+/* Reconciliation Progress Bar */
+.recon-progress-container {
+    background: #e9ecef;
+    border-radius: 8px;
+    height: 12px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+.recon-progress-bar {
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.6s ease;
+    background: linear-gradient(90deg, #28a745, #20c997);
+}
+
+.recon-progress-bar.warning {
+    background: linear-gradient(90deg, #ffc107, #fd7e14);
+}
+
+.recon-progress-bar.danger {
+    background: linear-gradient(90deg, #dc3545, #e74c3c);
+}
+
+/* Discrepancy Highlight */
+.recon-discrepancy {
+    background: #fff3cd !important;
+    border-left: 4px solid #ffc107 !important;
+}
+
+.recon-discrepancy td {
+    background: #fff3cd !important;
+}
+
+.recon-balanced {
+    background: #d4edda !important;
+    border-left: 4px solid #28a745 !important;
+}
+
+.recon-balanced td {
+    background: #d4edda !important;
+}
+
+/* Reconciliation Filters */
+.recon-filters {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+.recon-filters label {
+    font-weight: 500;
+    color: #333;
+    font-size: 13px;
+}
+
+.recon-filters select,
+.recon-filters input {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    color: #333;
+    font-size: 13px;
+}
+
+.recon-filters select:focus,
+.recon-filters input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.1);
+}
+
+/* Three-way Reconciliation Flow */
+.recon-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+}
+
+.recon-flow-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px 25px;
+    background: white;
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+    min-width: 120px;
+    transition: all 0.3s;
+}
+
+.recon-flow-step.complete {
+    border-color: #28a745;
+    background: #f0fff4;
+}
+
+.recon-flow-step.partial {
+    border-color: #ffc107;
+    background: #fffdf0;
+}
+
+.recon-flow-step.pending {
+    border-color: #dc3545;
+    background: #fff5f5;
+}
+
+.recon-flow-step .step-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+
+.recon-flow-step .step-label {
+    font-size: 12px;
+    color: #666;
+    font-weight: 500;
+    text-align: center;
+}
+
+.recon-flow-step .step-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #333;
+}
+
+.recon-flow-arrow {
+    font-size: 24px;
+    color: #999;
+}
+
+/* Reconciliation Table Enhancements */
+.recon-table .status-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+}
+
+.recon-table .amount-positive {
+    color: #28a745;
+    font-weight: 600;
+}
+
+.recon-table .amount-negative {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.recon-table .recon-action-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin: 2px;
+}
+
+.recon-table .recon-action-btn:hover {
+    transform: scale(1.05);
+}
+
+.recon-table .recon-action-btn.match-btn {
+    background: #28a745;
+    color: white;
+}
+
+.recon-table .recon-action-btn.match-btn:hover {
+    background: #218838;
+}
+
+.recon-table .recon-action-btn.unmatch-btn {
+    background: #ffc107;
+    color: #333;
+}
+
+.recon-table .recon-action-btn.unmatch-btn:hover {
+    background: #e0a800;
+}
+
+.recon-table .recon-action-btn.detail-btn {
+    background: #007bff;
+    color: white;
+}
+
+.recon-table .recon-action-btn.detail-btn:hover {
+    background: #0056b3;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .reconciliation-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .recon-flow {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .recon-flow-arrow {
+        transform: rotate(90deg);
+    }
+    
+    .recon-flow-step {
+        width: 100%;
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 12px 20px;
+    }
+    
+    .recon-flow-step .step-icon {
+        margin-bottom: 0;
+        font-size: 20px;
+    }
+    
+    .recon-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .recon-filters select,
+    .recon-filters input {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .reconciliation-stats-grid {
+        grid-template-columns: 1fr;
+    }
+}

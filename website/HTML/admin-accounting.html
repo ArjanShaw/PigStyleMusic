@@ -285,31 +285,84 @@
                 </div>
             </div>
 
+
             <!-- RECONCILIATION -->
-            <div id="sub-reconcile" class="sub-tab-content">
-                <h4><i class="fas fa-handshake"></i> Bank Reconciliation</h4>
-                <p class="text-muted">Upload your bank statement (CSV) and match deposits to expected payments.</p>
-                <div style="display:flex; gap:20px; flex-wrap:wrap; margin:15px 0;">
-                    <div style="flex:1; min-width:250px;">
-                        <div class="upload-area" id="bank-upload-area">
-                            <i class="fas fa-cloud-upload-alt" style="font-size:48px; color:#007bff;"></i>
-                            <p><strong>Drop your bank CSV here</strong> or click to browse</p>
-                            <input type="file" id="bank-file-input" accept=".csv" style="display:none;">
-                        </div>
-                        <div id="upload-status" class="text-muted" style="margin-top:10px;"></div>
-                    </div>
-                    <div style="flex:1; min-width:200px;">
-                        <div class="form-group"><label>Bank Account</label><select id="reconcile-bank-account"><option value="1">FNBO</option><option value="2">Bluevine</option></select></div>
-                        <button class="btn btn-primary" onclick="runAutoMatch()"><i class="fas fa-magic"></i> Auto-Match</button>
-                        <button class="btn btn-secondary" onclick="loadReconciliationStatus()"><i class="fas fa-sync-alt"></i> Refresh</button>
-                    </div>
-                </div>
-                <div class="reconciliation-grid">
-                    <div class="col"><h4>✅ Expected Payments (from orders)</h4><div id="expected-payments-list"><p class="text-muted">No expected payments found.</p></div></div>
-                    <div class="col"><h4>🏦 Bank Deposits</h4><div id="bank-deposits-list"><p class="text-muted">No bank transactions loaded.</p></div></div>
-                </div>
-                <div style="margin-top:20px;"><h4>⚠️ Unmatched / Discrepancies</h4><div id="unmatched-list"><p class="text-muted">All matched!</p></div></div>
-            </div>
+<div id="sub-reconcile" class="sub-tab-content">
+    <h4 style="color: #333;"><i class="fas fa-handshake"></i> Reconciliation Dashboard</h4>
+    <p style="color: #333;">Automatically matching sales → Square batches → Bank deposits.</p>
+    
+    <!-- Stats Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
+            <div style="font-size: 28px; font-weight: 700; color: #007bff;" id="recon-total-sales">0</div>
+            <div style="font-size: 13px; color: #333;">Sales</div>
+            <div style="font-size: 12px; color: #666;" id="recon-total-sales-amount">$0.00</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
+            <div style="font-size: 28px; font-weight: 700; color: #6f42c1;" id="recon-total-batches">0</div>
+            <div style="font-size: 13px; color: #333;">Square Batches</div>
+            <div style="font-size: 12px; color: #666;" id="recon-total-batches-amount">$0.00</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
+            <div style="font-size: 28px; font-weight: 700; color: #28a745;" id="recon-total-deposits">0</div>
+            <div style="font-size: 13px; color: #333;">Bank Deposits</div>
+            <div style="font-size: 12px; color: #666;" id="recon-total-deposits-amount">$0.00</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
+            <div style="font-size: 28px; font-weight: 700; color: #dc3545;" id="recon-variance">$0.00</div>
+            <div style="font-size: 13px; color: #333;">Variance</div>
+            <div style="font-size: 12px; color: #666;" id="recon-variance-status">Balanced</div>
+        </div>
+    </div>
+
+    <!-- Three-Way Flow -->
+    <div style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; margin: 15px 0; flex-wrap: wrap;">
+        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-sales">
+            <div style="font-size: 24px;">💰</div>
+            <div style="font-size: 11px; color: #666;">Sales</div>
+            <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-sales-count">0</div>
+        </div>
+        <div style="font-size: 20px; color: #999;">→</div>
+        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-batches">
+            <div style="font-size: 24px;">📦</div>
+            <div style="font-size: 11px; color: #666;">Square Batches</div>
+            <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-batches-count">0</div>
+        </div>
+        <div style="font-size: 20px; color: #999;">→</div>
+        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-deposits">
+            <div style="font-size: 24px;">🏦</div>
+            <div style="font-size: 11px; color: #666;">Bank Deposits</div>
+            <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-deposits-count">0</div>
+        </div>
+    </div>
+
+    <!-- Status Message -->
+    <div id="recon-status" class="status-message" style="display: none; padding: 10px 15px; border-radius: 4px; margin: 10px 0;"></div>
+
+    <!-- Expected Payments (Sales) - TOP -->
+    <div style="margin-top: 20px;">
+        <h5 style="color: #333; margin-bottom: 10px;">✅ Expected Payments (Sales)</h5>
+        <div id="expected-payments-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px; background: white; color: #333;">
+            <p style="color: #666; text-align: center; padding: 20px;">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Square Batches - MIDDLE -->
+    <div style="margin-top: 15px;">
+        <h5 style="color: #333; margin-bottom: 10px;">📦 Square Batches</h5>
+        <div id="square-batches-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px; background: white; color: #333;">
+            <p style="color: #666; text-align: center; padding: 20px;">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Bank Deposits - BOTTOM with Unmatched markings -->
+    <div style="margin-top: 15px;">
+        <h5 style="color: #333; margin-bottom: 10px;">🏦 Bank Deposits <span style="font-size: 12px; color: #666; font-weight: normal;">(⚠️ Unmatched items are highlighted)</span></h5>
+        <div id="bank-deposits-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px; background: white; color: #333;">
+            <p style="color: #666; text-align: center; padding: 20px;">Loading...</p>
+        </div>
+    </div>
+</div>
 
             <!-- BANK TAB -->
             <div id="sub-bank" class="sub-tab-content">

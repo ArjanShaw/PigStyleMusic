@@ -106,7 +106,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (target) target.classList.add('active');
             
             if (sub === 'journal') loadJournalEntries();
-            else if (sub === 'reconcile') loadReconciliationStatus();
+            else if (sub === 'reconcile') {
+                loadReconciliationStatus();
+            }
             else if (sub === 'bank') {
                 loadBankTransactions();
                 checkBankConnection();
@@ -185,29 +187,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-
-    // Bank upload drag & drop
-    const uploadArea = document.getElementById('bank-upload-area');
-    const fileInput = document.getElementById('bank-file-input');
-    if (uploadArea && fileInput) {
-        uploadArea.addEventListener('click', () => fileInput.click());
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            if (e.dataTransfer.files.length) {
-                fileInput.files = e.dataTransfer.files;
-                handleBankUpload(fileInput.files[0]);
-            }
-        });
-        fileInput.addEventListener('change', function() {
-            if (this.files.length) handleBankUpload(this.files[0]);
-        });
-    }
 
     // Pagination for journal
     document.getElementById('journal-prev')?.addEventListener('click', () => {
@@ -657,161 +636,179 @@ async function submitManualEntry() {
 }
 
 // ============================================================
-// RECONCILIATION
+// RECONCILIATION - SIMPLIFIED
 // ============================================================
 
-function handleBankUpload(file) {
-    console.log('[RECONCILE] Uploading file:', file.name);
-    const status = document.getElementById('upload-status');
-    status.textContent = '⏳ Uploading and parsing...';
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        const csv = e.target.result;
-        let rows;
-        if (typeof Papa !== 'undefined') {
-            const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
-            rows = parsed.data;
-            console.log('[RECONCILE] Parsed', rows.length, 'rows with Papa');
-        } else {
-            const lines = csv.split('\n').filter(l => l.trim());
-            const headers = lines[0].split(',').map(h => h.trim());
-            rows = lines.slice(1).map(line => {
-                const vals = line.split(',').map(v => v.trim());
-                const obj = {};
-                headers.forEach((h, i) => obj[h] = vals[i] || '');
-                return obj;
-            });
-            console.log('[RECONCILE] Parsed', rows.length, 'rows manually');
-        }
-        try {
-            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/upload`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    bank_account_id: parseInt(document.getElementById('reconcile-bank-account').value),
-                    transactions: rows
-                })
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                console.log('[RECONCILE] Uploaded', data.inserted, 'transactions');
-                status.textContent = '✅ Uploaded ' + data.inserted + ' transactions.';
-                loadReconciliationStatus();
-            } else {
-                console.error('[RECONCILE] Upload error:', data.error);
-                status.textContent = '❌ ' + (data.error || 'Upload failed');
-            }
-        } catch (err) {
-            console.error('[RECONCILE] Error:', err);
-            status.textContent = '❌ Error: ' + err.message;
-        }
-    };
-    reader.readAsText(file);
-}
-
+// Load reconciliation data - called when tab is opened
 async function loadReconciliationStatus() {
     console.log('[RECONCILE] Loading reconciliation status');
+    const expectedList = document.getElementById('expected-payments-list');
+    const depositsList = document.getElementById('bank-deposits-list');
+    const unmatchedList = document.getElementById('unmatched-list');
+    const batchesList = document.getElementById('square-batches-list');
+    const statusEl = document.getElementById('recon-status');
+    
+    if (expectedList) expectedList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Loading...</p>';
+    if (depositsList) depositsList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Loading...</p>';
+    if (unmatchedList) unmatchedList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Loading...</p>';
+    if (batchesList) batchesList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Loading...</p>';
+    
     try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/status`, {
+        // Single endpoint does everything: fetch Square, fetch bank, auto-match
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/init`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
-        if (!res.ok) throw new Error('Failed to load reconciliation status');
+        
+        if (!res.ok) throw new Error('Failed to load reconciliation data');
         const data = await res.json();
+        
         if (data.status === 'success') {
-            console.log('[RECONCILE] Status loaded');
-            renderExpectedPayments(data.expected);
-            renderBankDeposits(data.deposits);
-            renderUnmatched(data.unmatched);
+            console.log('[RECONCILE] Init complete:', data.summary);
+            renderReconciliationData(data);
+            
+            if (statusEl) {
+                const summary = data.summary;
+                let msg = `✅ ${summary.total_sales} sales, ${summary.total_batches} Square batches, ${summary.total_deposits} bank deposits`;
+                if (summary.matched_count > 0) msg += `, ${summary.matched_count} matched`;
+                if (summary.square_imported > 0) msg += `, ${summary.square_imported} Square batches imported`;
+                statusEl.textContent = msg;
+                statusEl.className = 'status-message status-success';
+                statusEl.style.display = 'block';
+                setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+            }
+        } else {
+            throw new Error(data.error || 'Failed to load reconciliation data');
         }
     } catch (err) {
         console.error('[RECONCILE] Error:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Error: ' + err.message;
+            statusEl.className = 'status-message status-error';
+            statusEl.style.display = 'block';
+        }
+        if (unmatchedList) unmatchedList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px; color: #dc3545;">Error loading data</p>';
     }
 }
 
+function renderReconciliationData(data) {
+    const sales = data.sales || [];
+    const deposits = data.deposits || [];
+    const batches = data.batches || [];
+    const unmatched = data.unmatched || [];
+    const summary = data.summary || {};
+    
+    // Update stats
+    const salesEl = document.getElementById('recon-total-sales');
+    const salesAmountEl = document.getElementById('recon-total-sales-amount');
+    const batchesEl = document.getElementById('recon-total-batches');
+    const batchesAmountEl = document.getElementById('recon-total-batches-amount');
+    const depositsEl = document.getElementById('recon-total-deposits');
+    const depositsAmountEl = document.getElementById('recon-total-deposits-amount');
+    const varianceEl = document.getElementById('recon-variance');
+    const varianceStatusEl = document.getElementById('recon-variance-status');
+    
+    if (salesEl) salesEl.textContent = summary.total_sales || 0;
+    if (salesAmountEl) salesAmountEl.textContent = '$' + (summary.total_sales_amount || 0).toFixed(2);
+    if (batchesEl) batchesEl.textContent = summary.total_batches || 0;
+    if (batchesAmountEl) batchesAmountEl.textContent = '$' + (summary.total_batches_amount || 0).toFixed(2);
+    if (depositsEl) depositsEl.textContent = summary.total_deposits || 0;
+    if (depositsAmountEl) depositsAmountEl.textContent = '$' + (summary.total_deposits_amount || 0).toFixed(2);
+    
+    const variance = summary.variance || 0;
+    if (varianceEl) varianceEl.textContent = (variance >= 0 ? '+' : '') + '$' + variance.toFixed(2);
+    
+    if (varianceStatusEl) {
+        if (Math.abs(variance) < 0.01) {
+            varianceStatusEl.textContent = '✅ Balanced';
+            varianceStatusEl.style.color = '#28a745';
+        } else {
+            varianceStatusEl.textContent = '⚠️ Discrepancy';
+            varianceStatusEl.style.color = '#dc3545';
+        }
+    }
+    
+    // Update flow steps
+    const stepSales = document.getElementById('recon-step-sales-count');
+    const stepBatches = document.getElementById('recon-step-batches-count');
+    const stepDeposits = document.getElementById('recon-step-deposits-count');
+    
+    if (stepSales) stepSales.textContent = summary.total_sales || 0;
+    if (stepBatches) stepBatches.textContent = summary.total_batches || 0;
+    if (stepDeposits) stepDeposits.textContent = summary.total_deposits || 0;
+    
+    // Render square batches
+    renderSquareBatches(batches);
+    
+    // Render expected payments
+    renderExpectedPayments(sales);
+    
+    // Render bank deposits
+    renderBankDeposits(deposits);
+    
+     
+}
+
+function renderSquareBatches(batches) {
+    const container = document.getElementById('square-batches-list');
+    if (!container) return;
+    if (!batches || batches.length === 0) {
+        container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No Square batches found.</p>';
+        return;
+    }
+    let html = '';
+    batches.forEach(b => {
+        const statusText = b.reconciled ? '✅ Matched to Deposit' : '⏳ Pending';
+        const statusColor = b.reconciled ? '#28a745' : '#ffc107';
+        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; color: #333;">
+            <span>${b.date} – ${b.source_id || b.id}</span>
+            <span style="font-weight: 600; color: #6f42c1;">$${parseFloat(b.amount).toFixed(2)}</span>
+            <span style="color: ${statusColor}; font-size: 12px;">${statusText}</span>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
 function renderExpectedPayments(payments) {
-    console.log('[RECONCILE] Rendering', payments.length, 'expected payments');
     const container = document.getElementById('expected-payments-list');
+    if (!container) return;
     if (!payments || payments.length === 0) {
-        container.innerHTML = '<p class="text-muted">No expected payments found.</p>';
+        container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No expected payments found.</p>';
         return;
     }
     let html = '';
     payments.forEach(p => {
-        html += `<div class="match-row">
-            <span>Order ${p.order_id} – ${p.date}</span>
-            <span class="amount">$${parseFloat(p.amount).toFixed(2)}</span>
-            <span>${p.status}</span>
+        const statusClass = p.status === 'matched' ? '✅ Matched' : '⏳ Pending';
+        const statusColor = p.status === 'matched' ? '#28a745' : '#ffc107';
+        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; color: #333;">
+            <span>Order ${p.source_id || p.id} – ${p.date}</span>
+            <span style="font-weight: 600;">$${parseFloat(p.amount).toFixed(2)}</span>
+            <span style="color: ${statusColor}; font-size: 12px;">${statusClass}</span>
         </div>`;
     });
     container.innerHTML = html;
 }
 
 function renderBankDeposits(deposits) {
-    console.log('[RECONCILE] Rendering', deposits.length, 'bank deposits');
     const container = document.getElementById('bank-deposits-list');
+    if (!container) return;
     if (!deposits || deposits.length === 0) {
-        container.innerHTML = '<p class="text-muted">No bank deposits loaded.</p>';
+        container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No bank deposits found.</p>';
         return;
     }
     let html = '';
     deposits.forEach(d => {
-        html += `<div class="match-row">
+        const isMatched = d.matched;
+        const statusText = isMatched ? '✅ Matched' : '⚠️ UNMATCHED';
+        const statusColor = isMatched ? '#28a745' : '#dc3545';
+        const rowBg = isMatched ? 'white' : '#fff3cd';
+        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; background: ${rowBg}; color: #333;">
             <span>${d.date} – ${d.description || 'Deposit'}</span>
-            <span class="amount">$${parseFloat(d.amount).toFixed(2)}</span>
-            <span>${d.matched ? '✅ Matched' : '⚠️ Unmatched'}</span>
+            <span style="font-weight: 600;">$${parseFloat(d.amount).toFixed(2)}</span>
+            <span style="color: ${statusColor}; font-size: 12px; font-weight: 600;">${statusText}</span>
         </div>`;
     });
     container.innerHTML = html;
-}
-
-function renderUnmatched(unmatched) {
-    console.log('[RECONCILE] Rendering', unmatched.length, 'unmatched');
-    const container = document.getElementById('unmatched-list');
-    if (!unmatched || unmatched.length === 0) {
-        container.innerHTML = '<p class="text-muted">All matched!</p>';
-        return;
-    }
-    let html = '<table class="journal-table"><thead><tr><th>Type</th><th>Date</th><th>Amount</th><th>Action</th></tr></thead><tbody>';
-    unmatched.forEach(u => {
-        html += `<tr>
-            <td>${u.type}</td>
-            <td>${u.date}</td>
-            <td>$${parseFloat(u.amount).toFixed(2)}</td>
-            <td><button class="btn btn-sm btn-warning" onclick="manualMatch(${u.id})">Match</button></td>
-        </tr>`;
-    });
-    html += '</tbody></table>';
-    container.innerHTML = html;
-}
-
-async function runAutoMatch() {
-    console.log('[RECONCILE] Running auto-match');
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/auto-match`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            console.log('[RECONCILE] Auto-match complete:', data.matched, 'matches');
-            alert('Auto‑match complete: ' + data.matched + ' matches found.');
-            loadReconciliationStatus();
-        } else {
-            console.error('[RECONCILE] Auto-match error:', data.error);
-            alert('Error: ' + (data.error || 'Auto‑match failed'));
-        }
-    } catch (err) {
-        console.error('[RECONCILE] Error:', err);
-        alert('Error: ' + err.message);
-    }
-}
-
-function manualMatch(id) {
-    console.log('[RECONCILE] Manual match for ID:', id);
-    alert('Manual match for ID ' + id + ' (to be implemented with a modal)');
 }
 
 // ============================================================
