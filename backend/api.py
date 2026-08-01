@@ -11047,6 +11047,46 @@ def upload_purchase_bill(purchase_id):
         app.logger.error(f"Error uploading bill: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
  
+@app.route('/api/accounting/reconcile/date-range', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def reconcile_date_range():
+    """Get min and max transaction dates for two accounts."""
+    account1 = request.args.get('account1', type=int)
+    account2 = request.args.get('account2', type=int)
+
+    if not account1 or not account2:
+        return jsonify({'status': 'error', 'error': 'Both account IDs required'}), 400
+    if account1 == account2:
+        return jsonify({'status': 'error', 'error': 'Please select two different accounts'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = '''
+        SELECT MIN(je.transaction_date) as min_date, MAX(je.transaction_date) as max_date
+        FROM journal_lines jl
+        JOIN journal_entries je ON jl.journal_entry_id = je.id
+        WHERE jl.account_id IN (?, ?)
+    '''
+    cursor.execute(query, (account1, account2))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row or not row['min_date'] or not row['max_date']:
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        min_date = today - timedelta(days=30)
+        max_date = today
+    else:
+        min_date = row['min_date']
+        max_date = row['max_date']
+
+    return jsonify({
+        'status': 'success',
+        'min_date': min_date,
+        'max_date': max_date
+    })
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
