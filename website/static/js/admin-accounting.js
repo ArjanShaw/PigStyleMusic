@@ -82,6 +82,30 @@ if (!document.getElementById('toast-styles')) {
 }
 
 // ============================================================
+// DATE FORMATTING UTILITY
+// ============================================================
+
+function formatReconDate(dateStr) {
+    if (!dateStr) return '—';
+    try {
+        // Handle ISO format: 2026-07-04T20:43:55.952Z
+        let date = new Date(dateStr);
+        if (isNaN(date.getTime())) {
+            // Try parsing as YYYY-MM-DD
+            const parts = dateStr.split('T')[0].split('-');
+            if (parts.length === 3) {
+                date = new Date(parts[0], parts[1] - 1, parts[2]);
+            }
+        }
+        if (isNaN(date.getTime())) return dateStr;
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+    } catch (e) {
+        return dateStr;
+    }
+}
+
+// ============================================================
 // INITIALIZATION
 // ============================================================
 
@@ -636,22 +660,39 @@ async function submitManualEntry() {
 }
 
 // ============================================================
-// RECONCILIATION - SIMPLIFIED
+// RECONCILIATION
 // ============================================================
+
+// Toggle collapsible sections
+function toggleReconSection(sectionId) {
+    const body = document.getElementById(sectionId);
+    const icon = document.getElementById(sectionId.replace('-detail', '-icon'));
+    if (!body || !icon) return;
+    
+    if (body.classList.contains('expanded')) {
+        body.classList.remove('expanded');
+        body.style.display = 'none';
+        icon.classList.add('collapsed');
+    } else {
+        body.classList.add('expanded');
+        body.style.display = 'block';
+        icon.classList.remove('collapsed');
+    }
+}
 
 // Load reconciliation data - called when tab is opened
 async function loadReconciliationStatus() {
     console.log('[RECONCILE] Loading reconciliation status');
+    const comparisonBody = document.getElementById('recon-comparison-body');
     const expectedList = document.getElementById('expected-payments-list');
     const depositsList = document.getElementById('bank-deposits-list');
-    const unmatchedList = document.getElementById('unmatched-list');
     const batchesList = document.getElementById('square-batches-list');
     const statusEl = document.getElementById('recon-status');
     
-    if (expectedList) expectedList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Loading...</p>';
-    if (depositsList) depositsList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Loading...</p>';
-    if (unmatchedList) unmatchedList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Loading...</p>';
-    if (batchesList) batchesList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Loading...</p>';
+    if (comparisonBody) comparisonBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    if (expectedList) expectedList.innerHTML = '<p style="color:#666; text-align:center; padding:20px;">Loading...</p>';
+    if (depositsList) depositsList.innerHTML = '<p style="color:#666; text-align:center; padding:20px;">Loading...</p>';
+    if (batchesList) batchesList.innerHTML = '<p style="color:#666; text-align:center; padding:20px;">Loading...</p>';
     
     try {
         // Single endpoint does everything: fetch Square, fetch bank, auto-match
@@ -687,7 +728,7 @@ async function loadReconciliationStatus() {
             statusEl.className = 'status-message status-error';
             statusEl.style.display = 'block';
         }
-        if (unmatchedList) unmatchedList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px; color: #dc3545;">Error loading data</p>';
+        if (comparisonBody) comparisonBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:#dc3545;">Error loading data</td></tr>';
     }
 }
 
@@ -695,7 +736,6 @@ function renderReconciliationData(data) {
     const sales = data.sales || [];
     const deposits = data.deposits || [];
     const batches = data.batches || [];
-    const unmatched = data.unmatched || [];
     const summary = data.summary || {};
     
     // Update stats
@@ -737,16 +777,142 @@ function renderReconciliationData(data) {
     if (stepBatches) stepBatches.textContent = summary.total_batches || 0;
     if (stepDeposits) stepDeposits.textContent = summary.total_deposits || 0;
     
-    // Render square batches
+    // Update counts in collapsible headers
+    document.getElementById('expected-payments-count').textContent = '(' + sales.length + ')';
+    document.getElementById('square-batches-count').textContent = '(' + batches.length + ')';
+    document.getElementById('bank-deposits-count').textContent = '(' + deposits.length + ')';
+    
+    // Render 4-column comparison table
+    renderComparisonTable(sales, batches, deposits);
+    
+    // Render detail lists
     renderSquareBatches(batches);
-    
-    // Render expected payments
     renderExpectedPayments(sales);
-    
-    // Render bank deposits
     renderBankDeposits(deposits);
+}
+
+function renderComparisonTable(sales, batches, deposits) {
+    const body = document.getElementById('recon-comparison-body');
+    if (!body) return;
     
-     
+    // Build a combined list of all transactions with a type flag
+    const allTransactions = [];
+    
+    // Add sales
+    sales.forEach(s => {
+        allTransactions.push({
+            date: s.date,
+            type: 'sales',
+            description: s.source_id || s.id || '',
+            amount: parseFloat(s.amount) || 0,
+            status: s.status === 'matched' ? 'matched' : 'pending',
+            source_type: s.source_type || 'order'
+        });
+    });
+    
+    // Add batches
+    batches.forEach(b => {
+        allTransactions.push({
+            date: b.date,
+            type: 'batch',
+            description: b.source_id || b.id || '',
+            amount: parseFloat(b.amount) || 0,
+            status: b.reconciled ? 'matched' : 'pending',
+            source_type: 'square'
+        });
+    });
+    
+    // Add deposits
+    deposits.forEach(d => {
+        allTransactions.push({
+            date: d.date,
+            type: 'deposit',
+            description: d.description || d.id || '',
+            amount: parseFloat(d.amount) || 0,
+            status: d.matched ? 'matched' : 'unmatched',
+            source_type: d.source_type || 'historic'
+        });
+    });
+    
+    // Sort by date (newest first)
+    allTransactions.sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        return dateB - dateA;
+    });
+    
+    if (allTransactions.length === 0) {
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#666;">No transactions found.</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    let totalAmount = 0;
+    
+    allTransactions.forEach(tx => {
+        const formattedDate = formatReconDate(tx.date);
+        const amt = tx.amount;
+        totalAmount += amt;
+        
+        // Type badge
+        let typeBadge = '';
+        let typeColor = '';
+        if (tx.type === 'sales') {
+            typeBadge = '💰 Sales';
+            typeColor = '#007bff';
+        } else if (tx.type === 'batch') {
+            typeBadge = '📦 Square Batch';
+            typeColor = '#6f42c1';
+        } else if (tx.type === 'deposit') {
+            typeBadge = '🏦 Bank Deposit';
+            typeColor = '#28a745';
+        }
+        
+        // Status badge
+        let statusBadge = '';
+        let statusColor = '';
+        if (tx.status === 'matched') {
+            statusBadge = '✅ Matched';
+            statusColor = '#28a745';
+        } else if (tx.status === 'pending') {
+            statusBadge = '⏳ Pending';
+            statusColor = '#ffc107';
+        } else if (tx.status === 'unmatched') {
+            statusBadge = '⚠️ Unmatched';
+            statusColor = '#dc3545';
+        }
+        
+        // Source indicator for deposits
+        let sourceIndicator = '';
+        if (tx.type === 'deposit' && tx.source_type === 'plaid') {
+            sourceIndicator = ' 🔵';
+        } else if (tx.type === 'deposit' && tx.source_type === 'historic') {
+            sourceIndicator = ' 📋';
+        }
+        
+        // Row background based on status
+        let rowClass = '';
+        if (tx.status === 'matched') rowClass = 'matched-row';
+        else if (tx.status === 'unmatched') rowClass = 'unmatched-row';
+        else if (tx.status === 'pending') rowClass = 'pending-row';
+        
+        html += `<tr class="${rowClass}">`;
+        html += `<td class="date-col recon-date">${formattedDate}</td>`;
+        html += `<td><span class="type-badge-${tx.type}">${typeBadge}</span></td>`;
+        html += `<td>${tx.description}${sourceIndicator}</td>`;
+        html += `<td style="text-align:right; font-weight:600;">$${amt.toFixed(2)}</td>`;
+        html += `<td style="text-align:center;"><span class="status-badge-${tx.status}">${statusBadge}</span></td>`;
+        html += '</tr>';
+    });
+    
+    // Summary row
+    html += `<tr class="recon-summary-row">
+        <td colspan="3" style="text-align:right;"><strong>Total</strong></td>
+        <td style="text-align:right; font-weight:700;">$${totalAmount.toFixed(2)}</td>
+        <td></td>
+    </tr>`;
+    
+    body.innerHTML = html;
 }
 
 function renderSquareBatches(batches) {
@@ -760,8 +926,9 @@ function renderSquareBatches(batches) {
     batches.forEach(b => {
         const statusText = b.reconciled ? '✅ Matched to Deposit' : '⏳ Pending';
         const statusColor = b.reconciled ? '#28a745' : '#ffc107';
+        const formattedDate = formatReconDate(b.date);
         html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; color: #333;">
-            <span>${b.date} – ${b.source_id || b.id}</span>
+            <span>${formattedDate} – ${b.source_id || b.id}</span>
             <span style="font-weight: 600; color: #6f42c1;">$${parseFloat(b.amount).toFixed(2)}</span>
             <span style="color: ${statusColor}; font-size: 12px;">${statusText}</span>
         </div>`;
@@ -780,8 +947,9 @@ function renderExpectedPayments(payments) {
     payments.forEach(p => {
         const statusClass = p.status === 'matched' ? '✅ Matched' : '⏳ Pending';
         const statusColor = p.status === 'matched' ? '#28a745' : '#ffc107';
+        const formattedDate = formatReconDate(p.date);
         html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; color: #333;">
-            <span>Order ${p.source_id || p.id} – ${p.date}</span>
+            <span>Order ${p.source_id || p.id} – ${formattedDate}</span>
             <span style="font-weight: 600;">$${parseFloat(p.amount).toFixed(2)}</span>
             <span style="color: ${statusColor}; font-size: 12px;">${statusClass}</span>
         </div>`;
@@ -802,8 +970,10 @@ function renderBankDeposits(deposits) {
         const statusText = isMatched ? '✅ Matched' : '⚠️ UNMATCHED';
         const statusColor = isMatched ? '#28a745' : '#dc3545';
         const rowBg = isMatched ? 'white' : '#fff3cd';
+        const formattedDate = formatReconDate(d.date);
+        const sourceLabel = d.source_type === 'plaid' ? '🔵 Plaid' : '📋 Historic';
         html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; background: ${rowBg}; color: #333;">
-            <span>${d.date} – ${d.description || 'Deposit'}</span>
+            <span>${formattedDate} – ${d.description || 'Deposit'} <span style="font-size:11px; color:#666;">${sourceLabel}</span></span>
             <span style="font-weight: 600;">$${parseFloat(d.amount).toFixed(2)}</span>
             <span style="color: ${statusColor}; font-size: 12px; font-weight: 600;">${statusText}</span>
         </div>`;
