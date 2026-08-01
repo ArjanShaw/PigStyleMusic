@@ -300,61 +300,50 @@
                 </div>
             </div>
 
-            <!-- RECONCILIATION with Pair Management -->
-            <div id="sub-reconcile" class="sub-tab-content">
-                <h4 style="color: #000;"><i class="fas fa-handshake"></i> Compare Two Accounts</h4>
-                <p style="color: #000;">Select two accounts to see a combined timeline of all transactions that affected them.</p>
+            <!-- RECONCILIATION -->
+<div id="sub-reconcile" class="sub-tab-content">
+    <h4 style="color: #000;"><i class="fas fa-handshake"></i> Reconciliation Dashboard</h4>
+    <p style="color: #000;">Select a date range and click a pair to see detailed transactions.</p>
 
-                <!-- Pair Management Row -->
-                <div class="controls-row" style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-bottom:15px; background:#f8f9fa; padding:10px; border-radius:8px;">
-                    <div class="form-group" style="flex:1; min-width:200px;">
-                        <label style="color:#000;">Saved Pairs</label>
-                        <select id="reconcile-pair-select" style="color:#000; background:#fff; width:100%;">
-                            <option value="">— Select a saved pair —</option>
-                        </select>
-                    </div>
-                    <button class="btn btn-success btn-sm" onclick="showAddPairModal()" style="color:#fff; background:#28a745; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
-                        <i class="fas fa-plus"></i> Add Pair
-                    </button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteSelectedPair()" style="color:#fff; background:#dc3545; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
-                        <i class="fas fa-trash"></i> Delete Selected
-                    </button>
-                </div>
-
-                <!-- Account Selection + Date Slider -->
-                <div class="controls-row" style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-bottom:20px; background:#f8f9fa; padding:15px; border-radius:8px;">
-                    <div class="form-group">
-                        <label style="color: #000;">Account A</label>
-                        <select id="reconcile-account1" class="account-select" style="color: #000; background: #fff;">
-                            <option value="">Select…</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label style="color: #000;">Account B</label>
-                        <select id="reconcile-account2" class="account-select" style="color: #000; background: #fff;">
-                            <option value="">Select…</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 1; min-width: 250px;">
-                        <label style="color: #000;">Date Range</label>
-                        <div id="reconcile-slider" style="margin: 10px 0 5px;"></div>
-                        <div style="display: flex; justify-content: space-between; margin-top: 5px; color: #000;">
-                            <span id="reconcile-date-start-label">Loading...</span>
-                            <span id="reconcile-date-end-label">Loading...</span>
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="loadReconciliationTimeline()" style="color: #fff; background: #007bff; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer;">
-                        <i class="fas fa-sync-alt"></i> Compare
-                    </button>
-                    <button class="btn btn-secondary" onclick="resetReconciliationTimeline()" style="color: #fff; background: #6c757d; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer;">
-                        <i class="fas fa-undo"></i> Reset
-                    </button>
-                </div>
-
-                <div id="reconcile-result">
-                    <p class="text-muted" style="color: #000;">Select two accounts and click <strong>Compare</strong>.</p>
-                </div>
+    <!-- Date Range Slider (top) -->
+    <div class="controls-row" style="display:flex; gap:15px; flex-wrap:wrap; align-items:center; margin-bottom:15px; background:#f8f9fa; padding:15px; border-radius:8px;">
+        <div class="form-group" style="flex: 1; min-width: 250px;">
+            <label style="color: #000;">Date Range</label>
+            <div id="reconcile-slider" style="margin: 10px 0 5px;"></div>
+            <div style="display: flex; justify-content: space-between; margin-top: 5px; color: #000;">
+                <span id="reconcile-date-start-label">Loading...</span>
+                <span id="reconcile-date-end-label">Loading...</span>
             </div>
+        </div>
+        <button class="btn btn-success btn-sm" onclick="showAddPairModal()" style="color:#fff; background:#28a745; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+            <i class="fas fa-plus"></i> Add Pair
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSelectedPair()" style="color:#fff; background:#dc3545; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+            <i class="fas fa-trash"></i> Delete Selected
+        </button>
+    </div>
+
+    <!-- Pairs Summary Table -->
+    <div style="margin-bottom:20px; overflow-x:auto;">
+        <table class="journal-table" id="reconcile-pairs-table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th style="color:#000;">Account A</th>
+                    <th style="color:#000;">Account B</th>
+                    <th style="color:#000;">Difference (A - B)</th>
+                </tr>
+            </thead>
+            <tbody id="reconcile-pairs-body">
+                <tr><td colspan="3" style="text-align:center; padding:20px; color:#000;">Loading pairs...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Timeline Table (detail) -->
+    <div id="reconcile-result">
+        <p class="text-muted" style="color: #000;">Select a pair row above to see detailed transactions.</p>
+    </div>
+</div>
 
             <!-- BANK TAB -->
             <div id="sub-bank" class="sub-tab-content">
