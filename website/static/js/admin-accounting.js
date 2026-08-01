@@ -131,7 +131,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (sub === 'journal') loadJournalEntries();
             else if (sub === 'reconcile') {
-                loadReconciliationStatus();
+                // Load account dropdowns for reconciliation
+                loadReconcileAccountSelects();
             }
             else if (sub === 'bank') {
                 loadBankTransactions();
@@ -341,6 +342,47 @@ async function loadAccountSelects() {
         }
     } catch (err) {
         console.error('[ACCOUNTS] Error loading accounts:', err);
+    }
+}
+
+async function loadReconcileAccountSelects() {
+    console.log('[RECONCILE] Loading account dropdowns');
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) throw new Error('Failed to load accounts');
+        const data = await res.json();
+        if (data.status === 'success') {
+            console.log('[RECONCILE] Loaded', data.accounts.length, 'accounts');
+            const select1 = document.getElementById('reconcile-account1');
+            const select2 = document.getElementById('reconcile-account2');
+            if (select1) {
+                const currentVal = select1.value;
+                select1.innerHTML = '<option value="">Select Account</option>';
+                data.accounts.forEach(acc => {
+                    const opt = document.createElement('option');
+                    opt.value = acc.id;
+                    opt.textContent = acc.code + ' - ' + acc.name;
+                    select1.appendChild(opt);
+                });
+                select1.value = currentVal;
+            }
+            if (select2) {
+                const currentVal = select2.value;
+                select2.innerHTML = '<option value="">Select Account</option>';
+                data.accounts.forEach(acc => {
+                    const opt = document.createElement('option');
+                    opt.value = acc.id;
+                    opt.textContent = acc.code + ' - ' + acc.name;
+                    select2.appendChild(opt);
+                });
+                select2.value = currentVal;
+            }
+        }
+    } catch (err) {
+        console.error('[RECONCILE] Error loading accounts:', err);
     }
 }
 
@@ -660,325 +702,114 @@ async function submitManualEntry() {
 }
 
 // ============================================================
-// RECONCILIATION
+// RECONCILIATION – Compare Two Accounts (New)
 // ============================================================
 
-// Toggle collapsible sections
-function toggleReconSection(sectionId) {
-    const body = document.getElementById(sectionId);
-    const icon = document.getElementById(sectionId.replace('-detail', '-icon'));
-    if (!body || !icon) return;
-    
-    if (body.classList.contains('expanded')) {
-        body.classList.remove('expanded');
-        body.style.display = 'none';
-        icon.classList.add('collapsed');
-    } else {
-        body.classList.add('expanded');
-        body.style.display = 'block';
-        icon.classList.remove('collapsed');
-    }
-}
+async function loadReconciliationTimeline() {
+    const account1 = document.getElementById('reconcile-account1').value;
+    const account2 = document.getElementById('reconcile-account2').value;
+    const start = document.getElementById('reconcile-start').value;
+    const end = document.getElementById('reconcile-end').value;
 
-// Load reconciliation data - called when tab is opened
-async function loadReconciliationStatus() {
-    console.log('[RECONCILE] Loading reconciliation status');
-    const comparisonBody = document.getElementById('recon-comparison-body');
-    const expectedList = document.getElementById('expected-payments-list');
-    const depositsList = document.getElementById('bank-deposits-list');
-    const batchesList = document.getElementById('square-batches-list');
-    const statusEl = document.getElementById('recon-status');
-    
-    if (comparisonBody) comparisonBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px;">Loading...</td></tr>';
-    if (expectedList) expectedList.innerHTML = '<p style="color:#666; text-align:center; padding:20px;">Loading...</p>';
-    if (depositsList) depositsList.innerHTML = '<p style="color:#666; text-align:center; padding:20px;">Loading...</p>';
-    if (batchesList) batchesList.innerHTML = '<p style="color:#666; text-align:center; padding:20px;">Loading...</p>';
-    
+    if (!account1 || !account2) {
+        showToast('Please select both accounts.', 'warning');
+        return;
+    }
+    if (account1 === account2) {
+        showToast('Please select two different accounts.', 'warning');
+        return;
+    }
+
+    const resultDiv = document.getElementById('reconcile-result');
+    resultDiv.innerHTML = '<p style="color: #000; text-align: center; padding: 20px;">Loading...</p>';
+
     try {
-        // Single endpoint does everything: fetch Square, fetch bank, auto-match
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/init`, {
+        const params = new URLSearchParams();
+        params.append('account1', account1);
+        params.append('account2', account2);
+        if (start) params.append('start', start);
+        if (end) params.append('end', end);
+
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/timeline?${params.toString()}`, {
             credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
-        
-        if (!res.ok) throw new Error('Failed to load reconciliation data');
+        if (!res.ok) throw new Error('Failed to fetch reconciliation data');
         const data = await res.json();
-        
         if (data.status === 'success') {
-            console.log('[RECONCILE] Init complete:', data.summary);
-            renderReconciliationData(data);
-            
-            if (statusEl) {
-                const summary = data.summary;
-                let msg = `✅ ${summary.total_sales} sales, ${summary.total_batches} Square batches, ${summary.total_deposits} bank deposits`;
-                if (summary.matched_count > 0) msg += `, ${summary.matched_count} matched`;
-                if (summary.square_imported > 0) msg += `, ${summary.square_imported} Square batches imported`;
-                statusEl.textContent = msg;
-                statusEl.className = 'status-message status-success';
-                statusEl.style.display = 'block';
-                setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
-            }
+            renderReconciliationTimeline(data);
         } else {
-            throw new Error(data.error || 'Failed to load reconciliation data');
+            resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${data.error || 'Unknown error'}</p>`;
         }
     } catch (err) {
         console.error('[RECONCILE] Error:', err);
-        if (statusEl) {
-            statusEl.textContent = '❌ Error: ' + err.message;
-            statusEl.className = 'status-message status-error';
-            statusEl.style.display = 'block';
-        }
-        if (comparisonBody) comparisonBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:#dc3545;">Error loading data</td></tr>';
+        resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${err.message}</p>`;
     }
 }
 
-function renderReconciliationData(data) {
-    const sales = data.sales || [];
-    const deposits = data.deposits || [];
-    const batches = data.batches || [];
-    const summary = data.summary || {};
-    
-    // Update stats
-    const salesEl = document.getElementById('recon-total-sales');
-    const salesAmountEl = document.getElementById('recon-total-sales-amount');
-    const batchesEl = document.getElementById('recon-total-batches');
-    const batchesAmountEl = document.getElementById('recon-total-batches-amount');
-    const depositsEl = document.getElementById('recon-total-deposits');
-    const depositsAmountEl = document.getElementById('recon-total-deposits-amount');
-    const varianceEl = document.getElementById('recon-variance');
-    const varianceStatusEl = document.getElementById('recon-variance-status');
-    
-    if (salesEl) salesEl.textContent = summary.total_sales || 0;
-    if (salesAmountEl) salesAmountEl.textContent = '$' + (summary.total_sales_amount || 0).toFixed(2);
-    if (batchesEl) batchesEl.textContent = summary.total_batches || 0;
-    if (batchesAmountEl) batchesAmountEl.textContent = '$' + (summary.total_batches_amount || 0).toFixed(2);
-    if (depositsEl) depositsEl.textContent = summary.total_deposits || 0;
-    if (depositsAmountEl) depositsAmountEl.textContent = '$' + (summary.total_deposits_amount || 0).toFixed(2);
-    
-    const variance = summary.variance || 0;
-    if (varianceEl) varianceEl.textContent = (variance >= 0 ? '+' : '') + '$' + variance.toFixed(2);
-    
-    if (varianceStatusEl) {
-        if (Math.abs(variance) < 0.01) {
-            varianceStatusEl.textContent = '✅ Balanced';
-            varianceStatusEl.style.color = '#28a745';
-        } else {
-            varianceStatusEl.textContent = '⚠️ Discrepancy';
-            varianceStatusEl.style.color = '#dc3545';
-        }
-    }
-    
-    // Update flow steps
-    const stepSales = document.getElementById('recon-step-sales-count');
-    const stepBatches = document.getElementById('recon-step-batches-count');
-    const stepDeposits = document.getElementById('recon-step-deposits-count');
-    
-    if (stepSales) stepSales.textContent = summary.total_sales || 0;
-    if (stepBatches) stepBatches.textContent = summary.total_batches || 0;
-    if (stepDeposits) stepDeposits.textContent = summary.total_deposits || 0;
-    
-    // Update counts in collapsible headers
-    document.getElementById('expected-payments-count').textContent = '(' + sales.length + ')';
-    document.getElementById('square-batches-count').textContent = '(' + batches.length + ')';
-    document.getElementById('bank-deposits-count').textContent = '(' + deposits.length + ')';
-    
-    // Render 4-column comparison table
-    renderComparisonTable(sales, batches, deposits);
-    
-    // Render detail lists
-    renderSquareBatches(batches);
-    renderExpectedPayments(sales);
-    renderBankDeposits(deposits);
-}
+function renderReconciliationTimeline(data) {
+    const resultDiv = document.getElementById('reconcile-result');
+    const entries = data.entries || [];
+    const account1Name = data.account1_name || 'Account A';
+    const account2Name = data.account2_name || 'Account B';
 
-function renderComparisonTable(sales, batches, deposits) {
-    const body = document.getElementById('recon-comparison-body');
-    if (!body) return;
-    
-    // Build a combined list of all transactions with a type flag
-    const allTransactions = [];
-    
-    // Add sales
-    sales.forEach(s => {
-        allTransactions.push({
-            date: s.date,
-            type: 'sales',
-            description: s.source_id || s.id || '',
-            amount: parseFloat(s.amount) || 0,
-            status: s.status === 'matched' ? 'matched' : 'pending',
-            source_type: s.source_type || 'order'
-        });
-    });
-    
-    // Add batches
-    batches.forEach(b => {
-        allTransactions.push({
-            date: b.date,
-            type: 'batch',
-            description: b.source_id || b.id || '',
-            amount: parseFloat(b.amount) || 0,
-            status: b.reconciled ? 'matched' : 'pending',
-            source_type: 'square'
-        });
-    });
-    
-    // Add deposits
-    deposits.forEach(d => {
-        allTransactions.push({
-            date: d.date,
-            type: 'deposit',
-            description: d.description || d.id || '',
-            amount: parseFloat(d.amount) || 0,
-            status: d.matched ? 'matched' : 'unmatched',
-            source_type: d.source_type || 'historic'
-        });
-    });
-    
-    // Sort by date (newest first)
-    allTransactions.sort((a, b) => {
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
-        return dateB - dateA;
-    });
-    
-    if (allTransactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#666;">No transactions found.</td></tr>';
+    if (entries.length === 0) {
+        resultDiv.innerHTML = `<p style="color: #000;">No transactions found for these accounts and date range.</p>`;
         return;
     }
-    
-    let html = '';
-    let totalAmount = 0;
-    
-    allTransactions.forEach(tx => {
-        const formattedDate = formatReconDate(tx.date);
-        const amt = tx.amount;
-        totalAmount += amt;
-        
-        // Type badge
-        let typeBadge = '';
-        let typeColor = '';
-        if (tx.type === 'sales') {
-            typeBadge = '💰 Sales';
-            typeColor = '#007bff';
-        } else if (tx.type === 'batch') {
-            typeBadge = '📦 Square Batch';
-            typeColor = '#6f42c1';
-        } else if (tx.type === 'deposit') {
-            typeBadge = '🏦 Bank Deposit';
-            typeColor = '#28a745';
-        }
-        
-        // Status badge
-        let statusBadge = '';
-        let statusColor = '';
-        if (tx.status === 'matched') {
-            statusBadge = '✅ Matched';
-            statusColor = '#28a745';
-        } else if (tx.status === 'pending') {
-            statusBadge = '⏳ Pending';
-            statusColor = '#ffc107';
-        } else if (tx.status === 'unmatched') {
-            statusBadge = '⚠️ Unmatched';
-            statusColor = '#dc3545';
-        }
-        
-        // Source indicator for deposits
-        let sourceIndicator = '';
-        if (tx.type === 'deposit' && tx.source_type === 'plaid') {
-            sourceIndicator = ' 🔵';
-        } else if (tx.type === 'deposit' && tx.source_type === 'historic') {
-            sourceIndicator = ' 📋';
-        }
-        
-        // Row background based on status
-        let rowClass = '';
-        if (tx.status === 'matched') rowClass = 'matched-row';
-        else if (tx.status === 'unmatched') rowClass = 'unmatched-row';
-        else if (tx.status === 'pending') rowClass = 'pending-row';
-        
-        html += `<tr class="${rowClass}">`;
-        html += `<td class="date-col recon-date">${formattedDate}</td>`;
-        html += `<td><span class="type-badge-${tx.type}">${typeBadge}</span></td>`;
-        html += `<td>${tx.description}${sourceIndicator}</td>`;
-        html += `<td style="text-align:right; font-weight:600;">$${amt.toFixed(2)}</td>`;
-        html += `<td style="text-align:center;"><span class="status-badge-${tx.status}">${statusBadge}</span></td>`;
-        html += '</tr>';
+
+    // Build table
+    let html = `<table class="journal-table" style="width:100%;">
+        <thead>
+            <tr>
+                <th style="color:#000;">Date</th>
+                <th style="color:#000;">Account</th>
+                <th style="color:#000;">Amount</th>
+                <th style="color:#000;">Description</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    let total1 = 0, total2 = 0;
+    entries.forEach(entry => {
+        const amount = entry.amount;
+        const isAccount1 = entry.account_name === account1Name;
+        const isAccount2 = entry.account_name === account2Name;
+        // Determine which total to add to
+        if (isAccount1) total1 += amount;
+        if (isAccount2) total2 += amount;
+
+        const amountClass = amount >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative';
+        const displayAmount = (amount >= 0 ? '+' : '') + amount.toFixed(2);
+
+        html += `<tr>
+            <td style="color:#000;">${entry.date}</td>
+            <td style="color:#000;">${entry.account_name}</td>
+            <td style="color:#000;" class="${amountClass}">$${displayAmount}</td>
+            <td style="color:#000;">${entry.description}</td>
+        </tr>`;
     });
-    
+
     // Summary row
-    html += `<tr class="recon-summary-row">
-        <td colspan="3" style="text-align:right;"><strong>Total</strong></td>
-        <td style="text-align:right; font-weight:700;">$${totalAmount.toFixed(2)}</td>
-        <td></td>
+    html += `<tr class="reconcile-summary-row">
+        <td colspan="4" style="color:#000; text-align:right; padding:10px;">
+            <span style="font-weight:bold;">Totals:</span>
+            ${account1Name}: <span class="${total1 >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${(total1 >= 0 ? '+' : '') + total1.toFixed(2)}</span> &nbsp;|&nbsp;
+            ${account2Name}: <span class="${total2 >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${(total2 >= 0 ? '+' : '') + total2.toFixed(2)}</span> &nbsp;|&nbsp;
+            Difference: <span class="${(total1 - total2) >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${((total1 - total2) >= 0 ? '+' : '') + (total1 - total2).toFixed(2)}</span>
+        </td>
     </tr>`;
-    
-    body.innerHTML = html;
+
+    html += '</tbody></table>';
+    resultDiv.innerHTML = html;
 }
 
-function renderSquareBatches(batches) {
-    const container = document.getElementById('square-batches-list');
-    if (!container) return;
-    if (!batches || batches.length === 0) {
-        container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No Square batches found.</p>';
-        return;
-    }
-    let html = '';
-    batches.forEach(b => {
-        const statusText = b.reconciled ? '✅ Matched to Deposit' : '⏳ Pending';
-        const statusColor = b.reconciled ? '#28a745' : '#ffc107';
-        const formattedDate = formatReconDate(b.date);
-        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; color: #333;">
-            <span>${formattedDate} – ${b.source_id || b.id}</span>
-            <span style="font-weight: 600; color: #6f42c1;">$${parseFloat(b.amount).toFixed(2)}</span>
-            <span style="color: ${statusColor}; font-size: 12px;">${statusText}</span>
-        </div>`;
-    });
-    container.innerHTML = html;
-}
-
-function renderExpectedPayments(payments) {
-    const container = document.getElementById('expected-payments-list');
-    if (!container) return;
-    if (!payments || payments.length === 0) {
-        container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No expected payments found.</p>';
-        return;
-    }
-    let html = '';
-    payments.forEach(p => {
-        const statusClass = p.status === 'matched' ? '✅ Matched' : '⏳ Pending';
-        const statusColor = p.status === 'matched' ? '#28a745' : '#ffc107';
-        const formattedDate = formatReconDate(p.date);
-        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; color: #333;">
-            <span>Order ${p.source_id || p.id} – ${formattedDate}</span>
-            <span style="font-weight: 600;">$${parseFloat(p.amount).toFixed(2)}</span>
-            <span style="color: ${statusColor}; font-size: 12px;">${statusClass}</span>
-        </div>`;
-    });
-    container.innerHTML = html;
-}
-
-function renderBankDeposits(deposits) {
-    const container = document.getElementById('bank-deposits-list');
-    if (!container) return;
-    if (!deposits || deposits.length === 0) {
-        container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No bank deposits found.</p>';
-        return;
-    }
-    let html = '';
-    deposits.forEach(d => {
-        const isMatched = d.matched;
-        const statusText = isMatched ? '✅ Matched' : '⚠️ UNMATCHED';
-        const statusColor = isMatched ? '#28a745' : '#dc3545';
-        const rowBg = isMatched ? 'white' : '#fff3cd';
-        const formattedDate = formatReconDate(d.date);
-        const sourceLabel = d.source_type === 'plaid' ? '🔵 Plaid' : '📋 Historic';
-        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; background: ${rowBg}; color: #333;">
-            <span>${formattedDate} – ${d.description || 'Deposit'} <span style="font-size:11px; color:#666;">${sourceLabel}</span></span>
-            <span style="font-weight: 600;">$${parseFloat(d.amount).toFixed(2)}</span>
-            <span style="color: ${statusColor}; font-size: 12px; font-weight: 600;">${statusText}</span>
-        </div>`;
-    });
-    container.innerHTML = html;
+function resetReconciliationTimeline() {
+    document.getElementById('reconcile-account1').value = '';
+    document.getElementById('reconcile-account2').value = '';
+    document.getElementById('reconcile-start').value = '';
+    document.getElementById('reconcile-end').value = '';
+    document.getElementById('reconcile-result').innerHTML = '<p class="text-muted" style="color: #000;">Select two accounts and click <strong>Compare</strong>.</p>';
 }
 
 // ============================================================
