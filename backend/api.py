@@ -9327,6 +9327,7 @@ def get_active_draft():
     
     return jsonify({'status': 'success', 'draft': draft})
 
+
 @app.route('/api/purchases/draft', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -9350,18 +9351,24 @@ def create_draft_purchase():
         conn = get_db()
         cursor = conn.cursor()
 
-        # Insert into purchases
+        # 1. Insert into purchases
         cursor.execute('''
             INSERT INTO purchases (seller_name, seller_contact, description, status)
             VALUES (?, ?, ?, 'draft')
         ''', (seller_name, seller_contact, description))
         purchase_id = cursor.lastrowid
 
-        # Insert minimal journal entry
+        # 2. Insert into journal_entries – CRITICAL: set source_id = purchase_id
+        from datetime import datetime
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
-        ''', (datetime.now().strftime('%Y-%m-%d'), f'Purchase #{purchase_id}', 'purchase', str(purchase_id)))
+        ''', (
+            datetime.now().strftime('%Y-%m-%d'),
+            f'Purchase #{purchase_id}',
+            'purchase',
+            str(purchase_id)   # ← important: store the purchase ID as a string
+        ))
 
         conn.commit()
         conn.close()
@@ -9371,10 +9378,10 @@ def create_draft_purchase():
             'message': 'Draft purchase created',
             'draft_id': purchase_id
         })
+
     except Exception as e:
         app.logger.error(f"Error creating draft: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['PUT'])
 @login_required
@@ -9613,9 +9620,6 @@ def serve_bill_image(filename):
 @login_required
 @role_required(['admin'])
 def get_all_drafts():
-    """
-    List all purchases (drafts and complete) with record counts and offer amounts.
-    """
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -9637,7 +9641,7 @@ def get_all_drafts():
                          AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050') 
                          LIMIT 1), 0) as offer_amount
             FROM purchases p
-            JOIN journal_entries je ON je.id = p.id AND je.source_type = 'purchase'
+            JOIN journal_entries je ON je.source_id = p.id AND je.source_type = 'purchase'   -- ← FIXED
             LEFT JOIN records r ON r.batch_id = je.id
             GROUP BY p.id
             ORDER BY p.created_at DESC
