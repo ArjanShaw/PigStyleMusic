@@ -135,6 +135,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (sub === 'journal') loadJournalEntries();
             else if (sub === 'reconcile') {
                 loadReconcileAccountSelects();
+                loadReconcilePairs();
                 const account1 = document.getElementById('reconcile-account1').value;
                 const account2 = document.getElementById('reconcile-account2').value;
                 if (account1 && account2) {
@@ -323,7 +324,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Reconciliation account selection changes → update slider
+    // Reconciliation account selection changes → update slider & save pair (optional)
     const acc1 = document.getElementById('reconcile-account1');
     const acc2 = document.getElementById('reconcile-account2');
     if (acc1) {
@@ -346,6 +347,60 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Pair select change
+    document.getElementById('reconcile-pair-select')?.addEventListener('change', function() {
+        const opt = this.options[this.selectedIndex];
+        if (opt && opt.dataset.a && opt.dataset.b) {
+            document.getElementById('reconcile-account1').value = opt.dataset.a;
+            document.getElementById('reconcile-account2').value = opt.dataset.b;
+            loadReconcileDateRange(opt.dataset.a, opt.dataset.b, () => loadReconciliationTimeline());
+        }
+    });
+
+    // Save reconcile pair button
+    document.getElementById('save-reconcile-pair-btn')?.addEventListener('click', async function() {
+        const name = document.getElementById('reconcile-pair-name').value.trim();
+        const accountA = document.getElementById('reconcile-pair-account-a').value;
+        const accountB = document.getElementById('reconcile-pair-account-b').value;
+        if (!accountA || !accountB) {
+            alert('Please select both accounts.');
+            return;
+        }
+        if (accountA === accountB) {
+            alert('Accounts must be different.');
+            return;
+        }
+        try {
+            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account_a_id: parseInt(accountA), account_b_id: parseInt(accountB), name })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                document.getElementById('reconcile-pair-modal').classList.remove('active');
+                loadReconcilePairs();
+                // Optionally auto-select the new pair
+                const select = document.getElementById('reconcile-pair-select');
+                if (select) {
+                    // find the option with the new id (we don't have it from response, but we can reload)
+                    // refresh the dropdown and select the last option
+                    setTimeout(() => {
+                        const opt = select.querySelector(`option[value="${data.id}"]`);
+                        if (opt) opt.selected = true;
+                        select.dispatchEvent(new Event('change'));
+                    }, 100);
+                }
+            } else {
+                alert(data.error || 'Failed to add pair.');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error adding pair.');
+        }
+    });
 
     console.log('[INIT] Initialization complete');
 });
@@ -393,34 +448,143 @@ async function loadReconcileAccountSelects() {
         if (!res.ok) throw new Error('Failed to load accounts');
         const data = await res.json();
         if (data.status === 'success') {
-            console.log('[RECONCILE] Loaded', data.accounts.length, 'accounts');
             const select1 = document.getElementById('reconcile-account1');
             const select2 = document.getElementById('reconcile-account2');
-            if (select1) {
-                const currentVal = select1.value;
-                select1.innerHTML = '<option value="">Select Account</option>';
-                data.accounts.forEach(acc => {
-                    const opt = document.createElement('option');
-                    opt.value = acc.id;
-                    opt.textContent = acc.code + ' - ' + acc.name;
-                    select1.appendChild(opt);
-                });
-                select1.value = currentVal;
+
+            select1.innerHTML = '<option value="">Select Account</option>';
+            select2.innerHTML = '<option value="">Select Account</option>';
+            data.accounts.forEach(acc => {
+                const opt1 = document.createElement('option');
+                opt1.value = acc.id;
+                opt1.textContent = acc.code + ' - ' + acc.name;
+                select1.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = acc.id;
+                opt2.textContent = acc.code + ' - ' + acc.name;
+                select2.appendChild(opt2);
+            });
+
+            // Optionally set default from a saved pair or fallback to first pair
+            const pairSelect = document.getElementById('reconcile-pair-select');
+            if (pairSelect && pairSelect.options.length > 1) {
+                // If there are pairs, select the first one (or the one marked as default)
+                const defaultOpt = pairSelect.querySelector('option[data-default="true"]') || pairSelect.options[1];
+                if (defaultOpt) {
+                    defaultOpt.selected = true;
+                    select1.value = defaultOpt.dataset.a;
+                    select2.value = defaultOpt.dataset.b;
+                }
+            } else {
+                // Fallback to Square Asset (27) and Sales Revenue - Square (2)
+                select1.value = '27';
+                select2.value = '2';
             }
-            if (select2) {
-                const currentVal = select2.value;
-                select2.innerHTML = '<option value="">Select Account</option>';
-                data.accounts.forEach(acc => {
-                    const opt = document.createElement('option');
-                    opt.value = acc.id;
-                    opt.textContent = acc.code + ' - ' + acc.name;
-                    select2.appendChild(opt);
+
+            // Auto‑load comparison
+            if (select1.value && select2.value) {
+                loadReconcileDateRange(parseInt(select1.value), parseInt(select2.value), function() {
+                    loadReconciliationTimeline();
                 });
-                select2.value = currentVal;
             }
         }
     } catch (err) {
         console.error('[RECONCILE] Error loading accounts:', err);
+    }
+}
+
+// ============================================================
+// RECONCILIATION PAIR MANAGEMENT
+// ============================================================
+
+async function loadReconcilePairs() {
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to load pairs');
+        const data = await res.json();
+        if (data.status === 'success') {
+            const select = document.getElementById('reconcile-pair-select');
+            select.innerHTML = '<option value="">— Select a saved pair —</option>';
+            data.pairs.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name || `${p.account_a_name} ↔ ${p.account_b_name}`;
+                opt.dataset.a = p.account_a_id;
+                opt.dataset.b = p.account_b_id;
+                select.appendChild(opt);
+            });
+            // If there's a selected pair, load it
+            const selectedId = select.value;
+            if (selectedId) {
+                const selectedOpt = select.querySelector(`option[value="${selectedId}"]`);
+                if (selectedOpt) {
+                    document.getElementById('reconcile-account1').value = selectedOpt.dataset.a;
+                    document.getElementById('reconcile-account2').value = selectedOpt.dataset.b;
+                    loadReconcileDateRange(selectedOpt.dataset.a, selectedOpt.dataset.b, () => loadReconciliationTimeline());
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[RECONCILE] Error loading pairs:', err);
+    }
+}
+
+async function showAddPairModal() {
+    // Populate account dropdowns in modal
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        const selA = document.getElementById('reconcile-pair-account-a');
+        const selB = document.getElementById('reconcile-pair-account-b');
+        selA.innerHTML = '<option value="">Select Account</option>';
+        selB.innerHTML = '<option value="">Select Account</option>';
+        data.accounts.forEach(acc => {
+            const optA = document.createElement('option');
+            optA.value = acc.id;
+            optA.textContent = acc.code + ' - ' + acc.name;
+            selA.appendChild(optA);
+            const optB = document.createElement('option');
+            optB.value = acc.id;
+            optB.textContent = acc.code + ' - ' + acc.name;
+            selB.appendChild(optB);
+        });
+        document.getElementById('reconcile-pair-name').value = '';
+        document.getElementById('reconcile-pair-modal').classList.add('active');
+    }
+}
+
+async function deleteSelectedPair() {
+    const select = document.getElementById('reconcile-pair-select');
+    const pairId = select.value;
+    if (!pairId) {
+        alert('Please select a pair to delete.');
+        return;
+    }
+    if (!confirm('Delete this pair?')) return;
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs/${pairId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (res.ok) {
+            loadReconcilePairs();
+            // Reset account selects
+            document.getElementById('reconcile-account1').value = '';
+            document.getElementById('reconcile-account2').value = '';
+            document.getElementById('reconcile-result').innerHTML = '<p class="text-muted" style="color: #000;">Select two accounts and click <strong>Compare</strong>.</p>';
+        } else {
+            alert('Failed to delete pair.');
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Error deleting pair.');
     }
 }
 
@@ -457,6 +621,12 @@ async function loadReconcileDateRange(account1, account2, callback) {
 function initReconcileSlider(minDate, maxDate) {
     const sliderContainer = document.getElementById('reconcile-slider');
     if (!sliderContainer) return;
+
+    if (typeof noUiSlider === 'undefined') {
+        console.error('[RECONCILE] noUiSlider library not loaded');
+        showToast('Slider library not loaded. Please refresh.', 'error');
+        return;
+    }
 
     // Destroy existing slider if any
     if (reconcileSlider) {

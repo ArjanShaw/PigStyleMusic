@@ -300,11 +300,28 @@
                 </div>
             </div>
 
-            <!-- RECONCILIATION (NEW) with Date Range Slider -->
+            <!-- RECONCILIATION with Pair Management -->
             <div id="sub-reconcile" class="sub-tab-content">
                 <h4 style="color: #000;"><i class="fas fa-handshake"></i> Compare Two Accounts</h4>
                 <p style="color: #000;">Select two accounts to see a combined timeline of all transactions that affected them.</p>
 
+                <!-- Pair Management Row -->
+                <div class="controls-row" style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-bottom:15px; background:#f8f9fa; padding:10px; border-radius:8px;">
+                    <div class="form-group" style="flex:1; min-width:200px;">
+                        <label style="color:#000;">Saved Pairs</label>
+                        <select id="reconcile-pair-select" style="color:#000; background:#fff; width:100%;">
+                            <option value="">— Select a saved pair —</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-success btn-sm" onclick="showAddPairModal()" style="color:#fff; background:#28a745; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+                        <i class="fas fa-plus"></i> Add Pair
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSelectedPair()" style="color:#fff; background:#dc3545; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+                        <i class="fas fa-trash"></i> Delete Selected
+                    </button>
+                </div>
+
+                <!-- Account Selection + Date Slider -->
                 <div class="controls-row" style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-bottom:20px; background:#f8f9fa; padding:15px; border-radius:8px;">
                     <div class="form-group">
                         <label style="color: #000;">Account A</label>
@@ -339,7 +356,7 @@
                 </div>
             </div>
 
-            <!-- BANK TAB (Read‑Only Viewer) -->
+            <!-- BANK TAB -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4 style="color: #000;"><i class="fas fa-university"></i> Bank Transactions</h4>
                 <p style="color: #000;">Select a source to view its transactions. Use the filter to narrow down results.</p>
@@ -596,6 +613,40 @@
         </div>
     </div>
 
+    <!-- ADD RECONCILE PAIR MODAL -->
+    <div class="modal-overlay" id="reconcile-pair-modal">
+        <div class="modal-box" style="max-width:500px;">
+            <div class="modal-header">
+                <h3 id="reconcile-pair-modal-title" style="color:#000;">Add Reconciliation Pair</h3>
+                <button class="modal-close" onclick="document.getElementById('reconcile-pair-modal').classList.remove('active')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="reconcile-pair-form">
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label style="color:#000;">Name (optional)</label>
+                        <input type="text" id="reconcile-pair-name" placeholder="e.g. Square vs Revenue" style="color:#000; background:#fff;">
+                    </div>
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label style="color:#000;">Account A</label>
+                        <select id="reconcile-pair-account-a" style="color:#000; background:#fff;">
+                            <option value="">Select Account</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label style="color:#000;">Account B</label>
+                        <select id="reconcile-pair-account-b" style="color:#000; background:#fff;">
+                            <option value="">Select Account</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-header" style="border-top:1px solid #ddd; border-radius:0 0 8px 8px; justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="document.getElementById('reconcile-pair-modal').classList.remove('active')">Cancel</button>
+                <button class="btn btn-success" id="save-reconcile-pair-btn">Save Pair</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MONTHLY TRANSACTIONS MODAL -->
     <div class="modal-overlay" id="monthly-tx-modal">
         <div class="modal-box">
@@ -633,7 +684,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-    <!-- 🔥 noUiSlider MUST be loaded BEFORE admin-accounting.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.0/nouislider.min.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
