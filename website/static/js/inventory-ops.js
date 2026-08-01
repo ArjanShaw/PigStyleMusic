@@ -615,6 +615,45 @@
         }
     }
 
+    // ========== Toggle Functions for Purchase Table and Metadata ==========
+
+    let purchaseTableExpanded = true;
+    let metadataExpanded = true;
+
+    function togglePurchaseTable() {
+        const body = document.getElementById('purchase-table-body');
+        const icon = document.getElementById('purchase-table-toggle-icon');
+        if (!body || !icon) return;
+
+        purchaseTableExpanded = !purchaseTableExpanded;
+        if (purchaseTableExpanded) {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+            icon.style.transform = 'rotate(0deg)';
+        } else {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+            icon.style.transform = 'rotate(-90deg)';
+        }
+    }
+
+    function toggleMetadataPanel() {
+        const body = document.getElementById('metadata-body');
+        const icon = document.getElementById('metadata-toggle-icon');
+        if (!body || !icon) return;
+
+        metadataExpanded = !metadataExpanded;
+        if (metadataExpanded) {
+            body.style.display = 'block';
+            icon.style.transform = 'rotate(0deg)';
+        } else {
+            body.style.display = 'none';
+            icon.style.transform = 'rotate(-90deg)';
+        }
+    }
+
     // ========== Unified Record Loader ==========
     async function loadRecords(options) {
         options = options || {};
@@ -778,6 +817,12 @@
             const purchases = data.drafts || [];
             if (!purchasesBody) return;
 
+            // Update the badge with count
+            const badge = document.getElementById('purchase-table-badge');
+            if (badge) {
+                badge.textContent = '(' + purchases.length + ' total)';
+            }
+
             if (purchases.length === 0) {
                 purchasesBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">No purchases found. Click "New" to create one.</td></tr>';
                 return;
@@ -786,15 +831,17 @@
             let html = '';
             purchases.forEach(p => {
                 const isSelected = (p.draft_id == selectedPurchaseId);
-                const hasBill = p.bill_of_sale_path && p.bill_of_sale_path.length > 0;
-                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer;">`;
+                // If a purchase is selected, only show that row (hide others)
+                const shouldHide = (selectedPurchaseId !== null && p.draft_id != selectedPurchaseId);
+                const displayStyle = shouldHide ? 'display:none;' : '';
+                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer; ${displayStyle}">`;
                 html += `<td>${p.draft_id}</td>`;
                 html += `<td>${escapeHtml(p.seller_name)}</td>`;
                 html += `<td><span class="status-badge ${p.status === 'complete' ? 'paid' : 'draft'}">${p.status}</span></td>`;
                 html += `<td>${p.record_count || 0}</td>`;
                 html += `<td>${p.offer_amount ? '$' + p.offer_amount.toFixed(2) : '—'}</td>`;
                 html += `<td>${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>`;
-                html += `<td>${hasBill ? '<i class="fas fa-file-pdf" style="color:#28a745;"></i>' : '<i class="fas fa-times" style="color:#999;"></i>'}</td>`;
+                html += `<td>${p.bill_of_sale_path ? '<i class="fas fa-file-pdf" style="color:#28a745;"></i>' : '<i class="fas fa-times" style="color:#999;"></i>'}</td>`;
                 html += `<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(${p.draft_id})"><i class="fas fa-trash"></i></button></td>`;
                 html += `</tr>`;
             });
@@ -815,15 +862,19 @@
         console.log('📋 selectPurchase: ' + id);
         selectedPurchaseId = id;
 
-        // Highlight row
-        const rows = purchasesBody.querySelectorAll('tr');
-        rows.forEach(row => row.classList.remove('record-selected'));
-        const selectedRow = purchasesBody.querySelector(`tr[data-id="${id}"]`);
-        if (selectedRow) selectedRow.classList.add('record-selected');
+        // Reload the table to show only the selected row
+        await loadPurchasesTable();
 
         // Show metadata panel
         if (metadataPanel) metadataPanel.style.display = 'block';
         if (purchaseIdDisplay) purchaseIdDisplay.textContent = '#' + id;
+
+        // Expand metadata by default when selecting
+        metadataExpanded = true;
+        const metadataBody = document.getElementById('metadata-body');
+        const metadataIcon = document.getElementById('metadata-toggle-icon');
+        if (metadataBody) metadataBody.style.display = 'block';
+        if (metadataIcon) metadataIcon.style.transform = 'rotate(0deg)';
 
         try {
             const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + id, {
@@ -894,11 +945,7 @@
             });
             currentPurchaseRecords = filteredRecords.slice();
             // Update record count in the purchase table
-            const row = purchasesBody.querySelector(`tr[data-id="${purchaseId}"]`);
-            if (row) {
-                const countCell = row.cells[3];
-                if (countCell) countCell.textContent = filteredRecords.length;
-            }
+            await loadPurchasesTable();
         } catch (error) {
             console.error('Error loading records for purchase:', error);
             filteredRecords = [];
@@ -1006,8 +1053,8 @@
     function clearPurchaseSelection() {
         selectedPurchaseId = null;
         if (metadataPanel) metadataPanel.style.display = 'none';
-        const rows = purchasesBody.querySelectorAll('tr');
-        rows.forEach(row => row.classList.remove('record-selected'));
+        // Reload the table to show all rows again
+        loadPurchasesTable();
         filteredRecords = [];
         totalRecords = 0;
         currentPurchaseRecords = [];
@@ -2922,6 +2969,12 @@
         var mode = currentSearchMode;
 
         if (mode === 'add') {
+            // ===== BLOCK: No purchase selected =====
+            if (!selectedPurchaseId) {
+                showStatus('⚠️ Please select a purchase from the table before searching.', 'error');
+                playSound('error');
+                return;
+            }
             performDiscogsSearch(term);
             return;
         } else if (mode === 'scan') {
@@ -5794,6 +5847,8 @@
     window.loadPurchasesTable = loadPurchasesTable;
     window.showCheckoutModal = showCheckoutModal;
     window.removeRecordFromPurchase = removeRecordFromPurchase;
+    window.togglePurchaseTable = togglePurchaseTable;
+    window.toggleMetadataPanel = toggleMetadataPanel;
 
     // ===== EXPOSE applyDefaultParams and clearDefaultParams =====
     window.applyDefaultParams = applyDefaultParams;
