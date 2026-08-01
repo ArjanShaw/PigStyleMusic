@@ -9669,7 +9669,6 @@ def get_all_drafts():
         app.logger.error(f"Error listing drafts: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -9697,7 +9696,7 @@ def get_draft_by_id(draft_id):
                          AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050') 
                          LIMIT 1), 0) as offer_amount
             FROM purchases p
-            JOIN journal_entries je ON je.id = p.id AND je.source_type = 'purchase'  -- ← FIXED JOIN
+            JOIN journal_entries je ON je.source_id = p.id AND je.source_type = 'purchase'
             LEFT JOIN records r ON r.batch_id = je.id
             WHERE p.id = ?
             GROUP BY p.id
@@ -9725,6 +9724,7 @@ def get_draft_by_id(draft_id):
     except Exception as e:
         app.logger.error(f"Error fetching draft: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['DELETE'])
 @login_required
