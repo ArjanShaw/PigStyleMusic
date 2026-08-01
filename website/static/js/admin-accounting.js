@@ -41,6 +41,7 @@ let currentBreakdownMonthIndex = -1;
 let reconcileSlider = null;
 let reconcileMinDate = null;
 let reconcileMaxDate = null;
+let selectedPairId = null;
 
 // ============================================================
 // TOAST NOTIFICATION
@@ -131,18 +132,11 @@ document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('#accounting-container .sub-tab-content').forEach(c => c.classList.remove('active'));
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
-            
+
             if (sub === 'journal') loadJournalEntries();
             else if (sub === 'reconcile') {
-                loadReconcileAccountSelects();
-                loadReconcilePairs();
-                const account1 = document.getElementById('reconcile-account1').value;
-                const account2 = document.getElementById('reconcile-account2').value;
-                if (account1 && account2) {
-                    loadReconcileDateRange(account1, account2, function() {
-                        loadReconciliationTimeline();
-                    });
-                }
+                loadReconcileAccountSelects(); // for add pair modal
+                loadReconcilePairsSummary();   // load summary and auto-select first
             }
             else if (sub === 'bank') {
                 loadBankTransactions();
@@ -324,41 +318,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Reconciliation account selection changes → update slider & save pair (optional)
-    const acc1 = document.getElementById('reconcile-account1');
-    const acc2 = document.getElementById('reconcile-account2');
-    if (acc1) {
-        acc1.addEventListener('change', function() {
-            const account2 = document.getElementById('reconcile-account2').value;
-            if (this.value && account2) {
-                loadReconcileDateRange(this.value, account2, function() {
-                    loadReconciliationTimeline();
-                });
-            }
-        });
-    }
-    if (acc2) {
-        acc2.addEventListener('change', function() {
-            const account1 = document.getElementById('reconcile-account1').value;
-            if (account1 && this.value) {
-                loadReconcileDateRange(account1, this.value, function() {
-                    loadReconciliationTimeline();
-                });
-            }
-        });
-    }
+    // Reconciliation: slider change → reload summary
+    // We'll set this after slider is initialized (in initReconcileSlider)
 
-    // Pair select change
-    document.getElementById('reconcile-pair-select')?.addEventListener('change', function() {
-        const opt = this.options[this.selectedIndex];
-        if (opt && opt.dataset.a && opt.dataset.b) {
-            document.getElementById('reconcile-account1').value = opt.dataset.a;
-            document.getElementById('reconcile-account2').value = opt.dataset.b;
-            loadReconcileDateRange(opt.dataset.a, opt.dataset.b, () => loadReconciliationTimeline());
-        }
-    });
-
-    // Save reconcile pair button
+    // Save reconcile pair button (for the modal)
     document.getElementById('save-reconcile-pair-btn')?.addEventListener('click', async function() {
         const name = document.getElementById('reconcile-pair-name').value.trim();
         const accountA = document.getElementById('reconcile-pair-account-a').value;
@@ -381,18 +344,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await res.json();
             if (data.status === 'success') {
                 document.getElementById('reconcile-pair-modal').classList.remove('active');
-                loadReconcilePairs();
-                // Optionally auto-select the new pair
-                const select = document.getElementById('reconcile-pair-select');
-                if (select) {
-                    // find the option with the new id (we don't have it from response, but we can reload)
-                    // refresh the dropdown and select the last option
-                    setTimeout(() => {
-                        const opt = select.querySelector(`option[value="${data.id}"]`);
-                        if (opt) opt.selected = true;
-                        select.dispatchEvent(new Event('change'));
-                    }, 100);
-                }
+                loadReconcilePairsSummary(); // refresh the summary
             } else {
                 alert(data.error || 'Failed to add pair.');
             }
@@ -439,7 +391,7 @@ async function loadAccountSelects() {
 }
 
 async function loadReconcileAccountSelects() {
-    console.log('[RECONCILE] Loading account dropdowns');
+    console.log('[RECONCILE] Loading account dropdowns for add pair modal');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
             credentials: 'include',
@@ -448,143 +400,25 @@ async function loadReconcileAccountSelects() {
         if (!res.ok) throw new Error('Failed to load accounts');
         const data = await res.json();
         if (data.status === 'success') {
-            const select1 = document.getElementById('reconcile-account1');
-            const select2 = document.getElementById('reconcile-account2');
-
-            select1.innerHTML = '<option value="">Select Account</option>';
-            select2.innerHTML = '<option value="">Select Account</option>';
-            data.accounts.forEach(acc => {
-                const opt1 = document.createElement('option');
-                opt1.value = acc.id;
-                opt1.textContent = acc.code + ' - ' + acc.name;
-                select1.appendChild(opt1);
-
-                const opt2 = document.createElement('option');
-                opt2.value = acc.id;
-                opt2.textContent = acc.code + ' - ' + acc.name;
-                select2.appendChild(opt2);
-            });
-
-            // Optionally set default from a saved pair or fallback to first pair
-            const pairSelect = document.getElementById('reconcile-pair-select');
-            if (pairSelect && pairSelect.options.length > 1) {
-                // If there are pairs, select the first one (or the one marked as default)
-                const defaultOpt = pairSelect.querySelector('option[data-default="true"]') || pairSelect.options[1];
-                if (defaultOpt) {
-                    defaultOpt.selected = true;
-                    select1.value = defaultOpt.dataset.a;
-                    select2.value = defaultOpt.dataset.b;
-                }
-            } else {
-                // Fallback to Square Asset (27) and Sales Revenue - Square (2)
-                select1.value = '27';
-                select2.value = '2';
-            }
-
-            // Auto‑load comparison
-            if (select1.value && select2.value) {
-                loadReconcileDateRange(parseInt(select1.value), parseInt(select2.value), function() {
-                    loadReconciliationTimeline();
+            const selA = document.getElementById('reconcile-pair-account-a');
+            const selB = document.getElementById('reconcile-pair-account-b');
+            if (selA && selB) {
+                selA.innerHTML = '<option value="">Select Account</option>';
+                selB.innerHTML = '<option value="">Select Account</option>';
+                data.accounts.forEach(acc => {
+                    const optA = document.createElement('option');
+                    optA.value = acc.id;
+                    optA.textContent = acc.code + ' - ' + acc.name;
+                    selA.appendChild(optA);
+                    const optB = document.createElement('option');
+                    optB.value = acc.id;
+                    optB.textContent = acc.code + ' - ' + acc.name;
+                    selB.appendChild(optB);
                 });
             }
         }
     } catch (err) {
         console.error('[RECONCILE] Error loading accounts:', err);
-    }
-}
-
-// ============================================================
-// RECONCILIATION PAIR MANAGEMENT
-// ============================================================
-
-async function loadReconcilePairs() {
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (!res.ok) throw new Error('Failed to load pairs');
-        const data = await res.json();
-        if (data.status === 'success') {
-            const select = document.getElementById('reconcile-pair-select');
-            select.innerHTML = '<option value="">— Select a saved pair —</option>';
-            data.pairs.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.name || `${p.account_a_name} ↔ ${p.account_b_name}`;
-                opt.dataset.a = p.account_a_id;
-                opt.dataset.b = p.account_b_id;
-                select.appendChild(opt);
-            });
-            // If there's a selected pair, load it
-            const selectedId = select.value;
-            if (selectedId) {
-                const selectedOpt = select.querySelector(`option[value="${selectedId}"]`);
-                if (selectedOpt) {
-                    document.getElementById('reconcile-account1').value = selectedOpt.dataset.a;
-                    document.getElementById('reconcile-account2').value = selectedOpt.dataset.b;
-                    loadReconcileDateRange(selectedOpt.dataset.a, selectedOpt.dataset.b, () => loadReconciliationTimeline());
-                }
-            }
-        }
-    } catch (err) {
-        console.error('[RECONCILE] Error loading pairs:', err);
-    }
-}
-
-async function showAddPairModal() {
-    // Populate account dropdowns in modal
-    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
-        credentials: 'include',
-        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-    });
-    const data = await res.json();
-    if (data.status === 'success') {
-        const selA = document.getElementById('reconcile-pair-account-a');
-        const selB = document.getElementById('reconcile-pair-account-b');
-        selA.innerHTML = '<option value="">Select Account</option>';
-        selB.innerHTML = '<option value="">Select Account</option>';
-        data.accounts.forEach(acc => {
-            const optA = document.createElement('option');
-            optA.value = acc.id;
-            optA.textContent = acc.code + ' - ' + acc.name;
-            selA.appendChild(optA);
-            const optB = document.createElement('option');
-            optB.value = acc.id;
-            optB.textContent = acc.code + ' - ' + acc.name;
-            selB.appendChild(optB);
-        });
-        document.getElementById('reconcile-pair-name').value = '';
-        document.getElementById('reconcile-pair-modal').classList.add('active');
-    }
-}
-
-async function deleteSelectedPair() {
-    const select = document.getElementById('reconcile-pair-select');
-    const pairId = select.value;
-    if (!pairId) {
-        alert('Please select a pair to delete.');
-        return;
-    }
-    if (!confirm('Delete this pair?')) return;
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs/${pairId}`, {
-            method: 'DELETE',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (res.ok) {
-            loadReconcilePairs();
-            // Reset account selects
-            document.getElementById('reconcile-account1').value = '';
-            document.getElementById('reconcile-account2').value = '';
-            document.getElementById('reconcile-result').innerHTML = '<p class="text-muted" style="color: #000;">Select two accounts and click <strong>Compare</strong>.</p>';
-        } else {
-            alert('Failed to delete pair.');
-        }
-    } catch (err) {
-        console.error(err);
-        alert('Error deleting pair.');
     }
 }
 
@@ -668,6 +502,18 @@ function initReconcileSlider(minDate, maxDate) {
         if (startLabel) startLabel.textContent = formatReconDate(leftDate.toISOString().split('T')[0]);
         if (endLabel) endLabel.textContent = formatReconDate(rightDate.toISOString().split('T')[0]);
     });
+
+    // When slider changes, reload pairs summary and timeline
+    sliderContainer.noUiSlider.on('change', function() {
+        loadReconcilePairsSummary();
+        // Also refresh the currently selected timeline if a pair is selected
+        const selectedRow = document.querySelector('#reconcile-pairs-body tr.selected-row');
+        if (selectedRow) {
+            const accountA = parseInt(selectedRow.dataset.accountA);
+            const accountB = parseInt(selectedRow.dataset.accountB);
+            loadReconciliationTimeline(accountA, accountB);
+        }
+    });
 }
 
 function getReconcileDateRange() {
@@ -688,20 +534,148 @@ function getReconcileDateRange() {
 }
 
 // ============================================================
-// RECONCILIATION – Compare Two Accounts
+// RECONCILIATION – PAIRS SUMMARY (No New Endpoint)
 // ============================================================
 
-async function loadReconciliationTimeline() {
-    const account1 = document.getElementById('reconcile-account1').value;
-    const account2 = document.getElementById('reconcile-account2').value;
+async function loadReconcilePairsSummary() {
+    const tbody = document.getElementById('reconcile-pairs-body');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#000;">Loading pairs...</td></tr>';
 
-    if (!account1 || !account2) {
-        showToast('Please select both accounts.', 'warning');
+    try {
+        // 1. Fetch all pairs
+        const pairsRes = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!pairsRes.ok) throw new Error('Failed to fetch pairs');
+        const pairsData = await pairsRes.json();
+        if (pairsData.status !== 'success') {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px; color:#dc3545;">${pairsData.error || 'Error'}</td></tr>`;
+            return;
+        }
+        const pairs = pairsData.pairs;
+        if (!pairs || pairs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#000;">No saved pairs found. Add one using the button above.</td></tr>';
+            return;
+        }
+
+        // 2. Get current date range
+        const dateRange = getReconcileDateRange();
+        const start = dateRange.start;
+        const end = dateRange.end;
+
+        // 3. For each pair, fetch its timeline and compute net difference
+        const pairPromises = pairs.map(async (p) => {
+            const params = new URLSearchParams();
+            params.append('account1', p.account_a_id);
+            params.append('account2', p.account_b_id);
+            if (start) params.append('start', start);
+            if (end) params.append('end', end);
+            const timelineRes = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/timeline?${params.toString()}`, {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            const timelineData = await timelineRes.json();
+            let netA = 0, netB = 0;
+            if (timelineData.status === 'success' && timelineData.entries) {
+                // Compute net for each account
+                timelineData.entries.forEach(entry => {
+                    if (entry.account_name === p.account_a_name) {
+                        netA += entry.amount || 0;
+                    } else if (entry.account_name === p.account_b_name) {
+                        netB += entry.amount || 0;
+                    }
+                });
+            }
+            const diff = netA - netB;
+            return {
+                ...p,
+                net_a: netA,
+                net_b: netB,
+                difference: diff
+            };
+        });
+
+        const pairSummaries = await Promise.all(pairPromises);
+        renderPairsSummary(pairSummaries);
+
+        // After rendering, auto-select the first row and load its timeline
+        const firstRow = document.querySelector('#reconcile-pairs-body tr[data-pair-id]');
+        if (firstRow) {
+            firstRow.classList.add('selected-row');
+            selectedPairId = parseInt(firstRow.dataset.pairId);
+            const accountA = parseInt(firstRow.dataset.accountA);
+            const accountB = parseInt(firstRow.dataset.accountB);
+            loadReconciliationTimeline(accountA, accountB);
+        }
+
+    } catch (err) {
+        console.error('[RECONCILE] Error loading pairs summary:', err);
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px; color:#dc3545;">Error: ${err.message}</td></tr>`;
+    }
+}
+
+function renderPairsSummary(pairSummaries) {
+    const tbody = document.getElementById('reconcile-pairs-body');
+    if (!tbody) return;
+    if (!pairSummaries || pairSummaries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#000;">No pairs found.</td></tr>';
         return;
     }
-    if (account1 === account2) {
-        showToast('Please select two different accounts.', 'warning');
-        return;
+
+    let html = '';
+    pairSummaries.forEach(p => {
+        const diff = p.difference || 0;
+        const diffClass = Math.abs(diff) < 0.01 ? 'reconcile-amount-positive' : (diff > 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative');
+        const sign = diff > 0 ? '+' : '';
+        const rowClass = (selectedPairId === p.id) ? 'selected-row' : '';
+        html += `<tr class="${rowClass}" data-pair-id="${p.id}" data-account-a="${p.account_a_id}" data-account-b="${p.account_b_id}" style="cursor:pointer;">
+            <td style="color:#000;">${p.account_a_name}</td>
+            <td style="color:#000;">${p.account_b_name}</td>
+            <td style="color:#000;" class="${diffClass}">${sign}${diff.toFixed(2)}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+
+    // Add click handlers
+    tbody.querySelectorAll('tr[data-pair-id]').forEach(row => {
+        row.addEventListener('click', function() {
+            // Remove selected class from all rows
+            document.querySelectorAll('#reconcile-pairs-body tr').forEach(r => r.classList.remove('selected-row'));
+            this.classList.add('selected-row');
+            selectedPairId = parseInt(this.dataset.pairId);
+            const accountA = parseInt(this.dataset.accountA);
+            const accountB = parseInt(this.dataset.accountB);
+            loadReconciliationTimeline(accountA, accountB);
+        });
+    });
+}
+
+// ============================================================
+// RECONCILIATION – TIMELINE
+// ============================================================
+
+async function loadReconciliationTimeline(account1, account2) {
+    if (!account1 || !account2) {
+        // Try to get from selected row
+        const selectedRow = document.querySelector('#reconcile-pairs-body tr.selected-row');
+        if (selectedRow) {
+            account1 = parseInt(selectedRow.dataset.accountA);
+            account2 = parseInt(selectedRow.dataset.accountB);
+        } else {
+            // try first row
+            const firstRow = document.querySelector('#reconcile-pairs-body tr[data-pair-id]');
+            if (firstRow) {
+                account1 = parseInt(firstRow.dataset.accountA);
+                account2 = parseInt(firstRow.dataset.accountB);
+                firstRow.classList.add('selected-row');
+                selectedPairId = parseInt(firstRow.dataset.pairId);
+            } else {
+                document.getElementById('reconcile-result').innerHTML = '<p class="text-muted" style="color: #000;">No pair selected.</p>';
+                return;
+            }
+        }
     }
 
     // Ensure slider is initialised
@@ -794,16 +768,40 @@ function renderReconciliationTimeline(data) {
     resultDiv.innerHTML = html;
 }
 
-function resetReconciliationTimeline() {
-    document.getElementById('reconcile-account1').value = '';
-    document.getElementById('reconcile-account2').value = '';
-    document.getElementById('reconcile-result').innerHTML = '<p class="text-muted" style="color: #000;">Select two accounts and click <strong>Compare</strong>.</p>';
-    
-    // Reset slider if accounts are now selected
-    const account1 = document.getElementById('reconcile-account1').value;
-    const account2 = document.getElementById('reconcile-account2').value;
-    if (account1 && account2 && reconcileSlider) {
-        loadReconcileDateRange(account1, account2);
+// ============================================================
+// RECONCILIATION – ADD / DELETE PAIR
+// ============================================================
+
+function showAddPairModal() {
+    // The modal is already in HTML; we just need to populate the account dropdowns
+    loadReconcileAccountSelects();
+    document.getElementById('reconcile-pair-name').value = '';
+    document.getElementById('reconcile-pair-modal').classList.add('active');
+}
+
+async function deleteSelectedPair() {
+    const selectedRow = document.querySelector('#reconcile-pairs-body tr.selected-row');
+    if (!selectedRow) {
+        alert('Please select a pair to delete.');
+        return;
+    }
+    const pairId = parseInt(selectedRow.dataset.pairId);
+    if (!confirm('Delete this pair?')) return;
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs/${pairId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (res.ok) {
+            selectedPairId = null;
+            loadReconcilePairsSummary();
+        } else {
+            alert('Failed to delete pair.');
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Error deleting pair.');
     }
 }
 
@@ -1481,35 +1479,35 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     console.log('[MODAL] SHOW MONTHLY TRANSACTIONS CALLED');
     console.log('[MODAL] Parameters:', { month, accountId, accountName, excludeOrders, accountCode });
     console.log('[MODAL] ==================================================');
-    
+
     try {
         const modal = document.getElementById('monthly-tx-modal');
         console.log('[MODAL] 1. Modal element:', modal ? 'FOUND' : 'MISSING', modal);
-        
+
         if (!modal) {
             console.error('[MODAL] ❌ Modal element not found!');
             showToast('Error: Modal element not found', 'error');
             return;
         }
-        
+
         const body = document.getElementById('modal-body');
         console.log('[MODAL] 2. Body element:', body ? 'FOUND' : 'MISSING', body);
-        
+
         if (!body) {
             console.error('[MODAL] ❌ Body element not found!');
             showToast('Error: Modal body not found', 'error');
             return;
         }
-        
+
         const title = document.getElementById('modal-title');
         console.log('[MODAL] 3. Title element:', title ? 'FOUND' : 'MISSING', title);
-        
+
         if (!title) {
             console.error('[MODAL] ❌ Title element not found!');
             showToast('Error: Modal title not found', 'error');
             return;
         }
-        
+
         const [year, monthNum] = month.split('-');
         const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
         const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
@@ -1520,20 +1518,20 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
             return `${m}/${day}/${y}`;
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
-        
+
         const idDisplay = accountId ? ` (ID: ${accountId})` : (accountCode ? ` (Code: ${accountCode})` : '');
         const displayName = `${accountName}${idDisplay} - ${dateRange}`;
         title.textContent = displayName;
         console.log('[MODAL] 4. Title set to:', title.textContent);
-        
+
         body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
         console.log('[MODAL] 5. Body set to loading state');
-        
+
         modal.classList.add('active');
         console.log('[MODAL] 6. Active class added, modal should be visible');
         console.log('[MODAL] 7. Modal classes after add:', modal.className);
         console.log('[MODAL] 8. Modal style.display:', modal.style.display);
-        
+
         let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
         if (accountId) {
             url += `&account_id=${accountId}`;
@@ -1557,7 +1555,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
             console.log('[MODAL] 11a. Data status:', data.status);
             console.log('[MODAL] 11b. Data transactions count:', data.transactions ? data.transactions.length : 0);
             console.log('[MODAL] 11c. Full data sample (first 2):', data.transactions ? data.transactions.slice(0, 2) : 'none');
-            
+
             if (data.status === 'success' && data.transactions) {
                 console.log('[MODAL] 12. Success! Loading', data.transactions.length, 'transactions');
                 renderModalTransactions(data.transactions, accountName, dateRange, accountId);
@@ -1571,7 +1569,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
             console.error('[MODAL] Error stack:', err.stack);
             body.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
         });
-        
+
         console.log('[MODAL] ===== SHOW MONTHLY TRANSACTIONS END =====');
     } catch (err) {
         console.error('[MODAL] ❌ CRITICAL ERROR in showMonthlyTransactions:', err);
@@ -1588,14 +1586,14 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     console.log('[MODAL] dateRange:', dateRange);
     console.log('[MODAL] accountId:', accountId);
     console.log('[MODAL] ==================================================');
-    
+
     const body = document.getElementById('modal-body');
     if (!body) {
         console.error('[MODAL] ❌ Body not found for rendering!');
         return;
     }
     console.log('[MODAL] Body element found');
-    
+
     if (!transactions || transactions.length === 0) {
         console.log('[MODAL] No transactions to render');
         body.innerHTML = '<p>No transactions found for this period.</p>';
@@ -1637,28 +1635,28 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
 
     const groupedList = Object.values(grouped);
     console.log('[MODAL] Grouped into', groupedList.length, 'entries');
-    
-    const isRevenueAccount = accountName && 
-        (accountName.toLowerCase().includes('revenue') || 
+
+    const isRevenueAccount = accountName &&
+        (accountName.toLowerCase().includes('revenue') ||
          accountName.toLowerCase().includes('sales') ||
          accountName.toLowerCase().includes('income'));
     console.log('[MODAL] isRevenueAccount:', isRevenueAccount);
-    
+
     let total = 0;
     groupedList.forEach(g => {
         total += g.net;
     });
-    
+
     let displayTotal = isRevenueAccount ? -total : total;
     console.log('[MODAL] Total net amount:', total, 'displayTotal:', displayTotal);
-    
+
     let html = `<div class="modal-summary">
         <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}${accountId ? ` (ID: ${accountId})` : ''}</div>
         <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
         <div class="summary-item"><strong>Transactions:</strong> ${groupedList.length}</div>
         <div class="summary-item"><strong>Total:</strong> <span style="font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}$${displayTotal.toFixed(2)}</span></div>
     </div>`;
-    
+
     html += `<table>
         <thead><tr>
             <th style="width:90px; min-width:80px; white-space:nowrap;">Date</th>
@@ -1668,11 +1666,11 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
             <th style="width:90px; text-align:center;">Actions</th>
         </tr></thead>
         <tbody>`;
-    
+
     let rowCount = 0;
     groupedList.forEach(g => {
         rowCount++;
-        
+
         let displayAmount = g.net;
         if (isRevenueAccount) {
             displayAmount = -g.net;
@@ -1681,10 +1679,10 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         const amountClass = isPositive ? 'debit' : (displayAmount < 0 ? 'credit' : '');
         const displayAmountStr = displayAmount !== 0 ? '$' + Math.abs(displayAmount).toFixed(2) : '';
         const sign = displayAmount > 0 ? '+' : (displayAmount < 0 ? '-' : '');
-        
+
         const entryId = g.journal_entry_id || g.source_id;
         console.log('[MODAL] Row entryId:', entryId, 'journal_entry_id:', g.journal_entry_id, 'source_id:', g.source_id);
-        
+
         html += `<tr>
             <td style="white-space:nowrap;">${g.transaction_date}</td>
             <td>${g.description || ''}</td>
@@ -1693,9 +1691,9 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
             <td style="text-align:center;">${entryId ? `<button class="btn btn-sm btn-warning" onclick="unpostTransaction(${typeof entryId === 'string' ? `'${entryId}'` : entryId})"><i class="fas fa-undo"></i></button>` : ''}</td>
         </tr>`;
     });
-    
+
     console.log('[MODAL] Rendered', rowCount, 'rows in the table');
-    
+
     html += `<tr class="total-row">
         <td colspan="3"><strong>Total</strong></td>
         <td style="text-align:right; font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}${displayTotal !== 0 ? '$' + displayTotal.toFixed(2) : ''}</td>
@@ -1709,7 +1707,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
 
 async function unpostTransaction(entryId) {
     console.log('[MODAL] Unposting transaction:', entryId);
-    
+
     if (!confirm(`Are you sure you want to unpost journal entry #${entryId}?\n\nThis will delete the journal entry and, if it was a bank transaction, mark it as unprocessed.`)) {
         return;
     }
@@ -1760,18 +1758,18 @@ async function unpostTransaction(entryId) {
 function showCOGSCalculation(month) {
     console.log('[COGS] ===== SHOW COGS CALCULATION START =====');
     console.log('[COGS] Month:', month);
-    
+
     try {
         const modal = document.getElementById('monthly-tx-modal');
         const body = document.getElementById('modal-body');
         const title = document.getElementById('modal-title');
-        
+
         if (!modal || !body || !title) {
             console.error('[COGS] Modal elements not found');
             showToast('Error: Modal elements not found', 'error');
             return;
         }
-        
+
         const [year, monthNum] = month.split('-');
         const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
         const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
@@ -1782,14 +1780,14 @@ function showCOGSCalculation(month) {
             return `${m}/${day}/${y}`;
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
-        
+
         title.textContent = `COGS Calculation - ${dateRange}`;
         body.innerHTML = '<div class="modal-loading">Loading COGS calculation...</div>';
         modal.classList.add('active');
-        
+
         const url = `${AppConfig.baseUrl}/api/accounting/cogs-calculation?month=${month}`;
         console.log('[COGS] Fetching URL:', url);
-        
+
         fetch(url, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
@@ -1811,7 +1809,7 @@ function showCOGSCalculation(month) {
             console.error('[COGS] Fetch error:', err);
             body.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
         });
-        
+
         console.log('[COGS] ===== SHOW COGS CALCULATION END =====');
     } catch (err) {
         console.error('[COGS] CRITICAL ERROR:', err);
@@ -1823,15 +1821,15 @@ function renderCOGSCalculation(data, dateRange) {
     console.log('[COGS] Rendering COGS calculation');
     const body = document.getElementById('modal-body');
     if (!body) return;
-    
+
     const { total_cogs, records, batch_allocations } = data;
-    
+
     let html = `<div class="modal-summary">
         <div class="summary-item"><strong>COGS Calculation</strong></div>
         <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
         <div class="summary-item"><strong>Total COGS:</strong> <span style="color:#dc3545;font-weight:bold;">$${total_cogs.toFixed(2)}</span></div>
     </div>`;
-    
+
     html += `<h4 style="margin:15px 0 10px 0; color:#000;">Records Sold</h4>`;
     if (records && records.length > 0) {
         html += `<table>
@@ -1862,7 +1860,7 @@ function renderCOGSCalculation(data, dateRange) {
     } else {
         html += '<p class="text-muted">No records sold this month.</p>';
     }
-    
+
     html += `<h4 style="margin:15px 0 10px 0; color:#000;">Batch Allocations</h4>`;
     if (batch_allocations && batch_allocations.length > 0) {
         html += `<table>
@@ -1889,14 +1887,14 @@ function renderCOGSCalculation(data, dateRange) {
     } else {
         html += '<p class="text-muted">No batch allocations this month.</p>';
     }
-    
+
     const assumedTotal = total_cogs - (records?.reduce((sum, r) => sum + (r.cogs || 0), 0) || 0) - (batch_allocations?.reduce((sum, b) => sum + (b.allocated || 0), 0) || 0);
     if (assumedTotal > 0.01) {
         html += `<div style="margin-top:15px; padding:10px; background:#fff3cd; border-radius:4px; color:#856404;">
             <strong>⚠️ Assumption-based COGS:</strong> $${assumedTotal.toFixed(2)} (records without batch allocation used assumption rates)
         </div>`;
     }
-    
+
     body.innerHTML = html;
 }
 
@@ -1907,40 +1905,40 @@ function renderCOGSCalculation(data, dateRange) {
 function showMonthBreakdownModal(month, chartData, chartType) {
     console.log('[BREAKDOWN] ===== SHOW MONTH BREAKDOWN START =====');
     console.log('[BREAKDOWN] 1. Called with:', { month, chartType });
-    
+
     try {
         const modal = document.getElementById('breakdown-modal');
         console.log('[BREAKDOWN] 2. Modal element:', modal);
-        
+
         if (!modal) {
             console.error('[BREAKDOWN] ❌ Modal element not found!');
             showToast('Error: Modal element not found', 'error');
             return;
         }
-        
+
         const body = document.getElementById('breakdown-modal-body');
         console.log('[BREAKDOWN] 3. Body element:', body);
-        
+
         if (!body) {
             console.error('[BREAKDOWN] ❌ Body element not found!');
             showToast('Error: Modal body not found', 'error');
             return;
         }
-        
+
         const title = document.getElementById('breakdown-modal-title');
         console.log('[BREAKDOWN] 4. Title element:', title);
-        
+
         if (!title) {
             console.error('[BREAKDOWN] ❌ Title element not found!');
             showToast('Error: Modal title not found', 'error');
             return;
         }
-        
+
         currentBreakdownMonths = chartData.months || [];
         currentBreakdownMonthIndex = currentBreakdownMonths.indexOf(month);
         currentBreakdownChartType = chartType;
         currentBreakdownMonth = month;
-        
+
         const [year, monthNum] = month.split('-');
         const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
         const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
@@ -1951,7 +1949,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             return `${m}/${day}/${y}`;
         };
         const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
-        
+
         const totalMonths = currentBreakdownMonths.length;
         const navHtml = `
             <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px; justify-content:center; flex-wrap:wrap;">
@@ -1971,9 +1969,9 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 Click any bar to see transactions
             </div>
         `;
-        
+
         body.innerHTML = navHtml;
-        
+
         document.getElementById('breakdown-prev-month')?.addEventListener('click', function() {
             if (currentBreakdownMonthIndex > 0) {
                 const newMonth = currentBreakdownMonths[currentBreakdownMonthIndex - 1];
@@ -1981,7 +1979,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 showMonthBreakdownModal(newMonth, chartData, chartType);
             }
         });
-        
+
         document.getElementById('breakdown-next-month')?.addEventListener('click', function() {
             if (currentBreakdownMonthIndex < currentBreakdownMonths.length - 1) {
                 const newMonth = currentBreakdownMonths[currentBreakdownMonthIndex + 1];
@@ -1989,40 +1987,40 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 showMonthBreakdownModal(newMonth, chartData, chartType);
             }
         });
-        
+
         const monthData = chartData.account_breakdown[month] || {};
         console.log('[BREAKDOWN] 6. Month data:', monthData);
-        
-        const netLabel = Object.keys(monthData).find(name => 
+
+        const netLabel = Object.keys(monthData).find(name =>
             name === 'Net' || name === 'Net Income' || name === 'Net Cash'
         );
-        const cogsLabel = Object.keys(monthData).find(name => 
+        const cogsLabel = Object.keys(monthData).find(name =>
             name === 'COGS' || name === 'Cost of Goods Sold'
         );
-        
-        let labels = Object.keys(monthData).filter(name => 
+
+        let labels = Object.keys(monthData).filter(name =>
             name !== netLabel && name !== cogsLabel
         ).sort();
         if (cogsLabel) labels.push(cogsLabel);
         if (netLabel) labels.push(netLabel);
-        
+
         const values = labels.map(k => monthData[k] || 0);
         console.log('[BREAKDOWN] 7. Labels:', labels.length, 'Values:', values.length);
-        
+
         const labelsWithIds = labels.map((label, i) => {
             const trimmed = label.trim();
             const norm = trimmed.toLowerCase();
             let accountId = accountNameToId[norm] || accountNameToId[trimmed] || null;
-            
+
             if (!accountId) {
                 const found = bankAccounts.find(a => a.name === trimmed);
                 if (found) accountId = found.id;
             }
-            
+
             const isCOGS = label === 'COGS' || label === 'Cost of Goods Sold';
-            
+
             console.log('[BREAKDOWN] Mapping label:', label, '-> accountId:', accountId, 'isCOGS:', isCOGS);
-            
+
             return {
                 label: label,
                 value: values[i] || 0,
@@ -2030,34 +2028,34 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 isCOGS: isCOGS
             };
         });
-        
-        const filtered = labelsWithIds.filter(item => 
+
+        const filtered = labelsWithIds.filter(item =>
             Math.abs(item.value) > 0.01 || item.isCOGS || item.label === netLabel
         );
         console.log('[BREAKDOWN] 8. Filtered to', filtered.length, 'items');
         console.log('[BREAKDOWN] Filtered items:', filtered.map(f => ({ label: f.label, accountId: f.accountId, isCOGS: f.isCOGS, value: f.value })));
-        
+
         if (filtered.length === 0) {
             document.getElementById('breakdown-chart-container').innerHTML = '<p style="text-align:center; padding:40px; color:#333;">No data for this month.</p>';
             return;
         }
-        
+
         const canvas = document.getElementById('breakdown-chart-canvas');
         console.log('[BREAKDOWN] 9. Canvas element:', canvas);
-        
+
         if (!canvas) {
             console.error('[BREAKDOWN] ❌ Canvas not found!');
             document.getElementById('breakdown-chart-container').innerHTML = '<p style="text-align:center; padding:40px; color:#dc3545;">Error: Canvas not found</p>';
             return;
         }
-        
+
         const ctx = canvas.getContext('2d');
-        
+
         if (window._breakdownChart) {
             window._breakdownChart.destroy();
             window._breakdownChart = null;
         }
-        
+
         const barColors = filtered.map(item => {
             if (item.label === netLabel) {
                 return 'rgba(111, 66, 193, 0.85)';
@@ -2076,9 +2074,9 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             }
             return item.value >= 0 ? '#28a745' : '#dc3545';
         });
-        
+
         console.log('[BREAKDOWN] 10. Creating bar chart with', filtered.length, 'bars');
-        
+
         const chart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -2134,28 +2132,28 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 onClick: function(e, elements) {
                     console.log('[BREAKDOWN] Bar chart click, elements:', elements.length);
                     if (elements.length === 0) return;
-                    
+
                     const element = elements[0];
                     const index = element.index;
                     const item = filtered[index];
-                    
+
                     console.log('[BREAKDOWN] Bar clicked:', item.label, 'value:', item.value, 'accountId:', item.accountId, 'isCOGS:', item.isCOGS);
-                    
+
                     if (Math.abs(item.value) < 0.01) {
                         console.log('[BREAKDOWN] Value too small, ignoring');
                         return;
                     }
-                    
+
                     document.getElementById('monthly-tx-modal')?.classList.remove('active');
-                    
+
                     if (item.isCOGS) {
                         console.log('[BREAKDOWN] COGS bar clicked - showing COGS calculation');
                         showCOGSCalculation(month);
                         return;
                     }
-                    
+
                     const excludeOrders = chartType === 'pl';
-                    
+
                     if (item.accountId) {
                         console.log('[BREAKDOWN] Using account ID:', item.accountId);
                         showMonthlyTransactions(month, item.accountId, item.label, excludeOrders);
@@ -2174,14 +2172,14 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                 }
             }
         });
-        
+
         window._breakdownChart = chart;
         console.log('[BREAKDOWN] 11. Chart created successfully');
-        
+
         modal.classList.add('active');
         console.log('[BREAKDOWN] 12. Modal activated');
         console.log('[BREAKDOWN] ===== SHOW MONTH BREAKDOWN END =====');
-        
+
     } catch (err) {
         console.error('[BREAKDOWN] ❌ CRITICAL ERROR:', err);
         console.error('[BREAKDOWN] Stack:', err.stack);
@@ -2201,7 +2199,7 @@ function renderLineChart(canvasId, data, options = {}) {
     console.log('[CHART] Data status:', data.status);
     console.log('[CHART] Months count:', data.months ? data.months.length : 0);
     console.log('[CHART] Account breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown).length : 0);
-    
+
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
         console.error('[CHART] ❌ Canvas not found:', canvasId);
@@ -2213,7 +2211,7 @@ function renderLineChart(canvasId, data, options = {}) {
     const { months, account_breakdown } = data;
     console.log('[CHART] Months:', months ? months.length : 0);
     console.log('[CHART] Account breakdown keys:', account_breakdown ? Object.keys(account_breakdown).length : 0);
-    
+
     if (!months || months.length === 0) {
         console.log('[CHART] No data to display');
         return null;
@@ -2221,7 +2219,7 @@ function renderLineChart(canvasId, data, options = {}) {
 
     // Log all months
     console.log('[CHART] Months list:', months);
-    
+
     // Log all accounts in the data
     const allAccountNames = new Set();
     months.forEach(m => {
@@ -2245,16 +2243,16 @@ function renderLineChart(canvasId, data, options = {}) {
 
     const accountNames = Array.from(allAccountNames).sort();
     console.log('[CHART] All accounts (sorted):', accountNames);
-    
+
     const netLabel = accountNames.find(name => name === 'Net' || name === 'Net Income' || name === 'Net Cash');
     console.log('[CHART] Net label:', netLabel);
-    
+
     const regularAccounts = accountNames.filter(name => name !== netLabel);
     console.log('[CHART] Regular accounts (non-Net):', regularAccounts);
-    
+
     const revenueKeywords = ['revenue', 'sales', 'income', 'shipping', 'fees', 'gift'];
     const expenseKeywords = ['cogs', 'expense', 'cost', 'postage', 'rent', 'utilities', 'payroll', 'amortization', 'insurance', 'supplies'];
-    
+
     const sortedAccounts = [...regularAccounts].sort((a, b) => {
         const aLower = a.toLowerCase();
         const bLower = b.toLowerCase();
@@ -2262,7 +2260,7 @@ function renderLineChart(canvasId, data, options = {}) {
         const bIsRevenue = revenueKeywords.some(k => bLower.includes(k));
         const aIsExpense = expenseKeywords.some(k => aLower.includes(k));
         const bIsExpense = expenseKeywords.some(k => bLower.includes(k));
-        
+
         if (aIsRevenue && !bIsRevenue) return -1;
         if (!aIsRevenue && bIsRevenue) return 1;
         if (aIsExpense && !bIsExpense) return 1;
@@ -2275,11 +2273,11 @@ function renderLineChart(canvasId, data, options = {}) {
     let revenueCount = 0;
     let expenseCount = 0;
     let otherCount = 0;
-    
+
     const revenueColors = ['#28a745', '#20c997', '#8bc34a', '#4caf50', '#009688'];
     const expenseColors = ['#dc3545', '#e74c3c', '#ff6b6b', '#c0392b', '#e67e22'];
     const otherColors = ['#007bff', '#17a2b8', '#6f42c1', '#fd7e14', '#e83e8c', '#6c757d', '#0dcaf0', '#d63384'];
-    
+
     const lineDashStyles = [
         [],           // solid
         [5, 5],       // dashed
@@ -2288,7 +2286,7 @@ function renderLineChart(canvasId, data, options = {}) {
         [8, 4, 2, 4], // dash-dot-dot
         [3, 3],       // short dash
     ];
-    
+
     const pointStyles = ['circle', 'rect', 'triangle', 'diamond', 'cross', 'crossRot', 'star', 'line', 'dash'];
 
     console.log('[CHART] Building datasets for', sortedAccounts.length, 'accounts');
@@ -2298,28 +2296,28 @@ function renderLineChart(canvasId, data, options = {}) {
             const monthData = account_breakdown[m] || {};
             return monthData[accountName] || 0;
         });
-        
+
         console.log(`[CHART] Account "${accountName}" values:`, values);
-        
+
         if (values.every(v => Math.abs(v) < 0.01)) {
             console.log(`[CHART] Skipping zero account: "${accountName}" (all values < 0.01)`);
             return;
         }
-        
+
         console.log(`[CHART] Processing account with values: "${accountName}" ->`, values);
-        
+
         const aLower = accountName.toLowerCase();
         const isRevenue = revenueKeywords.some(k => aLower.includes(k));
         const isExpense = expenseKeywords.some(k => aLower.includes(k));
         console.log(`[CHART] Account "${accountName}" - isRevenue: ${isRevenue}, isExpense: ${isExpense}`);
-        
+
         let borderColor, backgroundColor, borderDash, borderWidth, pointStyle, pointRadius;
-        
+
         const styleIdx = idx % 6;
-        const colorIdx = isRevenue ? revenueCount % revenueColors.length : 
-                         isExpense ? expenseCount % expenseColors.length : 
+        const colorIdx = isRevenue ? revenueCount % revenueColors.length :
+                         isExpense ? expenseCount % expenseColors.length :
                          otherCount % otherColors.length;
-        
+
         if (isRevenue) {
             borderColor = revenueColors[colorIdx];
             backgroundColor = borderColor + '40';
@@ -2348,7 +2346,7 @@ function renderLineChart(canvasId, data, options = {}) {
             otherCount++;
             console.log(`[CHART] Account "${accountName}" classified as OTHER, color: ${borderColor}`);
         }
-        
+
         datasets.push({
             label: accountName,
             data: values,
@@ -2372,7 +2370,7 @@ function renderLineChart(canvasId, data, options = {}) {
             return monthData[netLabel] || 0;
         });
         console.log(`[CHART] Net "${netLabel}" values:`, netValues);
-        
+
         if (!netValues.every(v => Math.abs(v) < 0.01)) {
             datasets.push({
                 label: netLabel,
@@ -2432,7 +2430,7 @@ function renderLineChart(canvasId, data, options = {}) {
     }
 
     console.log('[CHART] Creating Chart.js instance...');
-    
+
     const chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -2523,55 +2521,55 @@ function renderLineChart(canvasId, data, options = {}) {
 
     // X-axis click handler
     console.log('[CHART] Adding x-axis click handler');
-    
+
     canvas.addEventListener('click', function(e) {
         console.log('[CHART-X] Canvas click detected');
         try {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
-            
+
             const chartInstance = Chart.getChart(canvas);
             if (!chartInstance) {
                 console.log('[CHART-X] No chart instance found');
                 return;
             }
-            
+
             const chartArea = chartInstance.chartArea;
             if (!chartArea) {
                 console.log('[CHART-X] No chart area found');
                 return;
             }
-            
+
             const chartHeight = chartArea.bottom - chartArea.top;
             const yPos = (y - chartArea.top) / chartHeight;
-            
+
             if (yPos < 0.8 || yPos > 1.1) {
                 console.log('[CHART-X] Click not on x-axis (yPos:', yPos, ')');
                 return;
             }
-            
+
             console.log('[CHART-X] Click on x-axis!');
-            
+
             const xScale = chartInstance.scales.x;
             if (!xScale) {
                 console.log('[CHART-X] No x scale found');
                 return;
             }
-            
+
             const pixelsPerTick = (xScale.right - xScale.left) / (months.length || 1);
             const clickedIndex = Math.round((x - xScale.left) / pixelsPerTick);
-            
+
             console.log('[CHART-X] Clicked index:', clickedIndex, 'months length:', months.length);
-            
+
             if (clickedIndex >= 0 && clickedIndex < months.length) {
                 const month = months[clickedIndex];
                 console.log('[CHART-X] ✅ Month detected:', month);
-                
+
                 document.getElementById('monthly-tx-modal')?.classList.remove('active');
-                
-                const dataToUse = canvasId === 'pl-chart' ? plChartData : 
-                                 canvasId === 'cash-flow-chart' ? cashFlowChartData : 
+
+                const dataToUse = canvasId === 'pl-chart' ? plChartData :
+                                 canvasId === 'cash-flow-chart' ? cashFlowChartData :
                                  bsChartData;
                 if (dataToUse) {
                     console.log('[CHART-X] Showing breakdown for month:', month);
@@ -2609,12 +2607,12 @@ function renderLineChart(canvasId, data, options = {}) {
 
 function expandChart(canvasId) {
     console.log('[EXPAND] Expanding chart:', canvasId);
-    
+
     if (canvasId !== 'cash-flow-chart') {
         console.log('[EXPAND] Only Cash Flow chart can be expanded');
         return;
     }
-    
+
     if (isExpanded) {
         collapseChart();
         return;
@@ -2636,7 +2634,7 @@ function expandChart(canvasId) {
 
     const container = document.createElement('div');
     container.id = 'expanded-chart-container';
-    
+
     container.innerHTML = `
         <div class="chart-header">
             <h3>Cash Flow - Expanded</h3>
@@ -2648,12 +2646,12 @@ function expandChart(canvasId) {
             <canvas id="expanded-chart-canvas"></canvas>
         </div>
     `;
-    
+
     document.body.appendChild(container);
 
     const newCanvas = document.getElementById('expanded-chart-canvas');
     const newCtx = newCanvas.getContext('2d');
-    
+
     const expandedChart = new Chart(newCtx, {
         type: 'line',
         data: chart.data,
@@ -2720,7 +2718,7 @@ function expandChart(canvasId) {
     });
 
     window._expandedChart = expandedChart;
-    
+
     const resizeObserver = new ResizeObserver(() => {
         if (expandedChart) expandedChart.resize();
     });
@@ -2729,33 +2727,33 @@ function expandChart(canvasId) {
         resizeObserver.observe(chartBody);
     }
     window._expandedResizeObserver = resizeObserver;
-    
+
     console.log('[EXPAND] Chart expanded');
 }
 
 function collapseChart() {
     console.log('[EXPAND] Collapsing chart');
     isExpanded = false;
-    
+
     if (window._expandedChart) {
         window._expandedChart.destroy();
         window._expandedChart = null;
     }
-    
+
     if (window._expandedResizeObserver) {
         window._expandedResizeObserver.disconnect();
         window._expandedResizeObserver = null;
     }
-    
+
     const container = document.getElementById('expanded-chart-container');
     if (container) {
         container.remove();
     }
-    
+
     if (cashFlowChartInstance) {
         try { cashFlowChartInstance.resize(); } catch(e) {}
     }
-    
+
     console.log('[EXPAND] Chart collapsed');
 }
 
@@ -2765,19 +2763,19 @@ function collapseChart() {
 
 async function loadCashFlow() {
     console.log('[CASHFLOW] ===== LOAD CASH FLOW START =====');
-    
+
     const startInput = document.getElementById('cash-flow-start');
     const endInput = document.getElementById('cash-flow-end');
     const start = startInput.value;
     const end = endInput.value;
     console.log('[CASHFLOW] Start month:', start);
     console.log('[CASHFLOW] End month:', end);
-    
+
     if (!start || !end) {
         alert('Please select both start and end months.');
         return;
     }
-    
+
     if (bankAccounts.length === 0) {
         console.log('[CASHFLOW] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
@@ -2790,7 +2788,7 @@ async function loadCashFlow() {
         const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
         const startStr = startDate.toISOString().slice(0, 10);
         const endStr = lastDay.toISOString().slice(0, 10);
-        
+
         console.log('[CASHFLOW] Fetching data from API with start:', startStr, 'end:', endStr);
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${startStr}&end=${endStr}`, {
             credentials: 'include',
@@ -2799,13 +2797,13 @@ async function loadCashFlow() {
         if (!res.ok) throw new Error('Failed to fetch cash flow data');
         const data = await res.json();
         console.log('[CASHFLOW] API response:', data);
-        
+
         if (data.status === 'success') {
             console.log('[CASHFLOW] Data loaded, months:', data.months ? data.months.length : 0);
-            
+
             allCashFlowData = data;
             cashFlowMonths = data.months || [];
-            
+
             const dateRangeEl = document.getElementById('cash-flow-date-range');
             if (dateRangeEl && cashFlowMonths.length > 0) {
                 const formatMonth = (m) => {
@@ -2816,7 +2814,7 @@ async function loadCashFlow() {
                 dateRangeEl.textContent = `Showing ${formatMonth(cashFlowMonths[0])} to ${formatMonth(cashFlowMonths[cashFlowMonths.length - 1])}`;
                 dateRangeEl.style.display = 'block';
             }
-            
+
             renderLineChart('cash-flow-chart', data, { type: 'cashflow' });
         } else {
             console.error('[CASHFLOW] Error:', data.error);
@@ -2837,27 +2835,27 @@ async function loadMonthlyPL() {
     console.log('[MONTHLY-PL] ==================================================');
     console.log('[MONTHLY-PL] LOAD MONTHLY P&L START');
     console.log('[MONTHLY-PL] Timestamp:', new Date().toISOString());
-    
+
     const startInput = document.getElementById('pl-start');
     const endInput = document.getElementById('pl-end');
-    
+
     console.log('[MONTHLY-PL] Start input element:', startInput);
     console.log('[MONTHLY-PL] End input element:', endInput);
     console.log('[MONTHLY-PL] Start input value:', startInput ? startInput.value : 'NULL');
     console.log('[MONTHLY-PL] End input value:', endInput ? endInput.value : 'NULL');
-    
+
     const start = startInput ? startInput.value : '';
     const end = endInput ? endInput.value : '';
-    
+
     console.log('[MONTHLY-PL] Start month:', start);
     console.log('[MONTHLY-PL] End month:', end);
-    
+
     if (!start || !end) {
         console.log('[MONTHLY-PL] ❌ Missing start or end month. Start:', start, 'End:', end);
         alert('Please select both start and end months.');
         return;
     }
-    
+
     if (bankAccounts.length === 0) {
         console.log('[MONTHLY-PL] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
@@ -2870,40 +2868,40 @@ async function loadMonthlyPL() {
         const startDate = new Date(start + '-01');
         const endDate = new Date(end + '-01');
         const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
-        
+
         console.log('[MONTHLY-PL] startDate:', startDate.toISOString());
         console.log('[MONTHLY-PL] endDate:', endDate.toISOString());
         console.log('[MONTHLY-PL] lastDay:', lastDay.toISOString());
-        
+
         const startStr = startDate.toISOString().slice(0, 10);
         const endStr = lastDay.toISOString().slice(0, 10);
-        
+
         console.log('[MONTHLY-PL] ✅ Calculated start date:', startStr);
         console.log('[MONTHLY-PL] ✅ Calculated end date:', endStr);
-        
+
         const url = `${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${startStr}&end=${endStr}`;
         console.log('[MONTHLY-PL] 🔗 Fetching URL:', url);
-        
+
         const res = await fetch(url, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
-        
+
         console.log('[MONTHLY-PL] 📡 Fetch response status:', res.status);
         console.log('[MONTHLY-PL] 📡 Fetch response ok:', res.ok);
-        
+
         if (!res.ok) {
             console.error('[MONTHLY-PL] ❌ Fetch failed with status:', res.status);
             throw new Error('Failed to fetch P&L data');
         }
-        
+
         const data = await res.json();
         console.log('[MONTHLY-PL] 📦 Data received:');
         console.log('[MONTHLY-PL]   - status:', data.status);
         console.log('[MONTHLY-PL]   - months count:', data.months ? data.months.length : 0);
         console.log('[MONTHLY-PL]   - months:', data.months ? JSON.stringify(data.months) : 'none');
         console.log('[MONTHLY-PL]   - account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
-        
+
         if (data.account_breakdown && data.account_breakdown['2026-07']) {
             console.log('[MONTHLY-PL] ✅ July 2026 data found:');
             console.log('[MONTHLY-PL]   - July accounts:', Object.keys(data.account_breakdown['2026-07']));
@@ -2912,14 +2910,14 @@ async function loadMonthlyPL() {
             console.log('[MONTHLY-PL] ❌ July 2026 data NOT FOUND in API response');
             console.log('[MONTHLY-PL] Available months:', data.months ? data.months.join(', ') : 'none');
         }
-        
+
         if (data.status === 'success') {
             console.log('[MONTHLY-PL] ✅ Data loaded successfully');
-            
+
             allPLData = data;
             plMonths = data.months || [];
             console.log('[MONTHLY-PL] Stored plMonths:', plMonths);
-            
+
             const dateRangeEl = document.getElementById('pl-date-range');
             if (dateRangeEl && plMonths.length > 0) {
                 const formatMonth = (m) => {
@@ -2934,12 +2932,12 @@ async function loadMonthlyPL() {
             } else {
                 console.log('[MONTHLY-PL] ⚠️ No months to display in date range label');
             }
-            
+
             console.log('[MONTHLY-PL] 📊 Calling renderLineChart with data');
             console.log('[MONTHLY-PL] Data months count:', data.months ? data.months.length : 0);
             renderLineChart('pl-chart', data, { type: 'pl' });
             console.log('[MONTHLY-PL] renderLineChart called successfully');
-            
+
         } else {
             console.error('[MONTHLY-PL] ❌ API returned error status:', data.error);
             document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
@@ -2960,27 +2958,27 @@ async function loadBalanceSheet() {
     console.log('[BALANCE-SHEET] ==================================================');
     console.log('[BALANCE-SHEET] LOAD BALANCE SHEET START');
     console.log('[BALANCE-SHEET] Timestamp:', new Date().toISOString());
-    
+
     const startInput = document.getElementById('bs-start');
     const endInput = document.getElementById('bs-end');
-    
+
     console.log('[BALANCE-SHEET] Start input element:', startInput);
     console.log('[BALANCE-SHEET] End input element:', endInput);
     console.log('[BALANCE-SHEET] Start input value:', startInput ? startInput.value : 'NULL');
     console.log('[BALANCE-SHEET] End input value:', endInput ? endInput.value : 'NULL');
-    
+
     const start = startInput ? startInput.value : '';
     const end = endInput ? endInput.value : '';
-    
+
     console.log('[BALANCE-SHEET] Start month:', start);
     console.log('[BALANCE-SHEET] End month:', end);
-    
+
     if (!start || !end) {
         console.log('[BALANCE-SHEET] ❌ Missing start or end month. Start:', start, 'End:', end);
         alert('Please select both start and end months.');
         return;
     }
-    
+
     if (bankAccounts.length === 0) {
         console.log('[BALANCE-SHEET] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
@@ -2992,40 +2990,40 @@ async function loadBalanceSheet() {
         const startDate = new Date(start + '-01');
         const endDate = new Date(end + '-01');
         const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
-        
+
         console.log('[BALANCE-SHEET] startDate:', startDate.toISOString());
         console.log('[BALANCE-SHEET] endDate:', endDate.toISOString());
         console.log('[BALANCE-SHEET] lastDay:', lastDay.toISOString());
-        
+
         const startStr = startDate.toISOString().slice(0, 10);
         const endStr = lastDay.toISOString().slice(0, 10);
-        
+
         console.log('[BALANCE-SHEET] ✅ Calculated start date:', startStr);
         console.log('[BALANCE-SHEET] ✅ Calculated end date:', endStr);
-        
+
         const url = `${AppConfig.baseUrl}/api/accounting/balance-sheet?start=${startStr}&end=${endStr}`;
         console.log('[BALANCE-SHEET] 🔗 Fetching URL:', url);
-        
+
         const res = await fetch(url, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
-        
+
         console.log('[BALANCE-SHEET] 📡 Fetch response status:', res.status);
         console.log('[BALANCE-SHEET] 📡 Fetch response ok:', res.ok);
-        
+
         if (!res.ok) {
             console.error('[BALANCE-SHEET] ❌ Fetch failed with status:', res.status);
             throw new Error('Failed to fetch Balance Sheet data');
         }
-        
+
         const data = await res.json();
         console.log('[BALANCE-SHEET] 📦 Data received:');
         console.log('[BALANCE-SHEET]   - status:', data.status);
         console.log('[BALANCE-SHEET]   - months count:', data.months ? data.months.length : 0);
         console.log('[BALANCE-SHEET]   - months:', data.months ? JSON.stringify(data.months) : 'none');
         console.log('[BALANCE-SHEET]   - account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
-        
+
         if (data.account_breakdown && data.account_breakdown['2026-07']) {
             console.log('[BALANCE-SHEET] ✅ July 2026 data found:');
             console.log('[BALANCE-SHEET]   - July accounts:', Object.keys(data.account_breakdown['2026-07']));
@@ -3034,14 +3032,14 @@ async function loadBalanceSheet() {
             console.log('[BALANCE-SHEET] ❌ July 2026 data NOT FOUND in API response');
             console.log('[BALANCE-SHEET] Available months:', data.months ? data.months.join(', ') : 'none');
         }
-        
+
         if (data.status === 'success') {
             console.log('[BALANCE-SHEET] ✅ Data loaded successfully');
-            
+
             allBSData = data;
             bsMonths = data.months || [];
             console.log('[BALANCE-SHEET] Stored bsMonths:', bsMonths);
-            
+
             const dateRangeEl = document.getElementById('bs-date-range');
             if (dateRangeEl && bsMonths.length > 0) {
                 const formatMonth = (m) => {
@@ -3056,12 +3054,12 @@ async function loadBalanceSheet() {
             } else {
                 console.log('[BALANCE-SHEET] ⚠️ No months to display in date range label');
             }
-            
+
             console.log('[BALANCE-SHEET] 📊 Calling renderLineChart with data');
             console.log('[BALANCE-SHEET] Data months count:', data.months ? data.months.length : 0);
             renderLineChart('bs-chart', data, { type: 'balancesheet' });
             console.log('[BALANCE-SHEET] renderLineChart called successfully');
-            
+
         } else {
             console.error('[BALANCE-SHEET] ❌ API returned error status:', data.error);
             document.getElementById('bs-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
