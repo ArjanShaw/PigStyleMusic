@@ -11088,5 +11088,72 @@ def reconcile_date_range():
         'max_date': max_date
     })
 
+
+@app.route('/api/accounting/reconcile/pairs', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_reconcile_pairs():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT r.id, r.account_a_id, r.account_b_id, r.name,
+               a1.code AS account_a_code, a1.name AS account_a_name,
+               a2.code AS account_b_code, a2.name AS account_b_name
+        FROM reconciliation_accounts r
+        JOIN accounts a1 ON r.account_a_id = a1.id
+        JOIN accounts a2 ON r.account_b_id = a2.id
+        ORDER BY r.created_at DESC
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    pairs = [{
+        'id': row['id'],
+        'account_a_id': row['account_a_id'],
+        'account_b_id': row['account_b_id'],
+        'name': row['name'] or f"{row['account_a_code']} ↔ {row['account_b_code']}",
+        'account_a_name': row['account_a_name'],
+        'account_b_name': row['account_b_name']
+    } for row in rows]
+    return jsonify({'status': 'success', 'pairs': pairs})
+
+@app.route('/api/accounting/reconcile/pairs', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def add_reconcile_pair():
+    data = request.json
+    account_a = data.get('account_a_id')
+    account_b = data.get('account_b_id')
+    name = data.get('name', '').strip()
+    if not account_a or not account_b:
+        return jsonify({'status': 'error', 'error': 'Both account IDs required'}), 400
+    if account_a == account_b:
+        return jsonify({'status': 'error', 'error': 'Accounts must be different'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            INSERT INTO reconciliation_accounts (account_a_id, account_b_id, name)
+            VALUES (?, ?, ?)
+        ''', (account_a, account_b, name or None))
+        pair_id = cursor.lastrowid
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'This pair already exists'}), 400
+    conn.close()
+    return jsonify({'status': 'success', 'id': pair_id})
+
+@app.route('/api/accounting/reconcile/pairs/<int:pair_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_reconcile_pair(pair_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM reconciliation_accounts WHERE id = ?', (pair_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'message': 'Pair deleted'})
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
