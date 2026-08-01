@@ -332,22 +332,24 @@
                 </div>
             </div>
 
-            <!-- BANK TAB -->
+            <!-- BANK TAB (Read‑Only Viewer) -->
             <div id="sub-bank" class="sub-tab-content">
                 <h4 style="color: #000;"><i class="fas fa-university"></i> Bank Transactions</h4>
-                <p class="text-muted" style="color: #666;">Select a <strong>Source</strong> from the filter dropdown. Use the <strong>Bulk Destination</strong> to set the same destination for all filtered transactions, then click <strong>Apply</strong> to post them. Click <strong>Search</strong> to refresh the list after changing filters.</p>
-                <div style="margin-bottom:15px;">
-                    <button class="btn btn-success" id="connect-bank-btn" onclick="connectBank()" style="display:none;"><i class="fas fa-university"></i> Connect Bank Account</button>
-                    <span id="bank-connection-status" class="text-muted"></span>
-                </div>
+                <p style="color: #000;">Select a source to view its transactions. Use the filter to narrow down results.</p>
+
                 <div class="bank-status-bar">
-                    <div><span class="count-badge" id="bank-unprocessed-count">0</span><span class="text-muted" id="bank-count-label"> unprocessed transactions</span><span class="text-muted" id="bank-total-count" style="margin-left:10px;">(0 total)</span></div>
+                    <div>
+                        <span class="count-badge" id="bank-unprocessed-count">0</span>
+                        <span class="text-muted" id="bank-count-label"> unprocessed transactions</span>
+                        <span class="text-muted" id="bank-total-count" style="margin-left:10px;">(0 total)</span>
+                    </div>
                     <div class="filter-group">
                         <div class="form-group" style="margin:0;">
-                            <select id="bank-source-filter" class="source-filter-select">
-                                <option value="plaid" selected>Live (Plaid)</option>
-                                <option value="all">All Sources</option>
-                                <option value="historic">Historic (CSV)</option>
+                            <select id="bank-source" class="source-filter-select">
+                                <option value="fnbo">FNBO Bank (Plaid)</option>
+                                <option value="bluevine">Bluevine Bank (Historic)</option>
+                                <option value="square">Square Asset</option>
+                                <option value="paypal">PayPal</option>
                             </select>
                         </div>
                         <div class="form-group" style="margin:0;">
@@ -359,6 +361,7 @@
                         </div>
                     </div>
                 </div>
+
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
                     <div class="form-group" style="flex:2;">
                         <label style="color:#000;">Filter by description</label>
@@ -368,23 +371,8 @@
                         <label style="color:#000;">&nbsp;</label>
                         <button class="btn btn-primary" id="bank-search-btn"><i class="fas fa-search"></i> Search</button>
                     </div>
-                    <div class="form-group" style="flex:1;">
-                        <label style="color:#000;">Bulk Destination</label>
-                        <select id="bank-bulk-destination" style="color:#000; background:#fff;">
-                            <option value="">Set all to...</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex:0 0 auto;">
-                        <label style="color:#000;">&nbsp;</label>
-                        <button class="btn btn-success" onclick="applyAllSelections()"><i class="fas fa-check-double"></i> Apply</button>
-                    </div>
                 </div>
-                <div style="background: #e3f2fd; border-left: 4px solid #007bff; padding: 10px 15px; margin-bottom: 15px; border-radius: 4px; color: #004085;">
-                    <i class="fas fa-info-circle"></i> 
-                    <strong>How to record deposits from payment processors (Square / PayPal):</strong><br>
-                    For a deposit that appears in your bank account from Square or PayPal, set <strong>Source</strong> to the processor asset account (e.g., <code>Square Asset</code> or <code>PayPal</code>) and <strong>Destination</strong> to your bank account (e.g., <code>FNBO Bank</code>). 
-                    This creates a transfer that reduces the processor asset and increases your bank balance – it will <strong>not</strong> duplicate revenue.
-                </div>
+
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
                         <thead>
@@ -393,10 +381,10 @@
                                 <th>Description</th>
                                 <th>Amount</th>
                                 <th>Category</th>
-                                <th>Destination</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
-                        <tbody id="bank-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Click Search to load transactions...</td></tr></tbody>
+                        <tbody id="bank-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Select a source and click Search.</td></tr></tbody>
                     </table>
                 </div>
                 <div style="margin-top:15px;">

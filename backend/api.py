@@ -9725,6 +9725,278 @@ def get_draft_by_id(draft_id):
         app.logger.error(f"Error fetching draft: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/accounting/reconcile/timeline', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def reconcile_timeline():
+    account1 = request.args.get('account1', type=int)
+    account2 = request.args.get('account2', type=int)
+    start = request.args.get('start')
+    end = request.args.get('end')
+
+    if not account1 or not account2:
+        return jsonify({'status': 'error', 'error': 'Both account IDs required'}), 400
+    if account1 == account2:
+        return jsonify({'status': 'error', 'error': 'Please select two different accounts'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Fetch account names for display
+    cursor.execute('SELECT id, name FROM accounts WHERE id IN (?, ?)', (account1, account2))
+    accounts = cursor.fetchall()
+    account_names = {row['id']: row['name'] for row in accounts}
+    if len(account_names) < 2:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'One or both accounts not found'}), 404
+
+    # Query for both accounts in one go (no intersect, just OR)
+    query = '''
+        SELECT 
+            je.transaction_date AS date,
+            a.name AS account_name,
+            (jl.debit_amount - jl.credit_amount) / 100.0 AS amount,
+            je.description
+        FROM journal_lines jl
+        JOIN journal_entries je ON jl.journal_entry_id = je.id
+        JOIN accounts a ON jl.account_id = a.id
+        WHERE jl.account_id IN (?, ?)
+    '''
+    params = [account1, account2]
+
+    if start:
+        query += ' AND je.transaction_date >= ?'
+        params.append(start)
+    if end:
+        query += ' AND je.transaction_date <= ?'
+        params.append(end)
+
+    query += ' ORDER BY je.transaction_date ASC, je.id ASC'
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    entries = []
+    for row in rows:
+        entries.append({
+            'date': row['date'],
+            'account_name': row['account_name'],
+            'amount': float(row['amount'] or 0),
+            'description': row['description'] or ''
+        })
+
+    return jsonify({
+        'status': 'success',
+        'entries': entries,
+        'account1_name': account_names.get(account1, ''),
+        'account2_name': account_names.get(account2, '')
+    })
+ 
+@app.route('/api/accounting/bank/fnbo', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def bank_fnbo():
+    """Fetch FNBO (Plaid) transactions with filtering."""
+    search = request.args.get('search', '').strip()
+    unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
+
+    try:
+        plaid_tx = fetch_bank_transactions()
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    if search:
+        search_lower = search.lower()
+        plaid_tx = [t for t in plaid_tx if search_lower in t['description'].lower()]
+
+    # Determine processed status
+    conn = get_db()
+    cursor = conn.cursor()
+    for tx in plaid_tx:
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?', ('plaid', tx['id']))
+        entry = cursor.fetchone()
+        tx['processed'] = entry is not None
+        tx['source_type'] = 'plaid'
+    conn.close()
+
+    # Apply view filter
+    if unprocessed_only is not None:
+        filter_unprocessed = unprocessed_only.lower() == 'true'
+        if filter_unprocessed:
+            plaid_tx = [t for t in plaid_tx if not t['processed']]
+        else:  # 'posted'
+            plaid_tx = [t for t in plaid_tx if t['processed']]
+
+    total = len(plaid_tx)
+    unprocessed = len([t for t in plaid_tx if not t['processed']])
+
+    return jsonify({
+        'status': 'success',
+        'transactions': plaid_tx,
+        'total_count': total,
+        'unprocessed_count': unprocessed
+    })
+
+@app.route('/api/accounting/bank/bluevine', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def bank_bluevine():
+    """Fetch Bluevine (historic) transactions with filtering."""
+    search = request.args.get('search', '').strip()
+    unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = '''
+        SELECT id, transaction_date as date, amount, description, processed, source
+        FROM bank_transactions
+        WHERE 1=1
+    '''
+    params = []
+
+    if search:
+        query += ' AND description LIKE ?'
+        params.append(f'%{search}%')
+
+    # Apply view filter
+    if unprocessed_only is not None:
+        filter_unprocessed = unprocessed_only.lower() == 'true'
+        if filter_unprocessed:
+            query += ' AND (processed IS NULL OR processed = 0)'
+        else:
+            query += ' AND processed = 1'
+
+    query += ' ORDER BY transaction_date DESC'
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    transactions = []
+    for row in rows:
+        source_val = row['source'] if row['source'] else 'csv_import'
+        mapped_source = 'historic' if source_val in ('csv_import', 'historic') else source_val
+        transactions.append({
+            'id': row['id'],
+            'date': row['date'],
+            'amount': row['amount'] / 100.0,
+            'description': row['description'],
+            'category': '',
+            'processed': bool(row['processed']) if row['processed'] is not None else False,
+            'source_type': mapped_source
+        })
+
+    total = len(transactions)
+    unprocessed = len([t for t in transactions if not t['processed']])
+
+    return jsonify({
+        'status': 'success',
+        'transactions': transactions,
+        'total_count': total,
+        'unprocessed_count': unprocessed
+    })
+
+@app.route('/api/accounting/bank/square', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def bank_square():
+    """Fetch Square transactions with filtering."""
+    search = request.args.get('search', '').strip()
+    unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
+
+    from datetime import datetime, timedelta
+    import requests
+
+    access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+    if not access_token:
+        return jsonify({'status': 'error', 'error': 'SQUARE_ACCESS_TOKEN not configured'}), 500
+
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json',
+        'Square-Version': '2026-01-22'
+    }
+
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=730)
+    url = 'https://connect.squareup.com/v2/payments'
+    params = {
+        'begin_time': start_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'end_time': end_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'limit': 100
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+        if response.status_code != 200:
+            return jsonify({'status': 'error', 'error': f'Square API error: {response.status_code}'}), response.status_code
+        data = response.json()
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': f'Failed to fetch Square payments: {str(e)}'}), 500
+
+    payments = data.get('payments', [])
+    transactions = []
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    for p in payments:
+        if p.get('status') != 'COMPLETED':
+            continue
+        amount = p.get('amount_money', {}).get('amount', 0) / 100.0
+        if amount <= 0:
+            continue
+        settled_at = p.get('updated_at') or p.get('created_at', '')
+        date_str = settled_at.split('T')[0] if settled_at else datetime.now().strftime('%Y-%m-%d')
+
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?', ('square_batch', p['id']))
+        entry = cursor.fetchone()
+        processed = entry is not None
+
+        transactions.append({
+            'id': p['id'],
+            'date': date_str,
+            'amount': amount,
+            'description': f"Square Payment: {p.get('id', '')}",
+            'category': 'Payment',
+            'processed': processed,
+            'source_type': 'square'
+        })
+
+    conn.close()
+
+    if search:
+        search_lower = search.lower()
+        transactions = [t for t in transactions if search_lower in t['description'].lower()]
+
+    # Apply view filter
+    if unprocessed_only is not None:
+        filter_unprocessed = unprocessed_only.lower() == 'true'
+        if filter_unprocessed:
+            transactions = [t for t in transactions if not t['processed']]
+        else:
+            transactions = [t for t in transactions if t['processed']]
+
+    total = len(transactions)
+    unprocessed = len([t for t in transactions if not t['processed']])
+
+    return jsonify({
+        'status': 'success',
+        'transactions': transactions,
+        'total_count': total,
+        'unprocessed_count': unprocessed
+    })
+
+@app.route('/api/accounting/bank/paypal', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def bank_paypal():
+    """PayPal stub – not implemented."""
+    return jsonify({
+        'status': 'error',
+        'error': 'PayPal integration is not yet implemented.'
+    }), 501
+  
 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['DELETE'])
 @login_required
