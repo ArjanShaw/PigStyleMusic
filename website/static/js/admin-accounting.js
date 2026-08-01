@@ -324,6 +324,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Save reconcile pair button (for the modal)
     document.getElementById('save-reconcile-pair-btn')?.addEventListener('click', async function() {
         const name = document.getElementById('reconcile-pair-name').value.trim();
+        const description = document.getElementById('reconcile-pair-description').value.trim();
         const accountA = document.getElementById('reconcile-pair-account-a').value;
         const accountB = document.getElementById('reconcile-pair-account-b').value;
         if (!accountA || !accountB) {
@@ -339,7 +340,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ account_a_id: parseInt(accountA), account_b_id: parseInt(accountB), name })
+                body: JSON.stringify({ account_a_id: parseInt(accountA), account_b_id: parseInt(accountB), name, description })
             });
             const data = await res.json();
             if (data.status === 'success') {
@@ -351,6 +352,35 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (err) {
             console.error(err);
             alert('Error adding pair.');
+        }
+    });
+
+    // Save edit reconcile pair button
+    document.getElementById('save-reconcile-edit-btn')?.addEventListener('click', async function() {
+        const id = document.getElementById('reconcile-edit-id').value;
+        const name = document.getElementById('reconcile-edit-name').value.trim();
+        const description = document.getElementById('reconcile-edit-description').value.trim();
+        if (!name) {
+            alert('Name is required.');
+            return;
+        }
+        try {
+            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs/${id}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                document.getElementById('reconcile-edit-modal').classList.remove('active');
+                loadReconcilePairsSummary(); // refresh table
+            } else {
+                alert(data.error || 'Failed to update pair.');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error updating pair.');
         }
     });
 
@@ -540,7 +570,7 @@ function getReconcileDateRange() {
 async function loadReconcilePairsSummary() {
     const tbody = document.getElementById('reconcile-pairs-body');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#000;">Loading pairs...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#000;">Loading pairs...</td></tr>';
 
     try {
         // 1. Fetch all pairs
@@ -551,12 +581,12 @@ async function loadReconcilePairsSummary() {
         if (!pairsRes.ok) throw new Error('Failed to fetch pairs');
         const pairsData = await pairsRes.json();
         if (pairsData.status !== 'success') {
-            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px; color:#dc3545;">${pairsData.error || 'Error'}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#dc3545;">${pairsData.error || 'Error'}</td></tr>`;
             return;
         }
         const pairs = pairsData.pairs;
         if (!pairs || pairs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#000;">No saved pairs found. Add one using the button above.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#000;">No saved pairs found. Add one using the button above.</td></tr>';
             return;
         }
 
@@ -579,7 +609,6 @@ async function loadReconcilePairsSummary() {
             const timelineData = await timelineRes.json();
             let netA = 0, netB = 0;
             if (timelineData.status === 'success' && timelineData.entries) {
-                // Compute net for each account
                 timelineData.entries.forEach(entry => {
                     if (entry.account_name === p.account_a_name) {
                         netA += entry.amount || 0;
@@ -612,7 +641,7 @@ async function loadReconcilePairsSummary() {
 
     } catch (err) {
         console.error('[RECONCILE] Error loading pairs summary:', err);
-        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px; color:#dc3545;">Error: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#dc3545;">Error: ${err.message}</td></tr>`;
     }
 }
 
@@ -620,7 +649,7 @@ function renderPairsSummary(pairSummaries) {
     const tbody = document.getElementById('reconcile-pairs-body');
     if (!tbody) return;
     if (!pairSummaries || pairSummaries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#000;">No pairs found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#000;">No pairs found.</td></tr>';
         return;
     }
 
@@ -630,18 +659,25 @@ function renderPairsSummary(pairSummaries) {
         const diffClass = Math.abs(diff) < 0.01 ? 'reconcile-amount-positive' : (diff > 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative');
         const sign = diff > 0 ? '+' : '';
         const rowClass = (selectedPairId === p.id) ? 'selected-row' : '';
+        const desc = p.description || '';
         html += `<tr class="${rowClass}" data-pair-id="${p.id}" data-account-a="${p.account_a_id}" data-account-b="${p.account_b_id}" style="cursor:pointer;">
             <td style="color:#000;">${p.account_a_name}</td>
             <td style="color:#000;">${p.account_b_name}</td>
+            <td style="color:#000;">${desc}</td>
             <td style="color:#000;" class="${diffClass}">${sign}${diff.toFixed(2)}</td>
+            <td style="color:#000;">
+                <button class="btn btn-sm btn-info" onclick="event.stopPropagation(); editPair(${p.id})">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </td>
         </tr>`;
     });
     tbody.innerHTML = html;
 
-    // Add click handlers
+    // Click handlers for row selection
     tbody.querySelectorAll('tr[data-pair-id]').forEach(row => {
-        row.addEventListener('click', function() {
-            // Remove selected class from all rows
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('button')) return;
             document.querySelectorAll('#reconcile-pairs-body tr').forEach(r => r.classList.remove('selected-row'));
             this.classList.add('selected-row');
             selectedPairId = parseInt(this.dataset.pairId);
@@ -769,14 +805,39 @@ function renderReconciliationTimeline(data) {
 }
 
 // ============================================================
-// RECONCILIATION – ADD / DELETE PAIR
+// RECONCILIATION – ADD / DELETE / EDIT PAIR
 // ============================================================
 
 function showAddPairModal() {
-    // The modal is already in HTML; we just need to populate the account dropdowns
     loadReconcileAccountSelects();
     document.getElementById('reconcile-pair-name').value = '';
+    document.getElementById('reconcile-pair-description').value = '';
     document.getElementById('reconcile-pair-modal').classList.add('active');
+}
+
+async function editPair(pairId) {
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to fetch pairs');
+        const data = await res.json();
+        if (data.status === 'success') {
+            const pair = data.pairs.find(p => p.id === pairId);
+            if (!pair) {
+                alert('Pair not found.');
+                return;
+            }
+            document.getElementById('reconcile-edit-id').value = pair.id;
+            document.getElementById('reconcile-edit-name').value = pair.name || '';
+            document.getElementById('reconcile-edit-description').value = pair.description || '';
+            document.getElementById('reconcile-edit-modal').classList.add('active');
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Error loading pair details.');
+    }
 }
 
 async function deleteSelectedPair() {

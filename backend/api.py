@@ -11096,7 +11096,7 @@ def get_reconcile_pairs():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT r.id, r.account_a_id, r.account_b_id, r.name,
+        SELECT r.id, r.account_a_id, r.account_b_id, r.name, r.description,
                a1.code AS account_a_code, a1.name AS account_a_name,
                a2.code AS account_b_code, a2.name AS account_b_name
         FROM reconciliation_accounts r
@@ -11111,6 +11111,7 @@ def get_reconcile_pairs():
         'account_a_id': row['account_a_id'],
         'account_b_id': row['account_b_id'],
         'name': row['name'] or f"{row['account_a_code']} ↔ {row['account_b_code']}",
+        'description': row['description'] or '',
         'account_a_name': row['account_a_name'],
         'account_b_name': row['account_b_name']
     } for row in rows]
@@ -11124,6 +11125,7 @@ def add_reconcile_pair():
     account_a = data.get('account_a_id')
     account_b = data.get('account_b_id')
     name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
     if not account_a or not account_b:
         return jsonify({'status': 'error', 'error': 'Both account IDs required'}), 400
     if account_a == account_b:
@@ -11133,9 +11135,9 @@ def add_reconcile_pair():
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            INSERT INTO reconciliation_accounts (account_a_id, account_b_id, name)
-            VALUES (?, ?, ?)
-        ''', (account_a, account_b, name or None))
+            INSERT INTO reconciliation_accounts (account_a_id, account_b_id, name, description)
+            VALUES (?, ?, ?, ?)
+        ''', (account_a, account_b, name or None, description or None))
         pair_id = cursor.lastrowid
         conn.commit()
     except sqlite3.IntegrityError:
@@ -11143,6 +11145,33 @@ def add_reconcile_pair():
         return jsonify({'status': 'error', 'error': 'This pair already exists'}), 400
     conn.close()
     return jsonify({'status': 'success', 'id': pair_id})
+
+
+@app.route('/api/accounting/reconcile/pairs/<int:pair_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_reconcile_pair(pair_id):
+    data = request.json
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    if not name and not description:
+        return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    updates = []
+    params = []
+    if name:
+        updates.append('name = ?')
+        params.append(name)
+    if description:
+        updates.append('description = ?')
+        params.append(description)
+    params.append(pair_id)
+    cursor.execute(f'UPDATE reconciliation_accounts SET {", ".join(updates)} WHERE id = ?', params)
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'message': 'Pair updated'})
 
 @app.route('/api/accounting/reconcile/pairs/<int:pair_id>', methods=['DELETE'])
 @login_required
