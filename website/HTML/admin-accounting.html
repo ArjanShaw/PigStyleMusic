@@ -206,6 +206,63 @@
         #breakdown-modal { z-index: 9999; }
         #monthly-tx-modal .modal-box { z-index: 10001; position: relative; }
         #breakdown-modal .modal-box { z-index: 10000; position: relative; }
+
+        /* ===== RECONCILIATION TABLE STYLES ===== */
+        .recon-table-container { overflow-x: auto; margin-top: 15px; border: 1px solid #ddd; border-radius: 8px; background: white; }
+        .recon-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .recon-table th { background: #f8f9fa; padding: 10px 12px; text-align: left; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 5; font-weight: 600; color: #333; }
+        .recon-table td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: middle; color: #000 !important; }
+        .recon-table tr:hover td { background: #f8f9fa; }
+        .recon-table .date-col { white-space: nowrap; font-weight: 500; color: #000 !important; }
+        .recon-table .amount-col { font-weight: 600; text-align: right; color: #000 !important; }
+        .recon-table .status-col { text-align: center; }
+        .recon-table .matched-row { background: #d4edda !important; }
+        .recon-table .matched-row td { background: #d4edda !important; color: #000 !important; }
+        .recon-table .unmatched-row { background: #fff3cd !important; }
+        .recon-table .unmatched-row td { background: #fff3cd !important; color: #000 !important; }
+        .recon-table .pending-row { background: #e9ecef !important; }
+        .recon-table .pending-row td { background: #e9ecef !important; color: #000 !important; }
+
+        .recon-summary-row { background: #f8f9fa !important; font-weight: 600; border-top: 2px solid #ddd; }
+        .recon-summary-row td { background: #f8f9fa !important; padding: 10px 12px; color: #000 !important; }
+
+        .recon-collapsible { border: 1px solid #ddd; border-radius: 8px; margin-top: 15px; overflow: hidden; }
+        .recon-collapsible-header { background: #f8f9fa; padding: 12px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+        .recon-collapsible-header:hover { background: #e9ecef; }
+        .recon-collapsible-header .toggle-icon { transition: transform 0.3s; }
+        .recon-collapsible-header .toggle-icon.collapsed { transform: rotate(-90deg); }
+        .recon-collapsible-body { padding: 15px; display: none; }
+        .recon-collapsible-body.expanded { display: block; }
+
+        .type-badge-sales { background: #007bff; color: white !important; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .type-badge-batch { background: #6f42c1; color: white !important; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .type-badge-deposit { background: #28a745; color: white !important; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+        .status-badge-matched { color: #28a745 !important; font-weight: 600; font-size: 13px; }
+        .status-badge-pending { color: #856404 !important; font-weight: 600; font-size: 13px; }
+        .status-badge-unmatched { color: #dc3545 !important; font-weight: 600; font-size: 13px; }
+
+        .recon-table .empty-cell { color: #999 !important; }
+
+        /* Fix description column text color */
+        .recon-table td span,
+        .recon-table td div,
+        .recon-table td strong {
+            color: #000 !important;
+        }
+        .recon-table td .type-badge-sales,
+        .recon-table td .type-badge-batch,
+        .recon-table td .type-badge-deposit {
+            color: white !important;
+        }
+        .recon-table td .status-badge-matched,
+        .recon-table td .status-badge-pending,
+        .recon-table td .status-badge-unmatched {
+            color: inherit !important;
+        }
+        .recon-table .matched-row td .status-badge-matched { color: #28a745 !important; }
+        .recon-table .pending-row td .status-badge-pending { color: #856404 !important; }
+        .recon-table .unmatched-row td .status-badge-unmatched { color: #dc3545 !important; }
     </style>
 </head>
 <body>
@@ -285,84 +342,116 @@
                 </div>
             </div>
 
-
             <!-- RECONCILIATION -->
-<div id="sub-reconcile" class="sub-tab-content">
-    <h4 style="color: #333;"><i class="fas fa-handshake"></i> Reconciliation Dashboard</h4>
-    <p style="color: #333;">Automatically matching sales → Square batches → Bank deposits.</p>
-    
-    <!-- Stats Cards -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
-        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
-            <div style="font-size: 28px; font-weight: 700; color: #007bff;" id="recon-total-sales">0</div>
-            <div style="font-size: 13px; color: #333;">Sales</div>
-            <div style="font-size: 12px; color: #666;" id="recon-total-sales-amount">$0.00</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
-            <div style="font-size: 28px; font-weight: 700; color: #6f42c1;" id="recon-total-batches">0</div>
-            <div style="font-size: 13px; color: #333;">Square Batches</div>
-            <div style="font-size: 12px; color: #666;" id="recon-total-batches-amount">$0.00</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
-            <div style="font-size: 28px; font-weight: 700; color: #28a745;" id="recon-total-deposits">0</div>
-            <div style="font-size: 13px; color: #333;">Bank Deposits</div>
-            <div style="font-size: 12px; color: #666;" id="recon-total-deposits-amount">$0.00</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
-            <div style="font-size: 28px; font-weight: 700; color: #dc3545;" id="recon-variance">$0.00</div>
-            <div style="font-size: 13px; color: #333;">Variance</div>
-            <div style="font-size: 12px; color: #666;" id="recon-variance-status">Balanced</div>
-        </div>
-    </div>
+            <div id="sub-reconcile" class="sub-tab-content">
+                <h4 style="color: #333;"><i class="fas fa-handshake"></i> Reconciliation Dashboard</h4>
+                <p style="color: #333;">All transactions from all sources in chronological order.</p>
+                
+                <!-- Stats Cards -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
+                        <div style="font-size: 28px; font-weight: 700; color: #007bff;" id="recon-total-sales">0</div>
+                        <div style="font-size: 13px; color: #333;">Sales</div>
+                        <div style="font-size: 12px; color: #666;" id="recon-total-sales-amount">$0.00</div>
+                    </div>
+                    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
+                        <div style="font-size: 28px; font-weight: 700; color: #6f42c1;" id="recon-total-batches">0</div>
+                        <div style="font-size: 13px; color: #333;">Square Batches</div>
+                        <div style="font-size: 12px; color: #666;" id="recon-total-batches-amount">$0.00</div>
+                    </div>
+                    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
+                        <div style="font-size: 28px; font-weight: 700; color: #28a745;" id="recon-total-deposits">0</div>
+                        <div style="font-size: 13px; color: #333;">Bank Deposits</div>
+                        <div style="font-size: 12px; color: #666;" id="recon-total-deposits-amount">$0.00</div>
+                    </div>
+                    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; color: #333;">
+                        <div style="font-size: 28px; font-weight: 700; color: #dc3545;" id="recon-variance">$0.00</div>
+                        <div style="font-size: 13px; color: #333;">Variance</div>
+                        <div style="font-size: 12px; color: #666;" id="recon-variance-status">Balanced</div>
+                    </div>
+                </div>
 
-    <!-- Three-Way Flow -->
-    <div style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; margin: 15px 0; flex-wrap: wrap;">
-        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-sales">
-            <div style="font-size: 24px;">💰</div>
-            <div style="font-size: 11px; color: #666;">Sales</div>
-            <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-sales-count">0</div>
-        </div>
-        <div style="font-size: 20px; color: #999;">→</div>
-        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-batches">
-            <div style="font-size: 24px;">📦</div>
-            <div style="font-size: 11px; color: #666;">Square Batches</div>
-            <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-batches-count">0</div>
-        </div>
-        <div style="font-size: 20px; color: #999;">→</div>
-        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-deposits">
-            <div style="font-size: 24px;">🏦</div>
-            <div style="font-size: 11px; color: #666;">Bank Deposits</div>
-            <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-deposits-count">0</div>
-        </div>
-    </div>
+                <!-- Three-Way Flow -->
+                <div style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; margin: 15px 0; flex-wrap: wrap;">
+                    <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-sales">
+                        <div style="font-size: 24px;">💰</div>
+                        <div style="font-size: 11px; color: #666;">Sales</div>
+                        <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-sales-count">0</div>
+                    </div>
+                    <div style="font-size: 20px; color: #999;">→</div>
+                    <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-batches">
+                        <div style="font-size: 24px;">📦</div>
+                        <div style="font-size: 11px; color: #666;">Square Batches</div>
+                        <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-batches-count">0</div>
+                    </div>
+                    <div style="font-size: 20px; color: #999;">→</div>
+                    <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: white; border-radius: 8px; border: 2px solid #e0e0e0; min-width: 100px;" id="recon-step-deposits">
+                        <div style="font-size: 24px;">🏦</div>
+                        <div style="font-size: 11px; color: #666;">Bank Deposits</div>
+                        <div style="font-size: 14px; font-weight: 700; color: #333;" id="recon-step-deposits-count">0</div>
+                    </div>
+                </div>
 
-    <!-- Status Message -->
-    <div id="recon-status" class="status-message" style="display: none; padding: 10px 15px; border-radius: 4px; margin: 10px 0;"></div>
+                <!-- Status Message -->
+                <div id="recon-status" class="status-message" style="display: none; padding: 10px 15px; border-radius: 4px; margin: 10px 0;"></div>
 
-    <!-- Expected Payments (Sales) - TOP -->
-    <div style="margin-top: 20px;">
-        <h5 style="color: #333; margin-bottom: 10px;">✅ Expected Payments (Sales)</h5>
-        <div id="expected-payments-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px; background: white; color: #333;">
-            <p style="color: #666; text-align: center; padding: 20px;">Loading...</p>
-        </div>
-    </div>
+                <!-- ===== RECONCILIATION TABLE ===== -->
+                <div class="recon-table-container">
+                    <table class="recon-table" id="recon-comparison-table">
+                        <thead>
+                            <tr>
+                                <th style="width:100px;">Date</th>
+                                <th style="width:90px;">Type</th>
+                                <th style="width:40%;">Description</th>
+                                <th style="width:120px; text-align:right;">Amount</th>
+                                <th style="width:100px; text-align:center;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recon-comparison-body">
+                            <tr><td colspan="5" style="text-align:center; padding:40px; color:#666;">Loading reconciliation data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
 
-    <!-- Square Batches - MIDDLE -->
-    <div style="margin-top: 15px;">
-        <h5 style="color: #333; margin-bottom: 10px;">📦 Square Batches</h5>
-        <div id="square-batches-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px; background: white; color: #333;">
-            <p style="color: #666; text-align: center; padding: 20px;">Loading...</p>
-        </div>
-    </div>
+                <!-- ===== COLLAPSIBLE: EXPECTED PAYMENTS DETAIL ===== -->
+                <div class="recon-collapsible" style="margin-top:15px;">
+                    <div class="recon-collapsible-header" onclick="toggleReconSection('expected-payments-detail')">
+                        <span><strong>💰 Expected Payments (Sales) - Detail</strong> <span id="expected-payments-count" style="font-weight:normal;color:#666;">(0)</span></span>
+                        <span><i class="fas fa-chevron-down toggle-icon collapsed" id="expected-payments-icon"></i></span>
+                    </div>
+                    <div class="recon-collapsible-body" id="expected-payments-detail">
+                        <div id="expected-payments-list" style="max-height:300px; overflow-y:auto;">
+                            <p style="color:#666; text-align:center; padding:20px;">Loading...</p>
+                        </div>
+                    </div>
+                </div>
 
-    <!-- Bank Deposits - BOTTOM with Unmatched markings -->
-    <div style="margin-top: 15px;">
-        <h5 style="color: #333; margin-bottom: 10px;">🏦 Bank Deposits <span style="font-size: 12px; color: #666; font-weight: normal;">(⚠️ Unmatched items are highlighted)</span></h5>
-        <div id="bank-deposits-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px; background: white; color: #333;">
-            <p style="color: #666; text-align: center; padding: 20px;">Loading...</p>
-        </div>
-    </div>
-</div>
+                <!-- ===== COLLAPSIBLE: SQUARE BATCHES DETAIL ===== -->
+                <div class="recon-collapsible">
+                    <div class="recon-collapsible-header" onclick="toggleReconSection('square-batches-detail')">
+                        <span><strong>📦 Square Batches - Detail</strong> <span id="square-batches-count" style="font-weight:normal;color:#666;">(0)</span></span>
+                        <span><i class="fas fa-chevron-down toggle-icon collapsed" id="square-batches-icon"></i></span>
+                    </div>
+                    <div class="recon-collapsible-body" id="square-batches-detail">
+                        <div id="square-batches-list" style="max-height:300px; overflow-y:auto;">
+                            <p style="color:#666; text-align:center; padding:20px;">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== COLLAPSIBLE: BANK DEPOSITS DETAIL ===== -->
+                <div class="recon-collapsible">
+                    <div class="recon-collapsible-header" onclick="toggleReconSection('bank-deposits-detail')">
+                        <span><strong>🏦 Bank Deposits - Detail</strong> <span id="bank-deposits-count" style="font-weight:normal;color:#666;">(0)</span></span>
+                        <span><i class="fas fa-chevron-down toggle-icon collapsed" id="bank-deposits-icon"></i></span>
+                    </div>
+                    <div class="recon-collapsible-body" id="bank-deposits-detail">
+                        <div id="bank-deposits-list" style="max-height:300px; overflow-y:auto;">
+                            <p style="color:#666; text-align:center; padding:20px;">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- BANK TAB -->
             <div id="sub-bank" class="sub-tab-content">
@@ -671,6 +760,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=22"></script>
+    <script src="/static/js/admin-accounting.js?v=25"></script>
 </body>
 </html>

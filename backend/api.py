@@ -207,15 +207,9 @@ def get_cash_account_id(source_type):
     conn3.close()
     return row3['id'] if row3 else None
 
-
 def get_transactions_matching_filter(search, unprocessed_only, source_type):
-    """
-    Returns a list of transaction dicts that match the given filter.
-    Adds 'processed' flag, 'source_type' ('plaid' or 'historic'), and if processed,
-    the 'account_id' of the non-cash account and 'cash_account_id'.
-    """
     # Fetch Plaid transactions
-    plaid_tx = fetch_bank_transactions()  # returns list with id, date, amount, description
+    plaid_tx = fetch_bank_transactions()
     for tx in plaid_tx:
         tx['source_type'] = 'plaid'
 
@@ -223,7 +217,7 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, transaction_date as date, amount, description, processed
+        SELECT id, transaction_date as date, amount, description, processed, source
         FROM bank_transactions
         ORDER BY transaction_date DESC
     ''')
@@ -231,13 +225,16 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
     conn.close()
     historic_tx = []
     for row in historic_rows:
+        # FIX: Map csv_import to historic
+        source_val = row['source'] if row['source'] else 'csv_import'
+        mapped_source = 'historic' if source_val in ('csv_import', 'historic') else source_val
         historic_tx.append({
             'id': row['id'],
             'date': row['date'],
-            'amount': row['amount'] / 100.0,  # stored in cents
+            'amount': row['amount'] / 100.0,
             'description': row['description'],
-            'processed': bool(row['processed']),
-            'source_type': 'historic'
+            'processed': bool(row['processed']) if row['processed'] is not None else False,
+            'source_type': mapped_source
         })
 
     all_tx = plaid_tx + historic_tx
@@ -250,6 +247,10 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
     # Filter by source_type if provided
     if source_type:
         all_tx = [tx for tx in all_tx if tx.get('source_type') == source_type]
+
+    # Filter unprocessed if requested
+    if unprocessed_only:
+        all_tx = [tx for tx in all_tx if not tx.get('processed', False)]
 
     # Determine processed status and account_id for each transaction
     conn = get_db()
@@ -290,7 +291,7 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
                     cash_account_id = line['account_id']
                 else:
                     non_cash_account_id = line['account_id']
-            # If cash not found (shouldn't happen), fallback
+            # If cash not found, fallback
             if not cash_account_id:
                 cash_account_id = cash_id
             tx['cash_account_id'] = cash_account_id
@@ -302,12 +303,11 @@ def get_transactions_matching_filter(search, unprocessed_only, source_type):
 
     conn.close()
 
-    # Filter unprocessed if requested
+    # Filter unprocessed if requested (again, to be safe)
     if unprocessed_only:
-        all_tx = [tx for tx in all_tx if not tx['processed']]
+        all_tx = [tx for tx in all_tx if not tx.get('processed', False)]
 
     return all_tx
-
 
 def parse_plaid_date(date_str):
     """Convert various date formats to YYYY-MM-DD."""
@@ -10229,12 +10229,18 @@ def accounting_unreconciled_items():
 
 
 # ==================== RECONCILIATION: INITIALIZE ====================
+# ============================================================
+# RECONCILIATION ENDPOINT - UPDATED to use bank-transactions
+# ============================================================
 
 @app.route('/api/accounting/reconcile/init', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def accounting_reconcile_init():
-    """Initialize reconciliation: fetch Square transactions, bank transactions, and match them"""
+    """
+    Initialize reconciliation: fetch Square transactions, fetch bank transactions
+    (both Plaid and Historic), and auto-match them.
+    """
     from datetime import datetime, timedelta
     import requests
     
@@ -10246,7 +10252,8 @@ def accounting_reconcile_init():
     # ============================================================
     access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
     if not access_token:
-        raise Exception("SQUARE_ACCESS_TOKEN not configured in environment variables")
+        app.logger.error("[RECONCILE] SQUARE_ACCESS_TOKEN not configured")
+        return jsonify({'status': 'error', 'error': 'SQUARE_ACCESS_TOKEN not configured'}), 500
     
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -10255,7 +10262,7 @@ def accounting_reconcile_init():
     }
     
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=90)
+    start_date = end_date - timedelta(days=730)  # Fetch 2 years of Square transactions
     
     url = 'https://connect.squareup.com/v2/payments'
     params = {
@@ -10266,13 +10273,17 @@ def accounting_reconcile_init():
     
     app.logger.info(f"[SQUARE] Fetching payments from {params['begin_time']} to {params['end_time']}")
     
-    response = requests.get(url, headers=headers, params=params, timeout=30)
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"[SQUARE] Request failed: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
     
     app.logger.info(f"[SQUARE] Response status: {response.status_code}")
-    app.logger.info(f"[SQUARE] Response body: {response.text[:500]}")
     
     if response.status_code != 200:
-        raise Exception(f"Square API error: {response.status_code} - {response.text}")
+        app.logger.error(f"[SQUARE] API error: {response.status_code} - {response.text[:200]}")
+        return jsonify({'status': 'error', 'error': f"Square API error: {response.status_code}"}), 500
     
     data = response.json()
     payments = data.get('payments', [])
@@ -10284,12 +10295,14 @@ def accounting_reconcile_init():
     cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1030',))
     square_account = cursor.fetchone()
     if not square_account:
-        raise Exception("Account with code '1030' (Square Asset) not found")
+        conn.close()
+        return jsonify({'status': 'error', 'error': "Account with code '1030' (Square Asset) not found"}), 500
     
     cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
     revenue_account = cursor.fetchone()
     if not revenue_account:
-        raise Exception("Account with code '4000' (Sales Revenue - Square) not found")
+        conn.close()
+        return jsonify({'status': 'error', 'error': "Account with code '4000' (Sales Revenue - Square) not found"}), 500
     
     square_imported = 0
     for payment in payments:
@@ -10337,10 +10350,58 @@ def accounting_reconcile_init():
         square_imported += 1
     
     conn.commit()
-    app.logger.info(f"✅ Imported {square_imported} Square batches")
+    app.logger.info(f"[RECONCILE] ✅ Imported {square_imported} Square batches")
     
     # ============================================================
-    # 2. GET ALL SQUARE BATCHES FROM JOURNAL
+    # 2. FETCH BANK TRANSACTIONS (DIRECT - Plaid + Historic)
+    # ============================================================
+    
+    # 2a. Get Plaid transactions (live from Plaid)
+    plaid_transactions = []
+    try:
+        plaid_tx = fetch_bank_transactions()
+        for tx in plaid_tx:
+            tx['source_type'] = 'plaid'
+            tx['processed'] = False  # Plaid transactions are not processed by default
+        plaid_transactions = plaid_tx
+        app.logger.info(f"[RECONCILE] Fetched {len(plaid_transactions)} Plaid transactions")
+    except Exception as e:
+        app.logger.warning(f"[RECONCILE] Could not fetch Plaid transactions: {e}")
+        plaid_transactions = []
+    
+    # 2b. Get Historic transactions (from bank_transactions table)
+    conn2 = get_db()
+    cur2 = conn2.cursor()
+    cur2.execute('''
+        SELECT id, transaction_date as date, amount, description, processed, source
+        FROM bank_transactions
+        ORDER BY transaction_date DESC
+    ''')
+    historic_rows = cur2.fetchall()
+    conn2.close()
+    
+    historic_transactions = []
+    for row in historic_rows:
+        # Map source column to source_type
+        source_val = row['source'] if row['source'] else 'csv_import'
+        mapped_source = 'historic' if source_val in ('csv_import', 'historic') else source_val
+        historic_transactions.append({
+            'id': row['id'],
+            'date': row['date'],
+            'amount': row['amount'] / 100.0,  # stored in cents
+            'description': row['description'],
+            'processed': bool(row['processed']) if row['processed'] is not None else False,
+            'source_type': mapped_source
+        })
+    
+    app.logger.info(f"[RECONCILE] Fetched {len(historic_transactions)} Historic transactions")
+    
+    # Combine both sources
+    all_bank_transactions = plaid_transactions + historic_transactions
+    app.logger.info(f"[RECONCILE] Total bank transactions: {len(all_bank_transactions)}")
+    
+    # ============================================================
+    # 3. GET SQUARE BATCHES FROM JOURNAL
     # ============================================================
     cursor.execute('''
         SELECT je.id, je.transaction_date, je.source_id,
@@ -10365,26 +10426,14 @@ def accounting_reconcile_init():
             'date': b['transaction_date'],
             'amount': amount,
             'source_id': b['source_id'],
-            'reconciled': bool(b['reconciled']),
+            'reconciled': bool(b['reconciled']) if b['reconciled'] is not None else False,
             'bank_transaction_id': b['bank_transaction_id']
         })
     
     app.logger.info(f"[RECONCILE] Found {len(batches_list)} Square batches in journal_entries")
     
     # ============================================================
-    # 3. GET BANK TRANSACTIONS
-    # ============================================================
-    cursor.execute('''
-        SELECT id, transaction_date, amount, description 
-        FROM bank_transactions 
-        WHERE amount > 0 
-        ORDER BY transaction_date DESC
-    ''')
-    bank_transactions = cursor.fetchall()
-    bank_count = len(bank_transactions)
-    
-    # ============================================================
-    # 4. GET EXPECTED PAYMENTS (Sales)
+    # 4. GET EXPECTED PAYMENTS (Sales) - FIXED: includes 'order' AND 'record'
     # ============================================================
     cursor.execute('''
         SELECT je.id, je.transaction_date, je.source_id, 
@@ -10393,7 +10442,7 @@ def accounting_reconcile_init():
                je.bank_transaction_id
         FROM journal_entries je
         JOIN journal_lines jl ON jl.journal_entry_id = je.id
-        WHERE je.source_type = 'order' 
+        WHERE je.source_type IN ('order', 'record') 
           AND jl.debit_amount > 0
         ORDER BY je.transaction_date DESC
     ''')
@@ -10412,6 +10461,8 @@ def accounting_reconcile_init():
             'status': 'matched' if s['reconciled'] else 'pending',
             'bank_transaction_id': s['bank_transaction_id']
         })
+    
+    app.logger.info(f"[RECONCILE] Found {len(sales_list)} sales (orders + records)")
     
     # ============================================================
     # 5. AUTO-MATCH SQUARE BATCHES TO BANK DEPOSITS
@@ -10432,32 +10483,44 @@ def accounting_reconcile_init():
     ''')
     unreconciled_batches = cursor.fetchall()
     
-    # Get all unreconciled bank deposits
-    cursor.execute('''
-        SELECT bt.id, bt.transaction_date, bt.amount
-        FROM bank_transactions bt
-        LEFT JOIN reconciliation_matches rm ON rm.bank_transaction_id = bt.id
-        WHERE rm.id IS NULL AND bt.amount > 0
-        ORDER BY bt.transaction_date DESC
-    ''')
-    unreconciled_deposits = cursor.fetchall()
+    # Get all unreconciled bank deposits (from combined list)
+    # Filter to only deposits (positive amounts) that are not matched
+    unreconciled_deposits = []
+    for tx in all_bank_transactions:
+        if tx.get('amount', 0) > 0 and not tx.get('processed', False):
+            # Check if already matched via reconciliation_matches
+            cursor.execute('SELECT id FROM reconciliation_matches WHERE bank_transaction_id = ?', (tx.get('id'),))
+            if not cursor.fetchone():
+                unreconciled_deposits.append({
+                    'id': tx.get('id'),
+                    'date': tx.get('date', ''),
+                    'amount': abs(float(tx.get('amount', 0)))
+                })
+    
+    app.logger.info(f"[RECONCILE] Found {len(unreconciled_batches)} unreconciled batches and {len(unreconciled_deposits)} unreconciled deposits")
     
     # Match batches to deposits
     for batch in unreconciled_batches:
         batch_date_str = batch['transaction_date']
         if isinstance(batch_date_str, str):
             batch_date_str = batch_date_str.split('T')[0] if 'T' in batch_date_str else batch_date_str
-            batch_date = datetime.strptime(batch_date_str, '%Y-%m-%d')
+            try:
+                batch_date = datetime.strptime(batch_date_str, '%Y-%m-%d')
+            except ValueError:
+                continue
         else:
             batch_date = batch_date_str
         
         batch_amount = batch['amount']
         
         for deposit in unreconciled_deposits:
-            dep_date_str = deposit['transaction_date']
+            dep_date_str = deposit['date']
             if isinstance(dep_date_str, str):
                 dep_date_str = dep_date_str.split('T')[0] if 'T' in dep_date_str else dep_date_str
-                dep_date = datetime.strptime(dep_date_str, '%Y-%m-%d')
+                try:
+                    dep_date = datetime.strptime(dep_date_str, '%Y-%m-%d')
+                except ValueError:
+                    continue
             else:
                 dep_date = dep_date_str
             
@@ -10483,30 +10546,40 @@ def accounting_reconcile_init():
     # ============================================================
     # 6. GET FINAL RECONCILIATION STATUS
     # ============================================================
-    cursor.execute('''
-        SELECT je.id, je.transaction_date, je.source_id, 
-               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
-               je.reconciled,
-               je.bank_transaction_id,
-               je.square_batch_id
-        FROM journal_entries je
-        JOIN journal_lines jl ON jl.journal_entry_id = je.id
-        WHERE je.source_type = 'order' 
-          AND jl.debit_amount > 0
-        ORDER BY je.transaction_date DESC
-    ''')
-    all_sales = cursor.fetchall()
     
-    cursor.execute('''
-        SELECT bt.id, bt.transaction_date, bt.amount, bt.description,
-               CASE WHEN rm.id IS NOT NULL THEN 1 ELSE 0 END as matched
-        FROM bank_transactions bt
-        LEFT JOIN reconciliation_matches rm ON rm.bank_transaction_id = bt.id
-        WHERE bt.amount > 0
-        ORDER BY bt.transaction_date DESC
-    ''')
-    all_deposits = cursor.fetchall()
+    # Build deposits list with matched status from combined transactions
+    final_deposits = []
+    for tx in all_bank_transactions:
+        # Check if matched
+        cursor.execute('SELECT id FROM reconciliation_matches WHERE bank_transaction_id = ?', (tx.get('id'),))
+        matched = cursor.fetchone() is not None
+        
+        # Get the account_id if processed
+        account_id = tx.get('account_id')
+        if not account_id and tx.get('processed'):
+            # Try to look up the account_id from journal entry
+            cursor.execute('''
+                SELECT jl.account_id
+                FROM journal_lines jl
+                JOIN journal_entries je ON je.id = jl.journal_entry_id
+                WHERE je.source_type = ? AND je.source_id = ?
+            ''', (tx.get('source_type', 'historic'), str(tx['id'])))
+            line = cursor.fetchone()
+            if line:
+                account_id = line['account_id']
+        
+        final_deposits.append({
+            'id': tx.get('id'),
+            'date': tx.get('date', ''),
+            'amount': abs(float(tx.get('amount', 0))),
+            'description': tx.get('description', ''),
+            'matched': matched,
+            'source_type': tx.get('source_type', 'unknown'),
+            'processed': tx.get('processed', False),
+            'account_id': account_id
+        })
     
+    # Get updated square batches
     cursor.execute('''
         SELECT je.id, je.transaction_date, je.source_id,
                COALESCE(jl.debit_amount, 0) / 100.0 as amount,
@@ -10520,44 +10593,6 @@ def accounting_reconcile_init():
     ''')
     updated_batches = cursor.fetchall()
     
-    cursor.execute('''
-        SELECT je.id, je.transaction_date, je.source_type,
-               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
-               je.source_id
-        FROM journal_entries je
-        JOIN journal_lines jl ON jl.journal_entry_id = je.id
-        WHERE je.source_type IN ('order', 'square_batch')
-          AND jl.debit_amount > 0
-          AND (je.reconciled IS NULL OR je.reconciled = 0)
-        ORDER BY je.transaction_date DESC
-    ''')
-    unmatched_items = cursor.fetchall()
-    
-    conn.close()
-    
-    # Build response
-    final_sales = []
-    for s in all_sales:
-        final_sales.append({
-            'id': s['id'],
-            'date': s['transaction_date'],
-            'amount': float(s['amount']),
-            'source_id': s['source_id'],
-            'status': 'matched' if s['reconciled'] else 'pending',
-            'bank_transaction_id': s['bank_transaction_id'],
-            'square_batch_id': s['square_batch_id']
-        })
-    
-    final_deposits = []
-    for d in all_deposits:
-        final_deposits.append({
-            'id': d['id'],
-            'date': d['transaction_date'],
-            'amount': float(d['amount']),
-            'description': d['description'],
-            'matched': bool(d['matched'])
-        })
-    
     final_batches = []
     for b in updated_batches:
         final_batches.append({
@@ -10565,9 +10600,23 @@ def accounting_reconcile_init():
             'date': b['transaction_date'],
             'amount': float(b['amount']),
             'source_id': b['source_id'],
-            'reconciled': bool(b['reconciled']),
+            'reconciled': bool(b['reconciled']) if b['reconciled'] is not None else False,
             'bank_transaction_id': b['bank_transaction_id']
         })
+    
+    # Unmatched items (sales or batches not reconciled)
+    cursor.execute('''
+        SELECT je.id, je.transaction_date, je.source_type,
+               COALESCE(jl.debit_amount, 0) / 100.0 as amount,
+               je.source_id
+        FROM journal_entries je
+        JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        WHERE je.source_type IN ('order', 'record', 'square_batch')
+          AND jl.debit_amount > 0
+          AND (je.reconciled IS NULL OR je.reconciled = 0)
+        ORDER BY je.transaction_date DESC
+    ''')
+    unmatched_items = cursor.fetchall()
     
     final_unmatched = []
     for u in unmatched_items:
@@ -10579,15 +10628,18 @@ def accounting_reconcile_init():
             'source_id': u['source_id']
         })
     
-    total_sales_final = sum(s['amount'] for s in final_sales)
-    total_deposits_final = sum(d['amount'] for d in final_deposits)
+    conn.close()
+    
+    # Calculate totals
+    total_sales_final = sum(s['amount'] for s in sales_list)
     total_batches_final = sum(b['amount'] for b in final_batches)
+    total_deposits_final = sum(d['amount'] for d in final_deposits)
     variance = total_deposits_final - total_batches_final
     
     return jsonify({
         'status': 'success',
         'summary': {
-            'total_sales': len(final_sales),
+            'total_sales': len(sales_list),
             'total_sales_amount': total_sales_final,
             'total_batches': len(final_batches),
             'total_batches_amount': total_batches_final,
@@ -10598,14 +10650,15 @@ def accounting_reconcile_init():
             'matched_count': matched_count,
             'square_imported': square_imported,
             'square_found': square_found,
-            'bank_count': bank_count
+            'plaid_transactions': len(plaid_transactions),
+            'historic_transactions': len(historic_transactions),
+            'total_bank_transactions': len(all_bank_transactions)
         },
-        'sales': final_sales,
+        'sales': sales_list,
         'batches': final_batches,
         'deposits': final_deposits,
         'unmatched': final_unmatched
     })
- 
 
 # ============================================================
 # PURCHASE METADATA UPDATE (PUT)
