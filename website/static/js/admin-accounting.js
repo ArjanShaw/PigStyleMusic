@@ -37,6 +37,11 @@ let currentBreakdownMonth = '';
 let currentBreakdownMonths = [];
 let currentBreakdownMonthIndex = -1;
 
+// Reconciliation slider instance
+let reconcileSlider = null;
+let reconcileMinDate = null;
+let reconcileMaxDate = null;
+
 // ============================================================
 // TOAST NOTIFICATION
 // ============================================================
@@ -88,10 +93,8 @@ if (!document.getElementById('toast-styles')) {
 function formatReconDate(dateStr) {
     if (!dateStr) return '—';
     try {
-        // Handle ISO format: 2026-07-04T20:43:55.952Z
         let date = new Date(dateStr);
         if (isNaN(date.getTime())) {
-            // Try parsing as YYYY-MM-DD
             const parts = dateStr.split('T')[0].split('-');
             if (parts.length === 3) {
                 date = new Date(parts[0], parts[1] - 1, parts[2]);
@@ -132,9 +135,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (sub === 'journal') loadJournalEntries();
             else if (sub === 'reconcile') {
                 loadReconcileAccountSelects();
+                const account1 = document.getElementById('reconcile-account1').value;
+                const account2 = document.getElementById('reconcile-account2').value;
+                if (account1 && account2) {
+                    loadReconcileDateRange(account1, account2, function() {
+                        loadReconciliationTimeline();
+                    });
+                }
             }
             else if (sub === 'bank') {
-                // Auto-load transactions when tab is opened
                 loadBankTransactions();
                 checkBankConnection();
             }
@@ -313,7 +322,31 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
+
+    // Reconciliation account selection changes → update slider
+    const acc1 = document.getElementById('reconcile-account1');
+    const acc2 = document.getElementById('reconcile-account2');
+    if (acc1) {
+        acc1.addEventListener('change', function() {
+            const account2 = document.getElementById('reconcile-account2').value;
+            if (this.value && account2) {
+                loadReconcileDateRange(this.value, account2, function() {
+                    loadReconciliationTimeline();
+                });
+            }
+        });
+    }
+    if (acc2) {
+        acc2.addEventListener('change', function() {
+            const account1 = document.getElementById('reconcile-account1').value;
+            if (account1 && this.value) {
+                loadReconcileDateRange(account1, this.value, function() {
+                    loadReconciliationTimeline();
+                });
+            }
+        });
+    }
+
     console.log('[INIT] Initialization complete');
 });
 
@@ -388,6 +421,219 @@ async function loadReconcileAccountSelects() {
         }
     } catch (err) {
         console.error('[RECONCILE] Error loading accounts:', err);
+    }
+}
+
+// ============================================================
+// RECONCILIATION – DATE RANGE SLIDER
+// ============================================================
+
+async function loadReconcileDateRange(account1, account2, callback) {
+    console.log('[RECONCILE] Loading date range for accounts:', account1, account2);
+    try {
+        const params = new URLSearchParams({ account1, account2 });
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/date-range?${params.toString()}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to fetch date range');
+        const data = await res.json();
+        if (data.status === 'success') {
+            const minDate = data.min_date;
+            const maxDate = data.max_date;
+            reconcileMinDate = new Date(minDate);
+            reconcileMaxDate = new Date(maxDate);
+            initReconcileSlider(reconcileMinDate, reconcileMaxDate);
+            if (callback) callback();
+        } else {
+            showToast('Error loading date range: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (err) {
+        console.error('[RECONCILE] Error loading date range:', err);
+        showToast('Error loading date range: ' + err.message, 'error');
+    }
+}
+
+function initReconcileSlider(minDate, maxDate) {
+    const sliderContainer = document.getElementById('reconcile-slider');
+    if (!sliderContainer) return;
+
+    // Destroy existing slider if any
+    if (reconcileSlider) {
+        reconcileSlider.destroy();
+        reconcileSlider = null;
+    }
+
+    const minTimestamp = minDate.getTime();
+    const maxTimestamp = maxDate.getTime();
+
+    noUiSlider.create(sliderContainer, {
+        start: [minTimestamp, maxTimestamp],
+        connect: true,
+        range: {
+            'min': minTimestamp,
+            'max': maxTimestamp
+        },
+        step: 86400000, // 1 day in milliseconds
+        format: {
+            to: function(value) {
+                return Math.round(value);
+            },
+            from: function(value) {
+                return Number(value);
+            }
+        }
+    });
+
+    reconcileSlider = sliderContainer.noUiSlider;
+
+    // Update labels on slide
+    sliderContainer.noUiSlider.on('update', function(values, handle) {
+        const leftTimestamp = parseInt(values[0]);
+        const rightTimestamp = parseInt(values[1]);
+        const leftDate = new Date(leftTimestamp);
+        const rightDate = new Date(rightTimestamp);
+        const startLabel = document.getElementById('reconcile-date-start-label');
+        const endLabel = document.getElementById('reconcile-date-end-label');
+        if (startLabel) startLabel.textContent = formatReconDate(leftDate.toISOString().split('T')[0]);
+        if (endLabel) endLabel.textContent = formatReconDate(rightDate.toISOString().split('T')[0]);
+    });
+}
+
+function getReconcileDateRange() {
+    if (!reconcileSlider) {
+        // Fallback: last 30 days
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        return { start: thirtyDaysAgo.toISOString().split('T')[0], end: now.toISOString().split('T')[0] };
+    }
+    const values = reconcileSlider.get();
+    const startDate = new Date(parseInt(values[0]));
+    const endDate = new Date(parseInt(values[1]));
+    return {
+        start: startDate.toISOString().split('T')[0],
+        end: endDate.toISOString().split('T')[0]
+    };
+}
+
+// ============================================================
+// RECONCILIATION – Compare Two Accounts
+// ============================================================
+
+async function loadReconciliationTimeline() {
+    const account1 = document.getElementById('reconcile-account1').value;
+    const account2 = document.getElementById('reconcile-account2').value;
+
+    if (!account1 || !account2) {
+        showToast('Please select both accounts.', 'warning');
+        return;
+    }
+    if (account1 === account2) {
+        showToast('Please select two different accounts.', 'warning');
+        return;
+    }
+
+    // Ensure slider is initialised
+    if (!reconcileSlider) {
+        await loadReconcileDateRange(account1, account2);
+    }
+
+    const dateRange = getReconcileDateRange();
+    const start = dateRange.start;
+    const end = dateRange.end;
+
+    const resultDiv = document.getElementById('reconcile-result');
+    resultDiv.innerHTML = '<p style="color: #000; text-align: center; padding: 20px;">Loading...</p>';
+
+    try {
+        const params = new URLSearchParams();
+        params.append('account1', account1);
+        params.append('account2', account2);
+        if (start) params.append('start', start);
+        if (end) params.append('end', end);
+
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/timeline?${params.toString()}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to fetch reconciliation data');
+        const data = await res.json();
+        if (data.status === 'success') {
+            renderReconciliationTimeline(data);
+        } else {
+            resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${data.error || 'Unknown error'}</p>`;
+        }
+    } catch (err) {
+        console.error('[RECONCILE] Error:', err);
+        resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${err.message}</p>`;
+    }
+}
+
+function renderReconciliationTimeline(data) {
+    const resultDiv = document.getElementById('reconcile-result');
+    const entries = data.entries || [];
+    const account1Name = data.account1_name || 'Account A';
+    const account2Name = data.account2_name || 'Account B';
+
+    if (entries.length === 0) {
+        resultDiv.innerHTML = `<p style="color: #000;">No transactions found for these accounts and date range.</p>`;
+        return;
+    }
+
+    let html = `<table class="journal-table" style="width:100%;">
+        <thead>
+            <tr>
+                <th style="color:#000;">Date</th>
+                <th style="color:#000;">Account</th>
+                <th style="color:#000;">Amount</th>
+                <th style="color:#000;">Description</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    let total1 = 0, total2 = 0;
+    entries.forEach(entry => {
+        const amount = entry.amount;
+        const isAccount1 = entry.account_name === account1Name;
+        const isAccount2 = entry.account_name === account2Name;
+        if (isAccount1) total1 += amount;
+        if (isAccount2) total2 += amount;
+
+        const amountClass = amount >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative';
+        const displayAmount = (amount >= 0 ? '+' : '') + amount.toFixed(2);
+
+        html += `<tr>
+            <td style="color:#000;">${entry.date}</td>
+            <td style="color:#000;">${entry.account_name}</td>
+            <td style="color:#000;" class="${amountClass}">$${displayAmount}</td>
+            <td style="color:#000;">${entry.description}</td>
+        </tr>`;
+    });
+
+    html += `<tr class="reconcile-summary-row">
+        <td colspan="4" style="color:#000; text-align:right; padding:10px;">
+            <span style="font-weight:bold;">Totals:</span>
+            ${account1Name}: <span class="${total1 >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${(total1 >= 0 ? '+' : '') + total1.toFixed(2)}</span> &nbsp;|&nbsp;
+            ${account2Name}: <span class="${total2 >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${(total2 >= 0 ? '+' : '') + total2.toFixed(2)}</span> &nbsp;|&nbsp;
+            Difference: <span class="${(total1 - total2) >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${((total1 - total2) >= 0 ? '+' : '') + (total1 - total2).toFixed(2)}</span>
+        </td>
+    </tr>`;
+
+    html += '</tbody></table>';
+    resultDiv.innerHTML = html;
+}
+
+function resetReconciliationTimeline() {
+    document.getElementById('reconcile-account1').value = '';
+    document.getElementById('reconcile-account2').value = '';
+    document.getElementById('reconcile-result').innerHTML = '<p class="text-muted" style="color: #000;">Select two accounts and click <strong>Compare</strong>.</p>';
+    
+    // Reset slider if accounts are now selected
+    const account1 = document.getElementById('reconcile-account1').value;
+    const account2 = document.getElementById('reconcile-account2').value;
+    if (account1 && account2 && reconcileSlider) {
+        loadReconcileDateRange(account1, account2);
     }
 }
 
@@ -626,117 +872,6 @@ async function submitManualEntry() {
 }
 
 // ============================================================
-// RECONCILIATION – Compare Two Accounts (New)
-// ============================================================
-
-async function loadReconciliationTimeline() {
-    const account1 = document.getElementById('reconcile-account1').value;
-    const account2 = document.getElementById('reconcile-account2').value;
-    const start = document.getElementById('reconcile-start').value;
-    const end = document.getElementById('reconcile-end').value;
-
-    if (!account1 || !account2) {
-        showToast('Please select both accounts.', 'warning');
-        return;
-    }
-    if (account1 === account2) {
-        showToast('Please select two different accounts.', 'warning');
-        return;
-    }
-
-    const resultDiv = document.getElementById('reconcile-result');
-    resultDiv.innerHTML = '<p style="color: #000; text-align: center; padding: 20px;">Loading...</p>';
-
-    try {
-        const params = new URLSearchParams();
-        params.append('account1', account1);
-        params.append('account2', account2);
-        if (start) params.append('start', start);
-        if (end) params.append('end', end);
-
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/timeline?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (!res.ok) throw new Error('Failed to fetch reconciliation data');
-        const data = await res.json();
-        if (data.status === 'success') {
-            renderReconciliationTimeline(data);
-        } else {
-            resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${data.error || 'Unknown error'}</p>`;
-        }
-    } catch (err) {
-        console.error('[RECONCILE] Error:', err);
-        resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${err.message}</p>`;
-    }
-}
-
-function renderReconciliationTimeline(data) {
-    const resultDiv = document.getElementById('reconcile-result');
-    const entries = data.entries || [];
-    const account1Name = data.account1_name || 'Account A';
-    const account2Name = data.account2_name || 'Account B';
-
-    if (entries.length === 0) {
-        resultDiv.innerHTML = `<p style="color: #000;">No transactions found for these accounts and date range.</p>`;
-        return;
-    }
-
-    // Build table
-    let html = `<table class="journal-table" style="width:100%;">
-        <thead>
-            <tr>
-                <th style="color:#000;">Date</th>
-                <th style="color:#000;">Account</th>
-                <th style="color:#000;">Amount</th>
-                <th style="color:#000;">Description</th>
-            </tr>
-        </thead>
-        <tbody>`;
-
-    let total1 = 0, total2 = 0;
-    entries.forEach(entry => {
-        const amount = entry.amount;
-        const isAccount1 = entry.account_name === account1Name;
-        const isAccount2 = entry.account_name === account2Name;
-        // Determine which total to add to
-        if (isAccount1) total1 += amount;
-        if (isAccount2) total2 += amount;
-
-        const amountClass = amount >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative';
-        const displayAmount = (amount >= 0 ? '+' : '') + amount.toFixed(2);
-
-        html += `<tr>
-            <td style="color:#000;">${entry.date}</td>
-            <td style="color:#000;">${entry.account_name}</td>
-            <td style="color:#000;" class="${amountClass}">$${displayAmount}</td>
-            <td style="color:#000;">${entry.description}</td>
-        </tr>`;
-    });
-
-    // Summary row
-    html += `<tr class="reconcile-summary-row">
-        <td colspan="4" style="color:#000; text-align:right; padding:10px;">
-            <span style="font-weight:bold;">Totals:</span>
-            ${account1Name}: <span class="${total1 >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${(total1 >= 0 ? '+' : '') + total1.toFixed(2)}</span> &nbsp;|&nbsp;
-            ${account2Name}: <span class="${total2 >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${(total2 >= 0 ? '+' : '') + total2.toFixed(2)}</span> &nbsp;|&nbsp;
-            Difference: <span class="${(total1 - total2) >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${((total1 - total2) >= 0 ? '+' : '') + (total1 - total2).toFixed(2)}</span>
-        </td>
-    </tr>`;
-
-    html += '</tbody></table>';
-    resultDiv.innerHTML = html;
-}
-
-function resetReconciliationTimeline() {
-    document.getElementById('reconcile-account1').value = '';
-    document.getElementById('reconcile-account2').value = '';
-    document.getElementById('reconcile-start').value = '';
-    document.getElementById('reconcile-end').value = '';
-    document.getElementById('reconcile-result').innerHTML = '<p class="text-muted" style="color: #000;">Select two accounts and click <strong>Compare</strong>.</p>';
-}
-
-// ============================================================
 // BANK TRANSACTIONS (Read‑Only Viewer)
 // ============================================================
 
@@ -749,14 +884,11 @@ async function loadBankTransactions() {
     const search = document.getElementById('bank-filter').value.trim();
     const viewFilter = document.getElementById('bank-view-filter')?.value || 'unposted';
 
-    // Build URL
     let url = `${AppConfig.baseUrl}/api/accounting/bank/${source}`;
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (viewFilter === 'unposted') params.append('unprocessed_only', 'true');
     else if (viewFilter === 'posted') params.append('unprocessed_only', 'false');
-    // For 'all', we don't add the param
-
     if (params.toString()) url += '?' + params.toString();
 
     try {
@@ -1114,7 +1246,6 @@ async function saveAccount() {
             document.getElementById('add-account-modal').classList.remove('active');
             loadAccountsList();
             loadAccountSelects();
-            // We no longer need to reload bank account selects since we don't have a destination dropdown
         } else {
             console.error('[ACCOUNTS] Error saving:', result.error);
             showToast('Error: ' + (result.error || 'Failed to save account'), 'error');
@@ -2771,4 +2902,35 @@ async function loadBalanceSheet() {
         document.getElementById('bs-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
     console.log('[BALANCE-SHEET] ===== LOAD BALANCE SHEET END =====');
+}
+
+// ============================================================
+// LOAD BANK ACCOUNTS FOR ROW DROPDOWNS (Unchanged)
+// ============================================================
+
+async function loadBankAccountsForRowDropdowns() {
+    console.log('[BANK] Loading accounts for row dropdowns');
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            bankAccounts = data.accounts;
+            accountNameToId = {};
+            bankAccounts.forEach(acc => {
+                const trimmed = acc.name.trim();
+                const norm = trimmed.toLowerCase();
+                accountNameToId[norm] = acc.id;
+                accountNameToId[trimmed] = acc.id;
+                accountNameToId[acc.code] = acc.id;
+            });
+            console.log('[BANK] Loaded', bankAccounts.length, 'accounts for row dropdowns');
+        }
+        return data;
+    } catch (e) {
+        console.error('[BANK] Failed to load accounts for row dropdowns:', e);
+        throw e;
+    }
 }
