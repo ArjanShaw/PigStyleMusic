@@ -617,7 +617,7 @@ async function loadReconcilePairsSummary() {
                     }
                 });
             }
-            const diff = netA - netB;
+            const diff = netA + netB;
             return {
                 ...p,
                 net_a: netA,
@@ -749,7 +749,6 @@ async function loadReconciliationTimeline(account1, account2) {
         resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${err.message}</p>`;
     }
 }
-
 function renderReconciliationTimeline(data) {
     const resultDiv = document.getElementById('reconcile-result');
     const entries = data.entries || [];
@@ -772,14 +771,8 @@ function renderReconciliationTimeline(data) {
         </thead>
         <tbody>`;
 
-    let total1 = 0, total2 = 0;
     entries.forEach(entry => {
         const amount = entry.amount;
-        const isAccount1 = entry.account_name === account1Name;
-        const isAccount2 = entry.account_name === account2Name;
-        if (isAccount1) total1 += amount;
-        if (isAccount2) total2 += amount;
-
         const amountClass = amount >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative';
         const displayAmount = (amount >= 0 ? '+' : '') + amount.toFixed(2);
 
@@ -790,15 +783,6 @@ function renderReconciliationTimeline(data) {
             <td style="color:#000;">${entry.description}</td>
         </tr>`;
     });
-
-    html += `<tr class="reconcile-summary-row">
-        <td colspan="4" style="color:#000; text-align:right; padding:10px;">
-            <span style="font-weight:bold;">Totals:</span>
-            ${account1Name}: <span class="${total1 >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${(total1 >= 0 ? '+' : '') + total1.toFixed(2)}</span> &nbsp;|&nbsp;
-            ${account2Name}: <span class="${total2 >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${(total2 >= 0 ? '+' : '') + total2.toFixed(2)}</span> &nbsp;|&nbsp;
-            Difference: <span class="${(total1 - total2) >= 0 ? 'reconcile-amount-positive' : 'reconcile-amount-negative'}">${((total1 - total2) >= 0 ? '+' : '') + (total1 - total2).toFixed(2)}</span>
-        </td>
-    </tr>`;
 
     html += '</tbody></table>';
     resultDiv.innerHTML = html;
