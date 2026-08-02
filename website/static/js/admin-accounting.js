@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     console.log('[INIT] Accounting container found');
 
-    // Sub-tab switching
+    // Sub-tab switching - UPDATED for new tab order
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
@@ -133,17 +133,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
 
-            if (sub === 'journal') loadJournalEntries();
-            else if (sub === 'reconcile') {
-                loadReconcileAccountSelects(); // for add pair modal
-                loadReconcilePairsSummary();   // load summary and auto-select first
-            }
-            else if (sub === 'bank') {
+            // Handle tab-specific loading
+            if (sub === 'import') {
                 loadBankTransactions();
                 checkBankConnection();
             }
             else if (sub === 'accounts') {
                 loadAccountsList();
+            }
+            else if (sub === 'journal') {
+                loadJournalEntries();
+            }
+            else if (sub === 'reconcile') {
+                loadReconcileAccountSelects();
+                loadReconcilePairsSummary();
             }
             else if (sub === 'cash-flow') {
                 console.log('[INIT] Cash Flow tab selected');
@@ -202,12 +205,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     loadBalanceSheet();
                 }
             }
-            else if (sub === 'orders') {
-                if (typeof window.loadOrders === 'function') {
-                    window.loadOrders();
-                    window.loadOrderStats();
-                }
-            }
             else if (sub === 'reports') {
                 // nothing to auto-load
             }
@@ -223,13 +220,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
-    // Manual entry – auto‑balance check
-    document.addEventListener('input', function(e) {
-        if (e.target.closest('.manual-entry-row')) {
-            updateManualBalance();
-        }
-    });
-
     // Load accounts into dropdowns
     loadAccountSelects();
 
@@ -238,10 +228,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     document.getElementById('report-date-from').value = firstDay;
     document.getElementById('report-date-to').value = today;
-    document.getElementById('manual-date').value = today;
 
-    // Load journal by default
-    loadJournalEntries();
+    // Load import (bank) by default
+    loadBankTransactions();
+    checkBankConnection();
 
     // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
@@ -270,7 +260,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ---- Bank Tab: Search button and Enter key ----
+    // ---- Import (Bank) Tab: Search button and Enter key ----
     document.getElementById('bank-search-btn')?.addEventListener('click', function() {
         console.log('[BANK] Search button clicked');
         loadBankTransactions();
@@ -345,7 +335,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await res.json();
             if (data.status === 'success') {
                 document.getElementById('reconcile-pair-modal').classList.remove('active');
-                loadReconcilePairsSummary(); // refresh the summary
+                loadReconcilePairsSummary();
             } else {
                 alert(data.error || 'Failed to add pair.');
             }
@@ -374,7 +364,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await res.json();
             if (data.status === 'success') {
                 document.getElementById('reconcile-edit-modal').classList.remove('active');
-                loadReconcilePairsSummary(); // refresh table
+                loadReconcilePairsSummary();
             } else {
                 alert(data.error || 'Failed to update pair.');
             }
@@ -564,7 +554,7 @@ function getReconcileDateRange() {
 }
 
 // ============================================================
-// RECONCILIATION – PAIRS SUMMARY (No New Endpoint)
+// RECONCILIATION – PAIRS SUMMARY
 // ============================================================
 
 async function loadReconcilePairsSummary() {
@@ -749,6 +739,7 @@ async function loadReconciliationTimeline(account1, account2) {
         resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${err.message}</p>`;
     }
 }
+
 function renderReconciliationTimeline(data) {
     const resultDiv = document.getElementById('reconcile-result');
     const entries = data.entries || [];
@@ -968,124 +959,7 @@ function viewJournalEntry(entryId) {
 }
 
 // ============================================================
-// MANUAL ADJUSTMENTS
-// ============================================================
-
-function addManualLine() {
-    console.log('[MANUAL] Adding line');
-    const container = document.getElementById('manual-lines-container');
-    const row = document.createElement('div');
-    row.className = 'manual-entry-row';
-    row.innerHTML = `
-        <select class="manual-account"><option value="">Select Account</option></select>
-        <input type="number" class="manual-debit" placeholder="Debit" step="0.01" min="0">
-        <input type="number" class="manual-credit" placeholder="Credit" step="0.01" min="0">
-        <button class="btn btn-danger btn-sm" onclick="removeManualLine(this)"><i class="fas fa-times"></i></button>
-    `;
-    container.appendChild(row);
-    const accountsSelect = row.querySelector('.manual-account');
-    const template = document.querySelector('.manual-account');
-    if (template) {
-        accountsSelect.innerHTML = template.innerHTML;
-    }
-    updateManualBalance();
-}
-
-function removeManualLine(btn) {
-    console.log('[MANUAL] Removing line');
-    const row = btn.closest('.manual-entry-row');
-    if (document.querySelectorAll('.manual-entry-row').length > 1) {
-        row.remove();
-        updateManualBalance();
-    } else {
-        alert('At least one line is required.');
-    }
-}
-
-function updateManualBalance() {
-    let totalDebit = 0, totalCredit = 0;
-    document.querySelectorAll('.manual-entry-row').forEach(row => {
-        const d = parseFloat(row.querySelector('.manual-debit').value) || 0;
-        const c = parseFloat(row.querySelector('.manual-credit').value) || 0;
-        totalDebit += d;
-        totalCredit += c;
-    });
-    const balanceDiv = document.getElementById('manual-balance');
-    const diff = totalDebit - totalCredit;
-    if (Math.abs(diff) < 0.001) {
-        balanceDiv.className = 'balance-indicator balanced';
-        balanceDiv.innerHTML = `✅ Balanced: Debits $${totalDebit.toFixed(2)}, Credits $${totalCredit.toFixed(2)}`;
-    } else {
-        balanceDiv.className = 'balance-indicator unbalanced';
-        balanceDiv.innerHTML = `⚠️ Unbalanced: Debits $${totalDebit.toFixed(2)}, Credits $${totalCredit.toFixed(2)} (Difference: $${Math.abs(diff).toFixed(2)})`;
-    }
-}
-
-async function submitManualEntry() {
-    console.log('[MANUAL] Submitting manual entry');
-    const date = document.getElementById('manual-date').value;
-    const description = document.getElementById('manual-description').value.trim();
-    if (!date || !description) {
-        alert('Date and Description are required.');
-        return;
-    }
-    const lines = [];
-    let totalDebit = 0, totalCredit = 0;
-    document.querySelectorAll('.manual-entry-row').forEach(row => {
-        const account = row.querySelector('.manual-account').value;
-        const debit = parseFloat(row.querySelector('.manual-debit').value) || 0;
-        const credit = parseFloat(row.querySelector('.manual-credit').value) || 0;
-        if (account && (debit > 0 || credit > 0)) {
-            lines.push({ account_id: parseInt(account), debit, credit });
-            totalDebit += debit;
-            totalCredit += credit;
-        }
-    });
-    if (lines.length === 0) {
-        alert('At least one valid line is required.');
-        return;
-    }
-    if (Math.abs(totalDebit - totalCredit) > 0.001) {
-        alert('Debits and Credits must balance.');
-        return;
-    }
-
-    const status = document.getElementById('manual-status');
-    status.textContent = '⏳ Posting...';
-    try {
-        console.log('[MANUAL] Posting entry with', lines.length, 'lines');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/manual`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date, description, lines })
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            console.log('[MANUAL] Entry posted, ID:', data.entry_id);
-            status.textContent = '✅ Entry posted (ID: ' + data.entry_id + ')';
-            document.getElementById('manual-description').value = '';
-            document.querySelectorAll('.manual-entry-row').forEach((row, idx) => {
-                if (idx > 0) row.remove();
-                else {
-                    row.querySelector('.manual-account').value = '';
-                    row.querySelector('.manual-debit').value = '';
-                    row.querySelector('.manual-credit').value = '';
-                }
-            });
-            updateManualBalance();
-        } else {
-            console.error('[MANUAL] Error posting:', data.error);
-            status.textContent = '❌ ' + (data.error || 'Failed to post');
-        }
-    } catch (err) {
-        console.error('[MANUAL] Error:', err);
-        status.textContent = '❌ Error: ' + err.message;
-    }
-}
-
-// ============================================================
-// BANK TRANSACTIONS (Read‑Only Viewer)
+// IMPORT (BANK) TRANSACTIONS
 // ============================================================
 
 async function loadBankTransactions() {
@@ -1097,11 +971,29 @@ async function loadBankTransactions() {
     const search = document.getElementById('bank-filter').value.trim();
     const viewFilter = document.getElementById('bank-view-filter')?.value || 'unposted';
 
-    let url = `${AppConfig.baseUrl}/api/accounting/bank/${source}`;
+    // Map source to correct endpoint
+    const sourceMap = {
+        'fnbo': 'fnbo',
+        'bluevine': 'bluevine',
+        'square': 'square',
+        'paypal': 'paypal'
+    };
+    
+    const endpoint = sourceMap[source] || source;
+    
+    // Build URL correctly
+    let url = `${AppConfig.baseUrl}/api/accounting/bank/${endpoint}`;
     const params = new URLSearchParams();
     if (search) params.append('search', search);
-    if (viewFilter === 'unposted') params.append('unprocessed_only', 'true');
-    else if (viewFilter === 'posted') params.append('unprocessed_only', 'false');
+    
+    // Different filters for different sources
+    if (viewFilter === 'unposted') {
+        params.append('unprocessed_only', 'true');
+    } else if (viewFilter === 'posted') {
+        params.append('unprocessed_only', 'false');
+    }
+    // 'all' means don't send the parameter
+    
     if (params.toString()) url += '?' + params.toString();
 
     try {
@@ -1342,7 +1234,7 @@ function exportReportCSV() {
 async function loadAccountsList() {
     console.log('[ACCOUNTS] Loading accounts list');
     const body = document.getElementById('accounts-body');
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading accounts...</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading accounts...</td></tr>';
 
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
@@ -1356,11 +1248,11 @@ async function loadAccountsList() {
             renderAccounts(data.accounts);
         } else {
             console.error('[ACCOUNTS] Error:', data.error);
-            body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading accounts') + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading accounts') + '</td></tr>';
         }
     } catch (err) {
         console.error('[ACCOUNTS] Error:', err);
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
     }
 }
 
@@ -1368,7 +1260,7 @@ function renderAccounts(accounts) {
     console.log('[ACCOUNTS] Rendering', accounts.length, 'accounts');
     const body = document.getElementById('accounts-body');
     if (!accounts || accounts.length === 0) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No accounts found.</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No accounts found.</td></tr>';
         return;
     }
     let html = '';
@@ -1471,24 +1363,14 @@ async function saveAccount() {
 
 async function deleteAccount(accountId, accountName) {
     console.log('[ACCOUNTS] Deleting account:', accountId, accountName);
+    
+    // Show warning about transactions
+    if (!confirm(`⚠️ Delete account "${accountName}"?\n\nThis will delete the account and UNPOST all associated transactions.\n\nAre you sure?`)) {
+        console.log('[ACCOUNTS] Delete cancelled');
+        return;
+    }
+
     try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/account-transactions?account_id=${accountId}&page=1&per_page=1`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        const hasTransactions = data.total > 0;
-
-        let message = `Are you sure you want to delete account "${accountName}"?`;
-        if (hasTransactions) {
-            message = `Account "${accountName}" has ${data.total} posted transaction(s).\n\nDeleting this account will unpost all associated transactions.\n\nAre you sure you want to proceed?`;
-        }
-
-        if (!confirm(message)) {
-            console.log('[ACCOUNTS] Delete cancelled');
-            return;
-        }
-
         const deleteRes = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts/${accountId}`, {
             method: 'DELETE',
             credentials: 'include',
@@ -2273,10 +2155,14 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART] All account names in data:', Array.from(allAccountNames).sort());
 
-    const existingChart = Chart.getChart(canvas);
-    if (existingChart) {
-        console.log('[CHART] Destroying existing chart');
-        existingChart.destroy();
+    // Store chart instance reference
+    let chartInstance = null;
+    
+    // Check if chart exists and destroy it
+    if (window[canvasId + 'Instance']) {
+        console.log('[CHART] Destroying existing chart instance');
+        window[canvasId + 'Instance'].destroy();
+        window[canvasId + 'Instance'] = null;
     }
 
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -2553,6 +2439,9 @@ function renderLineChart(canvasId, data, options = {}) {
     console.log('[CHART] Chart.js instance created');
     console.log('[CHART] Chart data datasets:', chart.data.datasets.length);
 
+    // Store chart instance
+    window[canvasId + 'Instance'] = chart;
+
     if (canvasId === 'pl-chart') {
         plChartInstance = chart;
         console.log('[CHART] Set plChartInstance');
@@ -2574,7 +2463,7 @@ function renderLineChart(canvasId, data, options = {}) {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            const chartInstance = Chart.getChart(canvas);
+            const chartInstance = window[canvasId + 'Instance'] || Chart.getChart(canvas);
             if (!chartInstance) {
                 console.log('[CHART-X] No chart instance found');
                 return;
@@ -2669,7 +2558,7 @@ function expandChart(canvasId) {
         return;
     }
 
-    const chart = Chart.getChart(canvas);
+    const chart = window[canvasId + 'Instance'] || Chart.getChart(canvas);
     if (!chart) {
         console.error('[EXPAND] Chart not found for canvas:', canvasId);
         return;
@@ -2827,7 +2716,6 @@ async function loadCashFlow() {
     }
 
     try {
-        // Convert month to first and last day of the month
         const startDate = new Date(start + '-01');
         const endDate = new Date(end + '-01');
         const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
@@ -2908,7 +2796,6 @@ async function loadMonthlyPL() {
     }
 
     try {
-        // Convert month to first and last day of the month
         console.log('[MONTHLY-PL] Converting months to dates...');
         const startDate = new Date(start + '-01');
         const endDate = new Date(end + '-01');
@@ -3118,7 +3005,7 @@ async function loadBalanceSheet() {
 }
 
 // ============================================================
-// LOAD BANK ACCOUNTS FOR ROW DROPDOWNS (Unchanged)
+// LOAD BANK ACCOUNTS FOR ROW DROPDOWNS
 // ============================================================
 
 async function loadBankAccountsForRowDropdowns() {
