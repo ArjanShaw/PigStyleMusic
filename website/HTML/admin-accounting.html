@@ -218,6 +218,12 @@
         .noUi-connect { background: #007bff; }
         .noUi-handle { border: 1px solid #007bff; background: #fff; }
         .noUi-handle:before, .noUi-handle:after { background: #007bff; }
+
+        .paypal-status-bar { display: flex; gap: 15px; align-items: center; padding: 10px 15px; background: #f8f9fa; border-radius: 4px; margin-bottom: 15px; flex-wrap: wrap; }
+        .paypal-status-bar .status-label { font-weight: 500; color: #000; }
+        .paypal-status-bar .status-value { font-weight: 600; }
+        .paypal-status-bar .status-value.connected { color: #28a745; }
+        .paypal-status-bar .status-value.disconnected { color: #dc3545; }
     </style>
 </head>
 <body>
@@ -237,37 +243,34 @@
         <div class="admin-container" id="accounting-container">
             <h1 class="accounting-title"><i class="fas fa-calculator"></i> Accounting</h1>
             
-            <!-- REORGANIZED TABS: Import → Accounts → Journal → Reconciliation → Reports → Cash Flow → Monthly P&L → Balance Sheet -->
+            <!-- TABS: Import → Accounts → Journal → Reconciliation → Reports → Cash Flow → Monthly P&L → Balance Sheet -->
             <div class="sub-tabs" id="accounting-sub-tabs">
-                <!-- 1. IMPORT (was Bank) - moved to far left -->
                 <button class="sub-tab active" data-subtab="import"><i class="fas fa-upload"></i> Import</button>
-                
-                <!-- 2. ACCOUNTS - moved from right to second position -->
                 <button class="sub-tab" data-subtab="accounts"><i class="fas fa-sitemap"></i> Accounts</button>
-                
-                <!-- 3. JOURNAL - moved from first position -->
                 <button class="sub-tab" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
-                
-                <!-- 4. RECONCILIATION - moved left -->
                 <button class="sub-tab" data-subtab="reconcile"><i class="fas fa-handshake"></i> Reconciliation</button>
-                
-                <!-- 5. REPORTS - kept -->
                 <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
-                
-                <!-- 6. CASH FLOW - kept -->
                 <button class="sub-tab" data-subtab="cash-flow"><i class="fas fa-money-bill-wave"></i> Cash Flow</button>
-                
-                <!-- 7. MONTHLY P&L - kept -->
                 <button class="sub-tab" data-subtab="monthly-pl"><i class="fas fa-chart-line"></i> Monthly P&L</button>
-                
-                <!-- 8. BALANCE SHEET - kept -->
                 <button class="sub-tab" data-subtab="balance-sheet"><i class="fas fa-balance-scale"></i> Balance Sheet</button>
             </div>
 
-            <!-- IMPORT TAB (was Bank) - Now first -->
+            <!-- IMPORT TAB -->
             <div id="sub-import" class="sub-tab-content active">
                 <h4 style="color: #000;"><i class="fas fa-upload"></i> Import Bank Transactions</h4>
                 <p style="color: #000;">Select a source to view its transactions. Use the filter to narrow down results.</p>
+
+                <!-- PayPal Connection Status -->
+                <div class="paypal-status-bar">
+                    <span class="status-label"><i class="fas fa-paypal"></i> PayPal Status:</span>
+                    <span class="status-value disconnected" id="paypal-plaid-status">⚠️ Not connected</span>
+                    <button class="btn btn-primary btn-sm" id="connect-paypal-plaid-btn" onclick="connectPayPalPlaid()">
+                        <i class="fas fa-link"></i> Connect PayPal
+                    </button>
+                    <button class="btn btn-danger btn-sm" id="disconnect-paypal-plaid-btn" onclick="disconnectPayPalPlaid()" style="display:none;">
+                        <i class="fas fa-unlink"></i> Disconnect
+                    </button>
+                </div>
 
                 <div class="bank-status-bar">
                     <div>
@@ -281,7 +284,7 @@
                                 <option value="fnbo">FNBO Bank (Plaid)</option>
                                 <option value="bluevine">Bluevine Bank (Historic)</option>
                                 <option value="square">Square Asset</option>
-                                <option value="paypal">PayPal</option>
+                                <option value="paypal">PayPal (Plaid)</option>
                             </select>
                         </div>
                         <div class="form-group" style="margin:0;">
@@ -324,7 +327,7 @@
                 </div>
             </div>
 
-            <!-- ACCOUNTS TAB - Now second -->
+            <!-- ACCOUNTS TAB -->
             <div id="sub-accounts" class="sub-tab-content">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                     <h4 style="color:#000;"><i class="fas fa-sitemap"></i> Chart of Accounts</h4>
@@ -346,7 +349,7 @@
                 </div>
             </div>
 
-            <!-- JOURNAL TAB - Now third -->
+            <!-- JOURNAL TAB -->
             <div id="sub-journal" class="sub-tab-content">
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
                     <div class="form-group"><label>Account</label><select id="journal-account-filter"><option value="">All Accounts</option></select></div>
@@ -367,7 +370,7 @@
                 </div>
             </div>
 
-            <!-- RECONCILIATION TAB - Now fourth -->
+            <!-- RECONCILIATION TAB -->
             <div id="sub-reconcile" class="sub-tab-content">
                 <h4 style="color: #000;"><i class="fas fa-handshake"></i> Reconciliation Dashboard</h4>
                 <p style="color: #000;">Select a date range and click a pair to see detailed transactions.</p>
@@ -627,7 +630,7 @@
         </div>
     </div>
 
-    <!-- MONTH BREAKDOWN MODAL (Bar Chart) -->
+    <!-- MONTH BREAKDOWN MODAL -->
     <div class="modal-overlay" id="breakdown-modal">
         <div class="modal-box" style="max-width: 950px;">
             <div class="modal-header">
@@ -643,7 +646,7 @@
         </div>
     </div>
 
-    <!-- ============ SCRIPTS ============ -->
+    <!-- SCRIPTS -->
     <script src="/static/js/app-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -654,6 +657,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.0/nouislider.min.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=26"></script>
+    <script src="/static/js/admin-accounting.js?v=27"></script>
 </body>
 </html>

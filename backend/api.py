@@ -9987,16 +9987,110 @@ def bank_square():
         'unprocessed_count': unprocessed
     })
 
+
 @app.route('/api/accounting/bank/paypal', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def bank_paypal():
-    """PayPal stub – not implemented."""
+    """
+    Fetch PayPal transactions via Plaid.
+    """
+    search = request.args.get('search', '').strip()
+    unprocessed_only = request.args.get('unprocessed_only')
+    
+    # Get PayPal Plaid access token
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_paypal_access_token'")
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return jsonify({
+            'status': 'error',
+            'error': 'PayPal not connected via Plaid. Please connect your PayPal account.',
+            'needs_connection': True
+        }), 400
+    
+    access_token = row['config_value']
+    
+    # Use Plaid to fetch transactions
+    client = get_plaid_client()
+    
+    # Get transactions from last 90 days
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=90)
+    
+    request = TransactionsGetRequest(
+        access_token=access_token,
+        start_date=start_date,
+        end_date=end_date,
+        options=TransactionsGetRequestOptions(count=500, offset=0)
+    )
+    
+    try:
+        response = client.transactions_get(request)
+        transactions = response['transactions']
+    except plaid.ApiException as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'Plaid error: {str(e)}'
+        }), 500
+    
+    # Format transactions for frontend
+    all_transactions = []
+    for tx in transactions:
+        amount = tx['amount']
+        # Plaid: positive = debit (spending), negative = credit (income)
+        # For PayPal, we want to show deposits as positive
+        display_amount = -amount if amount < 0 else amount
+        
+        all_transactions.append({
+            'id': tx['transaction_id'],
+            'date': tx['date'],
+            'amount': display_amount,
+            'description': tx.get('name', ''),
+            'category': tx.get('category', [''])[0] if tx.get('category') else '',
+            'pending': tx.get('pending', False),
+            'source_type': 'paypal'
+        })
+    
+    # Check which transactions are already posted
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    for tx in all_transactions:
+        cursor.execute('''
+            SELECT id FROM journal_entries 
+            WHERE source_type = 'plaid_paypal' AND source_id = ?
+        ''', (tx['id'],))
+        entry = cursor.fetchone()
+        tx['processed'] = entry is not None
+    
+    conn.close()
+    
+    # Apply filters
+    if search:
+        search_lower = search.lower()
+        all_transactions = [t for t in all_transactions if search_lower in t['description'].lower()]
+    
+    if unprocessed_only is not None:
+        filter_unprocessed = unprocessed_only.lower() == 'true'
+        if filter_unprocessed:
+            all_transactions = [t for t in all_transactions if not t['processed']]
+        else:
+            all_transactions = [t for t in all_transactions if t['processed']]
+    
+    total = len(all_transactions)
+    unprocessed = len([t for t in all_transactions if not t.get('processed', False)])
+    
     return jsonify({
-        'status': 'error',
-        'error': 'PayPal integration is not yet implemented.'
-    }), 501
-  
+        'status': 'success',
+        'transactions': all_transactions,
+        'total_count': total,
+        'unprocessed_count': unprocessed
+    })
+
 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['DELETE'])
 @login_required

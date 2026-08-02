@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     console.log('[INIT] Accounting container found');
 
-    // Sub-tab switching - UPDATED for new tab order
+    // Sub-tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
@@ -133,10 +133,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
 
-            // Handle tab-specific loading
             if (sub === 'import') {
                 loadBankTransactions();
-                checkBankConnection();
+                checkPayPalPlaidStatus();
             }
             else if (sub === 'accounts') {
                 loadAccountsList();
@@ -231,7 +230,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load import (bank) by default
     loadBankTransactions();
-    checkBankConnection();
+    checkPayPalPlaidStatus();
 
     // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
@@ -249,7 +248,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.status === 'success') {
                 alert('Bank connected successfully!');
                 window.history.replaceState({}, document.title, window.location.pathname);
-                checkBankConnection();
+                checkPayPalPlaidStatus();
                 loadBankTransactions();
             } else {
                 alert('Failed to connect bank: ' + (data.error || 'Unknown error'));
@@ -298,7 +297,7 @@ document.addEventListener('DOMContentLoaded', function() {
         saveAccount();
     });
 
-    // Close modal on overlay - only if clicking the backdrop itself
+    // Close modal on overlay
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -308,10 +307,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Reconciliation: slider change → reload summary
-    // We'll set this after slider is initialized (in initReconcileSlider)
-
-    // Save reconcile pair button (for the modal)
+    // Save reconcile pair button
     document.getElementById('save-reconcile-pair-btn')?.addEventListener('click', async function() {
         const name = document.getElementById('reconcile-pair-name').value.trim();
         const description = document.getElementById('reconcile-pair-description').value.trim();
@@ -376,6 +372,115 @@ document.addEventListener('DOMContentLoaded', function() {
 
     console.log('[INIT] Initialization complete');
 });
+
+// ============================================================
+// PAYPAL PLAID CONNECTION
+// ============================================================
+
+async function connectPayPalPlaid() {
+    console.log('[PLAID] Connecting PayPal');
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/plaid/create-link-token`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        
+        if (!data.link_token) {
+            alert('Failed to get link token: ' + (data.error || 'Unknown error'));
+            return;
+        }
+        
+        const handler = Plaid.create({
+            token: data.link_token,
+            onSuccess: async (public_token, metadata) => {
+                console.log('[PLAID] PayPal connection success');
+                const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/exchange`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        public_token,
+                        institution: 'paypal'
+                    })
+                });
+                const exchangeData = await exchangeRes.json();
+                if (exchangeData.status === 'success') {
+                    alert('PayPal connected successfully via Plaid!');
+                    checkPayPalPlaidStatus();
+                    loadBankTransactions();
+                } else {
+                    alert('Failed to connect PayPal: ' + (exchangeData.error || 'Unknown error'));
+                }
+            },
+            onExit: (err, metadata) => {
+                if (err) {
+                    console.error('[PLAID] Exit error:', err);
+                    alert('Error: ' + (err.display_message || err.error_message || 'Unknown error'));
+                }
+            }
+        });
+        handler.open();
+    } catch (e) {
+        console.error('[PLAID] Error:', e);
+        alert('Failed to initiate PayPal connection: ' + e.message);
+    }
+}
+
+async function checkPayPalPlaidStatus() {
+    console.log('[PLAID] Checking PayPal connection status');
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/paypal-plaid-status`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        const data = await res.json();
+        const statusEl = document.getElementById('paypal-plaid-status');
+        const connectBtn = document.getElementById('connect-paypal-plaid-btn');
+        const disconnectBtn = document.getElementById('disconnect-paypal-plaid-btn');
+        
+        if (statusEl) {
+            if (data.connected) {
+                statusEl.innerHTML = '✅ Connected';
+                statusEl.className = 'status-value connected';
+                if (connectBtn) connectBtn.style.display = 'none';
+                if (disconnectBtn) disconnectBtn.style.display = 'inline-block';
+            } else {
+                statusEl.innerHTML = '⚠️ Not connected';
+                statusEl.className = 'status-value disconnected';
+                if (connectBtn) connectBtn.style.display = 'inline-block';
+                if (disconnectBtn) disconnectBtn.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        console.error('[PLAID] Error checking status:', e);
+    }
+}
+
+async function disconnectPayPalPlaid() {
+    if (!confirm('Disconnect PayPal from Plaid? This will not delete any posted transactions.')) {
+        return;
+    }
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/paypal-plaid-disconnect`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert('PayPal disconnected.');
+            checkPayPalPlaidStatus();
+            loadBankTransactions();
+        } else {
+            alert('Failed to disconnect: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        console.error('[PLAID] Error disconnecting:', e);
+        alert('Error disconnecting PayPal: ' + e.message);
+    }
+}
 
 // ============================================================
 // ACCOUNT DROPDOWNS
@@ -482,7 +587,6 @@ function initReconcileSlider(minDate, maxDate) {
         return;
     }
 
-    // Destroy existing slider if any
     if (reconcileSlider) {
         reconcileSlider.destroy();
         reconcileSlider = null;
@@ -498,7 +602,7 @@ function initReconcileSlider(minDate, maxDate) {
             'min': minTimestamp,
             'max': maxTimestamp
         },
-        step: 86400000, // 1 day in milliseconds
+        step: 86400000,
         format: {
             to: function(value) {
                 return Math.round(value);
@@ -511,7 +615,6 @@ function initReconcileSlider(minDate, maxDate) {
 
     reconcileSlider = sliderContainer.noUiSlider;
 
-    // Update labels on slide
     sliderContainer.noUiSlider.on('update', function(values, handle) {
         const leftTimestamp = parseInt(values[0]);
         const rightTimestamp = parseInt(values[1]);
@@ -523,10 +626,8 @@ function initReconcileSlider(minDate, maxDate) {
         if (endLabel) endLabel.textContent = formatReconDate(rightDate.toISOString().split('T')[0]);
     });
 
-    // When slider changes, reload pairs summary and timeline
     sliderContainer.noUiSlider.on('change', function() {
         loadReconcilePairsSummary();
-        // Also refresh the currently selected timeline if a pair is selected
         const selectedRow = document.querySelector('#reconcile-pairs-body tr.selected-row');
         if (selectedRow) {
             const accountA = parseInt(selectedRow.dataset.accountA);
@@ -538,7 +639,6 @@ function initReconcileSlider(minDate, maxDate) {
 
 function getReconcileDateRange() {
     if (!reconcileSlider) {
-        // Fallback: last 30 days
         const now = new Date();
         const thirtyDaysAgo = new Date(now);
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -563,7 +663,6 @@ async function loadReconcilePairsSummary() {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#000;">Loading pairs...</td></tr>';
 
     try {
-        // 1. Fetch all pairs
         const pairsRes = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
@@ -580,12 +679,10 @@ async function loadReconcilePairsSummary() {
             return;
         }
 
-        // 2. Get current date range
         const dateRange = getReconcileDateRange();
         const start = dateRange.start;
         const end = dateRange.end;
 
-        // 3. For each pair, fetch its timeline and compute net difference
         const pairPromises = pairs.map(async (p) => {
             const params = new URLSearchParams();
             params.append('account1', p.account_a_id);
@@ -619,7 +716,6 @@ async function loadReconcilePairsSummary() {
         const pairSummaries = await Promise.all(pairPromises);
         renderPairsSummary(pairSummaries);
 
-        // After rendering, auto-select the first row and load its timeline
         const firstRow = document.querySelector('#reconcile-pairs-body tr[data-pair-id]');
         if (firstRow) {
             firstRow.classList.add('selected-row');
@@ -664,7 +760,6 @@ function renderPairsSummary(pairSummaries) {
     });
     tbody.innerHTML = html;
 
-    // Click handlers for row selection
     tbody.querySelectorAll('tr[data-pair-id]').forEach(row => {
         row.addEventListener('click', function(e) {
             if (e.target.closest('button')) return;
@@ -684,13 +779,11 @@ function renderPairsSummary(pairSummaries) {
 
 async function loadReconciliationTimeline(account1, account2) {
     if (!account1 || !account2) {
-        // Try to get from selected row
         const selectedRow = document.querySelector('#reconcile-pairs-body tr.selected-row');
         if (selectedRow) {
             account1 = parseInt(selectedRow.dataset.accountA);
             account2 = parseInt(selectedRow.dataset.accountB);
         } else {
-            // try first row
             const firstRow = document.querySelector('#reconcile-pairs-body tr[data-pair-id]');
             if (firstRow) {
                 account1 = parseInt(firstRow.dataset.accountA);
@@ -704,7 +797,6 @@ async function loadReconciliationTimeline(account1, account2) {
         }
     }
 
-    // Ensure slider is initialised
     if (!reconcileSlider) {
         await loadReconcileDateRange(account1, account2);
     }
@@ -971,7 +1063,6 @@ async function loadBankTransactions() {
     const search = document.getElementById('bank-filter').value.trim();
     const viewFilter = document.getElementById('bank-view-filter')?.value || 'unposted';
 
-    // Map source to correct endpoint
     const sourceMap = {
         'fnbo': 'fnbo',
         'bluevine': 'bluevine',
@@ -981,18 +1072,15 @@ async function loadBankTransactions() {
     
     const endpoint = sourceMap[source] || source;
     
-    // Build URL correctly
     let url = `${AppConfig.baseUrl}/api/accounting/bank/${endpoint}`;
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     
-    // Different filters for different sources
     if (viewFilter === 'unposted') {
         params.append('unprocessed_only', 'true');
     } else if (viewFilter === 'posted') {
         params.append('unprocessed_only', 'false');
     }
-    // 'all' means don't send the parameter
     
     if (params.toString()) url += '?' + params.toString();
 
@@ -1059,81 +1147,6 @@ function updateBankCounts(unprocessed, total) {
         countEl.textContent = unprocessed;
         labelEl.textContent = ' unprocessed transactions';
         totalEl.textContent = `(${total} total)`;
-    }
-}
-
-async function checkBankConnection() {
-    console.log('[BANK] Checking bank connection');
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/plaid/status`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        const statusEl = document.getElementById('bank-connection-status');
-        const connectBtn = document.getElementById('connect-bank-btn');
-        if (data.connected) {
-            console.log('[BANK] Connected');
-            if (statusEl) statusEl.innerHTML = '✅ Connected';
-            if (connectBtn) connectBtn.style.display = 'none';
-        } else {
-            console.log('[BANK] Not connected');
-            if (statusEl) statusEl.innerHTML = '⚠️ Not connected';
-            if (connectBtn) connectBtn.style.display = 'inline-block';
-        }
-    } catch (e) {
-        console.error('[BANK] Failed to check bank connection:', e);
-    }
-}
-
-async function connectBank() {
-    console.log('[BANK] Connecting bank');
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/plaid/create-link-token`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (!data.link_token) {
-            alert('Failed to get link token: ' + (data.error || 'Unknown error'));
-            return;
-        }
-        const linkToken = data.link_token;
-        console.log('[BANK] Got link token');
-        const handler = Plaid.create({
-            token: linkToken,
-            isOAuth: true,
-            onSuccess: async (public_token, metadata) => {
-                console.log('[BANK] Plaid success');
-                const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/exchange`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ public_token })
-                });
-                const exchangeData = await exchangeRes.json();
-                if (exchangeData.status === 'success') {
-                    console.log('[BANK] Exchange success');
-                    alert('Bank connected successfully!');
-                    checkBankConnection();
-                    loadBankTransactions();
-                } else {
-                    console.error('[BANK] Exchange error:', exchangeData.error);
-                    alert('Failed to connect bank: ' + (exchangeData.error || 'Unknown error'));
-                }
-            },
-            onExit: (err, metadata) => {
-                if (err) {
-                    console.error('[BANK] Plaid exit error:', err);
-                    alert('Error: ' + (err.display_message || err.error_message || 'Unknown error'));
-                }
-            }
-        });
-        handler.open();
-    } catch (e) {
-        console.error('[BANK] Error:', e);
-        alert('Failed to initiate bank connection: ' + e.message);
     }
 }
 
@@ -1364,7 +1377,6 @@ async function saveAccount() {
 async function deleteAccount(accountId, accountName) {
     console.log('[ACCOUNTS] Deleting account:', accountId, accountName);
     
-    // Show warning about transactions
     if (!confirm(`⚠️ Delete account "${accountName}"?\n\nThis will delete the account and UNPOST all associated transactions.\n\nAre you sure?`)) {
         console.log('[ACCOUNTS] Delete cancelled');
         return;
@@ -2144,10 +2156,8 @@ function renderLineChart(canvasId, data, options = {}) {
         return null;
     }
 
-    // Log all months
     console.log('[CHART] Months list:', months);
 
-    // Log all accounts in the data
     const allAccountNames = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
@@ -2155,10 +2165,8 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     console.log('[CHART] All account names in data:', Array.from(allAccountNames).sort());
 
-    // Store chart instance reference
     let chartInstance = null;
     
-    // Check if chart exists and destroy it
     if (window[canvasId + 'Instance']) {
         console.log('[CHART] Destroying existing chart instance');
         window[canvasId + 'Instance'].destroy();
@@ -2439,7 +2447,6 @@ function renderLineChart(canvasId, data, options = {}) {
     console.log('[CHART] Chart.js instance created');
     console.log('[CHART] Chart data datasets:', chart.data.datasets.length);
 
-    // Store chart instance
     window[canvasId + 'Instance'] = chart;
 
     if (canvasId === 'pl-chart') {
@@ -2453,7 +2460,6 @@ function renderLineChart(canvasId, data, options = {}) {
         console.log('[CHART] Set bsChartInstance');
     }
 
-    // X-axis click handler
     console.log('[CHART] Adding x-axis click handler');
 
     canvas.addEventListener('click', function(e) {
