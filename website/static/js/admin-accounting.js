@@ -135,7 +135,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (sub === 'import') {
                 loadBankTransactions();
-                checkPayPalPlaidStatus();
             }
             else if (sub === 'accounts') {
                 loadAccountsList();
@@ -230,7 +229,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load import (bank) by default
     loadBankTransactions();
-    checkPayPalPlaidStatus();
 
     // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
@@ -248,7 +246,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.status === 'success') {
                 alert('Bank connected successfully!');
                 window.history.replaceState({}, document.title, window.location.pathname);
-                checkPayPalPlaidStatus();
                 loadBankTransactions();
             } else {
                 alert('Failed to connect bank: ' + (data.error || 'Unknown error'));
@@ -374,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
-// PAYPAL PLAID CONNECTION
+// PAYPAL PLAID CONNECTION (Simplified - no status functions)
 // ============================================================
 
 async function connectPayPalPlaid() {
@@ -395,23 +392,21 @@ async function connectPayPalPlaid() {
         const handler = Plaid.create({
             token: data.link_token,
             onSuccess: async (public_token, metadata) => {
-                console.log('[PLAID] PayPal connection success');
+                console.log('[PLAID] Connection success');
+                console.log('[PLAID] Institution:', metadata.institution ? metadata.institution.name : 'Unknown');
+                
                 const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/exchange`, {
                     method: 'POST',
                     credentials: 'include',
                     headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        public_token,
-                        institution: 'paypal'
-                    })
+                    body: JSON.stringify({ public_token })
                 });
                 const exchangeData = await exchangeRes.json();
                 if (exchangeData.status === 'success') {
-                    alert('PayPal connected successfully via Plaid!');
-                    checkPayPalPlaidStatus();
+                    alert('Bank connected successfully via Plaid!');
                     loadBankTransactions();
                 } else {
-                    alert('Failed to connect PayPal: ' + (exchangeData.error || 'Unknown error'));
+                    alert('Failed to connect: ' + (exchangeData.error || 'Unknown error'));
                 }
             },
             onExit: (err, metadata) => {
@@ -424,61 +419,7 @@ async function connectPayPalPlaid() {
         handler.open();
     } catch (e) {
         console.error('[PLAID] Error:', e);
-        alert('Failed to initiate PayPal connection: ' + e.message);
-    }
-}
-
-async function checkPayPalPlaidStatus() {
-    console.log('[PLAID] Checking PayPal connection status');
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/paypal-plaid-status`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        const data = await res.json();
-        const statusEl = document.getElementById('paypal-plaid-status');
-        const connectBtn = document.getElementById('connect-paypal-plaid-btn');
-        const disconnectBtn = document.getElementById('disconnect-paypal-plaid-btn');
-        
-        if (statusEl) {
-            if (data.connected) {
-                statusEl.innerHTML = '✅ Connected';
-                statusEl.className = 'status-value connected';
-                if (connectBtn) connectBtn.style.display = 'none';
-                if (disconnectBtn) disconnectBtn.style.display = 'inline-block';
-            } else {
-                statusEl.innerHTML = '⚠️ Not connected';
-                statusEl.className = 'status-value disconnected';
-                if (connectBtn) connectBtn.style.display = 'inline-block';
-                if (disconnectBtn) disconnectBtn.style.display = 'none';
-            }
-        }
-    } catch (e) {
-        console.error('[PLAID] Error checking status:', e);
-    }
-}
-
-async function disconnectPayPalPlaid() {
-    if (!confirm('Disconnect PayPal from Plaid? This will not delete any posted transactions.')) {
-        return;
-    }
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/paypal-plaid-disconnect`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            alert('PayPal disconnected.');
-            checkPayPalPlaidStatus();
-            loadBankTransactions();
-        } else {
-            alert('Failed to disconnect: ' + (data.error || 'Unknown error'));
-        }
-    } catch (e) {
-        console.error('[PLAID] Error disconnecting:', e);
-        alert('Error disconnecting PayPal: ' + e.message);
+        alert('Failed to initiate connection: ' + e.message);
     }
 }
 
@@ -1089,6 +1030,21 @@ async function loadBankTransactions() {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
+        
+        // Handle PayPal needing connection (same as FNBO)
+        if (res.status === 400) {
+            const data = await res.json();
+            if (data.needs_connection) {
+                if (confirm('PayPal not connected. Would you like to connect your PayPal account via Plaid?')) {
+                    connectPayPalPlaid();
+                }
+                body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">PayPal not connected. Please connect your account.</td></tr>';
+                return;
+            }
+            body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+            return;
+        }
+        
         if (!res.ok) throw new Error('Failed to load transactions');
         const data = await res.json();
 
