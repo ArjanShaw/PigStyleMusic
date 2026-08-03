@@ -9837,7 +9837,7 @@ def reconcile_timeline():
 def bank_fnbo():
     """Fetch FNBO (Plaid) transactions with filtering - FLIP SIGN to match Square convention."""
     search = request.args.get('search', '').strip()
-    unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
+    unprocessed_only = request.args.get('unprocessed_only')
 
     try:
         plaid_tx = fetch_bank_transactions()
@@ -9852,7 +9852,7 @@ def bank_fnbo():
         search_lower = search.lower()
         plaid_tx = [t for t in plaid_tx if search_lower in t['description'].lower()]
 
-    # Determine processed status
+    # Determine processed status and get account_id
     conn = get_db()
     cursor = conn.cursor()
     for tx in plaid_tx:
@@ -9860,12 +9860,21 @@ def bank_fnbo():
         entry = cursor.fetchone()
         tx['processed'] = entry is not None
         tx['source_type'] = 'plaid'
+        tx['account_id'] = None
         if entry:
+            # Get the non-cash account (debit for expenses, credit for revenue)
+            # For expenses: debit_amount > 0
+            # For revenue: credit_amount > 0
             cursor.execute('''
                 SELECT jl.account_id
                 FROM journal_lines jl
                 WHERE jl.journal_entry_id = ?
-                AND jl.debit_amount > 0
+                AND (jl.debit_amount > 0 OR jl.credit_amount > 0)
+                AND jl.account_id != (
+                    SELECT id FROM accounts WHERE code IN ('1010', '1011', '1015', '1020', '1025', '1030')
+                    LIMIT 1
+                )
+                LIMIT 1
             ''', (entry['id'],))
             line = cursor.fetchone()
             if line:
@@ -9877,7 +9886,7 @@ def bank_fnbo():
         filter_unprocessed = unprocessed_only.lower() == 'true'
         if filter_unprocessed:
             plaid_tx = [t for t in plaid_tx if not t['processed']]
-        else:  # 'posted'
+        else:
             plaid_tx = [t for t in plaid_tx if t['processed']]
 
     total = len(plaid_tx)
