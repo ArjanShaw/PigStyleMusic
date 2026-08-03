@@ -218,6 +218,12 @@
         .noUi-connect { background: #007bff; }
         .noUi-handle { border: 1px solid #007bff; background: #fff; }
         .noUi-handle:before, .noUi-handle:after { background: #007bff; }
+
+        .post-select { padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; color: #000; background: #fff; min-width: 120px; }
+        .post-select.changed { border-color: #ffc107; background: #fff3cd; }
+        .post-select.posted { border-color: #28a745; background: #d4edda; }
+        .bank-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; }
+        .bank-actions .btn { padding: 6px 16px; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -237,7 +243,7 @@
         <div class="admin-container" id="accounting-container">
             <h1 class="accounting-title"><i class="fas fa-calculator"></i> Accounting</h1>
             
-            <!-- TABS: Import → Accounts → Journal → Reconciliation → Reports → Cash Flow → Monthly P&L → Balance Sheet -->
+            <!-- TABS -->
             <div class="sub-tabs" id="accounting-sub-tabs">
                 <button class="sub-tab active" data-subtab="import"><i class="fas fa-upload"></i> Import</button>
                 <button class="sub-tab" data-subtab="accounts"><i class="fas fa-sitemap"></i> Accounts</button>
@@ -252,9 +258,7 @@
             <!-- IMPORT TAB -->
             <div id="sub-import" class="sub-tab-content active">
                 <h4 style="color: #000;"><i class="fas fa-upload"></i> Import Bank Transactions</h4>
-                <p style="color: #000;">Select a source to view its transactions. Use the filter to narrow down results.</p>
-
-                <!-- No PayPal status bar - works like FNBO -->
+                <p style="color: #000;">Select a source to view its transactions. Select accounts in the dropdown and click Post Updates to create or update journal entries.</p>
 
                 <div class="bank-status-bar">
                     <div>
@@ -292,6 +296,18 @@
                     </div>
                 </div>
 
+                <!-- Bulk Actions Bar -->
+                <div class="bank-actions">
+                    <span style="font-weight:600; color:#000; font-size:14px;">Bulk Actions:</span>
+                    <button class="btn btn-success" id="post-updates-btn">
+                        <i class="fas fa-check-double"></i> Post Updates
+                    </button>
+                    <button class="btn btn-secondary" id="clear-selections-btn">
+                        <i class="fas fa-undo"></i> Clear All
+                    </button>
+                    <span id="post-status" style="color:#000; font-size:13px; margin-left:10px;"></span>
+                </div>
+
                 <div class="bank-table-container">
                     <table class="journal-table" id="bank-table">
                         <thead>
@@ -301,9 +317,10 @@
                                 <th>Amount</th>
                                 <th>Category</th>
                                 <th>Status</th>
+                                <th>Post To</th>
                             </tr>
                         </thead>
-                        <tbody id="bank-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Select a source and click Search.</td></tr></tbody>
+                        <tbody id="bank-body"><tr><td colspan="6" style="text-align:center; padding:40px;">Select a source and click Search.</td></tr></tbody>
                     </table>
                 </div>
                 <div style="margin-top:15px;">
@@ -641,6 +658,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.0/nouislider.min.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
-    <script src="/static/js/admin-accounting.js?v=28"></script>
+    <script src="/static/js/admin-accounting.js?v=29"></script>
 </body>
 </html>
