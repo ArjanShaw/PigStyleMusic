@@ -43,6 +43,9 @@ let reconcileMinDate = null;
 let reconcileMaxDate = null;
 let selectedPairId = null;
 
+// Bank accounts for dropdowns (cached)
+let cachedAccounts = [];
+
 // ============================================================
 // TOAST NOTIFICATION
 // ============================================================
@@ -419,6 +422,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Bulk Post button
+    document.getElementById('post-updates-btn')?.addEventListener('click', function() {
+        bulkPostTransactions();
+    });
+
+    // Clear selections button
+    document.getElementById('clear-selections-btn')?.addEventListener('click', function() {
+        clearAllSelections();
+    });
+
     console.log('[INIT] Initialization complete');
 });
 
@@ -437,6 +450,9 @@ async function loadAccountSelects() {
         const data = await res.json();
         if (data.status === 'success') {
             console.log('[ACCOUNTS] Loaded', data.accounts.length, 'accounts');
+            cachedAccounts = data.accounts;
+            
+            // Populate journal account filter
             const selects = document.querySelectorAll('.manual-account, #journal-account-filter');
             selects.forEach(sel => {
                 const currentVal = sel.value;
@@ -991,13 +1007,107 @@ function viewJournalEntry(entryId) {
 }
 
 // ============================================================
+// BANK TRANSACTION BULK POSTING
+// ============================================================
+
+async function bulkPostTransactions() {
+    const selects = document.querySelectorAll('#bank-body .post-select');
+    const updates = [];
+    let changedCount = 0;
+
+    selects.forEach(select => {
+        const initialValue = select.dataset.initialAccount || '';
+        const currentValue = select.value;
+        
+        // Only include if:
+        // 1. A value is selected (not empty)
+        // 2. The value is different from the initial value
+        // 3. The select has the 'changed' class (user actually changed it)
+        if (currentValue && currentValue !== initialValue && select.classList.contains('changed')) {
+            changedCount++;
+            const txId = select.dataset.txId;
+            const sourceType = select.dataset.sourceType;
+            const processed = select.dataset.processed === 'true';
+            
+            updates.push({
+                transaction_id: txId,
+                source_type: sourceType,
+                target_account_id: parseInt(currentValue),
+                is_update: processed
+            });
+        }
+    });
+
+    if (updates.length === 0) {
+        showToast('No account changes detected. Select different accounts to post.', 'warning');
+        return;
+    }
+
+    // Show loading state
+    const statusEl = document.getElementById('post-status');
+    const postBtn = document.getElementById('post-updates-btn');
+    postBtn.disabled = true;
+    postBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting...';
+    statusEl.textContent = `Posting ${updates.length} changed transaction(s)...`;
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-multiple`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates })
+        });
+
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            const msg = `✅ ${data.processed} posted, ${data.created || 0} created, ${data.updated || 0} updated`;
+            showToast(msg, 'success');
+            statusEl.textContent = msg;
+            
+            // Check for errors
+            if (data.errors && data.errors.length > 0) {
+                console.error('[BANK] Errors:', data.errors);
+                statusEl.textContent += ` ⚠️ ${data.errors.length} error(s)`;
+                showToast(`⚠️ ${data.errors.length} transaction(s) failed. Check console.`, 'warning');
+            }
+            
+            // Refresh the list after a delay
+            setTimeout(() => loadBankTransactions(), 1000);
+        } else {
+            // Show the actual error from the server
+            const errorMsg = data.error || data.message || 'Unknown error';
+            showToast('❌ Error: ' + errorMsg, 'error');
+            statusEl.textContent = '❌ ' + errorMsg;
+            console.error('[BANK] Server error:', data);
+        }
+    } catch (err) {
+        console.error('[BANK] Bulk post error:', err);
+        showToast('❌ Error: ' + err.message, 'error');
+        statusEl.textContent = '❌ ' + err.message;
+    } finally {
+        postBtn.disabled = false;
+        postBtn.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
+    }
+}
+
+function clearAllSelections() {
+    document.querySelectorAll('#bank-body .post-select').forEach(select => {
+        select.value = select.dataset.initialAccount || '';
+        select.classList.remove('changed');
+    });
+    document.getElementById('post-status').textContent = '';
+    showToast('All selections cleared', 'info');
+}
+
+// ============================================================
 // IMPORT (BANK) TRANSACTIONS
 // ============================================================
 
 async function loadBankTransactions() {
     console.log('[BANK] Loading transactions');
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const source = document.getElementById('bank-source').value;
     const search = document.getElementById('bank-filter').value.trim();
@@ -1037,10 +1147,10 @@ async function loadBankTransactions() {
                 if (confirm('PayPal not connected. Would you like to connect your PayPal account via Plaid?')) {
                     connectPayPalPlaid();
                 }
-                body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">PayPal not connected. Please connect your account.</td></tr>';
+                body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">PayPal not connected. Please connect your account.</td></tr>';
                 return;
             }
-            body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
             return;
         }
         
@@ -1049,40 +1159,99 @@ async function loadBankTransactions() {
 
         if (data.status === 'success') {
             console.log('[BANK] Loaded', data.transactions.length, 'transactions');
+            
+            // Ensure accounts are loaded before rendering
+            if (cachedAccounts.length === 0) {
+                await loadAccountSelects();
+            }
+            
             renderBankTransactions(data.transactions);
             updateBankCounts(data.unprocessed_count, data.total_count);
             document.getElementById('bank-pagination-info').textContent = `Showing ${data.transactions.length} entries (${data.total_count} total)`;
         } else {
-            body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
         }
     } catch (err) {
         console.error('[BANK] Error:', err);
-        body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</td></tr>`;
     }
 }
 
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
+    
     let html = '';
+    let selectIndex = 0;
+    
     transactions.forEach(t => {
         const amount = parseFloat(t.amount) || 0;
         const isDebit = amount < 0;
         const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
         const statusText = t.processed ? '✅ Posted' : '⏳ Unposted';
         const rowClass = t.processed ? 'bank-row-posted' : 'bank-row-unposted';
+        const sourceType = t.source_type || 'unknown';
+        const txId = t.id;
+        const isProcessed = t.processed || false;
+        
+        // Build select options
+        let optionsHtml = '<option value="">Select Account</option>';
+        if (cachedAccounts.length > 0) {
+            cachedAccounts.forEach(acc => {
+                // Suggest default based on amount sign
+                let isDefault = false;
+                if (amount < 0 && acc.type === 'expense') isDefault = true;
+                if (amount > 0 && acc.type === 'revenue') isDefault = true;
+                optionsHtml += `<option value="${acc.id}" ${isDefault ? 'selected' : ''}>${acc.code} - ${acc.name}</option>`;
+            });
+        }
+        
+        // Preselect if already posted
+        let initialAccount = '';
+        if (isProcessed && t.account_id) {
+            initialAccount = t.account_id;
+        }
+        
+        // Add data attributes for bulk posting
+        const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}"`;
+        
         html += `<tr class="${rowClass}">
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>${t.category || ''}</td>
             <td>${statusText}</td>
+            <td>
+                <select class="post-select" ${dataAttrs} style="min-width:120px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px; color:#000; background:#fff;">
+                    ${optionsHtml}
+                </select>
+                ${isProcessed ? '<span style="font-size:11px; color:#28a745; margin-left:5px;">(update)</span>' : ''}
+            </td>
         </tr>`;
+        selectIndex++;
     });
     body.innerHTML = html;
+    
+    // Set initial values after rendering
+    document.querySelectorAll('#bank-body .post-select').forEach(select => {
+        const initialAccount = select.dataset.initialAccount || '';
+        if (initialAccount) {
+            select.value = initialAccount;
+        }
+        
+        // Track changes
+        select.addEventListener('change', function() {
+            const initial = this.dataset.initialAccount || '';
+            if (this.value && this.value !== initial) {
+                this.classList.add('changed');
+            } else {
+                this.classList.remove('changed');
+            }
+        });
+    });
 }
 
 function updateBankCounts(unprocessed, total) {
@@ -1213,6 +1382,7 @@ async function loadAccountsList() {
         const data = await res.json();
         if (data.status === 'success') {
             console.log('[ACCOUNTS] Loaded', data.accounts.length, 'accounts');
+            cachedAccounts = data.accounts;
             renderAccounts(data.accounts);
         } else {
             console.error('[ACCOUNTS] Error:', data.error);

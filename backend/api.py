@@ -6344,23 +6344,23 @@ def apply_multiple():
         all_plaid_tx = fetch_bank_transactions()
     except Exception as e:
         all_plaid_tx = []
+        app.logger.error(f"Failed to fetch Plaid transactions: {e}")
 
     for item in updates:
         transaction_id = item.get('transaction_id')
-        source_account_id = item.get('source_account_id')
-        target_account_id = item.get('target_account_id')
         source_type = item.get('source_type', 'plaid')
-        is_update = item.get('is_update', False)  # Flag for already processed transactions
+        target_account_id = item.get('target_account_id')
+        is_update = item.get('is_update', False)
         
-        if not transaction_id or not source_account_id or not target_account_id:
-            errors.append(f'Missing fields for {transaction_id}')
+        if not transaction_id or not target_account_id:
+            errors.append(f'Missing fields for {transaction_id}: transaction_id or target_account_id missing')
             continue
 
         # Find the transaction
         tx = None
         if source_type == 'plaid':
             tx = next((t for t in all_plaid_tx if str(t['id']) == str(transaction_id)), None)
-        else:
+        elif source_type in ['historic', 'bluevine']:
             conn2 = get_db()
             cur2 = conn2.cursor()
             cur2.execute('SELECT id, transaction_date, amount, description FROM bank_transactions WHERE id = ?', (int(transaction_id),))
@@ -6373,6 +6373,20 @@ def apply_multiple():
                     'amount': row['amount'] / 100.0,
                     'description': row['description']
                 }
+        elif source_type == 'paypal':
+            # PayPal transactions don't have a local table, they come from Plaid
+            try:
+                # Fetch from Plaid directly
+                plaid_tx = fetch_bank_transactions()
+                tx = next((t for t in plaid_tx if str(t['id']) == str(transaction_id)), None)
+                if tx:
+                    tx['amount'] = tx['amount']  # Keep as-is, sign convention already correct
+            except Exception as e:
+                errors.append(f'Failed to fetch PayPal transaction {transaction_id}: {str(e)}')
+                continue
+        else:
+            errors.append(f'Unknown source_type: {source_type} for transaction {transaction_id}')
+            continue
 
         if not tx:
             errors.append(f'Transaction {transaction_id} not found in source {source_type}')
@@ -6384,42 +6398,7 @@ def apply_multiple():
 
         date_str = parse_plaid_date(date_raw) or datetime.now().date().isoformat()
         amount_cents = int(round(abs(amount) * 100))
-        is_expense = amount > 0   # Positive = expense
-
-        # Check if already processed
-        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
-                       (source_type, str(transaction_id)))
-        existing = cursor.fetchone()
-
-        if existing:
-            # If this is an update (reassignment), delete the old entry first
-            if is_update:
-                cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
-                cursor.execute('DELETE FROM journal_entries WHERE id = ?', (existing['id'],))
-                # Also mark bank_transaction as unprocessed if it's historic
-                if source_type == 'historic':
-                    cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(transaction_id),))
-                updated += 1
-                # Now create a new entry
-                cursor.execute('''
-                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
-                entry_id = cursor.lastrowid
-                created += 1
-            else:
-                # Entry exists but not marked as update - just use it
-                cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
-                entry_id = existing['id']
-                created += 1
-        else:
-            # Create new entry
-            cursor.execute('''
-                INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                VALUES (?, ?, ?, ?)
-            ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
-            entry_id = cursor.lastrowid
-            created += 1
+        is_expense = amount > 0   # Positive = expense/outgoing
 
         # Get cash account for this source type
         cash_id = get_cash_account_id(source_type)
@@ -6427,47 +6406,104 @@ def apply_multiple():
             errors.append(f'No cash account for source {source_type}, tx {transaction_id}')
             continue
 
-        # Insert the new lines
-        if is_expense:
-            # Withdrawal: Debit target (expense), Credit source (cash)
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, target_account_id, amount_cents, 0))
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, source_account_id, 0, amount_cents))
-        else:
-            # Deposit: Debit source (cash), Credit target (revenue/liability)
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, source_account_id, amount_cents, 0))
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, target_account_id, 0, amount_cents))
+        # Check if already processed
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
+                       (source_type, str(transaction_id)))
+        existing = cursor.fetchone()
 
-        # Mark as processed in the appropriate table
-        if source_type == 'historic':
-            cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
+        try:
+            if existing:
+                # If this is an update, delete the old entry first
+                if is_update:
+                    # Delete existing journal lines and entry
+                    cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                    cursor.execute('DELETE FROM journal_entries WHERE id = ?', (existing['id'],))
+                    
+                    # Mark bank_transaction as unprocessed if historic
+                    if source_type in ['historic', 'bluevine']:
+                        cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(transaction_id),))
+                    updated += 1
+                    
+                    # Create new entry
+                    cursor.execute('''
+                        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                        VALUES (?, ?, ?, ?)
+                    ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
+                    entry_id = cursor.lastrowid
+                    created += 1
+                else:
+                    # Entry exists but not marked as update - just use it (clear old lines)
+                    cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                    entry_id = existing['id']
+                    created += 1
+            else:
+                # Create new entry
+                cursor.execute('''
+                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
+                entry_id = cursor.lastrowid
+                created += 1
 
-        conn.commit()
-        processed += 1
+            # Insert the new lines
+            if is_expense:
+                # Withdrawal: Debit target (expense), Credit source (cash)
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, target_account_id, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, cash_id, 0, amount_cents))
+            else:
+                # Deposit: Debit source (cash), Credit target (revenue/liability)
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, cash_id, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, target_account_id, 0, amount_cents))
+
+            # Mark as processed in the appropriate table
+            if source_type in ['historic', 'bluevine']:
+                cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
+            elif source_type == 'paypal':
+                # PayPal transactions are not stored locally, nothing to update
+                pass
+
+            conn.commit()
+            processed += 1
+
+        except Exception as e:
+            conn.rollback()
+            errors.append(f'Failed to process transaction {transaction_id}: {str(e)}')
+            app.logger.error(f"Error processing transaction {transaction_id}: {str(e)}")
+            app.logger.error(traceback.format_exc())
+            continue
 
     conn.close()
     
-    return jsonify({
-        'status': 'success',
-        'processed': processed,
-        'created': created,
-        'updated': updated,
-        'errors': errors if errors else None,
-        'message': f'Processed {processed} transactions ({created} new, {updated} updated)' + (f', errors: {len(errors)}' if errors else '')
-    })
-
-
+    # Return detailed response with errors if any
+    if errors:
+        return jsonify({
+            'status': 'success',
+            'processed': processed,
+            'created': created,
+            'updated': updated,
+            'errors': errors,
+            'message': f'Processed {processed} transactions ({created} created, {updated} updated) with {len(errors)} error(s)'
+        })
+    else:
+        return jsonify({
+            'status': 'success',
+            'processed': processed,
+            'created': created,
+            'updated': updated,
+            'message': f'Processed {processed} transactions ({created} created, {updated} updated)'
+        })
 
 # ==================== DISCOGS ORDERS ENDPOINTS ====================
 
@@ -11310,7 +11346,7 @@ def bank_paypal():
     for tx in transactions:
         amount = tx['amount']
         # Plaid: positive = debit (spending), negative = credit (income)
-        # For PayPal, we want to show deposits as positive
+        # For PayPal, keep as-is: payments received = negative, payments sent = positive
         display_amount = amount
         
         all_transactions.append({
@@ -11330,10 +11366,21 @@ def bank_paypal():
     for tx in all_transactions:
         cursor.execute('''
             SELECT id FROM journal_entries 
-            WHERE source_type = 'plaid_paypal' AND source_id = ?
+            WHERE source_type = 'paypal' AND source_id = ?
         ''', (tx['id'],))
         entry = cursor.fetchone()
         tx['processed'] = entry is not None
+        if entry:
+            # Get the account_id from journal lines
+            cursor.execute('''
+                SELECT jl.account_id
+                FROM journal_lines jl
+                WHERE jl.journal_entry_id = ?
+                AND jl.debit_amount > 0
+            ''', (entry['id'],))
+            line = cursor.fetchone()
+            if line:
+                tx['account_id'] = line['account_id']
     
     conn.close()
     
@@ -11345,9 +11392,9 @@ def bank_paypal():
     if unprocessed_only is not None:
         filter_unprocessed = unprocessed_only.lower() == 'true'
         if filter_unprocessed:
-            all_transactions = [t for t in all_transactions if not t['processed']]
+            all_transactions = [t for t in all_transactions if not t.get('processed', False)]
         else:
-            all_transactions = [t for t in all_transactions if t['processed']]
+            all_transactions = [t for t in all_transactions if t.get('processed', False)]
     
     total = len(all_transactions)
     unprocessed = len([t for t in all_transactions if not t.get('processed', False)])
@@ -11358,7 +11405,6 @@ def bank_paypal():
         'total_count': total,
         'unprocessed_count': unprocessed
     })
-
 
 
 if __name__ == '__main__': 
