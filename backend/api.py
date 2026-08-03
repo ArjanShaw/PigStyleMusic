@@ -11311,7 +11311,7 @@ def bank_paypal():
         amount = tx['amount']
         # Plaid: positive = debit (spending), negative = credit (income)
         # For PayPal, we want to show deposits as positive
-        display_amount = -amount if amount < 0 else amount
+        display_amount = amount
         
         all_transactions.append({
             'id': tx['transaction_id'],
