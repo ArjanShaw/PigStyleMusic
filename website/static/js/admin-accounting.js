@@ -432,6 +432,25 @@ document.addEventListener('DOMContentLoaded', function() {
         clearAllSelections();
     });
 
+    // Select all checkbox
+    document.getElementById('select-all-tx')?.addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('#bank-body .tx-select:not(:disabled)');
+        checkboxes.forEach(cb => cb.checked = this.checked);
+        populateBulkAccountSelect();
+    });
+
+    // Bulk Assign Account button
+    document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
+        bulkAssignAccount();
+    });
+
+    // Bulk account select - show/hide based on selection
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('tx-select')) {
+            populateBulkAccountSelect();
+        }
+    });
+
     console.log('[INIT] Initialization complete');
 });
 
@@ -465,6 +484,9 @@ async function loadAccountSelects() {
                 });
                 sel.value = currentVal;
             });
+
+            // Populate bulk account select
+            populateBulkAccountSelect();
         }
     } catch (err) {
         console.error('[ACCOUNTS] Error loading accounts:', err);
@@ -501,6 +523,107 @@ async function loadReconcileAccountSelects() {
     } catch (err) {
         console.error('[RECONCILE] Error loading accounts:', err);
     }
+}
+
+// ============================================================
+// BULK ACCOUNT ASSIGNMENT
+// ============================================================
+
+function populateBulkAccountSelect() {
+    const accountSelect = document.getElementById('bulk-account-select');
+    const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
+    
+    // Clear and hide if no selections
+    if (selectedCheckboxes.length === 0) {
+        accountSelect.style.display = 'none';
+        accountSelect.innerHTML = '<option value="">Select Account</option>';
+        return;
+    }
+    
+    accountSelect.style.display = 'inline-block';
+    
+    // Determine which account types are needed based on selected transactions
+    let hasPositive = false;
+    let hasNegative = false;
+    let hasMixed = false;
+    
+    selectedCheckboxes.forEach(cb => {
+        const txId = cb.dataset.txId;
+        const select = document.querySelector(`.post-select[data-tx-id="${txId}"]`);
+        if (select) {
+            const amount = parseFloat(select.dataset.amount || 0);
+            if (amount > 0) hasPositive = true;
+            if (amount < 0) hasNegative = true;
+        }
+    });
+    
+    if (hasPositive && hasNegative) {
+        hasMixed = true;
+    }
+    
+    // Build options based on account types needed
+    const currentValue = accountSelect.value;
+    let optionsHtml = '<option value="">Select Account</option>';
+    const accountsToShow = cachedAccounts.filter(acc => {
+        if (hasMixed) return true; // Show all accounts
+        if (hasPositive) return acc.type === 'revenue';
+        if (hasNegative) return acc.type === 'expense';
+        return false;
+    });
+    
+    accountsToShow.forEach(acc => {
+        const selected = acc.id == currentValue ? 'selected' : '';
+        optionsHtml += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
+    });
+    
+    accountSelect.innerHTML = optionsHtml;
+}
+
+function bulkAssignAccount() {
+    const accountSelect = document.getElementById('bulk-account-select');
+    const selectedAccount = accountSelect.value;
+    
+    console.log('[BULK] selectedAccount:', selectedAccount);
+    console.log('[BULK] cachedAccounts:', cachedAccounts);
+    
+    if (!selectedAccount) {
+        showToast('Please select an account to assign.', 'warning');
+        return;
+    }
+    
+    const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
+    console.log('[BULK] selectedCheckboxes:', selectedCheckboxes.length);
+    
+    if (selectedCheckboxes.length === 0) {
+        showToast('Please select at least one transaction.', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Assign account to ${selectedCheckboxes.length} selected transaction(s)?`)) {
+        return;
+    }
+    
+    let assignedCount = 0;
+    selectedCheckboxes.forEach(cb => {
+        const txId = cb.dataset.txId;
+        const row = cb.closest('tr');
+        const select = row ? row.querySelector('.post-select') : null;
+        console.log('[BULK] txId:', txId, 'select found:', !!select);
+        if (select) {
+            console.log('[BULK] Setting select value to:', selectedAccount);
+            select.value = selectedAccount;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            select.classList.add('changed');
+            assignedCount++;
+        }
+    });
+    
+    showToast(`Account assigned to ${assignedCount} transaction(s)`, 'success');
+    
+    accountSelect.value = '';
+    document.getElementById('select-all-tx').checked = false;
+    document.querySelectorAll('#bank-body .tx-select:checked').forEach(cb => cb.checked = false);
+    populateBulkAccountSelect();
 }
 
 // ============================================================
@@ -1096,7 +1219,12 @@ function clearAllSelections() {
         select.value = select.dataset.initialAccount || '';
         select.classList.remove('changed');
     });
+    document.querySelectorAll('#bank-body .tx-select').forEach(cb => {
+        cb.checked = false;
+    });
+    document.getElementById('select-all-tx').checked = false;
     document.getElementById('post-status').textContent = '';
+    populateBulkAccountSelect();
     showToast('All selections cleared', 'info');
 }
 
@@ -1107,7 +1235,7 @@ function clearAllSelections() {
 async function loadBankTransactions() {
     console.log('[BANK] Loading transactions');
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const source = document.getElementById('bank-source').value;
     const search = document.getElementById('bank-filter').value.trim();
@@ -1147,10 +1275,10 @@ async function loadBankTransactions() {
                 if (confirm('PayPal not connected. Would you like to connect your PayPal account via Plaid?')) {
                     connectPayPalPlaid();
                 }
-                body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">PayPal not connected. Please connect your account.</td></tr>';
+                body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">PayPal not connected. Please connect your account.</td></tr>';
                 return;
             }
-            body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
             return;
         }
         
@@ -1169,19 +1297,18 @@ async function loadBankTransactions() {
             updateBankCounts(data.unprocessed_count, data.total_count);
             document.getElementById('bank-pagination-info').textContent = `Showing ${data.transactions.length} entries (${data.total_count} total)`;
         } else {
-            body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
         }
     } catch (err) {
         console.error('[BANK] Error:', err);
-        body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</td></tr>`;
     }
 }
-
 
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
     
@@ -1220,9 +1347,14 @@ function renderBankTransactions(transactions) {
         }
         
         // Add data attributes for bulk posting
-        const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}"`;
+        const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}" data-amount="${amount}"`;
+        
+        // Checkbox: disabled for posted transactions
+        const checkboxDisabled = isProcessed ? 'disabled' : '';
+        const checkboxChecked = '';
         
         html += `<tr class="${rowClass}">
+            <td><input type="checkbox" class="tx-select" data-tx-id="${txId}" ${checkboxDisabled} ${checkboxChecked}></td>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
@@ -1254,8 +1386,13 @@ function renderBankTransactions(transactions) {
             } else {
                 this.classList.remove('changed');
             }
+            // Uncheck the select-all checkbox when any individual checkbox changes
+            document.getElementById('select-all-tx').checked = false;
         });
     });
+    
+    // Populate bulk account select
+    populateBulkAccountSelect();
 }
 
 function updateBankCounts(unprocessed, total) {
