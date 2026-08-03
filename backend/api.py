@@ -6374,15 +6374,41 @@ def apply_multiple():
                     'description': row['description']
                 }
         elif source_type == 'paypal':
-            # PayPal transactions don't have a local table, they come from Plaid
             try:
-                # Fetch from Plaid directly
                 plaid_tx = fetch_bank_transactions()
                 tx = next((t for t in plaid_tx if str(t['id']) == str(transaction_id)), None)
                 if tx:
-                    tx['amount'] = tx['amount']  # Keep as-is, sign convention already correct
+                    tx['amount'] = tx['amount']
             except Exception as e:
                 errors.append(f'Failed to fetch PayPal transaction {transaction_id}: {str(e)}')
+                continue
+        elif source_type == 'square':
+            try:
+                import requests
+                access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+                if not access_token:
+                    errors.append(f'Square access token not configured for transaction {transaction_id}')
+                    continue
+                headers = {
+                    'Authorization': f'Bearer {access_token}',
+                    'Content-Type': 'application/json',
+                    'Square-Version': '2026-01-22'
+                }
+                response = requests.get(f'https://connect.squareup.com/v2/payments/{transaction_id}', headers=headers, timeout=30)
+                if response.status_code == 200:
+                    payment = response.json().get('payment', {})
+                    amount = payment.get('amount_money', {}).get('amount', 0) / 100.0
+                    tx = {
+                        'id': transaction_id,
+                        'date': payment.get('updated_at', '').split('T')[0] if payment.get('updated_at') else datetime.now().strftime('%Y-%m-%d'),
+                        'amount': amount,
+                        'description': f"Square Payment: {transaction_id}"
+                    }
+                else:
+                    errors.append(f'Failed to fetch Square transaction {transaction_id}: {response.status_code}')
+                    continue
+            except Exception as e:
+                errors.append(f'Failed to fetch Square transaction {transaction_id}: {str(e)}')
                 continue
         else:
             errors.append(f'Unknown source_type: {source_type} for transaction {transaction_id}')
@@ -6398,7 +6424,7 @@ def apply_multiple():
 
         date_str = parse_plaid_date(date_raw) or datetime.now().date().isoformat()
         amount_cents = int(round(abs(amount) * 100))
-        is_expense = amount > 0   # Positive = expense/outgoing
+        is_expense = amount < 0  # Negative = expense (Square convention)
 
         # Get cash account for this source type
         cash_id = get_cash_account_id(source_type)
@@ -6447,7 +6473,7 @@ def apply_multiple():
 
             # Insert the new lines
             if is_expense:
-                # Withdrawal: Debit target (expense), Credit source (cash)
+                # Expense: Debit target (expense), Credit source (cash)
                 cursor.execute('''
                     INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                     VALUES (?, ?, ?, ?)
@@ -6457,7 +6483,7 @@ def apply_multiple():
                     VALUES (?, ?, ?, ?)
                 ''', (entry_id, cash_id, 0, amount_cents))
             else:
-                # Deposit: Debit source (cash), Credit target (revenue/liability)
+                # Revenue: Debit source (cash), Credit target (revenue)
                 cursor.execute('''
                     INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                     VALUES (?, ?, ?, ?)
@@ -6470,8 +6496,8 @@ def apply_multiple():
             # Mark as processed in the appropriate table
             if source_type in ['historic', 'bluevine']:
                 cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
-            elif source_type == 'paypal':
-                # PayPal transactions are not stored locally, nothing to update
+            elif source_type in ['paypal', 'square', 'plaid']:
+                # These are not stored locally, nothing to update
                 pass
 
             conn.commit()
@@ -9981,13 +10007,14 @@ def bank_bluevine():
         'unprocessed_count': unprocessed
     })
 
+
 @app.route('/api/accounting/bank/square', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def bank_square():
     """Fetch Square transactions with filtering. Square already uses positive = revenue, negative = expense."""
     search = request.args.get('search', '').strip()
-    unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
+    unprocessed_only = request.args.get('unprocessed_only')
 
     from datetime import datetime, timedelta
     import requests
@@ -10034,18 +10061,23 @@ def bank_square():
         settled_at = p.get('updated_at') or p.get('created_at', '')
         date_str = settled_at.split('T')[0] if settled_at else datetime.now().strftime('%Y-%m-%d')
 
-        # Square amounts are already positive = revenue, negative = expense
-        # No sign flip needed
-        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?', ('square_batch', p['id']))
+        # Check if already posted - source_type is 'square'
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?', ('square', p['id']))
         entry = cursor.fetchone()
         processed = entry is not None
         account_id = None
         if processed:
+            # Get the non-cash account
             cursor.execute('''
                 SELECT jl.account_id
                 FROM journal_lines jl
                 WHERE jl.journal_entry_id = ?
-                AND jl.debit_amount > 0
+                AND (jl.debit_amount > 0 OR jl.credit_amount > 0)
+                AND jl.account_id != (
+                    SELECT id FROM accounts WHERE code IN ('1010', '1011', '1015', '1020', '1025', '1030')
+                    LIMIT 1
+                )
+                LIMIT 1
             ''', (entry['id'],))
             line = cursor.fetchone()
             if line:
@@ -10054,7 +10086,7 @@ def bank_square():
         transactions.append({
             'id': p['id'],
             'date': date_str,
-            'amount': amount,
+            'amount': amount,  # Square already uses positive = revenue, negative = expense
             'description': f"Square Payment: {p.get('id', '')}",
             'category': 'Payment',
             'processed': processed,
