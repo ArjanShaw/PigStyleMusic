@@ -6,6 +6,8 @@ load_dotenv()
 
 import requests
 import base64
+from plaid.model.country_code import CountryCode
+from plaid.model.products import Products
 from flask import Flask, jsonify, request, session, redirect, send_from_directory
 from flask_cors import CORS
 import sqlite3
@@ -9988,110 +9990,6 @@ def bank_square():
     })
 
 
-@app.route('/api/accounting/bank/paypal', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def bank_paypal():
-    """
-    Fetch PayPal transactions via Plaid.
-    """
-    search = request.args.get('search', '').strip()
-    unprocessed_only = request.args.get('unprocessed_only')
-    
-    # Get PayPal Plaid access token
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_paypal_access_token'")
-    row = cursor.fetchone()
-    conn.close()
-    
-    if not row:
-        return jsonify({
-            'status': 'error',
-            'error': 'PayPal not connected via Plaid. Please connect your PayPal account.',
-            'needs_connection': True
-        }), 400
-    
-    access_token = row['config_value']
-    
-    # Use Plaid to fetch transactions
-    client = get_plaid_client()
-    
-    # Get transactions from last 90 days
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=90)
-    
-    request = TransactionsGetRequest(
-        access_token=access_token,
-        start_date=start_date,
-        end_date=end_date,
-        options=TransactionsGetRequestOptions(count=500, offset=0)
-    )
-    
-    try:
-        response = client.transactions_get(request)
-        transactions = response['transactions']
-    except plaid.ApiException as e:
-        return jsonify({
-            'status': 'error',
-            'error': f'Plaid error: {str(e)}'
-        }), 500
-    
-    # Format transactions for frontend
-    all_transactions = []
-    for tx in transactions:
-        amount = tx['amount']
-        # Plaid: positive = debit (spending), negative = credit (income)
-        # For PayPal, we want to show deposits as positive
-        display_amount = -amount if amount < 0 else amount
-        
-        all_transactions.append({
-            'id': tx['transaction_id'],
-            'date': tx['date'],
-            'amount': display_amount,
-            'description': tx.get('name', ''),
-            'category': tx.get('category', [''])[0] if tx.get('category') else '',
-            'pending': tx.get('pending', False),
-            'source_type': 'paypal'
-        })
-    
-    # Check which transactions are already posted
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    for tx in all_transactions:
-        cursor.execute('''
-            SELECT id FROM journal_entries 
-            WHERE source_type = 'plaid_paypal' AND source_id = ?
-        ''', (tx['id'],))
-        entry = cursor.fetchone()
-        tx['processed'] = entry is not None
-    
-    conn.close()
-    
-    # Apply filters
-    if search:
-        search_lower = search.lower()
-        all_transactions = [t for t in all_transactions if search_lower in t['description'].lower()]
-    
-    if unprocessed_only is not None:
-        filter_unprocessed = unprocessed_only.lower() == 'true'
-        if filter_unprocessed:
-            all_transactions = [t for t in all_transactions if not t['processed']]
-        else:
-            all_transactions = [t for t in all_transactions if t['processed']]
-    
-    total = len(all_transactions)
-    unprocessed = len([t for t in all_transactions if not t.get('processed', False)])
-    
-    return jsonify({
-        'status': 'success',
-        'transactions': all_transactions,
-        'total_count': total,
-        'unprocessed_count': unprocessed
-    })
-
-
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['DELETE'])
 @login_required
 @role_required(['admin'])
@@ -11277,6 +11175,191 @@ def delete_reconcile_pair(pair_id):
     conn.commit()
     conn.close()
     return jsonify({'status': 'success', 'message': 'Pair deleted'})
+
+
+@app.route('/api/plaid/paypal/create-link-token', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def plaid_paypal_create_link_token():
+    try:
+        client_id = os.environ.get('PLAID_CLIENT_ID')
+        secret = os.environ.get('PLAID_SECRET')
+        env = os.environ.get('PLAID_ENV', 'sandbox')
+        
+        if not client_id or not secret:
+            return jsonify({'status': 'error', 'error': 'Plaid not configured'}), 500
+        
+        host = plaid.Environment.Production if env == 'production' else plaid.Environment.Sandbox
+        configuration = plaid.Configuration(host=host, api_key={'clientId': client_id, 'secret': secret})
+        api_client = plaid.ApiClient(configuration)
+        client = plaid_api.PlaidApi(api_client)
+        
+        request = LinkTokenCreateRequest(
+            user=LinkTokenCreateRequestUser(client_user_id=str(session['user_id'])),
+            client_name="PigStyle Music",
+            products=[Products('transactions')],
+            country_codes=[CountryCode('US')],
+            language='en'
+        )
+        
+        response = client.link_token_create(request)
+        return jsonify({'link_token': response['link_token']})
+        
+    except Exception as e:
+        app.logger.error(f"PayPal link token error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/plaid/paypal/exchange', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def plaid_paypal_exchange():
+    try:
+        data = request.json
+        public_token = data.get('public_token')
+        
+        if not public_token:
+            return jsonify({'status': 'error', 'error': 'public_token required'}), 400
+        
+        client_id = os.environ.get('PLAID_CLIENT_ID')
+        secret = os.environ.get('PLAID_SECRET')
+        env = os.environ.get('PLAID_ENV', 'sandbox')
+        
+        if not client_id or not secret:
+            return jsonify({'status': 'error', 'error': 'Plaid not configured'}), 500
+        
+        host = plaid.Environment.Production if env == 'production' else plaid.Environment.Sandbox
+        configuration = plaid.Configuration(host=host, api_key={'clientId': client_id, 'secret': secret})
+        api_client = plaid.ApiClient(configuration)
+        client = plaid_api.PlaidApi(api_client)
+        
+        exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
+        response = client.item_public_token_exchange(exchange_request)
+        
+        access_token = response['access_token']
+        item_id = response['item_id']
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_paypal_access_token', '')")
+        cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_paypal_item_id', '')")
+        cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'plaid_paypal_access_token'", (access_token,))
+        cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'plaid_paypal_item_id'", (item_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success', 'item_id': item_id})
+        
+    except Exception as e:
+        app.logger.error(f"PayPal exchange error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/accounting/bank/paypal', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def bank_paypal():
+    """
+    Fetch PayPal transactions via Plaid.
+    """
+    search = request.args.get('search', '').strip()
+    unprocessed_only = request.args.get('unprocessed_only')
+    
+    # Get PayPal Plaid access token
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_paypal_access_token'")
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return jsonify({
+            'status': 'error',
+            'error': 'PayPal not connected via Plaid. Please connect your PayPal account.',
+            'needs_connection': True
+        }), 400
+    
+    access_token = row['config_value']
+    
+    # Use Plaid to fetch transactions
+    client = get_plaid_client()
+    
+    # Get transactions from last 90 days
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=90)
+    
+    request2 = TransactionsGetRequest(
+        access_token=access_token,
+        start_date=start_date,
+        end_date=end_date,
+        options=TransactionsGetRequestOptions(count=500, offset=0)
+    )
+    
+    try:
+        response = client.transactions_get(request2)
+        transactions = response['transactions']
+    except plaid.ApiException as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'Plaid error: {str(e)}'
+        }), 500
+    
+    # Format transactions for frontend
+    all_transactions = []
+    for tx in transactions:
+        amount = tx['amount']
+        # Plaid: positive = debit (spending), negative = credit (income)
+        # For PayPal, we want to show deposits as positive
+        display_amount = -amount if amount < 0 else amount
+        
+        all_transactions.append({
+            'id': tx['transaction_id'],
+            'date': tx['date'],
+            'amount': display_amount,
+            'description': tx.get('name', ''),
+            'category': tx.get('category', [''])[0] if tx.get('category') else '',
+            'pending': tx.get('pending', False),
+            'source_type': 'paypal'
+        })
+    
+    # Check which transactions are already posted
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    for tx in all_transactions:
+        cursor.execute('''
+            SELECT id FROM journal_entries 
+            WHERE source_type = 'plaid_paypal' AND source_id = ?
+        ''', (tx['id'],))
+        entry = cursor.fetchone()
+        tx['processed'] = entry is not None
+    
+    conn.close()
+    
+    # Apply filters
+    if search:
+        search_lower = search.lower()
+        all_transactions = [t for t in all_transactions if search_lower in t['description'].lower()]
+    
+    if unprocessed_only is not None:
+        filter_unprocessed = unprocessed_only.lower() == 'true'
+        if filter_unprocessed:
+            all_transactions = [t for t in all_transactions if not t['processed']]
+        else:
+            all_transactions = [t for t in all_transactions if t['processed']]
+    
+    total = len(all_transactions)
+    unprocessed = len([t for t in all_transactions if not t.get('processed', False)])
+    
+    return jsonify({
+        'status': 'success',
+        'transactions': all_transactions,
+        'total_count': total,
+        'unprocessed_count': unprocessed
+    })
+
+
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

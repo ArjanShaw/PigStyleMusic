@@ -110,6 +110,58 @@ function formatReconDate(dateStr) {
 }
 
 // ============================================================
+// PAYPAL PLAID CONNECTION
+// ============================================================
+
+async function connectPayPalPlaid() {
+    console.log('[PLAID] Connecting PayPal');
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/plaid/paypal/create-link-token`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        
+        if (!data.link_token) {
+            alert('Failed to get link token: ' + (data.error || 'Unknown error'));
+            return;
+        }
+        
+        const handler = Plaid.create({
+            token: data.link_token,
+            onSuccess: async (public_token, metadata) => {
+                console.log('[PLAID] PayPal connection success');
+                
+                const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/paypal/exchange`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ public_token })
+                });
+                const exchangeData = await exchangeRes.json();
+                if (exchangeData.status === 'success') {
+                    showToast('PayPal connected successfully!', 'success');
+                    loadBankTransactions();
+                } else {
+                    alert('Failed to connect PayPal: ' + (exchangeData.error || 'Unknown error'));
+                }
+            },
+            onExit: (err, metadata) => {
+                if (err) {
+                    console.error('[PLAID] PayPal exit error:', err);
+                    alert('Error: ' + (err.display_message || err.error_message || 'Unknown error'));
+                }
+            }
+        });
+        handler.open();
+    } catch (e) {
+        console.error('[PLAID] PayPal error:', e);
+        alert('Failed to initiate PayPal connection: ' + e.message);
+    }
+}
+
+// ============================================================
 // INITIALIZATION
 // ============================================================
 
@@ -369,59 +421,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     console.log('[INIT] Initialization complete');
 });
-
-// ============================================================
-// PAYPAL PLAID CONNECTION (Simplified - no status functions)
-// ============================================================
-
-async function connectPayPalPlaid() {
-    console.log('[PLAID] Connecting PayPal');
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/plaid/create-link-token`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        
-        if (!data.link_token) {
-            alert('Failed to get link token: ' + (data.error || 'Unknown error'));
-            return;
-        }
-        
-        const handler = Plaid.create({
-            token: data.link_token,
-            onSuccess: async (public_token, metadata) => {
-                console.log('[PLAID] Connection success');
-                console.log('[PLAID] Institution:', metadata.institution ? metadata.institution.name : 'Unknown');
-                
-                const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/exchange`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ public_token })
-                });
-                const exchangeData = await exchangeRes.json();
-                if (exchangeData.status === 'success') {
-                    alert('Bank connected successfully via Plaid!');
-                    loadBankTransactions();
-                } else {
-                    alert('Failed to connect: ' + (exchangeData.error || 'Unknown error'));
-                }
-            },
-            onExit: (err, metadata) => {
-                if (err) {
-                    console.error('[PLAID] Exit error:', err);
-                    alert('Error: ' + (err.display_message || err.error_message || 'Unknown error'));
-                }
-            }
-        });
-        handler.open();
-    } catch (e) {
-        console.error('[PLAID] Error:', e);
-        alert('Failed to initiate connection: ' + e.message);
-    }
-}
 
 // ============================================================
 // ACCOUNT DROPDOWNS
@@ -1031,7 +1030,7 @@ async function loadBankTransactions() {
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
         
-        // Handle PayPal needing connection (same as FNBO)
+        // Handle PayPal needing connection
         if (res.status === 400) {
             const data = await res.json();
             if (data.needs_connection) {
