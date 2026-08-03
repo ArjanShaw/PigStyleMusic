@@ -1177,6 +1177,7 @@ async function loadBankTransactions() {
     }
 }
 
+
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
@@ -1197,17 +1198,20 @@ function renderBankTransactions(transactions) {
         const txId = t.id;
         const isProcessed = t.processed || false;
         
-        // Build select options
+        // Filter accounts based on amount sign
+        // Positive = money in = revenue accounts only
+        // Negative = money out = expense accounts only
+        const filteredAccounts = cachedAccounts.filter(acc => {
+            if (amount > 0) return acc.type === 'revenue';
+            if (amount < 0) return acc.type === 'expense';
+            return false;
+        });
+        
+        // Build select options with only filtered accounts
         let optionsHtml = '<option value="">Select Account</option>';
-        if (cachedAccounts.length > 0) {
-            cachedAccounts.forEach(acc => {
-                // Suggest default based on amount sign
-                let isDefault = false;
-                if (amount < 0 && acc.type === 'expense') isDefault = true;
-                if (amount > 0 && acc.type === 'revenue') isDefault = true;
-                optionsHtml += `<option value="${acc.id}" ${isDefault ? 'selected' : ''}>${acc.code} - ${acc.name}</option>`;
-            });
-        }
+        filteredAccounts.forEach(acc => {
+            optionsHtml += `<option value="${acc.id}">${acc.code} - ${acc.name}</option>`;
+        });
         
         // Preselect if already posted
         let initialAccount = '';
@@ -1242,7 +1246,7 @@ function renderBankTransactions(transactions) {
             select.value = initialAccount;
         }
         
-        // Track changes
+        // Track changes - only when user manually changes the dropdown
         select.addEventListener('change', function() {
             const initial = this.dataset.initialAccount || '';
             if (this.value && this.value !== initial) {

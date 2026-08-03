@@ -9830,11 +9830,12 @@ def reconcile_timeline():
         'account2_name': account_names.get(account2, '')
     })
  
+
 @app.route('/api/accounting/bank/fnbo', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def bank_fnbo():
-    """Fetch FNBO (Plaid) transactions with filtering."""
+    """Fetch FNBO (Plaid) transactions with filtering - FLIP SIGN to match Square convention."""
     search = request.args.get('search', '').strip()
     unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
 
@@ -9842,6 +9843,10 @@ def bank_fnbo():
         plaid_tx = fetch_bank_transactions()
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    # Flip sign to match Square convention (positive = revenue, negative = expense)
+    for tx in plaid_tx:
+        tx['amount'] = -tx['amount']
 
     if search:
         search_lower = search.lower()
@@ -9855,6 +9860,16 @@ def bank_fnbo():
         entry = cursor.fetchone()
         tx['processed'] = entry is not None
         tx['source_type'] = 'plaid'
+        if entry:
+            cursor.execute('''
+                SELECT jl.account_id
+                FROM journal_lines jl
+                WHERE jl.journal_entry_id = ?
+                AND jl.debit_amount > 0
+            ''', (entry['id'],))
+            line = cursor.fetchone()
+            if line:
+                tx['account_id'] = line['account_id']
     conn.close()
 
     # Apply view filter
@@ -9879,7 +9894,7 @@ def bank_fnbo():
 @login_required
 @role_required(['admin'])
 def bank_bluevine():
-    """Fetch Bluevine (historic) transactions with filtering."""
+    """Fetch Bluevine (historic) transactions with filtering - FLIP SIGN to match Square convention."""
     search = request.args.get('search', '').strip()
     unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
 
@@ -9914,14 +9929,37 @@ def bank_bluevine():
     for row in rows:
         source_val = row['source'] if row['source'] else 'csv_import'
         mapped_source = 'historic' if source_val in ('csv_import', 'historic') else source_val
+        amount = row['amount'] / 100.0
+        # Flip sign to match Square convention (positive = revenue, negative = expense)
+        flipped_amount = -amount
+        
+        # Check if posted and get account_id
+        processed = bool(row['processed']) if row['processed'] is not None else False
+        account_id = None
+        if processed:
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute('''
+                SELECT jl.account_id
+                FROM journal_entries je
+                JOIN journal_lines jl ON jl.journal_entry_id = je.id
+                WHERE je.source_type = ? AND je.source_id = ?
+                AND jl.debit_amount > 0
+            ''', (mapped_source, str(row['id'])))
+            line = cur2.fetchone()
+            conn2.close()
+            if line:
+                account_id = line['account_id']
+        
         transactions.append({
             'id': row['id'],
             'date': row['date'],
-            'amount': row['amount'] / 100.0,
+            'amount': flipped_amount,
             'description': row['description'],
             'category': '',
-            'processed': bool(row['processed']) if row['processed'] is not None else False,
-            'source_type': mapped_source
+            'processed': processed,
+            'source_type': mapped_source,
+            'account_id': account_id
         })
 
     total = len(transactions)
@@ -9938,7 +9976,7 @@ def bank_bluevine():
 @login_required
 @role_required(['admin'])
 def bank_square():
-    """Fetch Square transactions with filtering."""
+    """Fetch Square transactions with filtering. Square already uses positive = revenue, negative = expense."""
     search = request.args.get('search', '').strip()
     unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
 
@@ -9982,14 +10020,27 @@ def bank_square():
         if p.get('status') != 'COMPLETED':
             continue
         amount = p.get('amount_money', {}).get('amount', 0) / 100.0
-        if amount <= 0:
+        if amount == 0:
             continue
         settled_at = p.get('updated_at') or p.get('created_at', '')
         date_str = settled_at.split('T')[0] if settled_at else datetime.now().strftime('%Y-%m-%d')
 
+        # Square amounts are already positive = revenue, negative = expense
+        # No sign flip needed
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?', ('square_batch', p['id']))
         entry = cursor.fetchone()
         processed = entry is not None
+        account_id = None
+        if processed:
+            cursor.execute('''
+                SELECT jl.account_id
+                FROM journal_lines jl
+                WHERE jl.journal_entry_id = ?
+                AND jl.debit_amount > 0
+            ''', (entry['id'],))
+            line = cursor.fetchone()
+            if line:
+                account_id = line['account_id']
 
         transactions.append({
             'id': p['id'],
@@ -9998,7 +10049,8 @@ def bank_square():
             'description': f"Square Payment: {p.get('id', '')}",
             'category': 'Payment',
             'processed': processed,
-            'source_type': 'square'
+            'source_type': 'square',
+            'account_id': account_id
         })
 
     conn.close()
@@ -10024,7 +10076,6 @@ def bank_square():
         'total_count': total,
         'unprocessed_count': unprocessed
     })
-
 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['DELETE'])
 @login_required
@@ -11325,7 +11376,7 @@ def bank_paypal():
     end_date = datetime.now().date()
     start_date = end_date - timedelta(days=90)
     
-    request2 = TransactionsGetRequest(
+    plaid_request = TransactionsGetRequest(
         access_token=access_token,
         start_date=start_date,
         end_date=end_date,
@@ -11333,7 +11384,7 @@ def bank_paypal():
     )
     
     try:
-        response = client.transactions_get(request2)
+        response = client.transactions_get(plaid_request)
         transactions = response['transactions']
     except plaid.ApiException as e:
         return jsonify({
@@ -11341,13 +11392,13 @@ def bank_paypal():
             'error': f'Plaid error: {str(e)}'
         }), 500
     
-    # Format transactions for frontend
+    # Format transactions for frontend - FLIP SIGN to match Square convention
     all_transactions = []
     for tx in transactions:
         amount = tx['amount']
         # Plaid: positive = debit (spending), negative = credit (income)
-        # For PayPal, keep as-is: payments received = negative, payments sent = positive
-        display_amount = amount
+        # Flip to match Square convention: positive = revenue, negative = expense
+        display_amount = -amount
         
         all_transactions.append({
             'id': tx['transaction_id'],
@@ -11405,7 +11456,6 @@ def bank_paypal():
         'total_count': total,
         'unprocessed_count': unprocessed
     })
-
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
