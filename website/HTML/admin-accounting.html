@@ -259,85 +259,133 @@
                 <button class="sub-tab" data-subtab="balance-sheet"><i class="fas fa-balance-scale"></i> Balance Sheet</button>
             </div>
 
+
             <!-- IMPORT TAB -->
-            <div id="sub-import" class="sub-tab-content active">
-                <h4 style="color: #000;"><i class="fas fa-upload"></i> Import Bank Transactions</h4>
-                <p style="color: #000;">Select a source to view its transactions. Select accounts in the dropdown and click Post Updates to create or update journal entries.</p>
+<div id="sub-import" class="sub-tab-content active">
+    <h4 style="color: #000;"><i class="fas fa-upload"></i> Import Bank Transactions</h4>
+    <p style="color: #000;">Select a source to view its transactions. Select accounts in the dropdown and click Post Updates to create or update journal entries.</p>
 
-                <div class="bank-status-bar">
-                    <div>
-                        <span class="count-badge" id="bank-unprocessed-count">0</span>
-                        <span class="text-muted" id="bank-count-label"> unprocessed transactions</span>
-                        <span class="text-muted" id="bank-total-count" style="margin-left:10px;">(0 total)</span>
-                    </div>
-                    <div class="filter-group">
-                        <div class="form-group" style="margin:0;">
-                            <select id="bank-source" class="source-filter-select">
-                                <option value="fnbo">FNBO Bank (Plaid)</option>
-                                <option value="bluevine">Bluevine Bank (Historic)</option>
-                                <option value="square">Square Asset</option>
-                                <option value="paypal">PayPal (Plaid)</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="margin:0;">
-                            <select id="bank-view-filter" class="source-filter-select">
-                                <option value="unposted">Unposted</option>
-                                <option value="posted">Posted</option>
-                                <option value="all">All</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
+    <!-- ===== ACCOUNT BALANCE STATS CARDS ===== -->
+    <div class="stats-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
+        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💵 Square Asset</div>
+            <div class="stat-value" id="balance-square" style="font-size: 24px; font-weight: bold; color: #007bff;">$0.00</div>
+            <div style="font-size: 11px; color: #999;">Account 1030</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">🏦 FNBO Bank</div>
+            <div class="stat-value" id="balance-fnbo" style="font-size: 24px; font-weight: bold; color: #28a745;">$0.00</div>
+            <div style="font-size: 11px; color: #999;">Account 1011</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">🏦 Bluevine Bank</div>
+            <div class="stat-value" id="balance-bluevine" style="font-size: 24px; font-weight: bold; color: #17a2b8;">$0.00</div>
+            <div style="font-size: 11px; color: #999;">Account 1010</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💳 PayPal</div>
+            <div class="stat-value" id="balance-paypal" style="font-size: 24px; font-weight: bold; color: #6f42c1;">$0.00</div>
+            <div style="font-size: 11px; color: #999;">Account 1020</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💰 Cash - Register</div>
+            <div class="stat-value" id="balance-cash" style="font-size: 24px; font-weight: bold; color: #fd7e14;">$0.00</div>
+            <div style="font-size: 11px; color: #999;">Account 1015</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">📦 Inventory</div>
+            <div class="stat-value" id="balance-inventory" style="font-size: 24px; font-weight: bold; color: #20c997;">$0.00</div>
+            <div style="font-size: 11px; color: #999;">Account 1050</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">📊 Total Assets</div>
+            <div class="stat-value" id="balance-total-assets" style="font-size: 24px; font-weight: bold; color: #6f42c1;">$0.00</div>
+            <div style="font-size: 11px; color: #999;">All Asset Accounts</div>
+        </div>
+        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💳 Store Credit Owed</div>
+            <div class="stat-value" id="balance-store-credit" style="font-size: 24px; font-weight: bold; color: #dc3545;">$0.00</div>
+            <div style="font-size: 11px; color: #999;">Account 2015 (Payable)</div>
+        </div>
+    </div>
 
-                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
-                    <div class="form-group" style="flex:2;">
-                        <label style="color:#000;">Filter by description</label>
-                        <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM" style="color:#000; background:#fff;">
-                    </div>
-                    <div class="form-group" style="flex:0 0 auto;">
-                        <label style="color:#000;">&nbsp;</label>
-                        <button class="btn btn-primary" id="bank-search-btn"><i class="fas fa-search"></i> Search</button>
-                    </div>
-                </div>
-
-                <!-- Bulk Actions Bar -->
-                <div class="bank-actions">
-                    <span style="font-weight:600; color:#000; font-size:14px;">Bulk Actions:</span>
-                    <button class="btn btn-success" id="post-updates-btn">
-                        <i class="fas fa-check-double"></i> Post Updates
-                    </button>
-                    <button class="btn btn-secondary" id="clear-selections-btn">
-                        <i class="fas fa-undo"></i> Clear All
-                    </button>
-                    <button class="btn btn-info" id="bulk-assign-btn">
-                        <i class="fas fa-tasks"></i> Bulk Assign Account
-                    </button>
-                    <select id="bulk-account-select">
-                        <option value="">Select Account</option>
-                    </select>
-                    <span id="post-status" style="color:#000; font-size:13px; margin-left:10px;"></span>
-                </div>
-
-                <div class="bank-table-container">
-                    <table class="journal-table" id="bank-table">
-                        <thead>
-                            <tr>
-                                <th><input type="checkbox" id="select-all-tx"></th>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Amount</th>
-                                <th>Category</th>
-                                <th>Status</th>
-                                <th>Post To</th>
-                            </tr>
-                        </thead>
-                        <tbody id="bank-body"><tr><td colspan="7" style="text-align:center; padding:40px;">Select a source and click Search.</td></tr></tbody>
-                    </table>
-                </div>
-                <div style="margin-top:15px;">
-                    <span id="bank-pagination-info">Showing 0 entries</span>
-                </div>
+    <div class="bank-status-bar">
+        <div>
+            <span class="count-badge" id="bank-unprocessed-count">0</span>
+            <span class="text-muted" id="bank-count-label"> unprocessed transactions</span>
+            <span class="text-muted" id="bank-total-count" style="margin-left:10px;">(0 total)</span>
+        </div>
+        <div class="filter-group">
+            <div class="form-group" style="margin:0;">
+                <select id="bank-source" class="source-filter-select">
+                    <option value="fnbo">FNBO Bank (Plaid)</option>
+                    <option value="bluevine">Bluevine Bank (Historic)</option>
+                    <option value="square">Square Asset</option>
+                    <option value="paypal">PayPal (Plaid)</option>
+                </select>
             </div>
+            <div class="form-group" style="margin:0;">
+                <select id="bank-view-filter" class="source-filter-select">
+                    <option value="unposted">Unposted</option>
+                    <option value="posted">Posted</option>
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="refreshAllBalances()" style="padding: 6px 12px;">
+                <i class="fas fa-sync-alt"></i> Refresh Balances
+            </button>
+        </div>
+    </div>
+
+    <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
+        <div class="form-group" style="flex:2;">
+            <label style="color:#000;">Filter by description</label>
+            <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM" style="color:#000; background:#fff;">
+        </div>
+        <div class="form-group" style="flex:0 0 auto;">
+            <label style="color:#000;">&nbsp;</label>
+            <button class="btn btn-primary" id="bank-search-btn"><i class="fas fa-search"></i> Search</button>
+        </div>
+    </div>
+
+    <!-- Bulk Actions Bar -->
+    <div class="bank-actions">
+        <span style="font-weight:600; color:#000; font-size:14px;">Bulk Actions:</span>
+        <button class="btn btn-success" id="post-updates-btn">
+            <i class="fas fa-check-double"></i> Post Updates
+        </button>
+        <button class="btn btn-secondary" id="clear-selections-btn">
+            <i class="fas fa-undo"></i> Clear All
+        </button>
+        <button class="btn btn-info" id="bulk-assign-btn">
+            <i class="fas fa-tasks"></i> Bulk Assign Account
+        </button>
+        <select id="bulk-account-select">
+            <option value="">Select Account</option>
+        </select>
+        <span id="post-status" style="color:#000; font-size:13px; margin-left:10px;"></span>
+    </div>
+
+    <div class="bank-table-container">
+        <table class="journal-table" id="bank-table">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="select-all-tx"></th>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Amount</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Post To</th>
+                </tr>
+            </thead>
+            <tbody id="bank-body"><tr><td colspan="7" style="text-align:center; padding:40px;">Select a source and click Search.</td></tr></tbody>
+        </table>
+    </div>
+    <div style="margin-top:15px;">
+        <span id="bank-pagination-info">Showing 0 entries</span>
+    </div>
+</div>
 
             <!-- ACCOUNTS TAB -->
             <div id="sub-accounts" class="sub-tab-content">
